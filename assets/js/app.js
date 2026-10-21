@@ -1,10 +1,12 @@
 (function () {
   'use strict';
 
+  // React calls this factory after the ordered runtime has loaded.
+  window.mountAssetApp = function (target) {
   const Store = window.AssetStore;
   const initial = Store.initialState();
 
-  window.Vue.createApp({
+  const app = window.Vue.createApp({
     mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }],
     components: {
       AppIcon: window.AppIcon,
@@ -612,5 +614,10 @@
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
       methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods))
-  }).mount('#app');
+  });
+  app.mount(target || '#app');
+  return app;
+  };
+  // Preserve direct static usage and the original Node harness contract.
+  if (!window.AssetReactHost) window.mountAssetApp('#app');
 })();

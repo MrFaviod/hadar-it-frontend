@@ -1,0 +1,22 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>React lifecycle check</title></head><body>
+<div id="root"></div>
+<button id="remount">Remount React</button><button id="unmount">Unmount React</button>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { mountLegacy } from '../src/legacy.ts';
+function Host() {
+  const ref = React.useRef(null);
+  React.useEffect(() => mountLegacy(ref.current, error => { throw error; }), []);
+  return React.createElement('div', { id: 'app', ref });
+}
+let root;
+function mount() {
+  root?.unmount();
+  root = createRoot(document.getElementById('root'));
+  root.render(React.createElement(React.StrictMode, null, React.createElement(Host)));
+}
+document.getElementById('remount').onclick = mount;
+document.getElementById('unmount').onclick = () => { root?.unmount(); root = undefined; };
+mount();
+</script></body></html>
