@@ -1,0 +1,9 @@
+.git
+node_modules
+dist
+.verification
+.venv
+.atl
+.codegraph
+__pycache__
+*.local
