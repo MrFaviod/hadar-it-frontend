@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Monitor genérico</title>
+  <desc id="desc">Ilustración de un monitor de escritorio con gráficos en pantalla.</desc>
+  <defs>
+    <pattern id="mn-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="mn-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#mn-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#mn-halo)"/>
+  <path d="M94 328h452" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="320" cy="330" rx="184" ry="12" fill="#d7e7e7"/>
+  <rect x="142" y="74" width="356" height="218" rx="12" fill="#0c2333" stroke="#163b4d" stroke-width="4"/>
+  <rect x="156" y="88" width="328" height="190" rx="5" fill="#102d3d"/>
+  <rect x="172" y="104" width="82" height="9" rx="4.5" fill="#69c9c1"/>
+  <rect x="172" y="124" width="46" height="6" rx="3" fill="#3d6978"/>
+  <path d="M172 252v-52l32-21 34 14 29-35 34 24 34-40 36 31 27-21 30 25v75H172Z" fill="#154452"/>
+  <path d="M172 252v-34l32-20 34 24 29-31 34 25 34-23 36 22 27-20 30 26v31H172Z" fill="#0e7c7b" opacity=".72"/>
+  <path d="M172 252h292" stroke="#69c9c1" stroke-width="2" opacity=".6"/>
+  <circle cx="387" cy="137" r="19" fill="none" stroke="#e0a44c" stroke-width="4"/>
+  <path d="M387 127v10l7 5" fill="none" stroke="#e0a44c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M302 292v28h36v24H302" fill="none" stroke="#c8dada" stroke-width="3"/>
+  <path d="M280 292h80l14 48H266l14-48Z" fill="#c8dada" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M248 340h144" stroke="#8eb0b1" stroke-width="3" stroke-linecap="round"/>
+</svg>

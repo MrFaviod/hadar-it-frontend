@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Computadora HP EliteDesk 800</title>
+  <desc id="desc">Ilustración de un equipo compacto de escritorio con monitor y base metálica.</desc>
+  <defs>
+    <pattern id="dkh-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <radialGradient id="dkh-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#dkh-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#dkh-halo)"/>
+  <path d="M82 318h480" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="333" cy="324" rx="202" ry="14" fill="#d7e7e7"/>
+  <rect x="171" y="62" width="314" height="204" rx="10" fill="#102c3c" stroke="#0b2230" stroke-width="4"/>
+  <rect x="184" y="75" width="288" height="178" rx="3" fill="#153c4c"/>
+  <rect x="201" y="93" width="66" height="8" rx="4" fill="#66c7bf"/>
+  <rect x="201" y="111" width="118" height="5" rx="2.5" fill="#487887"/>
+  <rect x="201" y="126" width="94" height="5" rx="2.5" fill="#32606f"/>
+  <path d="M201 151h118v63H201z" fill="#0e3040"/>
+  <path d="M331 151h124v9H331zm0 18h94v9h-94zm0 18h108v9H331zm0 18h74v9h-74z" fill="#1b4b59"/>
+  <path d="M207 183l28-18 25 12 26-22 29 16 27-11v37h-135z" fill="#0e7c7b" opacity=".65"/>
+  <circle cx="403" cy="204" r="16" fill="none" stroke="#e0a44c" stroke-width="3"/>
+  <path d="M403 195v9l6 4" fill="none" stroke="#e0a44c" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M316 266v30h34" fill="none" stroke="#b6cdce" stroke-width="3"/>
+  <path d="M235 296h196l16 30H219l16-30Z" fill="#c5d8d8" stroke="#a5bfc0" stroke-width="3"/>
+  <rect x="462" y="178" width="74" height="114" rx="7" fill="#173849" stroke="#0c2634" stroke-width="3"/>
+  <rect x="472" y="190" width="54" height="6" rx="3" fill="#4d7f89"/>
+  <circle cx="499" cy="214" r="9" fill="none" stroke="#66c7bf" stroke-width="3"/>
+  <path d="M474 238h50M474 249h34M474 260h44" stroke="#315866" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="499" cy="279" r="3" fill="#66c7bf"/>
+</svg>

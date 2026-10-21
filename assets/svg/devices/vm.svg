@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Máquina virtual genérica</title>
+  <desc id="desc">Ilustración de dos máquinas virtuales apiladas sobre una capa de hipervisor.</desc>
+  <defs>
+    <pattern id="vm-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="vm-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#vm-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#vm-halo)"/>
+  <path d="M92 330h456" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <rect x="196" y="86" width="248" height="96" rx="10" fill="#102d3d" stroke="#315866" stroke-width="3"/>
+  <circle cx="226" cy="116" r="9" fill="#69c9c1"/>
+  <path d="M254 116h96" stroke="#4d7f89" stroke-width="6" stroke-linecap="round"/>
+  <path d="M226 148h150" stroke="#3d6978" stroke-width="6" stroke-linecap="round"/>
+  <path d="M226 166h110" stroke="#2a5362" stroke-width="6" stroke-linecap="round"/>
+  <rect x="196" y="196" width="248" height="96" rx="10" fill="#123346" stroke="#3d6978" stroke-width="3"/>
+  <circle cx="226" cy="226" r="9" fill="#69c9c1"/>
+  <path d="M254 226h96" stroke="#5b8b96" stroke-width="6" stroke-linecap="round"/>
+  <path d="M226 258h150" stroke="#416f7c" stroke-width="6" stroke-linecap="round"/>
+  <path d="M226 276h88" stroke="#2a5362" stroke-width="6" stroke-linecap="round"/>
+  <rect x="172" y="306" width="296" height="26" rx="6" fill="#c8dada" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M196 319h96M312 319h64" stroke="#8eb0b1" stroke-width="5" stroke-linecap="round"/>
+</svg>

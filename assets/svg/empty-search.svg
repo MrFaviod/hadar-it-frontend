@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title desc">
+  <title id="title">Sin resultados</title>
+  <desc id="desc">Ilustración de una lupa frente a un rack de equipos vacío.</desc>
+  <defs>
+    <pattern id="empty-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="empty-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+    <style>
+      @media (prefers-reduced-motion: no-preference) {
+        .empty-lens { animation: empty-drift 6s cubic-bezier(.45,0,.55,1) infinite; }
+        .empty-scan { animation: empty-scan 6s cubic-bezier(.45,0,.55,1) infinite; }
+        @keyframes empty-drift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(-14px, -30px); } }
+        @keyframes empty-scan { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(-74px); } }
+      }
+    </style>
+  </defs>
+  <rect width="480" height="300" fill="#eff5f5"/>
+  <rect width="480" height="300" fill="url(#empty-grid)"/>
+  <ellipse cx="240" cy="160" rx="200" ry="132" fill="url(#empty-halo)"/>
+  <ellipse cx="232" cy="252" rx="136" ry="10" fill="#d7e7e7"/>
+  <rect x="156" y="78" width="150" height="170" rx="9" fill="#173849" stroke="#0c2634" stroke-width="3"/>
+  <rect x="171" y="94" width="120" height="29" rx="4" fill="#0d2b3b"/>
+  <rect x="171" y="131" width="120" height="29" rx="4" fill="#0d2b3b"/>
+  <rect x="171" y="168" width="120" height="29" rx="4" fill="#0d2b3b"/>
+  <rect x="171" y="205" width="120" height="29" rx="4" fill="#0d2b3b"/>
+  <path d="M185 104h48M185 113h30M185 141h58M185 150h34M185 178h44M185 187h28M185 215h50M185 224h32" stroke="#426d79" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="276" cy="103" r="3" fill="#69c9c1"/><circle cx="276" cy="140" r="3" fill="#69c9c1"/>
+  <circle cx="276" cy="177" r="3" fill="#e0a44c"/><circle cx="276" cy="214" r="3" fill="#69c9c1"/>
+  <rect class="empty-scan" x="171" y="226" width="120" height="2" rx="1" fill="#69c9c1" opacity=".25"/>
+  <g class="empty-lens">
+    <circle cx="320" cy="174" r="58" fill="#e9f3f3" fill-opacity=".7" stroke="#0e7c7b" stroke-width="8"/>
+    <path d="M292 150a38 38 0 0 1 22-14" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+    <path d="m362 216 36 36" stroke="#0e7c7b" stroke-width="12" stroke-linecap="round"/>
+  </g>
+</svg>

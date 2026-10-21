@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Diagrama de campo de visión de una cámara</title>
+  <desc id="desc">Vista cenital de una sala con el cono de cobertura de una cámara instalada en el muro superior, con un ángulo horizontal de 110 grados.</desc>
+  <defs>
+    <pattern id="fov-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <linearGradient id="fov-cone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#69c9c1" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#69c9c1" stop-opacity=".12"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#fov-grid)"/>
+  <rect x="60" y="56" width="520" height="304" rx="10" fill="#f7fbfa" stroke="#c2d2d0" stroke-width="2"/>
+  <path d="M60 108h520" stroke="#d8e3e3" stroke-width="2" stroke-dasharray="8 8"/>
+  <path d="M320 108 150 356h340L320 108Z" fill="url(#fov-cone)" stroke="#0f8c80" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M320 108v248" stroke="#0f8c80" stroke-width="2" stroke-dasharray="10 9" opacity=".55"/>
+  <circle cx="320" cy="330" r="34" fill="none" stroke="#0f8c80" stroke-width="2" opacity=".5"/>
+  <circle cx="320" cy="330" r="6" fill="#0f8c80" opacity=".6"/>
+  <path d="M320 108 236 232" stroke="#0f8c80" stroke-width="1.5" opacity=".45"/>
+  <path d="M320 108 404 232" stroke="#0f8c80" stroke-width="1.5" opacity=".45"/>
+  <rect x="292" y="92" width="56" height="22" rx="6" fill="#173849" stroke="#0c2634" stroke-width="3"/>
+  <circle cx="320" cy="103" r="5" fill="#69c9c1"/>
+  <text x="352" y="86" fill="#0b5f59" font-family="'IBM Plex Mono', monospace" font-size="15" letter-spacing="1">110°</text>
+  <text x="84" y="92" fill="#58717a" font-family="'IBM Plex Mono', monospace" font-size="12" letter-spacing="1.4">SALA DE RECEPCIÓN</text>
+  <g fill="#58717a" font-family="'IBM Plex Mono', monospace" font-size="11" letter-spacing="1">
+    <text x="84" y="340">COBERTURA APROX. 6 m</text>
+  </g>
+  <path d="M84 316h100" stroke="#8ba0a6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M84 310v12M184 310v12" stroke="#8ba0a6" stroke-width="2" stroke-linecap="round"/>
+</svg>

@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="plan-title plan-desc">
+  <title id="plan-title">Plano del piso 2 del Edificio Central</title>
+  <desc id="plan-desc">Planta de administración con puestos de trabajo, sala de reuniones, archivo, office, núcleo de circulación y rack de comunicaciones.</desc>
+  <defs>
+    <pattern id="p2-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#e2ecea" stroke-width="1"/>
+    </pattern>
+    <style><![CDATA[
+      .wall{fill:none;stroke:#1f3f46;stroke-width:9;stroke-linejoin:round}
+      .wall--thin{stroke-width:4;stroke:#7a999c}
+      .room{fill:#ffffff;stroke:#c8dad8;stroke-width:2}
+      .warm{fill:#f2f6f5;stroke:#c8dad8;stroke-width:2}
+      .label{font-family:'IBM Plex Mono',monospace;font-size:21px;letter-spacing:.16em;fill:#33565c}
+      .note{font-family:'IBM Plex Mono',monospace;font-size:15px;letter-spacing:.1em;fill:#7d9a9b}
+      .desk{fill:#e6f0ee;stroke:#8fb0ad;stroke-width:2}
+      .monitor{fill:#cfe2df;stroke:#6f9592;stroke-width:2}
+      .chair{fill:#ffffff;stroke:#a8c2bf;stroke-width:2}
+      .rack{fill:#d3e6e3;stroke:#4c7b78;stroke-width:3}
+      .rack-label{font-family:'IBM Plex Mono',monospace;font-size:15px;fill:#1f3f46;text-anchor:middle}
+      .door{stroke:#0d766e;stroke-width:7;stroke-linecap:round}
+      .swing{fill:none;stroke:#9dbcb9;stroke-width:2;stroke-dasharray:4 5}
+    ]]></style>
+  </defs>
+  <rect width="1600" height="1000" fill="#f6faf9"/>
+  <rect width="1600" height="1000" fill="url(#p2-grid)"/>
+  <text class="label" x="80" y="62">EDIFICIO CENTRAL · PISO 2</text>
+  <text class="note" x="1220" y="62">ADMINISTRACIÓN · ESC. 1:120</text>
+
+  <rect class="room" x="60" y="110" width="1480" height="780" rx="6"/>
+  <path class="wall" d="M60 110h1480v780H60z"/>
+  <path class="wall--thin" d="M870 180v560M910 180v390M910 470h590M910 700h590M1300 180v390M1300 430v470"/>
+
+  <text class="label" x="112" y="172">ADMINISTRACIÓN</text>
+  <text class="note" x="944" y="214">SALA DE REUNIONES</text>
+  <text class="note" x="1334" y="214">NÚCLEO</text>
+  <text class="note" x="944" y="512">ARCHIVO</text>
+  <text class="note" x="1230" y="512">OFFICE</text>
+  <text class="note" x="86" y="772">CORREDOR DE CIRCULACIÓN</text>
+
+  <g>
+    <rect class="desk" x="160" y="260" width="220" height="80" rx="6"/>
+    <rect class="desk" x="160" y="420" width="220" height="80" rx="6"/>
+    <rect class="desk" x="460" y="260" width="220" height="80" rx="6"/>
+    <rect class="desk" x="460" y="420" width="220" height="80" rx="6"/>
+    <rect class="desk" x="160" y="580" width="220" height="80" rx="6"/>
+    <rect class="desk" x="460" y="580" width="220" height="80" rx="6"/>
+    <rect class="monitor" x="248" y="276" width="46" height="28" rx="3"/>
+    <rect class="monitor" x="248" y="436" width="46" height="28" rx="3"/>
+    <rect class="monitor" x="548" y="276" width="46" height="28" rx="3"/>
+    <rect class="monitor" x="548" y="436" width="46" height="28" rx="3"/>
+    <rect class="monitor" x="248" y="596" width="46" height="28" rx="3"/>
+    <rect class="monitor" x="548" y="596" width="46" height="28" rx="3"/>
+    <circle class="chair" cx="270" cy="368" r="26"/>
+    <circle class="chair" cx="270" cy="528" r="26"/>
+    <circle class="chair" cx="570" cy="368" r="26"/>
+    <circle class="chair" cx="570" cy="528" r="26"/>
+    <circle class="chair" cx="270" cy="688" r="26"/>
+    <circle class="chair" cx="570" cy="688" r="26"/>
+    <rect class="warm" x="716" y="260" width="120" height="300" rx="6"/>
+    <text class="note" x="734" y="292">ESTANTERÍA</text>
+    <path d="M736 320h80M736 380h80M736 440h80" stroke="#a8c2bf" stroke-width="2"/>
+  </g>
+
+  <g>
+    <rect class="warm" x="944" y="242" width="320" height="180" rx="8"/>
+    <rect class="chair" x="1000" y="262" width="46" height="26" rx="8"/>
+    <rect class="chair" x="1000" y="376" width="46" height="26" rx="8"/>
+    <rect class="chair" x="1160" y="262" width="46" height="26" rx="8"/>
+    <rect class="chair" x="1160" y="376" width="46" height="26" rx="8"/>
+    <path d="M1080 320h80" stroke="#a8c2bf" stroke-width="18" stroke-linecap="round"/>
+    <rect class="warm" x="944" y="530" width="240" height="150" rx="6"/>
+    <path d="M968 570h190M968 606h190M968 642h190" stroke="#a8c2bf" stroke-width="6"/>
+    <rect class="warm" x="1224" y="530" width="240" height="150" rx="6"/>
+    <rect x="1256" y="562" width="176" height="40" rx="6" fill="#e6f0ee" stroke="#8fb0ad" stroke-width="2"/>
+    <rect x="1256" y="620" width="80" height="44" rx="4" fill="#e6f0ee" stroke="#8fb0ad" stroke-width="2"/>
+    <rect class="rack" x="1370" y="240" width="110" height="120" rx="4"/>
+    <text class="rack-label" x="1425" y="306">RACK 2-01</text>
+    <path class="door" d="M870 700h40"/>
+    <path class="swing" d="M870 700a40 40 0 0 1 40 40"/>
+    <path class="door" d="M1300 430h40"/>
+    <path class="swing" d="M1300 430a40 40 0 0 1 40 -40"/>
+  </g>
+
+  <g>
+    <rect x="1080" y="744" width="90" height="58" rx="4" fill="#e6f0ee" stroke="#8fb0ad" stroke-width="2"/>
+    <text class="note" x="1084" y="822">IMPRESORA</text>
+  </g>
+
+  <g transform="translate(1466 60)">
+    <path d="M14 44V6l-8 10M14 6l8 10" fill="none" stroke="#33565c" stroke-width="3" stroke-linecap="round"/>
+    <text class="note" x="-6" y="66">N</text>
+  </g>
+  <g transform="translate(80 946)">
+    <path d="M0 0h100M0 -6v12M100 -6v12" stroke="#7d9a9b" stroke-width="2" stroke-linecap="round"/>
+    <text class="note" x="0" y="-12">0</text><text class="note" x="80" y="-12">10 m</text>
+  </g>
+</svg>

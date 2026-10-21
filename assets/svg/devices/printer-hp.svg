@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Impresora HP LaserJet Enterprise</title>
+  <desc id="desc">Ilustración de una impresora láser con bandeja de papel y panel de control.</desc>
+  <defs>
+    <pattern id="prh-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <radialGradient id="prh-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#prh-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#prh-halo)"/>
+  <path d="M92 322h460" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="324" cy="327" rx="190" ry="14" fill="#d7e7e7"/>
+  <path d="M190 110h236l14 22v58H176v-58l14-22Z" fill="#edf4f4" stroke="#b4cccd" stroke-width="3"/>
+  <path d="M208 126h190M208 143h152M208 160h176" stroke="#c4d7d7" stroke-width="5" stroke-linecap="round"/>
+  <path d="M144 190h346l18 22v82l-18 20H144l-18-20v-82l18-22Z" fill="#173849" stroke="#0b2331" stroke-width="4"/>
+  <path d="M150 202h334l9 10v58l-9 9H150l-9-9v-58l9-10Z" fill="#1d4656"/>
+  <rect x="176" y="218" width="170" height="50" rx="4" fill="#0c2836"/>
+  <path d="M190 231h84M190 242h116M190 253h58" stroke="#50808b" stroke-width="4" stroke-linecap="round"/>
+  <rect x="374" y="214" width="86" height="58" rx="5" fill="#e8f1f1"/>
+  <path d="M388 230h58M388 243h38M388 256h46" stroke="#9fbabb" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="444" cy="288" r="6" fill="#66c7bf"/>
+  <path d="M236 190v-56h144v56" fill="none" stroke="#aec6c7" stroke-width="3"/>
+  <rect x="250" y="292" width="150" height="24" rx="3" fill="#eef5f5" stroke="#aec6c7" stroke-width="2"/>
+  <path d="M270 300h110M270 308h74" stroke="#c1d5d5" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

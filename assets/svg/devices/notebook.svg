@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Notebook genérica</title>
+  <desc id="desc">Ilustración de una notebook abierta sobre una superficie clara.</desc>
+  <defs>
+    <pattern id="nb-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="nb-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#nb-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#nb-halo)"/>
+  <path d="M64 312h512" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="320" cy="325" rx="215" ry="17" fill="#d7e7e7"/>
+  <rect x="176" y="83" width="288" height="183" rx="13" fill="#0c2333" stroke="#163b4d" stroke-width="4"/>
+  <rect x="190" y="97" width="260" height="155" rx="5" fill="#102d3d"/>
+  <rect x="204" y="111" width="104" height="11" rx="5.5" fill="#69c9c1"/>
+  <rect x="204" y="132" width="164" height="7" rx="3.5" fill="#3d6978"/>
+  <rect x="204" y="147" width="136" height="7" rx="3.5" fill="#2a5362"/>
+  <rect x="204" y="175" width="64" height="54" rx="7" fill="#123f4c"/>
+  <rect x="280" y="175" width="72" height="24" rx="6" fill="#174b58"/>
+  <rect x="280" y="205" width="72" height="24" rx="6" fill="#174b58"/>
+  <circle cx="418" cy="202" r="27" fill="none" stroke="#2b6671" stroke-width="6"/>
+  <path d="M418 184v20l13 9" fill="none" stroke="#6fd0c8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M164 268h312l28 39c5 7 0 15-9 15H145c-9 0-14-8-9-15l28-39Z" fill="#d4e3e3" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M190 288h260l12 17H178l12-17Z" fill="#f8fbfb"/>
+  <path d="M302 294h36" stroke="#9fbabb" stroke-width="5" stroke-linecap="round"/>
+</svg>

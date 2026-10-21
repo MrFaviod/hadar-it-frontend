@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.verification/
+.atl/
+.codegraph/
+__pycache__/
+*.local

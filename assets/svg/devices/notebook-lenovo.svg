@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Notebook Lenovo ThinkPad T14</title>
+  <desc id="desc">Ilustración en perspectiva de una notebook oscura con detalles de color rojo.</desc>
+  <defs>
+    <pattern id="nbl-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <linearGradient id="nbl-screen" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#153c4c"/>
+      <stop offset="1" stop-color="#091d2a"/>
+    </linearGradient>
+    <radialGradient id="nbl-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#nbl-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#nbl-halo)"/>
+  <path d="M74 316h498" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="332" cy="327" rx="216" ry="16" fill="#d4e5e5"/>
+  <path d="M190 273 458 242 514 274 244 310Z" fill="#d3e1e1" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M244 310 514 274 514 287 244 323Z" fill="#b6cdce" stroke="#9db9ba" stroke-width="2"/>
+  <path d="M180 108 460 74 460 239 180 273Z" fill="#122e3e" stroke="#0b2230" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M196 125 444 96 444 223 196 250Z" fill="url(#nbl-screen)"/>
+  <path d="M212 143 320 130 320 145 212 158Z" fill="#66c7bf"/>
+  <path d="M212 171 362 154 362 163 212 180Z" fill="#396776"/>
+  <path d="M212 189 330 175 330 184 212 198Z" fill="#2a5362"/>
+  <path d="M212 218 290 209 290 240 212 249Z" fill="#154452"/>
+  <path d="M304 207 420 193 420 222 304 236Z" fill="#123f4c"/>
+  <circle cx="387" cy="174" r="20" fill="none" stroke="#2c6570" stroke-width="5"/>
+  <path d="M387 161v14l9 6" fill="none" stroke="#66c7bf" stroke-width="4" stroke-linecap="round"/>
+  <path d="M198 273 460 242 483 253 222 286Z" fill="#e6eeee"/>
+  <path d="M222 262 424 238M238 269 438 245" stroke="#9fb9ba" stroke-width="2"/>
+  <path d="M332 283 389 276 397 282 339 290Z" fill="#d9584a"/>
+  <circle cx="309" cy="294" r="4" fill="#d9584a"/>
+</svg>

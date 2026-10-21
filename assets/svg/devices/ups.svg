@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Sistema de alimentación ininterrumpida genérico</title>
+  <desc id="desc">Ilustración de una UPS de rack con panel frontal y baterías internas.</desc>
+  <defs>
+    <pattern id="ups-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="ups-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#ups-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#ups-halo)"/>
+  <path d="M96 330h464" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="320" cy="332" rx="176" ry="14" fill="#d7e7e7"/>
+  <rect x="196" y="70" width="248" height="252" rx="12" fill="#173849" stroke="#0c2634" stroke-width="4"/>
+  <rect x="212" y="86" width="216" height="60" rx="7" fill="#102d3d" stroke="#315866" stroke-width="3"/>
+  <path d="M232 118h34" stroke="#69c9c1" stroke-width="7" stroke-linecap="round"/>
+  <path d="M280 108v20M292 108v20M304 108v20M316 108v20" stroke="#3d6978" stroke-width="5" stroke-linecap="round"/>
+  <path d="M366 116h38" stroke="#4d7f89" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="232" cy="176" r="9" fill="#69c9c1"/>
+  <circle cx="262" cy="176" r="9" fill="#3d6978"/>
+  <circle cx="292" cy="176" r="9" fill="#3d6978"/>
+  <path d="M322 170h74" stroke="#315866" stroke-width="6" stroke-linecap="round"/>
+  <rect x="212" y="206" width="216" height="34" rx="6" fill="#102d3d"/>
+  <path d="M226 223h44" stroke="#69c9c1" stroke-width="5" stroke-linecap="round"/>
+  <path d="M286 223h128" stroke="#3d6978" stroke-width="5" stroke-linecap="round"/>
+  <path d="M226 270h188" stroke="#315866" stroke-width="6" stroke-linecap="round"/>
+  <path d="M226 292h132" stroke="#2a5362" stroke-width="6" stroke-linecap="round"/>
+</svg>

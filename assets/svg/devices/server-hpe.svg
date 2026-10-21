@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Servidor HPE ProLiant DL380</title>
+  <desc id="desc">Ilustración de un servidor de dos unidades de altura con bahías de discos.</desc>
+  <defs>
+    <pattern id="svh-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <linearGradient id="svh-face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c4556"/>
+      <stop offset="1" stop-color="#12313f"/>
+    </linearGradient>
+    <radialGradient id="svh-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#svh-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#svh-halo)"/>
+  <path d="M84 300h478" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="325" cy="314" rx="204" ry="13" fill="#d6e6e6"/>
+  <path d="M158 151h302l22 16v42l-22 14H158l-18-14v-42l18-16Z" fill="#0b2331" stroke="#071a24" stroke-width="3"/>
+  <path d="M162 160h294l14 10v30l-14 10H162l-12-10v-30l12-10Z" fill="url(#svh-face)"/>
+  <g fill="#0c2836" stroke="#39616e" stroke-width="1.6">
+    <rect x="178" y="166" width="25" height="35" rx="2"/><rect x="208" y="166" width="25" height="35" rx="2"/>
+    <rect x="238" y="166" width="25" height="35" rx="2"/><rect x="268" y="166" width="25" height="35" rx="2"/>
+    <rect x="298" y="166" width="25" height="35" rx="2"/><rect x="328" y="166" width="25" height="35" rx="2"/>
+    <rect x="358" y="166" width="25" height="35" rx="2"/><rect x="388" y="166" width="25" height="35" rx="2"/>
+  </g>
+  <g fill="#66c7bf">
+    <circle cx="191" cy="195" r="2.5"/><circle cx="221" cy="195" r="2.5"/><circle cx="251" cy="195" r="2.5"/>
+    <circle cx="281" cy="195" r="2.5"/><circle cx="311" cy="195" r="2.5"/><circle cx="341" cy="195" r="2.5"/>
+  </g>
+  <path d="M428 166h22v35h-22z" fill="#0c2836" stroke="#39616e" stroke-width="1.6"/>
+  <circle cx="439" cy="177" r="3" fill="#66c7bf"/><circle cx="439" cy="190" r="3" fill="#e0a44c"/>
+  <path d="M157 151v73M461 151v72" stroke="#0a1f2b" stroke-width="8" stroke-linecap="round"/>
+  <path d="M138 151v72M480 151v72" stroke="#7d9fa2" stroke-width="5" stroke-linecap="round"/>
+  <path d="M174 240h304l36 22H130l44-22Z" fill="#c9d9d9" stroke="#a8c0c1" stroke-width="2"/>
+  <path d="M138 268h368l-16 20H154l-16-20Z" fill="#b8cecf"/>
+</svg>

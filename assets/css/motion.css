@@ -1,0 +1,215 @@
+/*
+ * Entrance motion for Login, the authentication swap and the Dashboard.
+ * Only opacity and transform are animated. Every animation is opt-in
+ * through prefers-reduced-motion: no-preference; app.css already collapses
+ * durations for users who ask for reduced motion.
+ */
+
+:root {
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-enter: 360ms;
+  --motion-step: 45ms;
+}
+
+/* Login ↔ app swap (Vue <transition name="auth" mode="out-in">) */
+.auth-leave-active {
+  transition: opacity 180ms var(--ease-in), transform 180ms var(--ease-in);
+}
+.auth-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.auth-enter-active {
+  transition: opacity 260ms var(--ease-out);
+}
+.app-shell--docked.auth-enter-active .sidebar,
+.auth-enter-active .topbar {
+  transition: transform 260ms var(--motion-ease);
+}
+.auth-enter-from {
+  opacity: 0;
+}
+/* Drawer mode keeps its own off-canvas transform; only the docked rail moves. */
+.app-shell--docked.auth-enter-from .sidebar {
+  transform: translateX(-8px);
+}
+.auth-enter-from .topbar {
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-leave-to,
+  .app-shell--docked.auth-enter-from .sidebar,
+  .auth-enter-from .topbar {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes motion-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes motion-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes motion-drop {
+    from { opacity: 0; transform: translateY(-3px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes motion-grow {
+    from { opacity: 0; transform: scaleX(0.6); }
+    to { opacity: 1; transform: scaleX(1); }
+  }
+
+  /* Login: brand side settles first, then the form reads top to bottom. */
+  .login__visual {
+    animation: motion-fade 420ms var(--ease-out) both;
+  }
+  .login__brand,
+  .login__foot {
+    animation: motion-rise var(--motion-enter) var(--motion-ease) both;
+  }
+  .login__brand { animation-delay: 60ms; }
+  .login__foot { animation-delay: 160ms; }
+
+  .login__form-wrap > * {
+    animation: motion-rise var(--motion-enter) var(--motion-ease) both;
+  }
+  .login__form-wrap > :nth-child(1) { animation-delay: 80ms; }
+  .login__form-wrap > :nth-child(2) { animation-delay: 110ms; }
+  .login__form-wrap > :nth-child(3) { animation-delay: 140ms; }
+  .login__form-wrap > :nth-child(4) { animation-delay: 170ms; }
+  .login__form-wrap > :nth-child(5) { animation-delay: 200ms; }
+  .login__form-wrap > :nth-child(6) { animation-delay: 240ms; }
+  .login__form-wrap > :nth-child(7) { animation-delay: 290ms; }
+  .login__form-wrap > :nth-child(n + 8) { animation-delay: 330ms; }
+
+  /* Validation feedback eases in where it appears; no shake, no reflow jump. */
+  .login-form .field__error,
+  .login-form .form-alert {
+    animation: motion-drop 180ms var(--ease-out) both;
+  }
+
+  /* Dashboard: one staggered entrance per access, gated by .noc--entering.
+     The stagger replaces the generic page fade, which would otherwise start
+     again when the entering class is removed. */
+  .page.noc {
+    animation: none;
+  }
+  .noc--entering > * {
+    animation: motion-rise 320ms var(--motion-ease) both;
+  }
+  .noc--entering > :nth-child(1) { animation-delay: 0ms; }
+  .noc--entering > :nth-child(2) { animation-delay: 40ms; }
+  .noc--entering > :nth-child(3) { animation-delay: 80ms; }
+  .noc--entering > :nth-child(4) { animation-delay: 110ms; }
+  .noc--entering > :nth-child(5) { animation-delay: 140ms; }
+  .noc--entering > :nth-child(n + 6) { animation-delay: 170ms; }
+
+  .noc--entering .noc-kpi {
+    animation: motion-rise 320ms var(--motion-ease) both;
+  }
+  .noc--entering .noc-kpi:nth-child(1) { animation-delay: 110ms; }
+  .noc--entering .noc-kpi:nth-child(2) { animation-delay: 150ms; }
+  .noc--entering .noc-kpi:nth-child(3) { animation-delay: 190ms; }
+  .noc--entering .noc-kpi:nth-child(4) { animation-delay: 230ms; }
+
+  .noc--entering .noc-widget {
+    animation: motion-rise 320ms var(--motion-ease) both;
+  }
+  .noc--entering .noc-widget:nth-child(1) { animation-delay: 180ms; }
+  .noc--entering .noc-widget:nth-child(2) { animation-delay: 215ms; }
+  .noc--entering .noc-widget:nth-child(3) { animation-delay: 250ms; }
+  .noc--entering .noc-widget:nth-child(4) { animation-delay: 285ms; }
+  .noc--entering .noc-widget:nth-child(5) { animation-delay: 320ms; }
+  .noc--entering .noc-widget:nth-child(n + 6) { animation-delay: 350ms; }
+
+  /* Charts fill in after their card has landed. */
+  .noc--entering .noc-distribution,
+  .noc--entering .noc-group-bar {
+    transform-origin: left center;
+    animation: motion-grow 340ms var(--motion-ease) 300ms both;
+  }
+  .noc--entering .mon-chart__svg {
+    animation: motion-fade 340ms var(--ease-out) 300ms both;
+  }
+}
+
+/* Light UI motion. Static shapes live outside the gate so reduced-motion
+   users keep the same affordances, only without movement. */
+.nav-link,
+.side-category {
+  position: relative;
+}
+.nav-link.is-active::before,
+.side-category.is-active::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--teal-200);
+}
+.status-dot--down,
+.noc-alert-dot--critica {
+  position: relative;
+}
+.status-dot--down::after,
+.noc-alert-dot--critica::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes motion-indicator {
+    from { opacity: 0; transform: scaleY(0.3); }
+    to { opacity: 1; transform: scaleY(1); }
+  }
+  @keyframes motion-ping {
+    from { opacity: 0.45; transform: scale(1); }
+    to { opacity: 0; transform: scale(2.6); }
+  }
+  @keyframes motion-settle {
+    from { opacity: 0; transform: translate(-46%, -52%) scale(0.97); }
+  }
+
+  /* Navigation: the active marker grows in when the section changes. */
+  .nav-link.is-active::before,
+  .side-category.is-active::before {
+    animation: motion-indicator 240ms var(--motion-ease) both;
+  }
+
+  /* Only states that need attention breathe; healthy dots stay still. */
+  .status-dot--down::after,
+  .noc-alert-dot--critica::after {
+    animation: motion-ping 2.4s var(--ease-out) infinite;
+  }
+
+  .empty-state {
+    animation: motion-rise 320ms var(--motion-ease) both;
+  }
+
+  /* Thumbnails lift a touch under the pointer, nothing more. */
+  .asset-thumb img {
+    transition: transform 240ms var(--motion-ease);
+  }
+  a:hover > .asset-thumb img,
+  tr:hover .asset-thumb img,
+  .asset-thumb:hover img {
+    transform: scale(1.05);
+  }
+
+  /* Login art settles after the panel fades in; its own SVG then idles. */
+  .login__topology {
+    animation: motion-settle 900ms var(--motion-ease) 120ms both;
+  }
+}

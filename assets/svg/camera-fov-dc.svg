@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Campo de visión de la cámara de la zona fría A</title>
+  <desc id="desc">Vista cenital del pasillo de racks de la zona fría A con el cono de cobertura de la cámara instalada en el muro oeste, con un ángulo horizontal de 96 grados y un alcance de 11 metros.</desc>
+  <defs>
+    <pattern id="fovdc-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <linearGradient id="fovdc-cone" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#69c9c1" stop-opacity=".46"/>
+      <stop offset="1" stop-color="#69c9c1" stop-opacity=".1"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#fovdc-grid)"/>
+  <rect x="56" y="48" width="528" height="304" rx="10" fill="#f7fbfa" stroke="#c2d2d0" stroke-width="2"/>
+  <g fill="#dcebe9" stroke="#a9c1be" stroke-width="2">
+    <rect x="120" y="92" width="86" height="216" rx="4"/>
+    <rect x="228" y="92" width="86" height="216" rx="4"/>
+    <rect x="336" y="92" width="86" height="216" rx="4"/>
+    <rect x="444" y="92" width="86" height="216" rx="4"/>
+  </g>
+  <g font-family="'IBM Plex Mono', monospace" font-size="13" fill="#5c777d" text-anchor="middle">
+    <text x="163" y="204">A-01</text><text x="271" y="204">A-02</text><text x="379" y="204">A-03</text><text x="487" y="204">A-04</text>
+  </g>
+  <path d="M74 200 L330 96 L330 304 Z" fill="url(#fovdc-cone)" stroke="#3fa89f" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <path d="M74 200 L330 96M74 200 L330 304" stroke="#3fa89f" stroke-width="2"/>
+  <rect x="58" y="186" width="30" height="28" rx="5" fill="#0f2f36"/>
+  <circle cx="73" cy="200" r="6" fill="#7fe3d6"/>
+  <path d="M88 200h18" stroke="#3fa89f" stroke-width="2" stroke-dasharray="3 4"/>
+  <g font-family="'IBM Plex Mono', monospace" font-size="13" fill="#5c777d">
+    <text x="96" y="356">96° horizontales · 11 m de alcance</text>
+    <text x="452" y="356">PASILLO A-04</text>
+  </g>
+  <path d="M78 320h90" stroke="#8ba0a6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M78 314v12M168 314v12" stroke="#8ba0a6" stroke-width="2" stroke-linecap="round"/>
+</svg>

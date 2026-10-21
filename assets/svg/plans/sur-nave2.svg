@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-labelledby="plan-title plan-desc">
+  <title id="plan-title">Plano de la Nave 2 del Parque Industrial Sur</title>
+  <desc id="plan-desc">Planta industrial con líneas de producción, cinta transportadora, zona de pallets, oficinas de operaciones y muelle de carga.</desc>
+  <defs>
+    <pattern id="sn-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#e2ecea" stroke-width="1"/>
+    </pattern>
+    <pattern id="sn-hatch" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="16" stroke="#cfe0de" stroke-width="3"/>
+    </pattern>
+    <style><![CDATA[
+      .wall{fill:none;stroke:#1f3f46;stroke-width:9;stroke-linejoin:round}
+      .wall--thin{stroke-width:4;stroke:#7a999c}
+      .room{fill:#ffffff;stroke:#c8dad8;stroke-width:2}
+      .warm{fill:#f2f6f5;stroke:#c8dad8;stroke-width:2}
+      .label{font-family:'IBM Plex Mono',monospace;font-size:21px;letter-spacing:.16em;fill:#33565c}
+      .note{font-family:'IBM Plex Mono',monospace;font-size:15px;letter-spacing:.1em;fill:#7d9a9b}
+      .machine{fill:url(#sn-hatch);stroke:#7a999c;stroke-width:2}
+      .desk{fill:#e6f0ee;stroke:#8fb0ad;stroke-width:2}
+      .door{stroke:#0d766e;stroke-width:7;stroke-linecap:round}
+      .swing{fill:none;stroke:#9dbcb9;stroke-width:2;stroke-dasharray:4 5}
+    ]]></style>
+  </defs>
+  <rect width="1600" height="1000" fill="#f6faf9"/>
+  <rect width="1600" height="1000" fill="url(#sn-grid)"/>
+  <text class="label" x="80" y="62">NAVE 2 · PARQUE INDUSTRIAL SUR</text>
+  <text class="note" x="1212" y="62">PRODUCCIÓN Y OPERACIONES · ESC. 1:200</text>
+
+  <rect class="room" x="60" y="110" width="1480" height="780" rx="6"/>
+  <path class="wall" d="M60 110h1480v780H60z"/>
+  <path class="wall--thin" d="M1040 180v520M1080 180v520M1080 700h0M1040 700h440"/>
+
+  <text class="label" x="112" y="172">PRODUCCIÓN</text>
+  <text class="note" x="1104" y="212">OPERACIONES</text>
+  <text class="note" x="112" y="860">MUELLE DE CARGA</text>
+
+  <g>
+    <rect class="machine" x="220" y="300" width="260" height="86" rx="6"/>
+    <rect class="machine" x="540" y="300" width="260" height="86" rx="6"/>
+    <rect class="machine" x="220" y="560" width="260" height="86" rx="6"/>
+    <rect class="machine" x="540" y="560" width="260" height="86" rx="6"/>
+    <path d="M200 470h760" stroke="#9dbcb9" stroke-width="10" stroke-linecap="round"/>
+    <path d="M200 470h760" stroke="#f6faf9" stroke-width="4" stroke-dasharray="18 16"/>
+    <circle cx="300" cy="470" r="10" fill="#cfe2df" stroke="#7a999c" stroke-width="2"/>
+    <circle cx="500" cy="470" r="10" fill="#cfe2df" stroke="#7a999c" stroke-width="2"/>
+    <circle cx="700" cy="470" r="10" fill="#cfe2df" stroke="#7a999c" stroke-width="2"/>
+    <circle cx="900" cy="470" r="10" fill="#cfe2df" stroke="#7a999c" stroke-width="2"/>
+  </g>
+
+  <g>
+    <rect class="warm" x="700" y="200" width="300" height="80" rx="4"/>
+    <text class="note" x="716" y="232">PALLETS · SALIDA</text>
+    <path d="M720 252h260M720 268h260" stroke="#a8c2bf" stroke-width="3"/>
+    <rect class="warm" x="840" y="590" width="150" height="90" rx="6"/>
+    <text class="note" x="854" y="622">HERRAMIENTAS</text>
+  </g>
+
+  <g>
+    <rect class="desk" x="1130" y="250" width="280" height="70" rx="6"/>
+    <rect class="desk" x="1130" y="380" width="280" height="70" rx="6"/>
+    <rect class="desk" x="1130" y="600" width="280" height="70" rx="6"/>
+    <circle cx="1270" cy="340" r="24" fill="#ffffff" stroke="#a8c2bf" stroke-width="2"/>
+    <circle cx="1270" cy="470" r="24" fill="#ffffff" stroke="#a8c2bf" stroke-width="2"/>
+    <rect class="warm" x="1460" y="250" width="100" height="420" rx="6"/>
+    <path d="M1476 300h68M1476 360h68M1476 420h68M1476 480h68M1476 540h68M1476 600h68" stroke="#a8c2bf" stroke-width="3"/>
+    <path class="door" d="M1040 700h60"/>
+    <path class="swing" d="M1040 700a60 60 0 0 1 60 60"/>
+  </g>
+
+  <g>
+    <path d="M300 890v-70h300v70" fill="#f6faf9" stroke="none"/>
+    <path class="door" d="M300 890v-70M600 890v-70"/>
+    <path d="M450 890v60" stroke="#0d766e" stroke-width="4" stroke-linecap="round"/>
+    <path d="M450 958l-12-18M450 958l12-18" fill="none" stroke="#0d766e" stroke-width="4" stroke-linecap="round"/>
+    <rect x="660" y="770" width="120" height="60" rx="4" fill="#e6f0ee" stroke="#8fb0ad" stroke-width="2"/>
+    <rect x="800" y="770" width="120" height="60" rx="4" fill="#e6f0ee" stroke="#8fb0ad" stroke-width="2"/>
+    <text class="note" x="660" y="758">PALÉS EN TRÁNSITO</text>
+  </g>
+
+  <g transform="translate(1466 60)">
+    <path d="M14 44V6l-8 10M14 6l8 10" fill="none" stroke="#33565c" stroke-width="3" stroke-linecap="round"/>
+    <text class="note" x="-6" y="66">N</text>
+  </g>
+  <g transform="translate(80 962)">
+    <path d="M0 0h140M0 -6v12M140 -6v12" stroke="#7d9a9b" stroke-width="2" stroke-linecap="round"/>
+    <text class="note" x="0" y="-12">0</text><text class="note" x="116" y="-12">20 m</text>
+  </g>
+</svg>

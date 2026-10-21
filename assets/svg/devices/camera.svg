@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Cámara IP genérica</title>
+  <desc id="desc">Ilustración de una cámara domo instalada en un soporte de techo.</desc>
+  <defs>
+    <pattern id="cam-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="cam-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#cam-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#cam-halo)"/>
+  <path d="M196 54h248" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <path d="M320 168 188 336h264Z" fill="#69c9c1" opacity=".1"/>
+  <path d="M188 336h264" stroke="#9fd7d1" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 8" opacity=".8"/>
+  <path d="M320 54v54" stroke="#3b5660" stroke-width="8" stroke-linecap="round"/>
+  <rect x="272" y="108" width="96" height="18" rx="9" fill="#c8dada" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M256 126h128a16 16 0 0 1 16 16v34a16 16 0 0 1-16 16H256a16 16 0 0 1-16-16v-34a16 16 0 0 1 16-16Z" fill="#173849" stroke="#0c2634" stroke-width="4"/>
+  <circle cx="320" cy="159" r="30" fill="#102d3d" stroke="#315866" stroke-width="4"/>
+  <circle cx="320" cy="159" r="18" fill="#071923"/>
+  <circle cx="320" cy="159" r="9" fill="#69c9c1"/>
+  <circle cx="314" cy="153" r="3.5" fill="#d7f0eb" opacity=".8"/>
+  <circle cx="290" cy="159" r="3" fill="#69c9c1" opacity=".55"/>
+  <circle cx="350" cy="159" r="3" fill="#69c9c1" opacity=".55"/>
+</svg>

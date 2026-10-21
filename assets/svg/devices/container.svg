@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Contenedor genérico</title>
+  <desc id="desc">Ilustración de bloques de contenedores apilados sobre un host de contenedores.</desc>
+  <defs>
+    <pattern id="ctr-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="ctr-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#ctr-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#ctr-halo)"/>
+  <path d="M96 332h460" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <rect x="168" y="252" width="304" height="70" rx="9" fill="#c8dada" stroke="#aec6c7" stroke-width="3"/>
+  <path d="M196 274h64M284 274h48M356 274h88M196 298h120M340 298h104" stroke="#8eb0b1" stroke-width="5" stroke-linecap="round"/>
+  <rect x="176" y="150" width="132" height="92" rx="9" fill="#173849" stroke="#0c2634" stroke-width="4"/>
+  <path d="M198 176h88M198 198h60M198 220h76" stroke="#4d7f89" stroke-width="6" stroke-linecap="round"/>
+  <rect x="332" y="150" width="132" height="92" rx="9" fill="#102d3d" stroke="#315866" stroke-width="4"/>
+  <path d="M354 176h88M354 198h52M354 220h72" stroke="#3d6978" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="426" cy="164" r="6" fill="#69c9c1"/>
+  <circle cx="282" cy="164" r="6" fill="#69c9c1"/>
+  <path d="M244 132v-18h152v18" stroke="#69c9c1" stroke-width="4" stroke-linecap="round" fill="none"/>
+</svg>

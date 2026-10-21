@@ -1,0 +1,426 @@
+/* Relations: asset relation panel, relation dialog and the relation type settings.
+   Shared primitives used by this module live here as well. */
+
+/* ---------------------------------------------------------------- primitives */
+
+.icon-button--small {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: var(--radius-sm);
+}
+
+.icon-button--danger:hover {
+  border-color: var(--danger-600);
+  background: var(--danger-050);
+  color: var(--danger-700);
+}
+
+.select-shell {
+  display: block;
+}
+
+.select-shell select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+}
+
+.select-shell select:focus-visible {
+  outline: 2px solid var(--teal-700);
+  outline-offset: 2px;
+}
+
+.select-shell select[size] {
+  min-height: 0;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
+.select-shell select[size] option {
+  padding: 7px 8px;
+  border-radius: var(--radius-xs);
+}
+
+/* -------------------------------------------------------------- asset panel */
+
+.relations-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.relations-panel__lead {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.relations-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.relations-panel__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--amber-200);
+  border-radius: var(--radius-sm);
+  background: var(--amber-050);
+  color: var(--amber-800);
+  font-size: 13px;
+}
+
+.relations-panel__note .od-icon {
+  flex: none;
+  --od-icon-size: 16px;
+  margin-top: 1px;
+}
+
+.relations-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relations-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.relations-row:hover {
+  border-color: var(--border-strong);
+}
+
+.relations-row.is-confirming {
+  border-color: var(--danger-600);
+  background: var(--danger-050);
+}
+
+.relations-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--graph-tone, var(--slate-500)) 14%, var(--paper));
+  color: var(--graph-tone, var(--slate-600));
+}
+
+.relations-row__icon--network {
+  --graph-tone: var(--teal-700);
+}
+
+.relations-row__icon--virtual {
+  --graph-tone: var(--amber-700);
+}
+
+.relations-row__icon--physical {
+  --graph-tone: var(--ink-600);
+}
+
+.relations-row__icon--power {
+  --graph-tone: var(--amber-800);
+}
+
+.relations-row__icon--dependency {
+  --graph-tone: var(--slate-500);
+}
+
+.relations-row__icon--link {
+  --graph-tone: var(--teal-600);
+}
+
+.relations-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.relations-row__type {
+  color: var(--slate-500);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.relations-row__name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-900);
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+
+.relations-row__name:hover,
+.relations-row__name:focus-visible {
+  text-decoration-color: var(--teal-600);
+}
+
+.relations-row__name:focus-visible {
+  outline: 2px solid var(--teal-700);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.relations-row__code {
+  color: var(--slate-600);
+  font-size: 11px;
+}
+
+.relations-row__note {
+  margin: 4px 0 0;
+  color: var(--slate-600);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.relations-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relations-actions--stack {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.relations-row__actions .btn {
+  white-space: nowrap;
+}
+
+.relations-empty {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 20px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--slate-050);
+}
+
+.relations-empty__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  color: var(--slate-500);
+}
+
+.relations-empty h3 {
+  font-size: 16px;
+}
+
+.relations-empty p {
+  margin: 4px 0 8px;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.relations-empty .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* -------------------------------------------------- config: types and prefs */
+
+.relation-type-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.relation-type-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+
+.relation-type-row__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.relation-type-row__copy strong {
+  color: var(--ink-900);
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.relation-type-row__inverse {
+  color: var(--slate-500);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.relation-type-row__copy .mono {
+  color: var(--slate-500);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.relation-type-row__copy p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.relations-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin: 14px 0 22px;
+}
+
+.relations-config-actions .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.relations-config-actions .config-note {
+  margin: 0;
+}
+
+.relation-prefs {
+  display: grid;
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.relation-prefs h3 {
+  font-size: 18px;
+}
+
+.relation-prefs__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.relation-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.relation-switch {
+  display: grid;
+  gap: 6px;
+}
+
+.relation-switch p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.relation-prefs .config-form-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.relation-prefs .config-form-foot__note {
+  margin: 0;
+  max-width: 56ch;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.relation-prefs .graph-toggle {
+  min-height: 32px;
+}
+
+/* ------------------------------------------------------------------ responsive */
+
+@media (max-width: 920px) {
+  .relations-row,
+  .relation-type-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .relations-row__actions,
+  .relation-type-row .config-row-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .relations-panel__actions {
+    width: 100%;
+  }
+
+  .relations-panel__actions .btn {
+    flex: 1 1 auto;
+  }
+
+  .relation-prefs .config-form-foot {
+    align-items: stretch;
+  }
+
+  .relation-type-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .relations-row {
+    padding: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relations-row {
+    transition: none;
+  }
+}

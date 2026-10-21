@@ -1,0 +1,244 @@
+/* Theme tokens are applied before Vue mounts so the first paint matches the saved preference. */
+html {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ink-950: #f1fbfa;
+  --ink-900: #e7f2f2;
+  --ink-800: #d0e3e4;
+  --ink-700: #b4ced0;
+  --ink-600: #9db9bc;
+
+  --teal-800: #91e9dc;
+  --teal-700: #62d4c7;
+  --teal-600: #42c2b4;
+  --teal-200: #a7dfd7;
+  --teal-100: #164743;
+  --teal-050: #102f31;
+
+  --amber-800: #ffd48c;
+  --amber-700: #f6bf67;
+  --amber-200: #7c5a2b;
+  --amber-100: #3d2c16;
+  --amber-050: #2b2115;
+
+  --slate-900: #edf6f6;
+  --slate-800: #d7e6e7;
+  --slate-700: #bfd2d4;
+  --slate-600: #a6bec1;
+  --slate-500: #8ca7aa;
+  --slate-400: #708d91;
+  --slate-300: #536e73;
+  --slate-200: #3c565b;
+  --slate-150: #2e464c;
+  --slate-100: #243c42;
+  --slate-050: #1c3238;
+  --white: #f4fbfa;
+
+  --danger-700: #ffaba0;
+  --danger-600: #f47b70;
+  --danger-100: #4b2624;
+  --danger-050: #351d1b;
+
+  --bg: #0a1820;
+  --paper: #0f242d;
+  --border: #29434b;
+  --border-strong: #3a5962;
+  --text: #e4f0f1;
+  --muted: #a9c1c4;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 30px -18px rgba(0, 0, 0, 0.72);
+  --shadow-lg: 0 28px 70px -24px rgba(0, 0, 0, 0.78);
+
+  --chrome-bg: #071923;
+  --chrome-panel: #0d2a35;
+  --toast-bg: #06171f;
+}
+
+html[data-theme="dark"] body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+html[data-theme="dark"] ::selection {
+  background: #236b65;
+  color: #f4fbfa;
+}
+
+html[data-theme="dark"] .login__visual,
+html[data-theme="dark"] .sidebar {
+  background: var(--chrome-bg);
+}
+
+html[data-theme="dark"] .login__panel {
+  background: var(--paper);
+}
+
+html[data-theme="dark"] .app-shell {
+  background: var(--bg);
+}
+
+html[data-theme="dark"] .topbar {
+  background: rgba(15, 36, 45, 0.97);
+}
+
+html[data-theme="dark"] .avatar {
+  background: var(--chrome-panel);
+}
+
+html[data-theme="dark"] .brand-preview {
+  background:
+    radial-gradient(120% 160% at 100% 0%, rgba(66, 194, 180, 0.24), transparent 55%),
+    linear-gradient(120deg, #06171f, #123746);
+}
+
+html[data-theme="dark"] .btn--primary {
+  background: #147c73;
+  color: #f4fbfa;
+}
+
+html[data-theme="dark"] .btn--primary:hover {
+  background: #199488;
+  color: #f4fbfa;
+}
+
+html[data-theme="dark"] .skip-link {
+  background: var(--chrome-bg);
+  color: var(--white);
+}
+
+html[data-theme="dark"] .chip.is-active {
+  border-color: #2faaa0;
+  background: #145b55;
+  color: #f4fbfa;
+}
+
+html[data-theme="dark"] .status--ok {
+  background: #123f3a;
+  color: #9de6da;
+}
+
+html[data-theme="dark"] .status--hold {
+  background: #26383d;
+  color: #c5d7d9;
+}
+
+html[data-theme="dark"] .form-alert,
+html[data-theme="dark"] .form-error {
+  border-color: #7b3c36;
+}
+
+html[data-theme="dark"] .remote-mark--rmm {
+  border-color: #375b68;
+  background: #173541;
+  color: #b8dce1;
+}
+
+html[data-theme="dark"] .connection-success {
+  border-color: #24665c;
+  background: #123c36;
+  color: #a7e6da;
+}
+
+html[data-theme="dark"] .quick-action--danger,
+html[data-theme="dark"] .text-button--danger {
+  color: var(--danger-700);
+}
+
+html[data-theme="dark"] .quick-action--danger:hover,
+html[data-theme="dark"] .config-action--danger:hover {
+  border-color: #7b3c36;
+  background: var(--danger-050);
+  color: var(--danger-700);
+}
+
+html[data-theme="dark"] .modal-layer {
+  background: rgba(2, 9, 13, 0.78);
+}
+
+html[data-theme="dark"] .sidebar-scrim {
+  background: rgba(2, 9, 13, 0.72);
+}
+
+html[data-theme="dark"] .toast {
+  background: var(--toast-bg);
+  color: #e6f2f2;
+}
+
+html[data-theme="dark"] .theme-toggle {
+  border-color: var(--border-strong);
+  background: var(--paper);
+  color: var(--slate-700);
+}
+
+html[data-theme="dark"] .theme-toggle:hover {
+  border-color: var(--teal-600);
+  background: var(--teal-050);
+  color: var(--teal-800);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--slate-700);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.theme-toggle:hover {
+  border-color: var(--teal-600);
+  background: var(--teal-050);
+  color: var(--teal-800);
+}
+
+.theme-toggle .od-icon {
+  --od-icon-size: 17px;
+  color: var(--teal-700);
+}
+
+.theme-toggle__label {
+  white-space: nowrap;
+}
+
+.login__panel {
+  position: relative;
+}
+
+.login__theme-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -10px 0 14px;
+}
+
+@media (max-width: 640px) {
+  .theme-toggle__label {
+    display: none;
+  }
+
+  .theme-toggle {
+    width: 44px;
+    padding: 0;
+  }
+
+  .login__theme-row {
+    margin-top: -9px;
+    margin-bottom: 12px;
+  }
+}

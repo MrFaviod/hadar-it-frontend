@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Switch Cisco Catalyst 9200</title>
+  <desc id="desc">Ilustración de un switch de red con puertos, módulos SFP y cables de red.</desc>
+  <defs>
+    <pattern id="swc-grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0H0V30" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".5"/>
+    </pattern>
+    <radialGradient id="swc-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#swc-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#swc-halo)"/>
+  <path d="M80 316h486" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="323" cy="320" rx="216" ry="13" fill="#d6e6e6"/>
+  <path d="M126 170h378l32 26v64l-32 22H126l-28-22v-64l28-26Z" fill="#0b2331" stroke="#071a24" stroke-width="3"/>
+  <path d="M132 180h366l20 18v50l-20 16H132l-18-16v-50l18-18Z" fill="#173f50"/>
+  <g fill="#081e29" stroke="#3b6673" stroke-width="1.5">
+    <rect x="146" y="192" width="17" height="19" rx="2"/><rect x="167" y="192" width="17" height="19" rx="2"/>
+    <rect x="188" y="192" width="17" height="19" rx="2"/><rect x="209" y="192" width="17" height="19" rx="2"/>
+    <rect x="230" y="192" width="17" height="19" rx="2"/><rect x="251" y="192" width="17" height="19" rx="2"/>
+    <rect x="272" y="192" width="17" height="19" rx="2"/><rect x="293" y="192" width="17" height="19" rx="2"/>
+    <rect x="314" y="192" width="17" height="19" rx="2"/><rect x="335" y="192" width="17" height="19" rx="2"/>
+    <rect x="356" y="192" width="17" height="19" rx="2"/><rect x="377" y="192" width="17" height="19" rx="2"/>
+    <rect x="398" y="192" width="17" height="19" rx="2"/><rect x="419" y="192" width="17" height="19" rx="2"/>
+    <rect x="440" y="192" width="17" height="19" rx="2"/><rect x="461" y="192" width="17" height="19" rx="2"/>
+  </g>
+  <g fill="#0b2432" stroke="#487582" stroke-width="1.5">
+    <rect x="150" y="229" width="31" height="17" rx="2"/><rect x="186" y="229" width="31" height="17" rx="2"/>
+    <rect x="222" y="229" width="31" height="17" rx="2"/>
+  </g>
+  <g fill="#66c7bf"><circle cx="155" cy="219" r="1.8"/><circle cx="176" cy="219" r="1.8"/><circle cx="197" cy="219" r="1.8"/><circle cx="218" cy="219" r="1.8"/><circle cx="239" cy="219" r="1.8"/><circle cx="260" cy="219" r="1.8"/><circle cx="281" cy="219" r="1.8"/><circle cx="302" cy="219" r="1.8"/><circle cx="323" cy="219" r="1.8"/><circle cx="344" cy="219" r="1.8"/><circle cx="365" cy="219" r="1.8"/><circle cx="386" cy="219" r="1.8"/><circle cx="407" cy="219" r="1.8"/><circle cx="428" cy="219" r="1.8"/><circle cx="449" cy="219" r="1.8"/><circle cx="470" cy="219" r="1.8"/></g>
+  <circle cx="504" cy="196" r="4" fill="#e0a44c"/>
+  <path d="M486 180h24M486 257h14" stroke="#487582" stroke-width="3" stroke-linecap="round"/>
+  <path d="M308 170c0-28 32-46 58-32s30 42 12 52" fill="none" stroke="#0e7c7b" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M180 170c-6-24 12-42 32-40" fill="none" stroke="#0e7c7b" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M212 130v18h-20" fill="none" stroke="#0e7c7b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

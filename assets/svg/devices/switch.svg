@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Switch de red genérico</title>
+  <desc id="desc">Ilustración de un switch de red con puertos y cables.</desc>
+  <defs>
+    <pattern id="sw-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="sw-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#sw-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#sw-halo)"/>
+  <path d="M78 302h484" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="322" cy="305" rx="216" ry="13" fill="#d7e7e7"/>
+  <path d="M138 172h364l34 28v60H104v-60l34-28Z" fill="#173849" stroke="#0c2634" stroke-width="4" stroke-linejoin="round"/>
+  <rect x="130" y="211" width="380" height="35" rx="4" fill="#0d2b3b"/>
+  <g fill="#0b2432" stroke="#315866" stroke-width="2">
+    <rect x="148" y="219" width="16" height="18" rx="2"/><rect x="168" y="219" width="16" height="18" rx="2"/>
+    <rect x="188" y="219" width="16" height="18" rx="2"/><rect x="208" y="219" width="16" height="18" rx="2"/>
+    <rect x="228" y="219" width="16" height="18" rx="2"/><rect x="248" y="219" width="16" height="18" rx="2"/>
+    <rect x="268" y="219" width="16" height="18" rx="2"/><rect x="288" y="219" width="16" height="18" rx="2"/>
+    <rect x="308" y="219" width="16" height="18" rx="2"/><rect x="328" y="219" width="16" height="18" rx="2"/>
+    <rect x="348" y="219" width="16" height="18" rx="2"/><rect x="368" y="219" width="16" height="18" rx="2"/>
+  </g>
+  <path d="M390 219h54v18h-54z" fill="#0b2432" stroke="#315866" stroke-width="2"/>
+  <circle cx="408" cy="228" r="2.5" fill="#69c9c1"/><circle cx="423" cy="228" r="2.5" fill="#e0a44c"/>
+  <circle cx="474" cy="197" r="5" fill="#69c9c1"/><circle cx="490" cy="197" r="5" fill="#69c9c1"/>
+</svg>

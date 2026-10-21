@@ -1,0 +1,2310 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b2331">
+  <meta name="description" content="Asset Manager: prototipo de gestión de activos informáticos con inventario, ficha de activo y acceso remoto simulado.">
+  <title>Asset Manager · Gestión de activos TI</title>
+  <script src="assets/js/theme.js"></script>
+  <script src="assets/js/sidebar.js"></script>
+  <style>
+    /* OD-LAYOUT-PRIMITIVES v1 — literal copy of .od-frames/layout.css; do not restyle. */
+    @layer od-layout {
+      .od-icon {
+        display: block;
+        inline-size: var(--od-icon-size, 1em);
+        block-size: var(--od-icon-size, 1em);
+        flex: none;
+      }
+      .od-icon > svg,
+      .od-icon > img {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+      }
+      .od-icon--sm {
+        --od-icon-size: 16px;
+      }
+      .od-icon--md {
+        --od-icon-size: 20px;
+      }
+      .od-icon--lg {
+        --od-icon-size: 24px;
+      }
+      .od-icon--xl {
+        --od-icon-size: 32px;
+      }
+      .od-rail {
+        display: flex;
+        align-items: center;
+        gap: var(--od-rail-gap, 8px);
+        padding-inline: var(--od-rail-pad, 0);
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .od-rail::-webkit-scrollbar {
+        display: none;
+      }
+      .od-stack {
+        display: flex;
+        flex-direction: column;
+        gap: var(--od-stack-gap, 8px);
+      }
+      .od-row {
+        display: flex;
+        align-items: center;
+        gap: var(--od-row-gap, 8px);
+      }
+      .od-row--between {
+        justify-content: space-between;
+      }
+      .od-grid {
+        display: grid;
+        gap: var(--od-grid-gap, 16px);
+      }
+      .od-grid--auto {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--od-grid-min, 220px)), 1fr));
+      }
+      .od-card {
+        padding: var(--od-card-pad, 16px);
+        border: 1px solid var(--od-border, #e5e7eb);
+        border-radius: var(--od-radius, 12px);
+        background: var(--od-surface, #ffffff);
+      }
+      .od-surface {
+        background: var(--od-surface, #ffffff);
+      }
+      .od-border {
+        border: 1px solid var(--od-border, #e5e7eb);
+      }
+      .od-radius {
+        border-radius: var(--od-radius, 12px);
+      }
+      .od-scroll-x {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .od-scroll-y {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      .od-truncate {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .od-clamp-2 {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+      .od-clamp-3 {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+      }
+      .od-nowrap {
+        white-space: nowrap;
+      }
+      .od-wrap {
+        overflow-wrap: anywhere;
+      }
+      .od-media {
+        display: block;
+        max-width: 100%;
+        block-size: auto;
+        aspect-ratio: var(--od-media-ratio, auto);
+        object-fit: var(--od-media-fit, cover);
+      }
+      .od-sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .od-divider {
+        block-size: 1px;
+        border: 0;
+        background: var(--od-border, #e5e7eb);
+      }
+    }
+  </style>
+  <link rel="icon" href="assets/svg/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="assets/fonts/space-grotesk-600.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/ibm-plex-sans-400.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="stylesheet" href="assets/css/views.css">
+  <link rel="stylesheet" href="assets/css/config.css">
+  <link rel="stylesheet" href="assets/css/assets-admin.css">
+  <link rel="stylesheet" href="assets/css/people.css">
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/mobile-responsive.css">
+  <link rel="stylesheet" href="assets/css/access.css">
+  <link rel="stylesheet" href="assets/css/panel.css">
+  <link rel="stylesheet" href="assets/css/dashboard.css">
+  <link rel="stylesheet" href="assets/css/dashboard-preferences.css">
+  <link rel="stylesheet" href="assets/css/transfer.css">
+  <link rel="stylesheet" href="assets/css/operations.css">
+  <link rel="stylesheet" href="assets/css/maintenance.css">
+  <link rel="stylesheet" href="assets/css/monitoring.css">
+  <link rel="stylesheet" href="assets/css/graph.css">
+  <link rel="stylesheet" href="assets/css/relations.css">
+  <link rel="stylesheet" href="assets/css/map.css">
+  <link rel="stylesheet" href="assets/css/map-floor.css">
+  <link rel="stylesheet" href="assets/css/map-config.css">
+  <link rel="stylesheet" href="assets/css/reports.css">
+  <link rel="stylesheet" href="assets/css/warranties.css">
+  <link rel="stylesheet" href="assets/css/labels.css">
+  <link rel="stylesheet" href="assets/css/appearance.css">
+  <link rel="stylesheet" href="assets/css/search.css">
+  <link rel="stylesheet" href="assets/css/workspace.css">
+  <link rel="stylesheet" href="assets/css/motion.css">
+  <link rel="stylesheet" href="assets/vendor/maplibre-gl.css">
+</head>
+<body>
+  <div id="app" v-cloak>
+    <a v-if="route.name !== 'login'" class="skip-link" href="#main-content">Saltar al contenido</a>
+
+    <!-- Acceso / aplicación: un único cambio animado al iniciar o cerrar sesión -->
+    <transition name="auth" mode="out-in">
+    <section v-if="route.name === 'login'" class="login" aria-labelledby="login-title">
+      <aside class="login__visual" :aria-label="appName">
+        <div class="login__brand">
+          <img :src="brandLogo" width="48" height="48" alt="">
+          <span>{{ appName }}</span>
+        </div>
+
+        <img class="login__topology" src="assets/svg/login-topology.svg" width="720" height="720" alt="">
+
+        <p class="login__foot">Entorno de demostración</p>
+      </aside>
+
+      <main class="login__panel">
+        <div class="login__form-wrap">
+          <div class="login__theme-row">
+            <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
+                    :title="themeToggleLabel" @click="toggleTheme">
+              <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
+              <span class="theme-toggle__label">{{ themeToggleText }}</span>
+            </button>
+          </div>
+          <div class="login__mobile-brand">
+            <img :src="brandCompactLogo" width="36" height="36" alt="">
+            <span>{{ appName }}</span>
+          </div>
+          <h1 id="login-title">Iniciar sesión</h1>
+
+          <form class="login-form" @submit.prevent="submitLogin" novalidate>
+            <div class="field" :class="{ 'field--invalid': loginErrors.username }">
+              <label for="login-user">Usuario</label>
+              <div class="input-shell">
+                <app-icon name="user"></app-icon>
+                <input id="login-user" v-model="loginForm.username" type="text" name="username" autocomplete="username"
+                       placeholder="admin" :aria-invalid="!!loginErrors.username"
+                       :aria-describedby="loginErrors.username ? 'login-user-error' : null"
+                       @blur="validateLoginField('username')" @input="clearLoginError('username')">
+              </div>
+              <p v-if="loginErrors.username" id="login-user-error" class="field__error">{{ loginErrors.username }}</p>
+            </div>
+
+            <div class="field" :class="{ 'field--invalid': loginErrors.password }">
+              <label for="login-password">Contraseña</label>
+              <div class="input-shell">
+                <app-icon name="lock"></app-icon>
+                <input id="login-password" v-model="loginForm.password" :type="showPassword ? 'text' : 'password'"
+                       name="password" autocomplete="current-password" placeholder="••••••••"
+                       :aria-invalid="!!loginErrors.password"
+                       :aria-describedby="loginErrors.password ? 'login-password-error' : null"
+                       @blur="validateLoginField('password')" @input="clearLoginError('password')">
+                <button type="button" class="input-action" :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                        :aria-pressed="showPassword" @click="showPassword = !showPassword">
+                  <app-icon :name="showPassword ? 'eye-off' : 'eye'"></app-icon>
+                </button>
+              </div>
+              <p v-if="loginErrors.password" id="login-password-error" class="field__error">{{ loginErrors.password }}</p>
+            </div>
+
+            <div v-if="loginErrors.general" class="form-alert" role="alert">
+              <app-icon name="alert"></app-icon>
+              <span>{{ loginErrors.general }}</span>
+            </div>
+
+            <button class="btn btn--primary login-submit" type="submit" :disabled="loginBusy">
+              <span v-if="loginBusy" class="spinner" aria-hidden="true"></span>
+              <span>{{ loginBusy ? 'Comprobando…' : 'Entrar' }}</span>
+              <app-icon v-if="!loginBusy" name="arrow-right"></app-icon>
+            </button>
+          </form>
+
+          <div class="demo-card">
+            <div class="demo-card__head">
+              <span class="demo-card__dot" aria-hidden="true"></span>
+              <p>Acceso de demostración</p>
+            </div>
+            <p>Usuario <strong>admin</strong><span aria-hidden="true">·</span>Contraseña <strong>admin</strong></p>
+            <button type="button" class="text-button" @click="fillDemo">Rellenar credenciales</button>
+            <p class="access-demo-hint">Otros accesos demo: operador/operador · lector/lector</p>
+          </div>
+        </div>
+      </main>
+    </section>
+    <div v-else class="app-shell" :class="sidebarPinned ? 'app-shell--docked' : 'app-shell--drawer'">
+      <div class="sidebar-scrim" :class="{ 'is-visible': mobileNavOpen }" @click="closeSidebar"></div>
+
+      <aside id="app-sidebar" class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }" aria-label="Navegación principal" data-od-id="app-sidebar">
+        <div class="sidebar__head">
+          <a class="brand" href="#/panel" @click="closeSidebar">
+            <img :src="brandLogo" width="40" height="40" alt="">
+            <span class="brand__text"><strong>{{ appName }}</strong><small>Gestión de activos TI</small></span>
+          </a>
+          <div class="sidebar__head-actions">
+            <button v-if="sidebarDockable" class="icon-button sidebar__pin" type="button"
+                    :class="{ 'is-pinned': sidebarPinned }" :aria-pressed="sidebarPinned"
+                    :aria-label="sidebarPinLabel" :title="sidebarPinTitle"
+                    data-od-id="sidebar-pin-toggle" @click="toggleSidebarPin">
+              <app-icon name="pin"></app-icon>
+            </button>
+            <button class="icon-button sidebar__close" type="button" aria-label="Cerrar navegación" @click="closeSidebar">
+              <app-icon name="close"></app-icon>
+            </button>
+          </div>
+        </div>
+
+        <div class="sidebar__scroll">
+          <div class="sidebar__section">
+            <p class="sidebar__label">Espacio de trabajo</p>
+            <nav class="sidebar__nav" aria-label="Secciones">
+              <a v-if="can('assets.view')" class="nav-link" href="#/panel" :class="{ 'is-active': route.name === 'panel' }"
+                 :aria-current="route.name === 'panel' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="activity"></app-icon>
+                <span>Panel</span>
+              </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/inventario" :class="{ 'is-active': route.name === 'inventory' || route.name === 'detail' }"
+                 :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="inventory"></app-icon>
+                <span>Inventario</span>
+                <span class="nav-link__count">{{ assets.length }}</span>
+              </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/mantenimiento"
+                 :class="{ 'is-active': route.name === 'maintenance' || route.name === 'incident' }"
+                 :aria-current="route.name === 'maintenance' || route.name === 'incident' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="refresh"></app-icon>
+                <span>Mantenimiento</span>
+                <span v-if="maintenanceOverdueCount" class="nav-link__count nav-link__count--alert">{{ maintenanceOverdueCount }}</span>
+              </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/supervision"
+                 :class="{ 'is-active': route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' }"
+                 :aria-current="route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="gauge"></app-icon>
+                <span>Supervisión</span>
+                <span v-if="monitorAlertCount" class="nav-link__count nav-link__count--alert">{{ monitorAlertCount }}</span>
+              </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/infra/mapa"
+                 :class="{ 'is-active': route.name === 'map' || route.name === 'graph' }"
+                 :aria-current="route.name === 'map' || route.name === 'graph' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="map-pin"></app-icon>
+                <span>Infraestructura</span>
+              </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/datos/importar"
+                 :class="{ 'is-active': route.name === 'datos' }"
+                 :aria-current="route.name === 'datos' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="upload"></app-icon>
+                <span>Datos</span>
+              </a>
+              <a v-if="can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>Reportes</span></a>
+              <a v-if="can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>Garantías</span></a>
+              <a v-if="can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>Etiquetas</span></a>
+              <a v-if="can('people.view')" class="nav-link" href="#/personas" :class="{ 'is-active': route.name === 'people' || route.name === 'person' }"
+                 :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="user"></app-icon>
+                <span>Personas</span>
+                <span class="nav-link__count">{{ people.length }}</span>
+              </a>
+              <a v-if="can('users.view')" class="nav-link" href="#/usuarios" :class="{ 'is-active': route.name === 'users' || route.name === 'user' }" :aria-current="route.name === 'users' || route.name === 'user' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="user"></app-icon><span>Usuarios</span><span class="nav-link__count">{{ security.users.length }}</span>
+              </a>
+              <a v-if="canOpenConfig" class="nav-link" :href="'#/configuracion/' + (permittedConfigSections[0] ? permittedConfigSections[0].id : 'general')" :class="{ 'is-active': route.name === 'config' }"
+                 :aria-current="route.name === 'config' ? 'page' : null" @click="closeSidebar">
+                <app-icon name="sliders"></app-icon>
+                <span>Configuración</span>
+              </a>
+            </nav>
+          </div>
+
+          <div class="sidebar__section">
+            <p v-if="can('assets.view')" class="sidebar__label">Categorías</p>
+            <div v-if="can('assets.view')" class="sidebar__categories">
+              <button v-for="category in categories" :key="category.id" type="button" class="side-category"
+                      :class="{ 'is-active': prefs.category === category.id }" @click="filterFromSidebar(category.id); closeSidebar()">
+                <app-icon :name="category.icon"></app-icon>
+                <span>{{ category.label }}</span>
+                <span class="side-category__count">{{ categoryCount(category.id) }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar__foot">
+          <div class="sidebar__note">
+            <app-icon name="info"></app-icon>
+            <p><strong>Datos de demostración</strong><span>Los cambios se guardan solo en este navegador.</span></p>
+          </div>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="topbar">
+          <div class="topbar__left">
+            <button class="icon-button topbar__menu" type="button" aria-label="Abrir navegación" aria-controls="app-sidebar"
+                    :aria-expanded="mobileNavOpen" data-od-id="topbar-menu-toggle" @click="openSidebar">
+              <app-icon name="menu"></app-icon>
+            </button>
+            <div class="crumb" aria-label="Ruta actual">
+              <span>{{ organizationName }}</span>
+              <app-icon name="chevron-right"></app-icon>
+              <strong>{{ pageLabel }}</strong>
+            </div>
+          </div>
+
+          <div class="topbar__right">
+            <button type="button" class="universal-trigger" aria-label="Buscar en Asset Manager (Ctrl + K)" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>Buscar o ir a…</span><kbd>Ctrl K</kbd></button>
+            <notification-bell :app="$root"></notification-bell>
+            <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
+                    :title="themeToggleLabel" @click="toggleTheme">
+              <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
+              <span class="theme-toggle__label">{{ themeToggleText }}</span>
+            </button>
+            <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> Entorno demo</span>
+            <div class="user-menu" ref="userMenu">
+              <button class="user-trigger" type="button" aria-haspopup="menu" :aria-expanded="userMenuOpen" @click="userMenuOpen = !userMenuOpen">
+                <span class="avatar" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : 'Usuario') }}</span>
+                <span class="user-trigger__text"><strong>{{ currentUser ? currentUser.name : 'Usuario' }}</strong><small>{{ currentRole ? currentRole.name : 'Sin rol' }}</small></span>
+                <app-icon name="chevron-down"></app-icon>
+              </button>
+              <transition name="dropdown">
+                <div v-if="userMenuOpen" class="user-popover" role="menu" aria-label="Cuenta">
+                  <div class="user-popover__head">
+                    <span class="avatar avatar--large" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : 'Usuario') }}</span>
+                    <div><strong>{{ currentUser ? currentUser.name : 'Usuario' }}</strong><span>{{ currentUser ? currentUser.username : '' }} · {{ currentRole ? currentRole.name : 'Sin rol' }}</span></div>
+                  </div>
+                  <button v-if="canOpenConfig" class="popover-item" type="button" role="menuitem" @click="goToConfig(permittedConfigSections[0].id)">
+                    <app-icon name="sliders"></app-icon> Abrir configuración
+                  </button>
+                  <button class="popover-item popover-item--danger" type="button" role="menuitem" @click="logout">
+                    <app-icon name="logout"></app-icon> Cerrar sesión
+                  </button>
+                </div>
+              </transition>
+            </div>
+          </div>
+        </header>
+
+        <main id="main-content" class="main" tabindex="-1">
+          <workspace-shortcuts :app="$root"></workspace-shortcuts>
+          <section v-if="workspaceCanSave" class="universal-filter-strip" aria-label="Filtros de la vista" data-od-id="shared-view-filters">
+            <div class="universal-filter-strip__controls">
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">Categoría</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">Todas las categorías</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">Sede</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">Todas las sedes</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" for="shared-status">Estado del activo</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">Todos los estados</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" for="shared-location">Ubicación</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">Todas las ubicaciones</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
+              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>Columnas</summary><div><label v-for="c in [{id:'model',label:'Tipo y modelo'},{id:'location',label:'Sede y ubicación'},{id:'assignee',label:'Responsable'},{id:'ip',label:'Dirección IP'},{id:'remote',label:'Acceso remoto'}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
+            </div>
+            <div v-if="workspaceChips.length" class="universal-filter-strip__chips" aria-label="Filtros seleccionados"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="'Quitar filtro: '+chip.label" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">Restablecer filtros</button></div>
+          </section>
+
+          <transition name="page" mode="out-in">
+            <div class="page-host" :key="route.name + ':' + (route.assetId || '') + ':' + (route.personId || '') + ':' + (route.userId || '') + ':' + (route.name === 'datos' ? '' : (route.section || ''))">
+              <!-- Inventario -->
+              <section v-if="route.name === 'denied'" class="page access-denied" aria-labelledby="access-denied-title">
+                <p class="eyebrow">Permisos</p><h1 id="access-denied-title">Acceso denegado</h1>
+                <p>Tu rol no permite acceder a esta sección. Selecciona una opción disponible en el menú.</p>
+                <button type="button" class="btn btn--secondary" @click="logout">Cerrar sesión</button>
+              </section>
+              <access-users v-else-if="route.name === 'users'" :app="$root"></access-users>
+              <access-user-detail v-else-if="route.name === 'user'" :app="$root"></access-user-detail>
+              <panel-overview ref="workspaceView" v-else-if="route.name === 'panel'" :app="$root"></panel-overview>
+              <data-transfer v-else-if="route.name === 'datos'" :app="$root"></data-transfer>
+              <section v-else-if="route.name === 'inventory'" class="page" aria-labelledby="inventory-title">
+                <header class="page-head">
+                  <div class="page-head__copy">
+                    <p class="eyebrow"><span class="eyebrow__line"></span> Control de inventario</p>
+                    <h1 id="inventory-title">Inventario de activos</h1>
+                  </div>
+                  <div class="page-head__side">
+                    <div class="page-head__meta" aria-label="Resumen del inventario">
+                      <span class="mono">{{ filteredAssets.length }} de {{ assets.length }}</span>
+                      <span>activos visibles</span>
+                    </div>
+                    <button v-if="can('assets.view')" type="button" class="btn btn--secondary" data-od-id="inventory-export" @click="setHash('#/datos/exportar')">
+                      <app-icon name="download"></app-icon>
+                      <span>Exportar</span>
+                    </button>
+                    <button v-if="can('assets.edit')" type="button" class="btn btn--primary" data-od-id="create-asset" @click="openAssetCreate()">
+                      <app-icon name="plus"></app-icon>
+                      <span>Nuevo activo</span>
+                    </button>
+                  </div>
+                </header>
+
+                <div class="stats-strip" role="list" aria-label="Indicadores del inventario">
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
+                    <div><span class="stat__value">{{ assets.length }}</span><span class="stat__label">Activos totales</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="user"></app-icon></span>
+                    <div><span class="stat__value">{{ assignedCount }}</span><span class="stat__label">Con responsable</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="remote"></app-icon></span>
+                    <div><span class="stat__value">{{ remoteCount }}</span><span class="stat__label">Acceso remoto</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="building"></app-icon></span>
+                    <div><span class="stat__value">{{ sites.length }}</span><span class="stat__label">Sedes registradas</span></div>
+                  </div>
+                </div>
+
+                <div class="toolbar" aria-label="Filtros y orden del inventario">
+                  <div class="search-field">
+                    <app-icon name="search"></app-icon>
+                    <label class="sr-only" for="inventory-search">Buscar activos</label>
+                    <input id="inventory-search" v-model="prefs.search" type="search" placeholder="Buscar nombre, código, IP o responsable" autocomplete="off">
+                    <button v-if="prefs.search" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="prefs.search = ''">
+                      <app-icon name="close"></app-icon>
+                    </button>
+                  </div>
+
+                  <div class="select-field">
+                    <app-icon name="building"></app-icon>
+                    <label class="sr-only" for="site-filter">Filtrar por sede</label>
+                    <select id="site-filter" v-model="prefs.site">
+                      <option value="all">Todas las sedes</option>
+                      <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
+                    </select>
+                    <app-icon name="chevron-down"></app-icon>
+                  </div>
+
+                  <div class="select-field sort-field">
+                    <app-icon name="sort"></app-icon>
+                    <label class="sr-only" for="sort-filter">Ordenar activos</label>
+                    <select id="sort-filter" v-model="prefs.sort">
+                      <option v-for="option in sortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                    </select>
+                    <app-icon name="chevron-down"></app-icon>
+                  </div>
+
+                  <div class="view-switch" role="group" aria-label="Forma de visualización">
+                    <button type="button" :class="{ 'is-active': prefs.view === 'table' }" :aria-pressed="prefs.view === 'table'" @click="setView('table')">
+                      <app-icon name="table"></app-icon><span>Tabla</span>
+                    </button>
+                    <button type="button" :class="{ 'is-active': prefs.view === 'cards' }" :aria-pressed="prefs.view === 'cards'" @click="setView('cards')">
+                      <app-icon name="grid"></app-icon><span>Tarjetas</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="category-rail od-rail" role="group" aria-label="Filtrar por categoría">
+                  <button type="button" class="chip" :class="{ 'is-active': prefs.category === 'all' }" :aria-pressed="prefs.category === 'all'" @click="prefs.category = 'all'">
+                    <span>Todos</span><span class="chip__count">{{ assets.length }}</span>
+                  </button>
+                  <button v-for="category in categories" :key="category.id" type="button" class="chip"
+                          :class="{ 'is-active': prefs.category === category.id }" :aria-pressed="prefs.category === category.id"
+                          @click="prefs.category = category.id">
+                    <app-icon :name="category.icon"></app-icon>
+                    <span>{{ category.label }}</span>
+                    <span class="chip__count">{{ categoryCount(category.id) }}</span>
+                  </button>
+                </div>
+
+                <div class="results-bar" aria-live="polite">
+                  <p><strong>{{ filteredAssets.length }}</strong> {{ filteredAssets.length === 1 ? 'activo encontrado' : 'activos encontrados' }}
+                    <span v-if="filterDescription">· {{ filterDescription }}</span>
+                  </p>
+                  <button v-if="activeFilterCount" type="button" class="text-button text-button--quiet" @click="clearFilters">
+                    Limpiar filtros <span class="filter-count">{{ activeFilterCount }}</span>
+                  </button>
+                </div>
+
+                <transition name="bulk">
+                  <div v-if="bulk.ids.length" class="bulk-bar" role="region" aria-label="Acciones por lote" data-od-id="bulk-bar">
+                    <div class="bulk-bar__count">
+                      <span class="bulk-bar__number mono">{{ bulk.ids.length }}</span>
+                      <span>{{ bulk.ids.length === 1 ? 'activo seleccionado' : 'activos seleccionados' }}</span>
+                    </div>
+                    <p class="bulk-bar__hint">Los cambios se aplican activo por activo y quedan en su historial.</p>
+                    <div class="bulk-bar__actions">
+                      <button type="button" class="text-button" data-od-id="inventory-reports" @click="openDocuments('reports', bulk.ids)">Reporte</button>
+                      <button type="button" class="text-button" data-od-id="inventory-labels" @click="openDocuments('labels', bulk.ids)">Etiquetas</button>
+                      <button type="button" class="text-button text-button--quiet" @click="clearBulk">Limpiar selección</button>
+                      <button v-if="can('assets.edit')" type="button" class="btn bulk-bar__cta" data-od-id="bulk-edit" @click="openBulkEditor">
+                        <app-icon name="layers"></app-icon>
+                        <span>Editar en lote</span>
+                      </button>
+                      <span v-else class="cell-muted">Requiere permiso de edición.</span>
+                    </div>
+                  </div>
+                </transition>
+
+                <transition name="view" mode="out-in">
+                  <div v-if="filteredAssets.length" :key="prefs.view" class="results-surface">
+                    <div v-if="prefs.view === 'table'" class="table-panel">
+                      <table class="asset-table">
+                        <caption class="sr-only">Activos informáticos. Selecciona el nombre de un activo para abrir su ficha.</caption>
+                        <thead>
+                          <tr>
+                            <th scope="col">
+                              <div class="th-select">
+                                <label class="row-select">
+                                  <input type="checkbox" :checked="bulkAllVisible()" :indeterminate.prop="bulkSomeVisible()"
+                                         :aria-label="bulkAllVisible() ? 'Quitar la selección de los activos visibles' : 'Seleccionar los activos visibles'"
+                                         @change="toggleBulkVisible">
+                                  <span class="row-select__box" aria-hidden="true"><app-icon name="check"></app-icon></span>
+                                </label>
+                                <span>Activo</span>
+                              </div>
+                            </th>
+                            <th v-if="workspaceInventory.columns.includes('model')" scope="col">Tipo y modelo</th>
+                            <th v-if="workspaceInventory.columns.includes('location')" scope="col">Sede y ubicación</th>
+                            <th v-if="workspaceInventory.columns.includes('assignee')" scope="col">Responsable</th>
+                            <th v-if="workspaceInventory.columns.includes('ip')" scope="col">Dirección IP</th>
+                            <th v-if="workspaceInventory.columns.includes('remote')" scope="col">Acceso remoto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="asset in filteredAssets" :key="asset.id" class="asset-row" :class="{ 'is-retired': asset.retired }" @click="openAsset(asset)">
+                            <td data-label="Activo">
+                              <div class="asset-cell">
+                                <label class="row-select" @click.stop>
+                                  <input type="checkbox" :checked="assetBulkSelected(asset.id)" @change="toggleBulkAsset(asset.id)" :aria-label="'Incluir ' + asset.name + ' en una edición por lote'">
+                                  <span class="row-select__box" aria-hidden="true"><app-icon name="check"></app-icon></span>
+                                </label>
+                                <span class="asset-thumb"><img :src="assetImage(asset)" width="640" height="400" :alt="asset.name + ', ' + asset.type" loading="lazy"></span>
+                                <span class="asset-cell__text">
+                                  <a :href="'#/activo/' + asset.id" class="asset-name" @click.stop="recordInventoryScroll">{{ asset.name }}</a>
+                                  <span class="asset-code mono">{{ asset.code }}<span class="asset-code__id">{{ asset.id }}</span></span>
+                                </span>
+                              </div>
+                            </td>
+                            <td v-if="workspaceInventory.columns.includes('model')" data-label="Tipo y modelo">
+                              <span class="type-tag">{{ asset.type }}</span>
+                              <span class="cell-note" :title="asset.brand + ' ' + asset.model">{{ asset.brand }} {{ asset.model }}</span>
+                            </td>
+                            <td v-if="workspaceInventory.columns.includes('location')" data-label="Sede y ubicación">
+                              <span class="cell-strong">{{ siteLabel(asset.site) }}</span>
+                              <span class="cell-note">{{ locationLabel(asset) }}</span>
+                            </td>
+                            <td v-if="workspaceInventory.columns.includes('assignee')" data-label="Responsable">
+                              <span v-if="assigneeLabel(asset)" class="cell-strong">{{ assigneeLabel(asset) }}</span>
+                              <span v-else class="cell-muted">Sin responsable</span>
+                            </td>
+                            <td v-if="workspaceInventory.columns.includes('ip')" data-label="Dirección IP">
+                              <span v-if="asset.ip" class="mono cell-ip od-nowrap">{{ asset.ip }}</span>
+                              <span v-else class="cell-muted">—</span>
+                            </td>
+                            <td v-if="workspaceInventory.columns.includes('remote')" data-label="Acceso remoto">
+                              <div v-if="assetHasRemote(asset)" class="quick-actions" @click.stop>
+                                <button v-if="(settings.anydeskEnabled && asset.anydeskId) && can('assets.remote')" type="button" class="quick-action" :aria-label="'Abrir AnyDesk para ' + asset.name" :title="'AnyDesk · ' + asset.anydeskId" @click="openRemote(asset, 'anydesk')">
+                                  <app-icon name="remote"></app-icon><span>AnyDesk</span>
+                                </button>
+                                <button v-if="(settings.rmmEnabled && asset.rmmAgentId) && can('assets.remote')" type="button" class="quick-action" :aria-label="'Abrir Tactical RMM para ' + asset.name" :title="'Tactical RMM · ' + asset.rmmAgentId" @click="openRemote(asset, 'rmm')">
+                                  <app-icon name="activity"></app-icon><span>RMM</span>
+                                </button>
+                              </div>
+                              <span v-else class="cell-muted">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div v-else class="cards-grid">
+                      <div v-for="asset in filteredAssets" :key="asset.id" class="asset-card-shell">
+                        <label class="card-select">
+                          <input type="checkbox" :checked="assetBulkSelected(asset.id)" @change="toggleBulkAsset(asset.id)" :aria-label="'Incluir ' + asset.name + ' en una edición por lote'">
+                          <span class="card-select__box" aria-hidden="true"><app-icon name="check"></app-icon></span>
+                        </label>
+                        <a class="asset-card" :class="{ 'is-retired': asset.retired }" :href="'#/activo/' + asset.id" @click="recordInventoryScroll">
+                        <div class="asset-card__media">
+                          <img :src="assetImage(asset)" width="640" height="400" :alt="asset.name + ', ' + asset.type" loading="lazy">
+                          <span class="asset-card__status" :class="'status--' + asset.statusTone">{{ asset.status }}</span>
+                          <span class="asset-card__category">{{ categoryLabel(asset.category) }}</span>
+                        </div>
+                        <div class="asset-card__body">
+                          <div class="asset-card__title">
+                            <h2>{{ asset.name }}</h2>
+                            <span class="mono">{{ asset.code }}</span>
+                          </div>
+                          <p class="asset-card__model">{{ asset.brand }} {{ asset.model }}</p>
+                          <div class="asset-card__meta">
+                            <span><app-icon name="map-pin"></app-icon>{{ siteLabel(asset.site) }}</span>
+                            <span><app-icon name="user"></app-icon>{{ assigneeLabel(asset) || 'Sin responsable' }}</span>
+                          </div>
+                          <div class="asset-card__foot">
+                            <span class="mono">{{ asset.ip || 'Sin IP' }}</span>
+                            <span v-if="assetHasRemote(asset)" class="remote-indicator">
+                              <span class="remote-indicator__dot" aria-hidden="true"></span> Acceso remoto
+                            </span>
+                            <span v-else class="cell-muted">Solo ficha</span>
+                          </div>
+                        </div>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
+
+                <div v-if="!filteredAssets.length" class="empty-state">
+                  <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
+                  <h2>No hay activos con estos filtros</h2>
+                  <p>Ajusta la búsqueda o los filtros.</p>
+                  <button type="button" class="btn btn--primary" @click="clearFilters">Limpiar filtros</button>
+                </div>
+              </section>
+
+              <!-- Personas -->
+              <section v-else-if="route.name === 'people'" class="page people-page" aria-labelledby="people-title">
+                <header class="page-head">
+                  <div class="page-head__copy">
+                    <p class="eyebrow"><span class="eyebrow__line"></span> Directorio</p>
+                    <h1 id="people-title">Personas</h1>
+                    <p class="page-head__lead">Responsables de activos y datos de contacto.</p>
+                  </div>
+                  <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">
+                    <app-icon name="plus"></app-icon> Nueva persona
+                  </button>
+                </header>
+
+                <div class="stats-strip" role="list" aria-label="Indicadores de personas">
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="user"></app-icon></span>
+                    <div><span class="stat__value">{{ people.length }}</span><span class="stat__label">Personas registradas</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="check"></app-icon></span>
+                    <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">Personas activas</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
+                    <div><span class="stat__value">{{ peopleWithAssetsCount() }}</span><span class="stat__label">Con activos asignados</span></div>
+                  </div>
+                  <div class="stat" role="listitem">
+                    <span class="stat__icon"><app-icon name="building"></app-icon></span>
+                    <div><span class="stat__value">{{ departments.length }}</span><span class="stat__label">Departamentos</span></div>
+                  </div>
+                </div>
+
+                <div class="toolbar" aria-label="Filtros del directorio">
+                  <div class="search-field">
+                    <app-icon name="search"></app-icon>
+                    <label class="sr-only" for="people-search">Buscar personas</label>
+                    <input id="people-search" v-model="prefs.people.search" type="search" placeholder="Buscar nombre, cargo o correo" autocomplete="off">
+                    <button v-if="prefs.people.search" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="prefs.people.search = ''">
+                      <app-icon name="close"></app-icon>
+                    </button>
+                  </div>
+
+                  <div class="select-field">
+                    <app-icon name="building"></app-icon>
+                    <label class="sr-only" for="people-department-filter">Filtrar por departamento</label>
+                    <select id="people-department-filter" v-model="prefs.people.department">
+                      <option value="all">Todos los departamentos</option>
+                      <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.label }}</option>
+                    </select>
+                    <app-icon name="chevron-down"></app-icon>
+                  </div>
+
+                  <div class="select-field">
+                    <app-icon name="map-pin"></app-icon>
+                    <label class="sr-only" for="people-site-filter">Filtrar por sede</label>
+                    <select id="people-site-filter" v-model="prefs.people.site">
+                      <option value="all">Todas las sedes</option>
+                      <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
+                    </select>
+                    <app-icon name="chevron-down"></app-icon>
+                  </div>
+
+                  <div class="select-field">
+                    <app-icon name="activity"></app-icon>
+                    <label class="sr-only" for="people-status-filter">Filtrar por estado</label>
+                    <select id="people-status-filter" v-model="prefs.people.status">
+                      <option value="all">Todos los estados</option>
+                      <option value="active">Solo activas</option>
+                      <option value="inactive">Solo inactivas</option>
+                    </select>
+                    <app-icon name="chevron-down"></app-icon>
+                  </div>
+                </div>
+
+                <div class="results-bar" aria-live="polite">
+                  <p><strong>{{ filteredPeople.length }}</strong> {{ filteredPeople.length === 1 ? 'persona encontrada' : 'personas encontradas' }}
+                    <span v-if="peopleFilterDescription">· {{ peopleFilterDescription }}</span>
+                  </p>
+                  <button v-if="peopleFilterCount" type="button" class="text-button text-button--quiet" @click="clearPeopleFilters">
+                    Limpiar filtros <span class="filter-count">{{ peopleFilterCount }}</span>
+                  </button>
+                </div>
+
+                <div v-if="filteredPeople.length" class="table-panel people-table-panel">
+                  <table class="asset-table people-table">
+                    <caption class="sr-only">Personas del directorio. Selecciona un nombre para abrir su ficha.</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Persona</th>
+                        <th scope="col">Cargo</th>
+                        <th scope="col">Departamento</th>
+                        <th scope="col">Sede</th>
+                        <th scope="col">Activos</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col"><span class="sr-only">Acciones</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="person in filteredPeople" :key="person.id" class="asset-row">
+                        <td data-label="Persona">
+                          <div class="person-cell">
+                            <span class="person-avatar" :class="{ 'is-inactive': !person.active }" aria-hidden="true">{{ personInitials(person.name) }}</span>
+                            <span class="person-cell__text">
+                              <a :href="'#/persona/' + person.id" class="asset-name">{{ person.name }}</a>
+                              <span class="cell-note">{{ person.email || 'Sin correo' }}</span>
+                            </span>
+                          </div>
+                        </td>
+                        <td data-label="Cargo"><span class="cell-strong">{{ person.role || 'Sin cargo' }}</span></td>
+                        <td data-label="Departamento"><span class="type-tag">{{ departmentLabel(person.departmentId) }}</span></td>
+                        <td data-label="Sede"><span class="cell-strong">{{ personSiteLabel(person.siteId) }}</span></td>
+                        <td data-label="Activos"><span class="person-assets-count">{{ personAssetCount(person.id) }}</span></td>
+                        <td data-label="Estado">
+                          <span class="status-pill" :class="person.active ? 'status-pill--online' : 'status-pill--retired'">{{ personStatusLabel(person) }}</span>
+                        </td>
+                        <td data-label="Acciones">
+                          <div class="quick-actions">
+                            <button v-if="can('people.edit')" type="button" class="quick-action" :aria-label="'Editar ' + person.name" title="Editar" @click="openPersonDialog(person)">
+                              <app-icon name="pencil"></app-icon><span>Editar</span>
+                            </button>
+                            <button type="button" class="quick-action" :aria-label="'Ver ficha de ' + person.name" title="Ver ficha" @click="openPerson(person)">
+                              <app-icon name="arrow-right"></app-icon><span>Ficha</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div v-else class="empty-state">
+                  <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
+                  <h2>No hay personas con estos filtros</h2>
+                  <p>Ajusta la búsqueda o crea una persona nueva.</p>
+                  <div class="empty-state__actions">
+                    <button type="button" class="btn btn--secondary" @click="clearPeopleFilters">Limpiar filtros</button>
+                    <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Ficha de persona -->
+              <section v-else-if="route.name === 'person' && currentPerson" class="page person-page" aria-labelledby="person-title">
+                <nav class="breadcrumbs" aria-label="Migas de pan">
+                  <a href="#/personas" @click.prevent="backToPeople">Personas</a>
+                  <app-icon name="chevron-right"></app-icon>
+                  <span aria-current="page">{{ currentPerson.name }}</span>
+                </nav>
+
+                <button type="button" class="back-link" @click="backToPeople">
+                  <app-icon name="arrow-left"></app-icon> Volver al directorio
+                </button>
+
+                <header class="person-head">
+                  <span class="person-avatar person-avatar--xl" :class="{ 'is-inactive': !currentPerson.active }" aria-hidden="true">{{ personInitials(currentPerson.name) }}</span>
+                  <div class="person-head__copy">
+                    <div class="detail-eyebrow">
+                      <span class="type-tag">{{ departmentLabel(currentPerson.departmentId) }}</span>
+                      <span class="status-pill" :class="currentPerson.active ? 'status-pill--online' : 'status-pill--retired'">{{ personStatusLabel(currentPerson) }}</span>
+                    </div>
+                    <h1 id="person-title">{{ currentPerson.name }}</h1>
+                    <p>{{ currentPerson.role || 'Sin cargo definido' }} · {{ personSiteLabel(currentPerson.siteId) }}</p>
+                  </div>
+                  <div class="person-head__actions">
+                    <button v-if="can('people.edit')" type="button" class="btn btn--secondary" @click="openPersonDialog(currentPerson)">
+                      <app-icon name="pencil"></app-icon> Editar persona
+                    </button>
+                    <button v-if="(currentPerson.active) && can('assets.assign')" type="button" class="btn btn--primary" @click="openAssignPerson(currentPerson)">
+                      <app-icon name="plus"></app-icon> Asignar activo
+                    </button>
+                    <button v-if="!currentPerson.active && can('people.edit')" type="button" class="btn btn--primary" @click="setPersonActive(currentPerson, true)">
+                      <app-icon name="check"></app-icon> Reactivar persona
+                    </button>
+                  </div>
+                </header>
+
+                <p v-if="!currentPerson.active" class="person-inactive-note" role="status">
+                  <app-icon name="info"></app-icon>
+                  Esta persona está inactiva y conserva sus activos actuales, pero no puede recibir nuevas asignaciones.
+                </p>
+
+                <div class="person-layout">
+                  <section class="panel person-contact" aria-labelledby="person-contact-title">
+                    <header class="panel__head">
+                      <div><span class="eyebrow">Contacto</span><h2 id="person-contact-title">Datos de la persona</h2></div>
+                    </header>
+                    <dl class="person-facts">
+                      <div>
+                        <dt>Correo</dt>
+                        <dd><a v-if="currentPerson.email" :href="'mailto:' + currentPerson.email">{{ currentPerson.email }}</a><span v-else class="cell-muted">Sin correo</span></dd>
+                      </div>
+                      <div>
+                        <dt>Teléfono</dt>
+                        <dd><a v-if="currentPerson.phone" :href="phoneHref(currentPerson.phone)">{{ currentPerson.phone }}</a><span v-else class="cell-muted">Sin teléfono</span></dd>
+                      </div>
+                      <div>
+                        <dt>Departamento</dt>
+                        <dd>{{ departmentLabel(currentPerson.departmentId) }}</dd>
+                      </div>
+                      <div>
+                        <dt>Sede</dt>
+                        <dd>{{ personSiteLabel(currentPerson.siteId) }}</dd>
+                      </div>
+                      <div>
+                        <dt>Activos asignados</dt>
+                        <dd><strong>{{ personAssets.length }}</strong> {{ personAssets.length === 1 ? 'activo' : 'activos' }}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section v-if="can('assets.view')" class="panel person-assets" aria-labelledby="person-assets-title">
+                    <header class="panel__head person-assets__head">
+                      <div>
+                        <span class="eyebrow">Equipos</span>
+                        <h2 id="person-assets-title">Activos a su cargo</h2>
+                      </div>
+                      <div class="view-switch" role="group" aria-label="Forma de visualización de activos">
+                        <button type="button" :class="{ 'is-active': prefs.personAssetsView === 'table' }" :aria-pressed="prefs.personAssetsView === 'table'" @click="setPersonAssetsView('table')">
+                          <app-icon name="table"></app-icon><span>Tabla</span>
+                        </button>
+                        <button type="button" :class="{ 'is-active': prefs.personAssetsView === 'cards' }" :aria-pressed="prefs.personAssetsView === 'cards'" @click="setPersonAssetsView('cards')">
+                          <app-icon name="grid"></app-icon><span>Tarjetas</span>
+                        </button>
+                      </div>
+                    </header>
+
+                    <div v-if="personAssets.length">
+                      <div v-if="prefs.personAssetsView === 'table'" class="table-panel person-assets__table">
+                        <table class="asset-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">Activo</th>
+                              <th scope="col">Tipo</th>
+                              <th scope="col">Sede</th>
+                              <th scope="col">IP</th>
+                              <th scope="col"><span class="sr-only">Acciones</span></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="asset in personAssets" :key="asset.id" class="asset-row" @click="openAsset(asset)">
+                              <td data-label="Activo">
+                                <a :href="'#/activo/' + asset.id" class="asset-name">{{ asset.name }}</a>
+                                <span class="asset-code mono">{{ asset.id }}</span>
+                              </td>
+                              <td data-label="Tipo"><span class="type-tag">{{ asset.type }}</span></td>
+                              <td data-label="Sede"><span class="cell-strong">{{ siteLabel(asset.site) }}</span><span class="cell-note">{{ locationLabel(asset) }}</span></td>
+                              <td data-label="IP"><span class="mono cell-ip">{{ asset.ip || '—' }}</span></td>
+                              <td data-label="Acciones">
+                                <div class="quick-actions" @click.stop>
+                                  <button v-if="can('assets.assign')" type="button" class="quick-action" :aria-label="'Reasignar ' + asset.name" title="Reasignar" @click="openAssignAsset(asset)">
+                                    <app-icon name="user"></app-icon><span>Reasignar</span>
+                                  </button>
+                                  <button v-if="can('assets.assign')" type="button" class="quick-action quick-action--danger" :aria-label="'Desasignar ' + asset.name" title="Desasignar" @click="removeAssignment(asset)">
+                                    <app-icon name="close"></app-icon><span>Desasignar</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div v-else class="person-assets__cards">
+                        <article v-for="asset in personAssets" :key="asset.id" class="person-asset-card">
+                          <div class="person-asset-card__thumb"><img :src="assetImage(asset)" width="640" height="400" alt=""></div>
+                          <div class="person-asset-card__body">
+                            <div class="person-asset-card__title">
+                              <h3><a :href="'#/activo/' + asset.id">{{ asset.name }}</a></h3>
+                              <span class="mono">{{ asset.id }}</span>
+                            </div>
+                            <p>{{ asset.brand }} {{ asset.model }}</p>
+                            <div class="person-asset-card__meta">
+                              <span><app-icon name="map-pin"></app-icon>{{ siteLabel(asset.site) }}</span>
+                              <span><app-icon name="activity"></app-icon>{{ asset.ip || 'Sin IP' }}</span>
+                            </div>
+                            <div class="person-asset-card__actions">
+                              <button v-if="can('assets.assign')" type="button" class="text-button" @click="openAssignAsset(asset)"><app-icon name="user"></app-icon> Reasignar</button>
+                              <button v-if="can('assets.assign')" type="button" class="text-button text-button--danger" @click="removeAssignment(asset)"><app-icon name="close"></app-icon> Desasignar</button>
+                            </div>
+                          </div>
+                        </article>
+                      </div>
+                    </div>
+
+                    <div v-else class="config-empty person-assets__empty">
+                      <span class="config-empty__icon"><app-icon name="inventory"></app-icon></span>
+                      <h3>Sin activos asignados</h3>
+                      <p>Asigna un activo sin responsable para vincularlo a esta persona.</p>
+                      <button v-if="(currentPerson.active) && can('assets.assign')" type="button" class="btn btn--primary btn--small" @click="openAssignPerson(currentPerson)">
+                        <app-icon name="plus"></app-icon> Asignar activo
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </section>
+
+              <!-- Configuración -->
+              <section v-else-if="route.name === 'config'" class="page config-page" aria-labelledby="config-title">
+                <header class="page-head config-page__head">
+                  <div class="page-head__copy">
+                    <p class="eyebrow"><span class="eyebrow__line"></span> Ajustes del espacio</p>
+                    <h1 id="config-title">Configuración</h1>
+                    <p class="config-page__lead">Identidad, catálogo, equipo e integraciones.</p>
+                  </div>
+                  <div class="page-head__meta" aria-label="Resumen de configuración">
+                    <span class="mono">{{ categories.length }} categorías</span>
+                    <span>{{ sites.length }} sedes</span>
+                    <span>{{ people.length }} personas</span>
+                  </div>
+                </header>
+
+                <div class="config-layout">
+                  <nav class="config-nav" aria-label="Secciones de configuración">
+                    <a v-for="section in permittedConfigSections" :key="section.id" class="config-nav__item"
+                       :href="'#/configuracion/' + section.id" :class="{ 'is-active': route.section === section.id }"
+                       :aria-current="route.section === section.id ? 'page' : null" @click="closeSidebar">
+                      <span class="config-nav__icon"><app-icon :name="section.icon"></app-icon></span>
+                      <span class="config-nav__text"><strong>{{ section.label }}</strong><small>{{ section.hint }}</small></span>
+                      <app-icon name="chevron-right"></app-icon>
+                    </a>
+                  </nav>
+
+                  <div class="config-content">
+                    <!-- General -->
+                    <access-security v-if="route.section === 'seguridad'" :app="$root"></access-security>
+                    <section v-else-if="route.section === 'general'" class="config-section" aria-labelledby="config-general-title">
+                      <header class="config-section__head">
+                        <div>
+                          <p class="eyebrow">Identidad</p>
+                          <h2 id="config-general-title">Identidad y marca</h2>
+                          <p>El nombre y el logotipo se muestran en el acceso y en la navegación.</p>
+                        </div>
+                        <span class="config-badge"><app-icon name="sliders"></app-icon> General</span>
+                      </header>
+
+                      <div class="brand-preview">
+                        <span class="brand-preview__logo"><img :src="generalDraft.logo || 'assets/svg/logo.svg'" width="64" height="64" alt=""></span>
+                        <div class="brand-preview__copy">
+                          <span class="eyebrow">Vista previa</span>
+                          <strong>{{ generalDraft.appName || 'Asset Manager' }}</strong>
+                          <small>{{ generalDraft.organizationName || 'Operaciones TI' }}</small>
+                        </div>
+                        <span class="config-status is-on">Activa</span>
+                      </div>
+
+                      <form id="general-form" class="form-stack" @submit.prevent="saveGeneral" novalidate>
+                        <div class="config-form-grid">
+                          <div class="field" :class="{ 'field--invalid': generalErrors.organizationName }">
+                            <label for="config-organization">Organización</label>
+                            <div class="input-shell input-shell--plain">
+                              <app-icon name="building"></app-icon>
+                              <input id="config-organization" v-model="generalDraft.organizationName" type="text" autocomplete="organization"
+                                     :aria-invalid="!!generalErrors.organizationName">
+                            </div>
+                            <p class="field__hint">Aparece como contexto en la barra superior y el acceso.</p>
+                            <p v-if="generalErrors.organizationName" class="field__error">{{ generalErrors.organizationName }}</p>
+                          </div>
+                          <div class="field" :class="{ 'field--invalid': generalErrors.appName }">
+                            <label for="config-app-name">Nombre de la aplicación</label>
+                            <div class="input-shell input-shell--plain">
+                              <app-icon name="inventory"></app-icon>
+                              <input id="config-app-name" v-model="generalDraft.appName" type="text"
+                                     :aria-invalid="!!generalErrors.appName">
+                            </div>
+                            <p class="field__hint">Se usa en el título del navegador y en la marca lateral.</p>
+                            <p v-if="generalErrors.appName" class="field__error">{{ generalErrors.appName }}</p>
+                          </div>
+                        </div>
+
+                        <div class="field" :class="{ 'field--invalid': generalErrors.logo }">
+                          <label for="config-logo">Logotipo</label>
+                          <div class="logo-picker">
+                            <span class="logo-picker__preview"><img :src="generalDraft.logo || 'assets/svg/logo.svg'" width="72" height="72" alt="Vista previa del logotipo"></span>
+                            <div class="logo-picker__body">
+                              <div class="logo-picker__actions">
+                                <button type="button" class="btn btn--secondary btn--small" @click="$refs.logoInput.click()"><app-icon name="upload"></app-icon> Subir imagen</button>
+                                <button type="button" class="text-button text-button--quiet" @click="resetGeneral">Restaurar marca</button>
+                              </div>
+                              <p class="field__hint">PNG, JPG, WebP, GIF o SVG. Máximo 1 MB. Fondo transparente recomendado.</p>
+                              <p v-if="generalErrors.logo" class="field__error">{{ generalErrors.logo }}</p>
+                            </div>
+                          </div>
+                          <input id="config-logo" ref="logoInput" class="sr-only" type="file" tabindex="-1" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" @change="handleLogoUpload">
+                        </div>
+
+                        <div class="config-form-foot">
+                          <p class="config-form-foot__note"><app-icon name="shield"></app-icon> Los datos se guardan solo en este navegador.</p>
+                          <button type="submit" class="btn btn--primary">Guardar identidad</button>
+                        </div>
+                      </form>
+                      <dashboard-preferences :app="$root"></dashboard-preferences>
+                    </section>
+
+                    <!-- Categorías -->
+                    <section v-else-if="route.section === 'categorias'" class="config-section" aria-labelledby="config-categories-title">
+                      <header class="config-section__head">
+                        <div>
+                          <p class="eyebrow">Catálogo</p>
+                          <h2 id="config-categories-title">Categorías de activos</h2>
+                          <p>Agrupa los equipos y define la imagen genérica de cada grupo.</p>
+                        </div>
+                        <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()">
+                          <app-icon name="plus"></app-icon> Nueva categoría
+                        </button>
+                      </header>
+
+                      <div v-if="categories.length" class="category-manage">
+                        <article v-for="category in categories" :key="category.id" class="category-row">
+                          <span class="category-row__image"><img :src="category.image" width="640" height="400" alt=""></span>
+                          <div class="category-row__copy">
+                            <div class="category-row__title">
+                              <strong>{{ category.label }}</strong>
+                              <span class="mono">{{ categoryCount(category.id) }} {{ categoryCount(category.id) === 1 ? 'activo' : 'activos' }}</span>
+                            </div>
+                            <p>{{ category.description || 'Sin descripción.' }}</p>
+                          </div>
+                          <div class="config-row-actions">
+                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + category.label" title="Editar" @click="openCategoryDialog(category)">
+                              <app-icon name="pencil"></app-icon>
+                            </button>
+                            <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + category.label" title="Eliminar" @click="requestDeleteCategory(category)">
+                              <app-icon name="trash"></app-icon>
+                            </button>
+                          </div>
+                        </article>
+                      </div>
+
+                      <div v-else class="config-empty">
+                        <span class="config-empty__icon"><app-icon name="grid"></app-icon></span>
+                        <h3>Sin categorías</h3>
+                        <p>Crea la primera categoría para organizar el inventario.</p>
+                        <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> Crear categoría</button>
+                      </div>
+
+                      <p class="config-note"><app-icon name="info"></app-icon> La imagen de categoría se usa cuando el activo no tiene una imagen propia. Una categoría con activos no se puede eliminar.</p>
+                    </section>
+
+                    <!-- Activos -->
+                    <div v-else-if="route.section === 'activos'" class="config-assets" data-od-id="config-asset-management">
+                      <div class="config-assets__tabs" role="tablist" aria-label="Configuración de activos">
+                        <button
+                          v-for="tab in assetConfigTabs"
+                          :key="tab.id"
+                          type="button"
+                          role="tab"
+                          class="config-assets__tab"
+                          :class="{ 'is-active': assetConfigTab === tab.id }"
+                          :aria-selected="assetConfigTab === tab.id ? 'true' : 'false'"
+                          @click="assetConfigTab = tab.id"
+                        >
+                          <app-icon :name="tab.icon"></app-icon>
+                          <span>{{ tab.label }}</span>
+                        </button>
+                      </div>
+                      <asset-fields-panel v-if="assetConfigTab === 'campos'" :app="$root"></asset-fields-panel>
+                      <asset-forms-panel v-else-if="assetConfigTab === 'formularios'" :app="$root"></asset-forms-panel>
+                      <asset-statuses-panel v-else-if="assetConfigTab === 'estados'" :app="$root"></asset-statuses-panel>
+                      <asset-identity-panel v-else :app="$root"></asset-identity-panel>
+                    </div>
+
+                    <!-- Sedes -->
+                    <section v-else-if="route.section === 'sedes'" class="config-section" aria-labelledby="config-sites-title">
+                      <header class="config-section__head">
+                        <div>
+                          <p class="eyebrow">Estructura física</p>
+                          <h2 id="config-sites-title">Sedes y ubicaciones</h2>
+                          <p>Organiza el inventario por sede y detalla las ubicaciones internas.</p>
+                        </div>
+                        <button type="button" class="btn btn--primary btn--small" @click="openSiteDialog()">
+                          <app-icon name="plus"></app-icon> Nueva sede
+                        </button>
+                      </header>
+
+                      <div v-if="sites.length" class="site-manage">
+                        <article v-for="site in sites" :key="site.id" class="site-row">
+                          <header class="site-row__head">
+                            <span class="site-row__icon"><app-icon name="building"></app-icon></span>
+                            <div class="site-row__copy">
+                              <h3>{{ site.label }}</h3>
+                              <p>{{ site.locations.length }} {{ site.locations.length === 1 ? 'ubicación' : 'ubicaciones' }} · {{ siteAssetCount(site.id) }} {{ siteAssetCount(site.id) === 1 ? 'activo' : 'activos' }}</p>
+                            </div>
+                            <div class="config-row-actions">
+                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + site.label" title="Editar sede" @click="openSiteDialog(site)">
+                                <app-icon name="pencil"></app-icon>
+                              </button>
+                              <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + site.label" title="Eliminar sede" @click="requestDeleteSite(site)">
+                                <app-icon name="trash"></app-icon>
+                              </button>
+                            </div>
+                          </header>
+
+                          <div class="location-list">
+                            <div v-for="location in site.locations" :key="location.id" class="location-row">
+                              <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
+                              <span class="location-row__label">{{ location.label }}</span>
+                              <span class="location-row__count">{{ locationAssetCount(site.id, location.id) }} {{ locationAssetCount(site.id, location.id) === 1 ? 'activo' : 'activos' }}</span>
+                              <div class="config-row-actions">
+                                <button type="button" class="config-icon-action" :aria-label="'Editar ' + location.label" title="Editar ubicación" @click="openLocationDialog(site, location)">
+                                  <app-icon name="pencil"></app-icon>
+                                </button>
+                                <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + location.label" title="Eliminar ubicación" @click="requestDeleteLocation(site, location)">
+                                  <app-icon name="trash"></app-icon>
+                                </button>
+                              </div>
+                            </div>
+                            <p v-if="!site.locations.length" class="location-list__empty">Sin ubicaciones todavía.</p>
+                          </div>
+
+                          <footer class="site-row__foot">
+                            <button type="button" class="text-button" @click="openLocationDialog(site)">
+                              <app-icon name="plus"></app-icon> Añadir ubicación
+                            </button>
+                          </footer>
+                        </article>
+                      </div>
+
+                      <div v-else class="config-empty">
+                        <span class="config-empty__icon"><app-icon name="building"></app-icon></span>
+                        <h3>Sin sedes</h3>
+                        <p>Crea una sede para asignar activos y ubicaciones.</p>
+                        <button type="button" class="btn btn--primary btn--small" @click="openSiteDialog()"><app-icon name="plus"></app-icon> Crear sede</button>
+                      </div>
+
+                      <p class="config-note"><app-icon name="info"></app-icon> Una sede o ubicación con activos o personas vinculadas no se puede eliminar. Al borrar una sede sin registros también se eliminan sus ubicaciones.</p>
+                    </section>
+
+                    <!-- Personas -->
+                    <section v-else-if="route.section === 'personas'" class="config-section" aria-labelledby="config-people-title">
+                      <header class="config-section__head">
+                        <div>
+                          <p class="eyebrow">Equipo</p>
+                          <h2 id="config-people-title">Personas y departamentos</h2>
+                          <p>Organiza el directorio por área. Los datos personales se editan en cada ficha.</p>
+                        </div>
+                        <button type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()">
+                          <app-icon name="plus"></app-icon> Nuevo departamento
+                        </button>
+                      </header>
+
+                      <div class="config-team-summary">
+                        <span><strong>{{ people.length }}</strong> {{ people.length === 1 ? 'persona' : 'personas' }}</span>
+                        <span><strong>{{ activePeopleCount() }}</strong> {{ activePeopleCount() === 1 ? 'activa' : 'activas' }}</span>
+                        <span><strong>{{ departments.length }}</strong> {{ departments.length === 1 ? 'departamento' : 'departamentos' }}</span>
+                      </div>
+
+                      <div v-if="departments.length" class="department-manage">
+                        <article v-for="department in departments" :key="department.id" class="department-row">
+                          <span class="department-row__icon"><app-icon name="grid"></app-icon></span>
+                          <div class="department-row__copy">
+                            <strong>{{ department.label }}</strong>
+                            <span class="mono">{{ departmentPeopleCount(department.id) }} {{ departmentPeopleCount(department.id) === 1 ? 'persona' : 'personas' }}</span>
+                          </div>
+                          <div class="config-row-actions">
+                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + department.label" title="Editar departamento" @click="openDepartmentDialog(department)">
+                              <app-icon name="pencil"></app-icon>
+                            </button>
+                            <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + department.label" title="Eliminar departamento" @click="requestDeleteDepartment(department)">
+                              <app-icon name="trash"></app-icon>
+                            </button>
+                          </div>
+                        </article>
+                      </div>
+
+                      <div v-else class="config-empty">
+                        <span class="config-empty__icon"><app-icon name="user"></app-icon></span>
+                        <h3>Sin departamentos</h3>
+                        <p>Crea el primer departamento para organizar al equipo.</p>
+                        <button type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()"><app-icon name="plus"></app-icon> Crear departamento</button>
+                      </div>
+
+                      <p class="config-note"><app-icon name="info"></app-icon> Un departamento con personas asociadas no se puede eliminar. Las personas no se borran: se desactivan para conservar sus asignaciones.</p>
+                    </section>
+
+                    <!-- Integraciones -->
+                    <section v-else-if="route.section === 'integraciones'" class="config-section" aria-labelledby="config-integrations-title">
+                      <header class="config-section__head">
+                        <div>
+                          <p class="eyebrow">Conectividad</p>
+                          <h2 id="config-integrations-title">Integraciones</h2>
+                          <p>Activa solo las herramientas disponibles para el equipo.</p>
+                        </div>
+                        <span class="config-badge"><app-icon name="shield"></app-icon> Local</span>
+                      </header>
+
+                      <form id="integrations-form" class="form-stack" @submit.prevent="saveIntegrations" novalidate>
+                        <div class="integration-grid">
+                          <article v-for="definition in integrationDefinitions" :key="definition.id" class="integration-card"
+                                   :class="{ 'is-disabled': !integrationDraft[definition.id].enabled }">
+                            <header class="integration-card__head">
+                              <span class="integration-card__icon"><app-icon :name="definition.icon"></app-icon></span>
+                              <div class="integration-card__title">
+                                <h3>{{ definition.name }}</h3>
+                                <p>{{ definition.description }}</p>
+                              </div>
+                              <label class="switch">
+                                <input v-model="integrationDraft[definition.id].enabled" type="checkbox"
+                                       :aria-label="(integrationDraft[definition.id].enabled ? 'Desactivar ' : 'Activar ') + definition.name">
+                                <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+                                <span class="switch__text">{{ integrationDraft[definition.id].enabled ? 'Activa' : 'Inactiva' }}</span>
+                              </label>
+                            </header>
+
+                            <div v-if="integrationDraft[definition.id].enabled" class="integration-card__body">
+                              <div class="field" :class="{ 'field--invalid': integrationErrors[definition.id] }">
+                                <label :for="'integration-' + definition.id">{{ definition.urlLabel }}</label>
+                                <div class="input-shell input-shell--plain">
+                                  <app-icon :name="definition.icon"></app-icon>
+                                  <input :id="'integration-' + definition.id" v-model="integrationDraft[definition.id].url" type="url" inputmode="url"
+                                         :placeholder="definition.placeholder" :aria-invalid="!!integrationErrors[definition.id]">
+                                </div>
+                                <p class="field__hint">{{ definition.hint }}</p>
+                                <p v-if="integrationErrors[definition.id]" class="field__error">{{ integrationErrors[definition.id] }}</p>
+                              </div>
+                              <p class="integration-card__usage"><app-icon name="inventory"></app-icon> {{ integrationUsage(definition.id) }} activos con identificador</p>
+                            </div>
+                            <p v-else class="integration-card__off">Los valores guardados se conservan, pero los accesos remotos quedan ocultos.</p>
+                          </article>
+                        </div>
+
+                        <div class="form-note">
+                          <app-icon name="shield"></app-icon>
+                          <p>Los identificadores se editan en cada activo. No se establecen conexiones reales.</p>
+                        </div>
+                        <p v-if="integrationErrors.general" class="form-error" role="alert">{{ integrationErrors.general }}</p>
+
+                        <div class="config-form-foot">
+                          <p class="config-form-foot__note">Guardar no altera los identificadores ya asignados a los activos.</p>
+                          <button type="submit" class="btn btn--primary">Guardar integraciones</button>
+                        </div>
+                      </form>
+                    </section>
+
+                    <appearance-settings v-else-if="route.section === 'apariencia'" :app="$root"></appearance-settings>
+                    <report-settings v-else-if="route.section === 'reportes'" :app="$root"></report-settings>
+                    <warranty-settings v-else-if="route.section === 'garantias'" :app="$root"></warranty-settings>
+                    <qr-settings v-else-if="route.section === 'qr'" :app="$root"></qr-settings>
+                    <label-settings v-else-if="route.section === 'etiquetas'" :app="$root"></label-settings>
+                    <relations-settings v-else-if="route.section === 'relaciones'" :app="$root"></relations-settings>
+
+                    <maintenance-settings v-else-if="route.section === 'mantenimiento'" :app="$root"></maintenance-settings>
+                    <monitoring-settings v-else-if="route.section === 'supervision'" :app="$root"></monitoring-settings>
+                    <alert-settings v-else-if="route.section === 'alertas'" :app="$root"></alert-settings>
+                    <notification-settings v-else-if="route.section === 'notificaciones'" :app="$root"></notification-settings>
+
+                    <map-settings v-else-if="route.section === 'mapas'" :app="$root"></map-settings>
+
+                    <data-transfer-settings v-else-if="route.section === 'datos'" :app="$root"></data-transfer-settings>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Explorador de infraestructura -->
+              <section v-else-if="route.name === 'map'" class="page" aria-labelledby="infra-title">
+                <map-explorer ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></map-explorer>
+              </section>
+
+              <!-- Grafo de relaciones -->
+              <section v-else-if="route.name === 'graph'" class="page" aria-labelledby="graph-title">
+                <graph-explorer ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></graph-explorer>
+              </section>
+
+              <!-- Mantenimiento e incidentes -->
+              <maintenance-center ref="maintenanceCenter" v-else-if="route.name === 'maintenance'" :app="$root"></maintenance-center>
+
+              <incident-detail v-else-if="route.name === 'incident'" :app="$root" :incident-id="route.incidentId || ''"></incident-detail>
+
+              <!-- Supervisión y alertas -->
+              <monitoring-center v-else-if="route.name === 'monitoring'" :app="$root"></monitoring-center>
+
+              <monitor-device v-else-if="route.name === 'monitorDevice'" :app="$root"></monitor-device>
+
+              <monitor-alert v-else-if="route.name === 'monitorAlert'" :app="$root"></monitor-alert>
+
+              <notification-center v-else-if="route.name === 'notifications'" :app="$root"></notification-center>
+
+              <reports-center ref="workspaceView" v-else-if="route.name === 'reports'" :app="$root"></reports-center>
+              <warranty-center v-else-if="route.name === 'warranties'" :app="$root"></warranty-center>
+              <labels-center v-else-if="route.name === 'labels'" :app="$root"></labels-center>
+              <public-asset-report v-else-if="route.name === 'reportAsset'" :app="$root"></public-asset-report>
+
+              <!-- Detalle -->
+              <section v-else-if="route.name === 'detail' && currentAsset" class="page detail-page" aria-labelledby="detail-title">
+                <nav class="breadcrumbs" aria-label="Migas de pan">
+                  <a href="#/inventario" @click.prevent="backToInventory">Inventario</a>
+                  <app-icon name="chevron-right"></app-icon>
+                  <span aria-current="page">{{ currentAsset.id }}</span>
+                </nav>
+
+                <button type="button" class="back-link" @click="backToInventory">
+                  <app-icon name="arrow-left"></app-icon> Volver al inventario
+                </button>
+
+                <header class="detail-head">
+                  <div class="detail-head__copy">
+                    <div class="detail-eyebrow">
+                      <span class="type-tag">{{ categoryLabel(currentAsset.category) }}</span>
+                      <span class="status-pill" :class="'status--' + currentAsset.statusTone">{{ currentAsset.status }}</span>
+                      <span v-if="currentAsset.retired" class="chip chip--muted">Baja conservada</span>
+                    </div>
+                    <h1 id="detail-title">{{ currentAsset.name }}</h1>
+                    <p class="detail-sub">
+                      <template v-if="currentAsset.brand || currentAsset.model">
+                        <span>{{ currentAsset.brand }} {{ currentAsset.model }}</span>
+                        <span aria-hidden="true">·</span>
+                      </template>
+                      <span class="mono">{{ currentAsset.id }}</span>
+                      <span aria-hidden="true">·</span>
+                      <span class="mono">{{ currentAsset.code }}</span>
+                    </p>
+                  </div>
+                  <div class="detail-head__actions">
+                    <button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
+                      <app-icon name="pencil"></app-icon> Editar activo
+                    </button>
+                    <button v-if="can('assets.edit')" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="duplicateAsset(currentAsset)">
+                      <app-icon name="copy"></app-icon> Duplicar
+                    </button>
+                    <button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--ghost" data-od-id="change-status" @click="openStatusDialog(currentAsset)">
+                      <app-icon name="activity"></app-icon> Cambiar estado
+                    </button>
+                    <button v-if="can('assets.edit') && currentAsset.retired" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="restoreAsset(currentAsset)">
+                      <app-icon name="restore"></app-icon> Restaurar
+                    </button>
+                  </div>
+                </header>
+
+                <div v-if="currentAsset.retired" class="retired-banner" role="status">
+                  <span class="retired-banner__icon"><app-icon name="alert"></app-icon></span>
+                  <div class="retired-banner__copy">
+                    <strong>Dado de baja el {{ assetDate(currentAsset.retired.at) }}</strong>
+                    <p>{{ currentAsset.retired.reason }}<span v-if="currentAsset.retired.note"> · {{ currentAsset.retired.note }}</span>. El registro y su historial se conservan para consulta.</p>
+                  </div>
+                </div>
+
+                <div class="detail-layout">
+                  <section class="asset-showcase" aria-labelledby="showcase-title">
+                    <div class="asset-showcase__media">
+                      <img :src="assetImage(currentAsset)" width="640" height="400" :alt="currentAsset.name + ', ' + currentAsset.type">
+                    </div>
+                    <div class="asset-showcase__foot">
+                      <div>
+                        <span class="eyebrow">Representación</span>
+                        <strong id="showcase-title">{{ currentAsset.hasOwnImage ? 'Imagen propia del activo' : 'Imagen genérica de categoría' }}</strong>
+                      </div>
+                      <span class="mono">{{ categoryLabel(currentAsset.category) }}</span>
+                    </div>
+                    <figure v-if="currentAsset.fovImage" class="fov-figure">
+                      <img :src="currentAsset.fovImage" width="640" height="400" :alt="'Campo de visión de ' + currentAsset.name">
+                      <figcaption>
+                        <span class="mono">Campo de visión</span>
+                        <span>Área cubierta por la cámara, independiente de la fotografía del equipo.</span>
+                      </figcaption>
+                    </figure>
+                  </section>
+
+                  <section class="info-panel" aria-labelledby="info-title">
+                    <header class="panel-head">
+                      <div>
+                        <p class="eyebrow">Ficha</p>
+                        <h2 id="info-title">Información del activo</h2>
+                      </div>
+                      <span class="mono info-panel__meta">{{ currentAsset.history.length }} eventos</span>
+                    </header>
+                    <div class="detail-groups">
+                      <section class="detail-group" aria-labelledby="detail-group-identification">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-identification">Identificación</h3>
+                        </div>
+                        <dl class="field-grid">
+                          <div class="detail-field detail-field--wide"><dt>Nombre</dt><dd>{{ currentAsset.name }}</dd></div>
+                          <div class="detail-field">
+                            <dt>ID permanente</dt>
+                            <dd class="detail-copy">
+                              <span class="mono">{{ currentAsset.id }}</span>
+                              <button type="button" class="copy-button" title="Copiar ID permanente" :aria-label="'Copiar ID permanente de ' + currentAsset.name" @click="copyText(currentAsset.id, 'ID permanente copiado.')">
+                                <app-icon name="copy"></app-icon>
+                              </button>
+                            </dd>
+                          </div>
+                          <div class="detail-field">
+                            <dt>Código rápido</dt>
+                            <dd class="detail-copy">
+                              <span class="mono">{{ currentAsset.code }}</span>
+                              <button type="button" class="copy-button" title="Copiar código rápido" :aria-label="'Copiar código rápido de ' + currentAsset.name" @click="copyText(currentAsset.code, 'Código rápido copiado.')">
+                                <app-icon name="copy"></app-icon>
+                              </button>
+                            </dd>
+                          </div>
+                          <div class="detail-field"><dt>Categoría</dt><dd>{{ categoryLabel(currentAsset.category) }}</dd></div>
+                          <div class="detail-field"><dt>Tipo</dt><dd>{{ currentAsset.type }}</dd></div>
+                          <div class="detail-field"><dt>Marca</dt><dd>{{ currentAsset.brand || '—' }}</dd></div>
+                          <div class="detail-field"><dt>Modelo</dt><dd>{{ currentAsset.model || '—' }}</dd></div>
+                          <div class="detail-field"><dt>Número de serie</dt><dd class="mono">{{ currentAsset.serial || '—' }}</dd></div>
+                        </dl>
+                      </section>
+
+                      <section class="detail-group" aria-labelledby="detail-group-state">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-state">Estado y garantía</h3>
+                        </div>
+                        <dl class="field-grid">
+                          <div class="detail-field">
+                            <dt>Estado</dt>
+                            <dd><span class="status-pill" :class="'status--' + currentAsset.statusTone">{{ currentAsset.status }}</span></dd>
+                          </div>
+                          <div class="detail-field">
+                            <dt>Garantía</dt>
+                            <dd>
+                              <span class="warranty-state" :class="'warranty-state--' + assetWarrantyState(currentAsset).tone">{{ assetWarrantyState(currentAsset).label }}</span>
+                              <span v-if="currentAsset.warranty && currentAsset.warranty.provider" class="cell-note">{{ currentAsset.warranty.provider }}</span>
+                            </dd>
+                          </div>
+                          <div class="detail-field"><dt>Alta en el inventario</dt><dd>{{ assetDate(currentAsset.createdAt) }}</dd></div>
+                          <div class="detail-field"><dt>Última actualización</dt><dd>{{ currentAsset.updatedAt ? assetDateTime(currentAsset.updatedAt) : 'Sin cambios registrados' }}</dd></div>
+                        </dl>
+                      </section>
+
+                      <section class="detail-group" aria-labelledby="detail-group-network">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-network">Red</h3>
+                        </div>
+                        <dl class="field-grid">
+                          <div class="detail-field detail-field--wide"><dt>Dirección IP</dt><dd class="mono">{{ currentAsset.ip || 'No registrada' }}</dd></div>
+                        </dl>
+                      </section>
+
+                      <section class="detail-group" aria-labelledby="detail-group-location">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-location">Ubicación y asignación</h3>
+                        </div>
+                        <dl class="field-grid">
+                          <div class="detail-field"><dt>Sede o sucursal</dt><dd>{{ siteLabel(currentAsset.site) }}</dd></div>
+                          <div class="detail-field">
+                            <dt>Responsable</dt>
+                            <dd class="detail-assignee">
+                              <a v-if="assigneePerson(currentAsset) && can('people.view')" :href="'#/persona/' + assigneePerson(currentAsset).id">{{ assigneePerson(currentAsset).name }}</a>
+                              <span v-else-if="assigneeLabel(currentAsset)">{{ assigneeLabel(currentAsset) }}</span>
+                              <span v-else class="cell-muted">Sin asignar</span>
+                              <button v-if="can('assets.assign')" type="button" class="text-button text-button--quiet" @click="openAssignAsset(currentAsset)">
+                                {{ assigneeLabel(currentAsset) ? 'Cambiar' : 'Asignar' }}
+                              </button>
+                            </dd>
+                          </div>
+                          <div class="detail-field detail-field--wide"><dt>Ubicación</dt><dd>{{ locationLabel(currentAsset) }}</dd></div>
+                        </dl>
+                      </section>
+
+                      <section class="detail-group" aria-labelledby="detail-group-economic">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-economic">Información económica</h3>
+                        </div>
+                        <dl class="field-grid">
+                          <div class="detail-field detail-field--cost detail-field--wide"><dt>Coste</dt><dd>{{ formatCurrency(currentAsset.cost) }}</dd></div>
+                        </dl>
+                      </section>
+
+                      <section v-if="assetTechFields(currentAsset.category).length" class="detail-group" aria-labelledby="detail-group-technical">
+                        <div class="detail-group__head">
+                          <h3 id="detail-group-technical">Campos técnicos</h3>
+                          <button v-if="can('assets.edit')" type="button" class="text-button text-button--quiet" @click="openAssetEdit(currentAsset)">Editar</button>
+                        </div>
+                        <dl class="field-grid">
+                          <div v-for="field in assetTechFields(currentAsset.category)" :key="field.key" class="detail-field">
+                            <dt>{{ field.label }}</dt>
+                            <dd>{{ assetFieldValue(currentAsset, field) }}</dd>
+                          </div>
+                        </dl>
+                      </section>
+                    </div>
+
+                    <div v-if="assetGaps(currentAsset).length" class="completion-note">
+                      <span class="completion-note__icon"><app-icon name="info"></app-icon></span>
+                      <div class="completion-note__copy">
+                        <strong>Ficha incompleta</strong>
+                        <p>Faltan {{ assetGaps(currentAsset).length }} datos: {{ assetGaps(currentAsset).join(', ') }}.</p>
+                      </div>
+                      <button v-if="can('assets.edit')" type="button" class="btn btn--secondary btn--small" @click="openAssetEdit(currentAsset)">Completar ficha</button>
+                    </div>
+                  </section>
+
+                  <section v-if="assetHasRemote(currentAsset)" class="remote-panel" aria-labelledby="remote-title">
+                    <header class="panel-head panel-head--remote">
+                      <div>
+                        <p class="eyebrow">Conectividad</p>
+                        <h2 id="remote-title">Acceso remoto</h2>
+                      </div>
+                      <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">
+                        <app-icon name="sliders"></app-icon> Configurar
+                      </button>
+                    </header>
+
+                    <div class="remote-grid" :class="{ 'remote-grid--single': assetRemoteCount(currentAsset) === 1 }">
+                      <article v-if="settings.anydeskEnabled && currentAsset.anydeskId" class="remote-card is-configured">
+                        <header class="remote-card__head">
+                          <span class="remote-mark"><app-icon name="remote"></app-icon></span>
+                          <div class="remote-card__title"><h3>AnyDesk</h3><p>Escritorio remoto</p></div>
+                          <span class="config-status is-on">Configurado</span>
+                        </header>
+                        <dl class="remote-details">
+                          <div>
+                            <dt>Identificador</dt>
+                            <dd class="mono remote-details__value">
+                              <span>{{ currentAsset.anydeskId }}</span>
+                              <button type="button" class="copy-button" title="Copiar identificador" :aria-label="'Copiar identificador de AnyDesk de ' + currentAsset.name" @click="copyText(currentAsset.anydeskId, 'Identificador de AnyDesk copiado.')">
+                                <app-icon name="copy"></app-icon>
+                              </button>
+                            </dd>
+                          </div>
+                          <div><dt>Plataforma</dt><dd class="mono truncate" :title="settings.anydeskUrl">{{ settings.anydeskUrl }}</dd></div>
+                        </dl>
+                        <div class="remote-card__actions">
+                          <button v-if="can('assets.remote')" type="button" class="btn btn--primary btn--small" @click="openRemote(currentAsset, 'anydesk')">
+                            <app-icon name="arrow-up-right"></app-icon> Abrir acceso
+                          </button>
+                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">Editar</button>
+                        </div>
+                      </article>
+
+                      <article v-if="settings.rmmEnabled && currentAsset.rmmAgentId" class="remote-card is-configured">
+                        <header class="remote-card__head">
+                          <span class="remote-mark remote-mark--rmm"><app-icon name="activity"></app-icon></span>
+                          <div class="remote-card__title"><h3>Tactical RMM</h3><p>Gestión de agentes</p></div>
+                          <span class="config-status is-on">Configurado</span>
+                        </header>
+                        <dl class="remote-details">
+                          <div>
+                            <dt>Agente</dt>
+                            <dd class="mono remote-details__value">
+                              <span>{{ currentAsset.rmmAgentId }}</span>
+                              <button type="button" class="copy-button" title="Copiar identificador" :aria-label="'Copiar identificador de agente de ' + currentAsset.name" @click="copyText(currentAsset.rmmAgentId, 'Identificador de agente copiado.')">
+                                <app-icon name="copy"></app-icon>
+                              </button>
+                            </dd>
+                          </div>
+                          <div><dt>Estado</dt><dd><span class="agent-state" :class="{ 'is-online': currentAsset.rmmOnline }"><span class="agent-state__dot" aria-hidden="true"></span>{{ currentAsset.rmmOnline ? 'Agente conectado' : 'Agente sin conexión' }}</span></dd></div>
+                        </dl>
+                        <div class="remote-card__actions">
+                          <button v-if="can('assets.remote')" type="button" class="btn btn--primary btn--small" @click="openRemote(currentAsset, 'rmm')">
+                            <app-icon name="arrow-up-right"></app-icon> Abrir acceso
+                          </button>
+                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">Editar</button>
+                        </div>
+                      </article>
+                    </div>
+                  </section>
+
+                  <asset-warranty-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel>
+                  <asset-qr-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
+
+                  <asset-relations v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
+
+                  <asset-maintenance-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
+                  <asset-monitoring-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
+
+                  <asset-movements :asset="currentAsset" :app="$root"></asset-movements>
+
+                  <asset-history :asset="currentAsset" :app="$root"></asset-history>
+
+                  <section class="operations-panel" aria-labelledby="operations-title">
+                    <header class="panel-head">
+                      <div>
+                        <p class="eyebrow">Ciclo de vida</p>
+                        <h2 id="operations-title">Conservación y eliminación</h2>
+                      </div>
+                      <span class="chip chip--muted">{{ assetAdmin.operations.mode === 'production' ? 'Modo producción' : 'Modo desarrollo' }}</span>
+                    </header>
+                    <div class="operations-grid">
+                      <article class="operations-card">
+                        <h3>La baja conserva el registro</h3>
+                        <p>La baja se registra como movimiento: la ficha, sus adjuntos y el historial completo se mantienen, y el activo puede restaurarse.</p>
+                        <p class="operations-card__note">Los activos relacionados no se modifican al dar de baja un equipo.</p>
+                      </article>
+                      <article class="operations-card operations-card--danger">
+                        <h3>Eliminación definitiva</h3>
+                        <p>{{ assetAdmin.operations.mode === 'production' ? 'En producción exige escribir el ID permanente y el motivo de la eliminación.' : 'En desarrollo se confirma con un solo paso. Cambia el modo en Configuración para protegerla.' }}</p>
+                        <button v-if="can('assets.edit')" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openDeleteAsset(currentAsset)">
+                          <app-icon name="trash"></app-icon> Eliminar activo
+                        </button>
+                        <span v-else class="cell-muted">Requiere permiso de edición de activos.</span>
+                      </article>
+                    </div>
+                  </section>
+                </div>
+              </section>
+            </div>
+          </transition>
+        </main>
+      </div>
+    </div>
+    </transition>
+
+    <!-- Diálogo de acceso remoto -->
+    <modal-shell :open="remoteDialog.open" title="Acceso remoto simulado" eyebrow="Conectividad" @close="closeRemote">
+      <div v-if="remoteDialog.asset" class="remote-modal">
+        <div class="remote-modal__asset">
+          <span class="remote-modal__thumb"><img :src="assetImage(remoteDialog.asset)" width="640" height="400" alt=""></span>
+          <div><strong>{{ remoteDialog.asset.name }}</strong><span class="mono">{{ remoteDialog.asset.id }}</span></div>
+          <span class="type-tag">{{ remoteDialog.asset.type }}</span>
+        </div>
+
+        <dl class="remote-detail-list">
+          <div><dt>Integración</dt><dd>{{ remoteDialog.kind === 'anydesk' ? 'AnyDesk' : 'Tactical RMM' }}</dd></div>
+          <div><dt>{{ remoteDialog.kind === 'anydesk' ? 'Identificador' : 'Agente' }}</dt><dd class="mono">{{ remoteDialogId }}</dd></div>
+          <div><dt>Destino configurado</dt><dd class="mono remote-endpoint">{{ remoteDialogEndpoint }}</dd></div>
+        </dl>
+
+        <div class="simulation-note">
+          <app-icon name="info"></app-icon>
+          <p><strong>Modo demostración.</strong> No se establece ninguna conexión real.</p>
+        </div>
+
+        <div v-if="remoteDialog.state === 'connecting'" class="connection-state" role="status">
+          <span class="spinner spinner--teal" aria-hidden="true"></span>
+          <p>Simulando conexión con {{ remoteDialog.asset.name }}…</p>
+        </div>
+        <div v-else-if="remoteDialog.state === 'connected'" class="connection-success" role="status">
+          <span class="success-mark"><app-icon name="check"></app-icon></span>
+          <div><strong>Simulación completada</strong><p>No se ha abierto ninguna sesión real.</p></div>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeRemote">Cerrar</button>
+        <button v-if="remoteDialog.state !== 'connected'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
+          <span v-if="remoteDialog.state === 'connecting'" class="spinner" aria-hidden="true"></span>
+          <app-icon v-else name="arrow-up-right"></app-icon>
+          {{ remoteDialog.state === 'connecting' ? 'Conectando…' : 'Simular conexión' }}
+        </button>
+      </template>
+    </modal-shell>
+
+    <!-- Categoría -->
+    <modal-shell :open="categoryDialog.open" :title="categoryDialog.mode === 'edit' ? 'Editar categoría' : 'Nueva categoría'" eyebrow="Catálogo" size="wide" @close="closeCategoryDialog">
+      <form id="category-form" class="form-stack" @submit.prevent="saveCategory" novalidate>
+        <div class="config-form-grid">
+          <div class="field" :class="{ 'field--invalid': categoryErrors.label }">
+            <label for="category-label">Nombre</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="grid"></app-icon>
+              <input id="category-label" v-model="categoryDialog.label" type="text" placeholder="Ej. Equipos de escritorio"
+                     :aria-invalid="!!categoryErrors.label">
+            </div>
+            <p v-if="categoryErrors.label" class="field__error">{{ categoryErrors.label }}</p>
+          </div>
+          <div class="field">
+            <label for="category-description">Descripción</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="info"></app-icon>
+              <input id="category-description" v-model="categoryDialog.description" type="text" placeholder="Qué agrupa esta categoría">
+            </div>
+            <p class="field__hint">Opcional. Máximo 160 caracteres.</p>
+            <p v-if="categoryErrors.description" class="field__error">{{ categoryErrors.description }}</p>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field__label">Imagen de categoría</span>
+          <div class="image-picker">
+            <span class="image-picker__preview"><img :src="categoryDialog.image" width="640" height="400" alt="Vista previa de la categoría"></span>
+            <div class="image-picker__body">
+              <div class="preset-grid" role="group" aria-label="Imágenes predeterminadas">
+                <button v-for="preset in deviceImagePresets" :key="preset.src" type="button" class="preset-option"
+                        :class="{ 'is-active': categoryDialog.image === preset.src }" :aria-pressed="categoryDialog.image === preset.src"
+                        :title="preset.label" @click="applyImagePreset(preset)">
+                  <img :src="preset.src" width="640" height="400" alt="">
+                  <span>{{ preset.label }}</span>
+                </button>
+              </div>
+              <div class="image-picker__actions">
+                <button type="button" class="btn btn--secondary btn--small" @click="$refs.categoryImageInput.click()"><app-icon name="upload"></app-icon> Subir imagen</button>
+                <input id="category-image-upload" ref="categoryImageInput" class="sr-only" type="file" tabindex="-1" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" @change="handleCategoryImageUpload">
+                <span class="field__hint">PNG, JPG, WebP, GIF o SVG · máximo 1 MB</span>
+              </div>
+            </div>
+          </div>
+          <p v-if="categoryErrors.image" class="field__error">{{ categoryErrors.image }}</p>
+        </div>
+        <p v-if="categoryErrors.general" class="form-error" role="alert">{{ categoryErrors.general }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeCategoryDialog">Cancelar</button>
+        <button type="submit" form="category-form" class="btn btn--primary">{{ categoryDialog.mode === 'edit' ? 'Guardar categoría' : 'Crear categoría' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Sede -->
+    <modal-shell :open="siteDialog.open" :title="siteDialog.mode === 'edit' ? 'Editar sede' : 'Nueva sede'" eyebrow="Estructura" @close="closeSiteDialog">
+      <form id="site-form" class="form-stack" @submit.prevent="saveSite" novalidate>
+        <p class="form-intro">Las ubicaciones internas se gestionan desde la ficha de cada sede.</p>
+        <div class="field" :class="{ 'field--invalid': siteErrors.label }">
+          <label for="site-label">Nombre de la sede</label>
+          <div class="input-shell input-shell--plain">
+            <app-icon name="building"></app-icon>
+            <input id="site-label" v-model="siteDialog.label" type="text" placeholder="Ej. Sede Centro"
+                   :aria-invalid="!!siteErrors.label">
+          </div>
+          <p v-if="siteErrors.label" class="field__error">{{ siteErrors.label }}</p>
+        </div>
+        <div class="field" :class="{ 'field--invalid': siteErrors.short }">
+          <label for="site-short">Nombre corto</label>
+          <div class="input-shell input-shell--plain">
+            <app-icon name="map-pin"></app-icon>
+            <input id="site-short" v-model="siteDialog.short" type="text" placeholder="Ej. Centro">
+          </div>
+          <p class="field__hint">Opcional. Se usa en espacios reducidos.</p>
+          <p v-if="siteErrors.short" class="field__error">{{ siteErrors.short }}</p>
+        </div>
+        <p v-if="siteErrors.general" class="form-error" role="alert">{{ siteErrors.general }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeSiteDialog">Cancelar</button>
+        <button type="submit" form="site-form" class="btn btn--primary">{{ siteDialog.mode === 'edit' ? 'Guardar sede' : 'Crear sede' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Ubicación -->
+    <modal-shell :open="locationDialog.open" :title="locationDialog.id ? 'Editar ubicación' : 'Nueva ubicación'" eyebrow="Sede" @close="closeLocationDialog">
+      <form id="location-form" class="form-stack" @submit.prevent="saveLocation" novalidate>
+        <div class="field" :class="{ 'field--invalid': locationErrors.label }">
+          <label for="location-label">Nombre de la ubicación</label>
+          <div class="input-shell input-shell--plain">
+            <app-icon name="map-pin"></app-icon>
+            <input id="location-label" v-model="locationDialog.label" type="text" placeholder="Ej. Laboratorio 2"
+                   :aria-invalid="!!locationErrors.label">
+          </div>
+          <p class="field__hint">Debe ser único dentro de la sede.</p>
+          <p v-if="locationErrors.label" class="field__error">{{ locationErrors.label }}</p>
+        </div>
+        <p v-if="locationErrors.general" class="form-error" role="alert">{{ locationErrors.general }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeLocationDialog">Cancelar</button>
+        <button type="submit" form="location-form" class="btn btn--primary">{{ locationDialog.id ? 'Guardar ubicación' : 'Crear ubicación' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Persona -->
+    <modal-shell :open="personDialog.open" :title="personDialog.mode === 'edit' ? 'Editar persona' : 'Nueva persona'" eyebrow="Directorio" @close="closePersonDialog">
+      <form id="person-form" class="form-stack" @submit.prevent="savePerson" novalidate>
+        <p class="form-intro">Los datos de contacto son opcionales. El nombre es obligatorio.</p>
+        <div class="config-form-grid">
+          <div class="field" :class="{ 'field--invalid': personErrors.name }">
+            <label for="person-name">Nombre completo</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="user"></app-icon>
+              <input id="person-name" v-model="personDialog.name" type="text" autocomplete="name" placeholder="Ej. Laura Méndez"
+                     :aria-invalid="!!personErrors.name" @blur="validatePersonField('name')">
+            </div>
+            <p v-if="personErrors.name" class="field__error">{{ personErrors.name }}</p>
+          </div>
+          <div class="field" :class="{ 'field--invalid': personErrors.role }">
+            <label for="person-role">Cargo</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="inventory"></app-icon>
+              <input id="person-role" v-model="personDialog.role" type="text" placeholder="Ej. Técnica de soporte"
+                     :aria-invalid="!!personErrors.role" @blur="validatePersonField('role')">
+            </div>
+            <p class="field__hint">Opcional. Máximo 80 caracteres.</p>
+            <p v-if="personErrors.role" class="field__error">{{ personErrors.role }}</p>
+          </div>
+          <div class="field" :class="{ 'field--invalid': personErrors.departmentId }">
+            <label for="person-department">Departamento</label>
+            <div class="select-field select-field--plain">
+              <app-icon name="grid"></app-icon>
+              <select id="person-department" v-model="personDialog.departmentId">
+                <option value="">Sin departamento</option>
+                <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.label }}</option>
+              </select>
+              <app-icon name="chevron-down"></app-icon>
+            </div>
+            <p v-if="personErrors.departmentId" class="field__error">{{ personErrors.departmentId }}</p>
+          </div>
+          <div class="field" :class="{ 'field--invalid': personErrors.siteId }">
+            <label for="person-site">Sede</label>
+            <div class="select-field select-field--plain">
+              <app-icon name="building"></app-icon>
+              <select id="person-site" v-model="personDialog.siteId">
+                <option value="">Sin sede</option>
+                <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
+              </select>
+              <app-icon name="chevron-down"></app-icon>
+            </div>
+            <p v-if="personErrors.siteId" class="field__error">{{ personErrors.siteId }}</p>
+          </div>
+          <div class="field" :class="{ 'field--invalid': personErrors.email }">
+            <label for="person-email">Correo electrónico</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="mail"></app-icon>
+              <input id="person-email" v-model="personDialog.email" type="email" autocomplete="email" placeholder="Ej. laura@empresa.com"
+                     :aria-invalid="!!personErrors.email" @blur="validatePersonField('email')">
+            </div>
+            <p class="field__hint">Opcional. Se usa para contactar desde la ficha.</p>
+            <p v-if="personErrors.email" class="field__error">{{ personErrors.email }}</p>
+          </div>
+          <div class="field" :class="{ 'field--invalid': personErrors.phone }">
+            <label for="person-phone">Teléfono</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="phone"></app-icon>
+              <input id="person-phone" v-model="personDialog.phone" type="tel" autocomplete="tel" placeholder="Ej. +34 611 204 882"
+                     :aria-invalid="!!personErrors.phone" @blur="validatePersonField('phone')">
+            </div>
+            <p class="field__hint">Opcional. Máximo 40 caracteres.</p>
+            <p v-if="personErrors.phone" class="field__error">{{ personErrors.phone }}</p>
+          </div>
+        </div>
+        <label class="switch person-active-switch">
+          <input v-model="personDialog.active" type="checkbox">
+          <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+          <span class="switch__text">{{ personDialog.active ? 'Persona activa' : 'Persona inactiva' }}</span>
+        </label>
+        <p class="field__hint">Una persona inactiva conserva sus activos, pero no puede recibir nuevas asignaciones.</p>
+        <p v-if="personErrors.general" class="form-error" role="alert">{{ personErrors.general }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closePersonDialog">Cancelar</button>
+        <button type="submit" form="person-form" class="btn btn--primary">{{ personDialog.mode === 'edit' ? 'Guardar persona' : 'Crear persona' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Departamento -->
+    <modal-shell :open="departmentDialog.open" :title="departmentDialog.mode === 'edit' ? 'Editar departamento' : 'Nuevo departamento'" eyebrow="Equipo" @close="closeDepartmentDialog">
+      <form id="department-form" class="form-stack" @submit.prevent="saveDepartment" novalidate>
+        <div class="field" :class="{ 'field--invalid': departmentErrors.label }">
+          <label for="department-label">Nombre del departamento</label>
+          <div class="input-shell input-shell--plain">
+            <app-icon name="grid"></app-icon>
+            <input id="department-label" v-model="departmentDialog.label" type="text" placeholder="Ej. Infraestructura"
+                   :aria-invalid="!!departmentErrors.label">
+          </div>
+          <p class="field__hint">Debe ser único. Máximo 48 caracteres.</p>
+          <p v-if="departmentErrors.label" class="field__error">{{ departmentErrors.label }}</p>
+        </div>
+        <p v-if="departmentErrors.general" class="form-error" role="alert">{{ departmentErrors.general }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeDepartmentDialog">Cancelar</button>
+        <button type="submit" form="department-form" class="btn btn--primary">{{ departmentDialog.mode === 'edit' ? 'Guardar departamento' : 'Crear departamento' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Asignación -->
+    <modal-shell :open="assignDialog.open" :title="assignDialog.mode === 'person' ? 'Asignar responsable' : 'Asignar activo'" eyebrow="Asignación" size="wide" @close="closeAssignDialog">
+      <div class="assign-dialog">
+        <div v-if="assignDialog.mode === 'person' && assignContextAsset" class="assign-context">
+          <span class="assign-context__icon"><app-icon name="inventory"></app-icon></span>
+          <div><strong>{{ assignContextAsset.name }}</strong><span class="mono">{{ assignContextAsset.id }} · {{ assignContextAsset.type }}</span></div>
+          <span class="cell-note">{{ assigneeLabel(assignContextAsset) || 'Sin responsable' }}</span>
+        </div>
+        <div v-else-if="assignDialog.mode === 'asset' && assignTargetPerson" class="assign-context">
+          <span class="person-avatar" aria-hidden="true">{{ personInitials(assignTargetPerson.name) }}</span>
+          <div><strong>{{ assignTargetPerson.name }}</strong><span>{{ assignTargetPerson.role || 'Sin cargo' }}</span></div>
+          <span class="cell-note">{{ personAssetCount(assignTargetPerson.id) }} activos</span>
+        </div>
+
+        <div class="search-field assign-search">
+          <app-icon name="search"></app-icon>
+          <label class="sr-only" for="assign-search">{{ assignDialog.mode === 'person' ? 'Buscar personas' : 'Buscar activos' }}</label>
+          <input id="assign-search" v-model="assignDialog.search" type="search" :placeholder="assignDialog.mode === 'person' ? 'Buscar por nombre o cargo' : 'Buscar por nombre, código o tipo'" autocomplete="off">
+          <button v-if="assignDialog.search" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="assignDialog.search = ''">
+            <app-icon name="close"></app-icon>
+          </button>
+        </div>
+
+        <div v-if="assignDialog.mode === 'person'" class="assign-options" role="group" aria-label="Personas disponibles">
+          <button type="button" class="assign-option assign-option--none" :class="{ 'is-selected': !assignDialog.selectedId }" :aria-pressed="!assignDialog.selectedId" @click="selectAssignPerson('')">
+            <span class="assign-option__mark"><app-icon name="close"></app-icon></span>
+            <span><strong>Sin responsable</strong><small>Dejar el activo sin asignar</small></span>
+            <app-icon v-if="!assignDialog.selectedId" name="check"></app-icon>
+          </button>
+          <button v-for="person in assignPeople" :key="person.id" type="button" class="assign-option"
+                  :class="{ 'is-selected': assignDialog.selectedId === person.id, 'is-inactive': !person.active }"
+                  :aria-pressed="assignDialog.selectedId === person.id" :disabled="!person.active && assignDialog.personId !== person.id"
+                  @click="selectAssignPerson(person.id)">
+            <span class="person-avatar" aria-hidden="true">{{ personInitials(person.name) }}</span>
+            <span><strong>{{ person.name }}</strong><small>{{ person.role || 'Sin cargo' }} · {{ departmentLabel(person.departmentId) }}</small></span>
+            <span v-if="!person.active" class="status-pill status-pill--retired">Inactiva</span>
+            <app-icon v-else-if="assignDialog.selectedId === person.id" name="check"></app-icon>
+          </button>
+          <p v-if="!assignPeople.length" class="assign-empty">No hay personas que coincidan con la búsqueda.</p>
+        </div>
+
+        <div v-else class="assign-options" role="group" aria-label="Activos sin responsable">
+          <button v-for="asset in assignAssets" :key="asset.id" type="button" class="assign-option"
+                  :class="{ 'is-selected': assignDialog.selectedId === asset.id }" :aria-pressed="assignDialog.selectedId === asset.id"
+                  @click="selectAssignAsset(asset.id)">
+            <span class="assign-option__thumb"><img :src="assetImage(asset)" width="640" height="400" alt=""></span>
+            <span><strong>{{ asset.name }}</strong><small>{{ asset.id }} · {{ asset.type }} · {{ siteLabel(asset.site) }}</small></span>
+            <app-icon v-if="assignDialog.selectedId === asset.id" name="check"></app-icon>
+          </button>
+          <p v-if="!assignAssets.length" class="assign-empty">No hay activos sin responsable que coincidan con la búsqueda.</p>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeAssignDialog">Cancelar</button>
+        <button type="button" class="btn btn--primary" @click="confirmAssignment">{{ assignDialog.mode === 'person' ? 'Guardar responsable' : 'Asignar activo' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Confirmación -->
+    <modal-shell :open="confirmDialog.open" :title="confirmDialog.title" eyebrow="Confirmar" @close="closeConfirm">
+      <div class="confirm-dialog">
+        <span class="confirm-dialog__icon" :class="{ 'confirm-dialog__icon--danger': confirmDialog.confirmLabel }">
+          <app-icon :name="confirmDialog.confirmLabel ? 'trash' : 'alert'"></app-icon>
+        </span>
+        <div>
+          <p class="confirm-dialog__message">{{ confirmDialog.message }}</p>
+          <p class="confirm-dialog__detail">{{ confirmDialog.detail }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeConfirm">{{ confirmDialog.confirmLabel ? 'Cancelar' : 'Entendido' }}</button>
+        <button v-if="confirmDialog.confirmLabel" type="button" class="btn btn--danger" @click="executeConfirm">{{ confirmDialog.confirmLabel }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Configuración por activo -->
+    <modal-shell :open="assetConfig.open" title="Integraciones del activo" eyebrow="Acceso remoto" @close="closeAssetConfig">
+      <div v-if="assetConfig.asset" class="asset-config">
+        <div class="asset-config__context">
+          <span class="asset-config__thumb"><img :src="assetImage(assetConfig.asset)" width="640" height="400" alt=""></span>
+          <div><strong>{{ assetConfig.asset.name }}</strong><span class="mono">{{ assetConfig.asset.id }} · {{ assetConfig.asset.brand }} {{ assetConfig.asset.model }}</span></div>
+        </div>
+        <p class="form-intro">Deja un campo vacío para ocultar esa integración.</p>
+        <form id="asset-config-form" class="form-stack" @submit.prevent="saveAssetConfig" novalidate>
+          <div v-if="settings.anydeskEnabled" class="field" :class="{ 'field--invalid': assetConfigErrors.anydeskId }">
+            <label for="asset-anydesk">Identificador de AnyDesk</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="remote"></app-icon>
+              <input id="asset-anydesk" v-model="assetConfig.anydeskId" type="text" autocomplete="off" placeholder="Ej. 1523884017" inputmode="numeric">
+            </div>
+            <p class="field__hint">Identificador numérico del dispositivo en AnyDesk.</p>
+            <p v-if="assetConfigErrors.anydeskId" class="field__error">{{ assetConfigErrors.anydeskId }}</p>
+          </div>
+          <div v-if="settings.rmmEnabled" class="field" :class="{ 'field--invalid': assetConfigErrors.rmmAgentId }">
+            <label for="asset-rmm">ID del agente en Tactical RMM</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="activity"></app-icon>
+              <input id="asset-rmm" v-model="assetConfig.rmmAgentId" type="text" autocomplete="off" placeholder="Ej. rmm-7fd2-1042">
+            </div>
+            <p class="field__hint">Identificador del agente registrado en la plataforma RMM.</p>
+            <p v-if="assetConfigErrors.rmmAgentId" class="field__error">{{ assetConfigErrors.rmmAgentId }}</p>
+          </div>
+          <div v-if="!anyIntegrationEnabled" class="form-note">
+            <app-icon name="info"></app-icon>
+            <p>Todas las integraciones están desactivadas. Actívalas en Configuración para asignar identificadores.</p>
+          </div>
+          <p v-if="assetConfigErrors.general" class="form-error" role="alert">{{ assetConfigErrors.general }}</p>
+        </form>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeAssetConfig">Cancelar</button>
+        <button type="submit" form="asset-config-form" class="btn btn--primary">Guardar integraciones</button>
+      </template>
+    </modal-shell>
+
+    <asset-editor :app="$root"></asset-editor>
+
+    <modal-shell
+      :open="statusDialog.open"
+      eyebrow="Estado del activo"
+      :title="statusAsset ? 'Cambiar estado de ' + statusAsset.name : 'Cambiar estado'"
+      @close="closeStatusDialog()"
+    >
+      <form id="asset-status-form" class="form-stack" novalidate @submit.prevent="confirmStatusChange()">
+        <p class="modal-lead">El estado actual es <strong>{{ statusAsset ? statusAsset.status : '—' }}</strong>. Elige el nuevo estado y deja una nota si hace falta contexto.</p>
+        <div class="status-choice-list" role="radiogroup" aria-label="Nuevo estado">
+          <label
+            v-for="status in assetAdmin.statuses"
+            :key="status.id"
+            class="status-choice"
+            :class="{ 'status-choice--active': statusDialog.statusId === status.id }"
+          >
+            <input v-model="statusDialog.statusId" class="sr-only" type="radio" name="asset-status" :value="status.id" />
+            <span class="status-dot" :class="'status-dot--' + status.tone"></span>
+            <span class="status-choice__copy">
+              <strong>{{ status.label }}</strong>
+              <small>{{ status.final ? 'Retira el activo del inventario operativo y conserva el historial' : assetToneLabel(status.tone) }}</small>
+            </span>
+            <app-icon v-if="statusDialog.statusId === status.id" name="check"></app-icon>
+          </label>
+        </div>
+        <div class="field">
+          <label for="asset-status-note">Nota del cambio <span class="field__optional">(opcional)</span></label>
+          <div class="input-shell">
+            <input id="asset-status-note" v-model="statusDialog.note" type="text" autocomplete="off" placeholder="Ej. Enviado al proveedor para revisión">
+          </div>
+        </div>
+        <p v-if="statusDialogError" class="field__error" role="alert">{{ statusDialogError }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeStatusDialog()">Cancelar</button>
+        <button type="submit" form="asset-status-form" class="btn btn--primary">Actualizar estado</button>
+      </template>
+    </modal-shell>
+
+    <modal-shell
+      :open="retireDialog.open"
+      eyebrow="Baja de activo"
+      :title="retireAsset ? 'Dar de baja ' + retireAsset.name : 'Dar de baja el activo'"
+      @close="closeRetireDialog()"
+    >
+      <form id="asset-retire-form" class="form-stack" novalidate @submit.prevent="confirmRetire()">
+        <div class="config-note config-note--hold">
+          <app-icon name="info"></app-icon>
+          <p>La baja conserva el registro, su fotografía y todo el historial. El activo deja de contar como operativo y puede restaurarse después.</p>
+        </div>
+        <div class="field">
+          <label for="asset-retire-reason">Motivo de la baja</label>
+          <div class="input-shell">
+            <select id="asset-retire-reason" v-model="retireDialog.reason">
+              <option v-for="reason in retireReasons" :key="reason" :value="reason">{{ reason }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="asset-retire-note">Detalle <span class="field__optional">(opcional)</span></label>
+          <div class="input-shell input-shell--area">
+            <textarea id="asset-retire-note" v-model="retireDialog.note" rows="3" placeholder="Destino del equipo, reemplazo o número de incidencia"></textarea>
+          </div>
+        </div>
+        <label class="check-row">
+          <input v-model="retireDialog.acknowledged" type="checkbox" />
+          <span>Confirmo que el activo deja de estar operativo y que la ficha se conserva para consulta.</span>
+        </label>
+        <p v-if="retireDialogError" class="field__error" role="alert">{{ retireDialogError }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeRetireDialog()">Cancelar</button>
+        <button type="submit" form="asset-retire-form" class="btn btn--danger">Dar de baja</button>
+      </template>
+    </modal-shell>
+
+    <modal-shell
+      :open="deleteDialog.open"
+      eyebrow="Eliminación definitiva"
+      :title="deleteAsset ? 'Eliminar ' + deleteAsset.id : 'Eliminar activo'"
+      @close="closeDeleteAsset()"
+    >
+      <form id="asset-delete-form" class="form-stack" novalidate @submit.prevent="confirmDeleteAsset()">
+        <div class="config-note config-note--danger">
+          <app-icon name="alert"></app-icon>
+          <p>Esta acción borra el activo y su historial de este navegador. No se puede deshacer.</p>
+        </div>
+        <div v-if="deleteAsset" class="delete-identity">
+          <span class="eyebrow">Activo seleccionado</span>
+          <strong>{{ deleteAsset.name }}</strong>
+          <span class="mono">{{ deleteAsset.id }} · {{ deleteAsset.code }}</span>
+        </div>
+        <template v-if="deleteAssetIsProtected()">
+          <div class="field">
+            <label for="asset-delete-confirm">Escribe el ID permanente para confirmar</label>
+            <div class="input-shell">
+              <input id="asset-delete-confirm" v-model="deleteDialog.typed" type="text" autocomplete="off" :placeholder="deleteAsset ? deleteAsset.id : 'AM-0000'">
+            </div>
+            <span class="field__hint">Protección del modo producción.</span>
+          </div>
+          <div class="field">
+            <label for="asset-delete-reason">Motivo de la eliminación</label>
+            <div class="input-shell input-shell--area">
+              <textarea id="asset-delete-reason" v-model="deleteDialog.reason" rows="2" placeholder="Ej. Registro duplicado por error de carga"></textarea>
+            </div>
+          </div>
+        </template>
+        <p v-else class="modal-lead">Modo desarrollo: la confirmación es directa. El modo producción exige escribir el ID y el motivo.</p>
+        <p v-if="deleteDialogError" class="field__error" role="alert">{{ deleteDialogError }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeDeleteAsset()">Cancelar</button>
+        <button type="submit" form="asset-delete-form" class="btn btn--danger">Eliminar definitivamente</button>
+      </template>
+    </modal-shell>
+
+    <modal-shell
+      :open="fieldDialog.open"
+      eyebrow="Biblioteca de campos"
+      :title="fieldDialog.mode === 'edit' ? 'Editar campo' : 'Nuevo campo técnico'"
+      @close="closeAssetField()"
+    >
+      <form id="asset-field-form" class="form-stack" novalidate @submit.prevent="saveAssetField()">
+        <div class="field" :class="{ 'field--invalid': !!fieldDialogErrors.label }">
+          <label for="asset-field-label">Nombre del campo</label>
+          <div class="input-shell">
+            <input id="asset-field-label" v-model="fieldDialog.label" type="text" autocomplete="off" placeholder="Ej. Número de serie">
+          </div>
+          <p v-if="fieldDialogErrors.label" class="field__error">{{ fieldDialogErrors.label }}</p>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="asset-field-type">Tipo de dato</label>
+            <div class="input-shell">
+              <select id="asset-field-type" v-model="fieldDialog.type">
+                <option v-for="type in fieldTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="asset-field-unit">Unidad <span class="field__optional">(opcional)</span></label>
+            <div class="input-shell">
+              <input id="asset-field-unit" v-model="fieldDialog.unit" type="text" autocomplete="off" placeholder="GB, u, mm">
+            </div>
+          </div>
+        </div>
+        <div v-if="fieldDialog.type === 'select'" class="field" :class="{ 'field--invalid': !!fieldDialogErrors.options }">
+          <label for="asset-field-options">Opciones separadas por comas</label>
+          <div class="input-shell">
+            <input id="asset-field-options" v-model="fieldDialog.options" type="text" autocomplete="off" placeholder="Activo, Respaldo, Retirado">
+          </div>
+          <p v-if="fieldDialogErrors.options" class="field__error">{{ fieldDialogErrors.options }}</p>
+        </div>
+        <div class="field">
+          <label for="asset-field-hint">Ayuda del campo <span class="field__optional">(opcional)</span></label>
+          <div class="input-shell">
+            <input id="asset-field-hint" v-model="fieldDialog.hint" type="text" autocomplete="off" placeholder="Texto de apoyo que aparece bajo el campo">
+          </div>
+        </div>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeAssetField()">Cancelar</button>
+        <button type="submit" form="asset-field-form" class="btn btn--primary">Guardar campo</button>
+      </template>
+    </modal-shell>
+
+    <modal-shell
+      :open="assetStatusDialog.open"
+      eyebrow="Estados del activo"
+      :title="assetStatusDialog.mode === 'edit' ? 'Editar estado' : 'Nuevo estado'"
+      @close="closeAssetStatusDialog()"
+    >
+      <form id="asset-status-config-form" class="form-stack" novalidate @submit.prevent="saveAssetStatus()">
+        <div class="field" :class="{ 'field--invalid': !!assetStatusErrors.label }">
+          <label for="asset-status-label">Nombre del estado</label>
+          <div class="input-shell">
+            <input id="asset-status-label" v-model="assetStatusDialog.label" type="text" autocomplete="off" placeholder="Ej. En revisión">
+          </div>
+          <p v-if="assetStatusErrors.label" class="field__error">{{ assetStatusErrors.label }}</p>
+        </div>
+        <div class="field">
+          <label for="asset-status-tone">Familia de color</label>
+          <div class="input-shell">
+            <select id="asset-status-tone" v-model="assetStatusDialog.tone">
+              <option v-for="tone in statusTones" :key="tone.value" :value="tone.value">{{ tone.label }}</option>
+            </select>
+          </div>
+          <span class="field__hint">El color acompaña al estado en tablas, tarjetas y fichas.</span>
+        </div>
+        <div class="field">
+          <label class="switch">
+            <input v-model="assetStatusDialog.final" type="checkbox">
+            <span class="switch__track"><span class="switch__thumb"></span></span>
+            <span class="switch__text">Estado final de baja</span>
+          </label>
+          <span class="field__hint">Solo puede existir un estado final. Retira el activo del inventario operativo.</span>
+          <p v-if="assetStatusErrors.final" class="field__error">{{ assetStatusErrors.final }}</p>
+        </div>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeAssetStatusDialog()">Cancelar</button>
+        <button type="submit" form="asset-status-config-form" class="btn btn--primary">Guardar estado</button>
+      </template>
+    </modal-shell>
+
+    <bulk-editor :open="bulk.open" :ids="bulk.ids" :app="$root" @close="closeBulkEditor" @applied="handleBulkApplied"></bulk-editor>
+
+    <search-palette :open="universalOpen" :records="universalRecords" :favorites="workspaceFavoriteKeys" :usage="workspaceUsage" @close="universalOpen=false" @select="openWorkspaceTarget" @favorite="toggleWorkspaceFavorite"></search-palette>
+    <quick-intervention v-if="quickDialog.type==='intervention'" :open="true" :app="$root" :asset-id="quickDialog.assetId" :intervention="quickDialog.intervention" @close="quickDialog.type=''" @saved="quickDialog.type=''"></quick-intervention>
+    <quick-incident v-if="quickDialog.type==='incident'" :open="true" :app="$root" :primary-asset-id="quickDialog.assetId" @close="quickDialog.type=''" @saved="quickDialog.type=''"></quick-incident>
+    <transition name="toast">
+      <div v-if="toast.text" class="toast" :class="{ 'toast--error': toast.tone === 'error' }" role="status" aria-live="polite">
+        <span class="toast__icon"><app-icon :name="toast.tone === 'error' ? 'alert' : 'check'"></app-icon></span>
+        <span>{{ toast.text }}</span>
+      </div>
+    </transition>
+  </div>
+
+  <script src="assets/vendor/vue.global.prod.js"></script>
+  <script src="assets/vendor/maplibre-gl.js"></script>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/map-data.js"></script>
+  <script src="assets/js/asset-schema.js"></script>
+  <script src="assets/js/operations-data.js"></script>
+  <script src="assets/js/maintenance-data.js"></script>
+  <script src="assets/js/maintenance-engine.js"></script>
+  <script src="assets/js/monitoring-data.js"></script>
+  <script src="assets/js/monitoring-engine.js"></script>
+  <script src="assets/js/relations-data.js"></script>
+  <script src="assets/js/icons.js"></script>
+  <script src="assets/js/components.js"></script>
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/methods.js"></script>
+  <script src="assets/js/config.js"></script>
+  <script src="assets/js/people.js"></script>
+  <script src="assets/js/asset-admin.js"></script>
+  <script src="assets/js/operations-engine.js"></script>
+  <script src="assets/js/operations-views.js"></script>
+  <script src="assets/js/maintenance-dialogs.js"></script>
+  <script src="assets/js/maintenance-views.js"></script>
+  <script src="assets/js/maintenance-panels.js"></script>
+  <script src="assets/js/monitoring-views.js"></script>
+  <script src="assets/js/monitoring-settings.js"></script>
+  <script src="assets/js/graph-layout.js"></script>
+  <script src="assets/js/relations-engine.js"></script>
+  <script src="assets/js/asset-editor.js"></script>
+  <script src="assets/js/asset-config-views.js"></script>
+  <script src="assets/js/access.js"></script>
+  <script src="assets/js/access-views.js"></script>
+  <script src="assets/js/dashboard-model.js"></script>
+  <script src="assets/js/dashboard-preferences.js"></script>
+  <script src="assets/js/dashboard-views.js"></script>
+  <script src="assets/js/panel.js"></script>
+  <script src="assets/js/transfer-data.js"></script>
+  <script src="assets/js/transfer-engine.js"></script>
+  <script src="assets/js/transfer-export-views.js"></script>
+  <script src="assets/js/transfer-views.js"></script>
+  <script src="assets/js/relations-views.js"></script>
+  <script src="assets/js/graph-views.js"></script>
+  <script src="assets/js/map-engine.js"></script>
+  <script src="assets/js/map-floor-logic.js"></script>
+  <script src="assets/js/map-views.js"></script>
+  <script src="assets/js/map-config-views.js"></script>
+  <script src="assets/vendor/report-qrcode.js"></script>
+  <script src="assets/js/report-engine.js"></script>
+  <script src="assets/js/warranty-engine.js"></script>
+  <script src="assets/js/label-engine.js"></script>
+  <script src="assets/js/label-views.js"></script>
+  <script src="assets/js/report-views.js"></script>
+  <script src="assets/js/warranty-views.js"></script>
+  <script src="assets/js/appearance-engine.js"></script>
+  <script src="assets/js/appearance-package.js"></script>
+  <script src="assets/js/appearance-runtime.js"></script>
+  <script src="assets/js/appearance-views.js"></script>
+  <script src="assets/js/workspace-engine.js"></script>
+  <script src="assets/js/workspace-views.js"></script>
+  <script src="assets/js/search-engine.js"></script>
+  <script src="assets/js/search-views.js"></script>
+  <script src="assets/js/workspace-runtime.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

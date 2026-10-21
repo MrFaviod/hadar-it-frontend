@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" role="img" aria-labelledby="title desc">
+  <title id="title">Servidor genérico</title>
+  <desc id="desc">Ilustración de un servidor en rack con indicadores de actividad.</desc>
+  <defs>
+    <pattern id="sv-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#c8dddd" stroke-width="1" opacity=".55"/>
+    </pattern>
+    <radialGradient id="sv-halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#d7edeb"/>
+      <stop offset=".7" stop-color="#e4f1f0" stop-opacity=".6"/>
+      <stop offset="1" stop-color="#eff5f5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="640" height="400" fill="#eff5f5"/>
+  <rect width="640" height="400" fill="url(#sv-grid)"/>
+  <ellipse cx="320" cy="196" rx="268" ry="176" fill="url(#sv-halo)"/>
+  <path d="M92 324h456" stroke="#b9d3d3" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="320" cy="326" rx="168" ry="13" fill="#d7e7e7"/>
+  <rect x="196" y="58" width="248" height="258" rx="13" fill="#173849" stroke="#0c2634" stroke-width="4"/>
+  <rect x="214" y="78" width="212" height="36" rx="6" fill="#0d2b3b"/>
+  <rect x="214" y="122" width="212" height="36" rx="6" fill="#0d2b3b"/>
+  <rect x="214" y="166" width="212" height="36" rx="6" fill="#0d2b3b"/>
+  <rect x="214" y="210" width="212" height="36" rx="6" fill="#0d2b3b"/>
+  <rect x="214" y="254" width="212" height="36" rx="6" fill="#0d2b3b"/>
+  <path d="M230 90h72M230 101h48M230 134h82M230 145h55M230 178h64M230 189h40M230 222h78M230 233h52M230 266h60M230 277h36" stroke="#426d79" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="398" cy="96" r="5" fill="#69c9c1"/>
+  <circle cx="414" cy="96" r="5" fill="#69c9c1"/>
+  <circle cx="398" cy="140" r="5" fill="#69c9c1"/>
+  <circle cx="414" cy="140" r="5" fill="#315866"/>
+  <circle cx="398" cy="184" r="5" fill="#e0a44c"/>
+  <circle cx="414" cy="184" r="5" fill="#69c9c1"/>
+  <circle cx="398" cy="228" r="5" fill="#69c9c1"/>
+  <circle cx="414" cy="228" r="5" fill="#69c9c1"/>
+  <circle cx="398" cy="272" r="5" fill="#69c9c1"/>
+  <circle cx="414" cy="272" r="5" fill="#315866"/>
+</svg>
