@@ -199,7 +199,7 @@
               <div class="input-shell">
                 <app-icon name="user"></app-icon>
                 <input id="login-user" v-model="loginForm.username" type="text" name="username" autocomplete="username"
-                       placeholder="admin" :aria-invalid="!!loginErrors.username"
+                       placeholder="Nombre de usuario" :aria-invalid="!!loginErrors.username"
                        :aria-describedby="loginErrors.username ? 'login-user-error' : null"
                        @blur="validateLoginField('username')" @input="clearLoginError('username')">
               </div>
@@ -235,14 +235,6 @@
             </button>
           </form>
 
-          <details class="demo-access">
-            <summary class="demo-access__summary">Acceso de demostración</summary>
-            <div class="demo-access__body">
-              <p class="demo-access__cred">Usuario <strong>admin</strong><span aria-hidden="true">·</span>Contraseña <strong>admin</strong></p>
-              <button type="button" class="text-button demo-access__fill" @click="fillDemo">Rellenar credenciales</button>
-              <p class="demo-access__hint">Otros accesos demo: operador/operador · lector/lector</p>
-            </div>
-          </details>
         </div>
       </main>
     </section>

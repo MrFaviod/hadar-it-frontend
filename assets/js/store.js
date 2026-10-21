@@ -406,7 +406,7 @@
   const storedPrefs = readJSON(window.localStorage, KEYS.prefs, {});
   const storedSettings = readJSON(window.localStorage, KEYS.settings, {});
   const storedConfig = readJSON(window.localStorage, KEYS.config, null);
-  const storedSession = readJSON(window.sessionStorage, KEYS.session, null);
+
   const storedOverrides = readJSON(window.localStorage, KEYS.overrides, {});
   const storedPeople = readJSON(window.localStorage, KEYS.people, null);
   const storedAssignments = readJSON(window.localStorage, KEYS.assignments, null);
@@ -479,7 +479,7 @@
         assetAdmin,
         settings: settingsFromConfig(config),
         prefs: normalizePrefs(storedPrefs, config.categories, config.sites, config.departments),
-        authenticated: !!(storedSession && storedSession.user === 'admin')
+        authenticated: false
       };
     }
   };

@@ -5,6 +5,9 @@ import re
 from PIL import Image
 from playwright.sync_api import expect, sync_playwright
 
+USERNAME = os.environ['ITSM_TEST_USERNAME']
+PASSWORD = os.environ['ITSM_TEST_PASSWORD']
+
 BASE = os.environ.get('ASSET_URL', 'http://127.0.0.1:5173')
 
 
@@ -40,8 +43,8 @@ with sync_playwright() as p:
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.goto(BASE, wait_until='networkidle')
-            page.get_by_label('Usuario', exact=True).fill('admin')
-            page.get_by_label('Contraseña', exact=True).fill('admin')
+            page.get_by_label('Usuario', exact=True).fill(USERNAME)
+            page.get_by_label('Contraseña', exact=True).fill(PASSWORD)
             page.get_by_role('button', name='Entrar', exact=True).click()
             expect(page.locator('.app-shell')).to_be_visible()
             if preset != 'generic':

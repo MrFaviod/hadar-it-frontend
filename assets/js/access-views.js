@@ -97,11 +97,12 @@
   }
 
   function canAssignRole(app, role) {
-    if (!role || appCan(app, 'roles.manage')) return true;
-    const actor = app && (app.currentUser || app.currentAccount);
-    if (!actor) return rolePermissionIds(app, role).every((permission) => appCan(app, permission));
-    const own = userPermissionIds(app, actor);
-    return rolePermissionIds(app, role).every((permission) => own.indexOf(permission) !== -1);
+    return !!role && rolePermissionIds(app, role).every((permission) => appCan(app, permission));
+  }
+
+  function canEditAccount(app, user) {
+    const role = list(app && app.security && app.security.roles).find((item) => item.id === (user && user.roleId));
+    return appCan(app, 'users.edit') && canAssignRole(app, role);
   }
 
   function userPath(user) {
@@ -165,7 +166,7 @@
         return list(this.app.security && this.app.security.roles);
       },
       roleChoices() {
-        return this.roles.filter((role) => canAssignRole(this.app, role) || role.id === this.draft.roleId);
+        return this.roles.filter((role) => canAssignRole(this.app, role) || (this.draft.id && role.id === this.draft.roleId));
       },
       people() {
         const currentId = this.draft.personId || '';
@@ -216,9 +217,9 @@
             <p v-if="errors.personId" class="field__error">{{ errors.personId }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': errors.password }">
-            <label for="access-password">{{ editing ? 'Contraseña de demostración' : 'Contraseña de demostración' }} <span class="field__optional">{{ editing ? 'Opcional' : 'Requerida' }}</span></label>
-            <div class="input-shell input-shell--plain"><app-icon name="lock"></app-icon><input id="access-password" v-model="draft.password" type="password" autocomplete="new-password" maxlength="100" :placeholder="editing ? 'Dejar sin cambios' : 'Contraseña de acceso'" @blur="validate('password')"></div>
-            <p class="field__hint">Solo se usa para la demostración local.</p>
+            <label for="access-password">Contraseña <span class="field__optional">{{ editing ? 'Opcional' : 'Requerida' }}</span></label>
+            <div class="input-shell input-shell--plain"><app-icon name="lock"></app-icon><input id="access-password" v-model="draft.password" type="password" autocomplete="new-password" maxlength="128" :placeholder="editing ? 'Dejar sin cambios' : 'Contraseña de acceso'" @blur="validate('password')"></div>
+            <p class="field__hint">Entre 12 y 128 caracteres.</p>
             <p v-if="errors.password" class="field__error">{{ errors.password }}</p>
           </div>
         </div>
@@ -300,8 +301,9 @@
         this.draft = blankUser(this.app);
         this.errors = { username: '', name: '', email: '', roleId: '', personId: '', password: '', general: '' };
       },
+      editable(user) { return canEditAccount(this.app, user); },
       openEdit(user) {
-        if (!this.canEdit || !user) return;
+        if (!this.editable(user)) return;
         this.dialog = { open: true, mode: 'edit' };
         this.draft = Object.assign(blankUser(this.app), clone(user), { password: '' });
         this.errors = { username: '', name: '', email: '', roleId: '', personId: '', password: '', general: '' };
@@ -318,7 +320,7 @@
         if (field === 'name' && !value) errors.name = 'Introduce un nombre visible.';
         if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) errors.email = 'Introduce un correo válido.';
         if (field === 'roleId' && !this.draft.roleId) errors.roleId = 'Selecciona un rol.';
-        if (field === 'password' && this.dialog.mode === 'create' && !this.draft.password) errors.password = 'Introduce una contraseña de demostración.';
+        if (field === 'password' && this.dialog.mode === 'create' && !this.draft.password) errors.password = 'Introduce una contraseña.';
         this.errors = errors;
       },
       validDraft() {
@@ -344,7 +346,7 @@
         else finish(result);
       },
       requestDeactivate(user) {
-        if (!this.canEdit || !user) return;
+        if (!canEditAccount(this.app, user)) return;
         this.confirm = { open: true, user };
       },
       closeConfirm() {
@@ -370,7 +372,7 @@
         else finish(result);
       },
       activate(user) {
-        if (!this.canEdit || !user || typeof this.app.setUserActive !== 'function') return;
+        if (!canEditAccount(this.app, user) || typeof this.app.setUserActive !== 'function') return;
         const result = this.app.setUserActive(user, true);
         const finish = (value) => {
           const normalized = normalizeResult(value);
@@ -420,7 +422,7 @@
                   <td data-label="Persona vinculada"><span :class="{ 'cell-muted': !user.personId }">{{ personLabel(user) }}</span></td>
                   <td data-label="Último acceso"><span class="cell-note">{{ lastAccess(user.lastAccess) }}</span></td>
                   <td data-label="Estado"><span class="status-pill" :class="user.active ? 'status--ok' : 'status--hold'">{{ user.active ? 'Activa' : 'Inactiva' }}</span></td>
-                  <td data-label="Acciones" class="access-actions"><div class="quick-actions"><button type="button" class="quick-action" @click="openDetail(user)"><app-icon name="arrow-right"></app-icon><span>Ver ficha</span></button><button v-if="canEdit" type="button" class="quick-action" @click="openEdit(user)"><app-icon name="pencil"></app-icon><span>Editar</span></button><button v-if="canEdit && user.active" type="button" class="quick-action quick-action--danger" @click="requestDeactivate(user)"><app-icon name="lock"></app-icon><span>Desactivar</span></button><button v-if="canEdit && !user.active" type="button" class="quick-action" @click="activate(user)"><app-icon name="check"></app-icon><span>Activar</span></button></div></td>
+                  <td data-label="Acciones" class="access-actions"><div class="quick-actions"><button type="button" class="quick-action" @click="openDetail(user)"><app-icon name="arrow-right"></app-icon><span>Ver ficha</span></button><button v-if="editable(user)" type="button" class="quick-action" @click="openEdit(user)"><app-icon name="pencil"></app-icon><span>Editar</span></button><button v-if="editable(user) && user.active" type="button" class="quick-action quick-action--danger" @click="requestDeactivate(user)"><app-icon name="lock"></app-icon><span>Desactivar</span></button><button v-if="editable(user) && !user.active" type="button" class="quick-action" @click="activate(user)"><app-icon name="check"></app-icon><span>Activar</span></button></div></td>
                 </tr>
               </tbody>
             </table>
@@ -476,7 +478,8 @@
         })).filter((group) => group.permissions.length);
       },
       canView() { return appCan(this.app, 'users.view'); },
-      canEdit() { return appCan(this.app, 'users.edit'); }
+      canEdit() { return appCan(this.app, 'users.edit'); },
+      canEditTarget() { return !!this.account && canEditAccount(this.app, this.account); }
     },
     watch: {
       'app.route.userId'(value) {
@@ -509,7 +512,7 @@
         else window.location.hash = '#/usuarios';
       },
       openEdit() {
-        if (!this.canEdit || !this.account) return;
+        if (!this.canEditTarget) return;
         this.dialog.open = true;
         this.draft = Object.assign(blankUser(this.app), clone(this.account), { password: '' });
         this.errors = { username: '', name: '', email: '', roleId: '', personId: '', password: '', general: '' };
@@ -547,7 +550,7 @@
         else finish(result);
       },
       requestDeactivate() {
-        if (!this.canEdit || !this.account || !this.account.active) return;
+        if (!this.canEditTarget || !this.account.active) return;
         this.confirm.open = true;
       },
       closeConfirm() { if (!this.changing) this.confirm.open = false; },
@@ -574,7 +577,7 @@
       <section v-if="account && canView" class="page access-page access-detail" aria-labelledby="access-detail-title">
         <nav class="breadcrumbs" aria-label="Migas de pan"><a href="#/usuarios" @click.prevent="goBack">Usuarios</a><app-icon name="chevron-right"></app-icon><span aria-current="page">{{ account.username }}</span></nav>
         <button type="button" class="back-link" @click="goBack"><app-icon name="arrow-left"></app-icon> Volver a usuarios</button>
-        <header class="access-detail-head"><span class="access-avatar access-avatar--xl" :class="{ 'is-inactive': !account.active }">{{ initials(account) }}</span><div class="access-detail-head__copy"><div class="detail-eyebrow"><span class="access-role-label">{{ roleLabel(account.roleId) }}</span><span class="status-pill" :class="account.active ? 'status--ok' : 'status--hold'">{{ account.active ? 'Activa' : 'Inactiva' }}</span></div><h1 id="access-detail-title">{{ account.name || account.username }}</h1><p class="detail-sub"><span class="mono">{{ account.username }}</span><span v-if="account.email"> · {{ account.email }}</span></p></div><div class="access-detail-head__actions"><button v-if="canEdit" type="button" class="btn btn--secondary" @click="openEdit"><app-icon name="pencil"></app-icon> Editar</button><button v-if="canEdit && account.active" type="button" class="btn btn--ghost" @click="requestDeactivate"><app-icon name="lock"></app-icon> Desactivar</button><button v-if="canEdit && !account.active" type="button" class="btn btn--secondary" @click="setActive(true)"><app-icon name="check"></app-icon> Activar</button></div></header>
+        <header class="access-detail-head"><span class="access-avatar access-avatar--xl" :class="{ 'is-inactive': !account.active }">{{ initials(account) }}</span><div class="access-detail-head__copy"><div class="detail-eyebrow"><span class="access-role-label">{{ roleLabel(account.roleId) }}</span><span class="status-pill" :class="account.active ? 'status--ok' : 'status--hold'">{{ account.active ? 'Activa' : 'Inactiva' }}</span></div><h1 id="access-detail-title">{{ account.name || account.username }}</h1><p class="detail-sub"><span class="mono">{{ account.username }}</span><span v-if="account.email"> · {{ account.email }}</span></p></div><div class="access-detail-head__actions"><button v-if="canEditTarget" type="button" class="btn btn--secondary" @click="openEdit"><app-icon name="pencil"></app-icon> Editar</button><button v-if="canEditTarget && account.active" type="button" class="btn btn--ghost" @click="requestDeactivate"><app-icon name="lock"></app-icon> Desactivar</button><button v-if="canEditTarget && !account.active" type="button" class="btn btn--secondary" @click="setActive(true)"><app-icon name="check"></app-icon> Activar</button></div></header>
 
         <div class="access-detail-grid"><section class="access-account-card"><header class="panel-head"><div><p class="eyebrow">Cuenta</p><h2>Información</h2></div></header><dl class="access-facts"><div><dt>Nombre de usuario</dt><dd class="mono">{{ account.username }}</dd></div><div><dt>Correo</dt><dd><a v-if="account.email" :href="'mailto:' + account.email">{{ account.email }}</a><span v-else class="cell-muted">No registrado</span></dd></div><div><dt>Persona vinculada</dt><dd><a v-if="linkedPerson" :href="'#/persona/' + linkedPerson.id">{{ linkedPerson.name }}</a><span v-else class="cell-muted">{{ personLabel(account) }}</span></dd></div><div><dt>Último acceso</dt><dd>{{ lastAccess(account.lastAccess) }}</dd></div><div><dt>Rol</dt><dd>{{ roleLabel(account.roleId) }}</dd></div></dl></section><section class="access-permissions-card"><header class="panel-head"><div><p class="eyebrow">RBAC</p><h2>Permisos efectivos</h2></div><span class="config-badge"><app-icon name="shield"></app-icon> {{ permissionIds.length }}</span></header><div v-if="permissionGroups.length" class="effective-permissions"><section v-for="group in permissionGroups" :key="group.module.id" class="effective-permission-group"><h3><app-icon :name="group.module.icon"></app-icon>{{ group.module.label }}</h3><div class="effective-permission-list"><span v-for="permission in group.permissions" :key="permission.id" class="permission-chip"><app-icon name="check"></app-icon>{{ permission.label }}</span></div></section></div><p v-else class="access-empty-inline"><app-icon name="info"></app-icon> Este rol no tiene permisos asignados.</p></section></div>
 
@@ -620,6 +623,7 @@
       }
     },
     methods: {
+      canAssign(role) { return canAssignRole(this.app, role); },
       rolePermissionCount(role) { return list(role && role.permissions).length; },
       isBuiltIn(role) { return !!(role && (role.builtIn || role.system || ['admin', 'operator', 'reader'].indexOf(role.id) !== -1)); },
       openCreateRole() {
@@ -629,7 +633,7 @@
         this.roleErrors = { name: '', permissions: '', general: '' };
       },
       openEditRole(role) {
-        if (!this.canManageRoles || !role) return;
+        if (!this.canManageRoles || !canAssignRole(this.app, role)) return;
         this.roleDialog = { open: true, mode: 'edit' };
         this.roleDraft = Object.assign(blankRole(), clone(role), { permissions: list(role.permissions).slice() });
         this.roleErrors = { name: '', permissions: '', general: '' };
@@ -639,7 +643,7 @@
       viewPermission(module) { return module.permissions.find((permission) => permission.id === module.id + '.view'); },
       mutationDisabled(module, permission) {
         const operation = permission.id.split('.').pop();
-        return operation !== 'view' && !!this.viewPermission(module) && !this.hasPermission(module.id + '.view');
+        return !appCan(this.app, permission.id) || (operation !== 'view' && !!this.viewPermission(module) && !this.hasPermission(module.id + '.view'));
       },
       togglePermission(module, permission, checked) {
         if (!this.canManageRoles || this.mutationDisabled(module, permission)) return;
@@ -682,7 +686,7 @@
       validateSession() {
         const value = Number(this.sessionDraft);
         this.sessionErrors = { minutes: '', general: '' };
-        if (!Number.isFinite(value) || value < 5 || value > 480) this.sessionErrors.minutes = 'Usa un valor entre 5 y 480 minutos.';
+        if (!Number.isFinite(value) || value < 5 || value > 1440) this.sessionErrors.minutes = 'Usa un valor entre 5 y 1440 minutos.';
         return !this.sessionErrors.minutes;
       },
       saveSession() {
@@ -705,8 +709,8 @@
     template: `
       <section class="page access-page access-security" aria-labelledby="access-security-title">
         <header class="page-head"><div class="page-head__copy"><p class="eyebrow"><span class="eyebrow__line"></span> Configuración</p><h1 id="access-security-title">Usuarios y permisos</h1><p class="page-sub">Roles, permisos y sesión.</p></div></header>
-        <div class="security-layout"><section class="security-card security-roles"><header class="security-card__head"><div><p class="eyebrow">RBAC</p><h2>Roles</h2><p>Los permisos se aplican a todas las cuentas con el rol asignado.</p></div><button v-if="canManageRoles" type="button" class="btn btn--primary btn--small" @click="openCreateRole"><app-icon name="plus"></app-icon> Nuevo rol</button></header><div v-if="roles.length" class="role-list"><article v-for="role in roles" :key="role.id" class="role-row"><span class="role-row__icon"><app-icon name="shield"></app-icon></span><div class="role-row__copy"><div><strong>{{ role.name }}</strong><span v-if="isBuiltIn(role)" class="role-badge">Base</span></div><small>{{ rolePermissionCount(role) }} permisos · {{ (security.users || []).filter((user) => user.roleId === role.id).length }} cuentas</small></div><button v-if="canManageRoles" type="button" class="icon-button" :aria-label="'Editar rol ' + role.name" @click="openEditRole(role)"><app-icon name="pencil"></app-icon></button></article></div><div v-else class="access-empty-inline"><app-icon name="shield"></app-icon><span>No hay roles configurados.</span></div></section>
-          <section class="security-card security-session"><header class="security-card__head"><div><p class="eyebrow">Sesión</p><h2>Preferencias</h2><p>Controla cuánto tiempo puede permanecer inactiva una sesión.</p></div><span class="config-badge"><app-icon name="lock"></app-icon> Local</span></header><form class="form-stack" novalidate @submit.prevent="saveSession"><div class="field" :class="{ 'field--invalid': sessionErrors.minutes }"><label for="session-minutes">Cierre por inactividad</label><div class="input-with-suffix"><input id="session-minutes" v-model.number="sessionDraft" type="number" min="5" max="480" step="5" :disabled="!canManageSessions" @blur="validateSession"><span>minutos</span></div><p class="field__hint">Entre 5 y 480 minutos. La sesión se cierra cuando no hay actividad.</p><p v-if="sessionErrors.minutes" class="field__error">{{ sessionErrors.minutes }}</p><p v-if="sessionErrors.general" class="field__error">{{ sessionErrors.general }}</p></div><div v-if="!canManageSessions" class="form-note"><app-icon name="lock"></app-icon><p>Tu rol no puede modificar las preferencias de sesión.</p></div><div class="security-form-foot"><span class="field__hint">Actual: {{ sessionMinutes }} minutos</span><button v-if="canManageSessions" type="submit" class="btn btn--secondary" :disabled="sessionSaving">{{ sessionSaving ? 'Guardando…' : 'Guardar preferencias' }}</button></div></form></section></div>
+        <div class="security-layout"><section class="security-card security-roles"><header class="security-card__head"><div><p class="eyebrow">RBAC</p><h2>Roles</h2><p>Los permisos se aplican a todas las cuentas con el rol asignado.</p></div><button v-if="canManageRoles" type="button" class="btn btn--primary btn--small" @click="openCreateRole"><app-icon name="plus"></app-icon> Nuevo rol</button></header><div v-if="roles.length" class="role-list"><article v-for="role in roles" :key="role.id" class="role-row"><span class="role-row__icon"><app-icon name="shield"></app-icon></span><div class="role-row__copy"><div><strong>{{ role.name }}</strong><span v-if="isBuiltIn(role)" class="role-badge">Base</span></div><small>{{ rolePermissionCount(role) }} permisos · {{ (security.users || []).filter((user) => user.roleId === role.id).length }} cuentas</small></div><button v-if="canManageRoles && !isBuiltIn(role) && canAssign(role)" type="button" class="icon-button" :aria-label="'Editar rol ' + role.name" @click="openEditRole(role)"><app-icon name="pencil"></app-icon></button></article></div><div v-else class="access-empty-inline"><app-icon name="shield"></app-icon><span>No hay roles configurados.</span></div></section>
+          <section class="security-card security-session"><header class="security-card__head"><div><p class="eyebrow">Sesión</p><h2>Preferencias</h2><p>Controla la duración máxima de una sesión.</p></div><span class="config-badge"><app-icon name="lock"></app-icon> Servidor</span></header><form class="form-stack" novalidate @submit.prevent="saveSession"><div class="field" :class="{ 'field--invalid': sessionErrors.minutes }"><label for="session-minutes">Duración de la sesión</label><div class="input-with-suffix"><input id="session-minutes" v-model.number="sessionDraft" type="number" min="5" max="1440" step="5" :disabled="!canManageSessions" @blur="validateSession"><span>minutos</span></div><p class="field__hint">Entre 5 y 1440 minutos. La expiración se aplica en el servidor.</p><p v-if="sessionErrors.minutes" class="field__error">{{ sessionErrors.minutes }}</p><p v-if="sessionErrors.general" class="field__error">{{ sessionErrors.general }}</p></div><div v-if="!canManageSessions" class="form-note"><app-icon name="lock"></app-icon><p>Tu rol no puede modificar las preferencias de sesión.</p></div><div class="security-form-foot"><span class="field__hint">Actual: {{ sessionMinutes }} minutos</span><button v-if="canManageSessions" type="submit" class="btn btn--secondary" :disabled="sessionSaving">{{ sessionSaving ? 'Guardando…' : 'Guardar preferencias' }}</button></div></form></section></div>
 
         <section class="security-card permission-card"><header class="security-card__head"><div><p class="eyebrow">Catálogo</p><h2>Permisos disponibles</h2><p>Los permisos se agrupan por módulo y solo incluyen operaciones existentes.</p></div><span class="config-badge"><app-icon name="info"></app-icon> {{ catalog.length }} módulos</span></header><div class="permission-matrix" aria-label="Catálogo de permisos"><div v-for="module in catalog" :key="module.id" class="permission-module"><div class="permission-module__head"><span class="permission-module__icon"><app-icon :name="module.icon"></app-icon></span><div><strong>{{ module.label }}</strong><small>{{ module.permissions.length }} {{ module.permissions.length === 1 ? 'permiso' : 'permisos' }}</small></div></div><div class="permission-options"><label v-for="permission in module.permissions" :key="permission.id" class="permission-option" :class="{ 'is-disabled': mutationDisabled(module, permission) || !canManageRoles }"><input type="checkbox" :checked="hasPermission(permission.id)" :disabled="mutationDisabled(module, permission) || !canManageRoles" @change="togglePermission(module, permission, $event.target.checked)"><span class="permission-option__box" aria-hidden="true"><app-icon name="check"></app-icon></span><span>{{ permission.label }}</span></label></div><p v-if="viewPermission(module) && !hasPermission(module.id + '.view')" class="permission-help"><app-icon name="info"></app-icon> Activa Ver para habilitar las operaciones del módulo.</p></div></div></section>
 

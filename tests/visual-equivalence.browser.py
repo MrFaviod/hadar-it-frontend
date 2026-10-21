@@ -6,6 +6,9 @@ from pathlib import Path
 from PIL import Image, ImageChops
 from playwright.sync_api import sync_playwright, expect
 
+USERNAME = os.environ['ITSM_TEST_USERNAME']
+PASSWORD = os.environ['ITSM_TEST_PASSWORD']
+
 source = os.environ.get('SOURCE_URL', 'http://127.0.0.1:4174')
 target = os.environ.get('ASSET_URL', 'http://127.0.0.1:4173')
 output = Path(os.environ.get('VISUAL_OUTPUT', '.verification/equivalence'))
@@ -30,8 +33,8 @@ with sync_playwright() as p:
                     # Apply via the existing public theme controller, including source's exact storage format.
                     page.evaluate("document.documentElement.setAttribute('data-theme', '" + theme + "')")
                     if screen == 'inventory':
-                        page.get_by_label('Usuario', exact=True).fill('admin')
-                        page.get_by_label('Contraseña', exact=True).fill('admin')
+                        page.get_by_label('Usuario', exact=True).fill(USERNAME)
+                        page.get_by_label('Contraseña', exact=True).fill(PASSWORD)
                         page.get_by_role('button', name='Entrar', exact=True).click()
                         expect(page.locator('.app-shell')).to_be_visible()
                         page.goto(url + '/#/inventario', wait_until='networkidle')

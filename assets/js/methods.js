@@ -358,14 +358,9 @@
         document.title = 'Inventario · ' + appName;
       }
     },
-    fillDemo() {
-      this.loginForm.username = 'admin';
-      this.loginForm.password = 'admin';
-      this.loginErrors = { username: '', password: '', general: '' };
-    },
-    submitLoginWithFocus() {
-      this.submitLogin();
-      this.$nextTick(() => {
+    async submitLoginWithFocus() {
+      await this.submitLogin();
+      await this.$nextTick(() => {
         const field = this.loginErrors.username ? 'login-user' : this.loginErrors.password ? 'login-password' : null;
         const target = field
           ? document.getElementById(field)

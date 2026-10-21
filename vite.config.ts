@@ -4,6 +4,11 @@ import { defineConfig } from 'vite';
 // Keep the imported entry canonical for the existing tests and static baseline.
 export default defineConfig({
   publicDir: false,
+  server: {
+    proxy: {
+      '/api': { target: process.env.ITSM_DEV_API_URL || 'http://127.0.0.1:8000', changeOrigin: false },
+    },
+  },
   plugins: [{
     name: 'opendesign-react-entry',
     transformIndexHtml: {

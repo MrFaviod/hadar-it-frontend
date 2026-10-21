@@ -2,6 +2,9 @@
 import os
 from playwright.sync_api import sync_playwright, expect
 
+USERNAME = os.environ['ITSM_TEST_USERNAME']
+PASSWORD = os.environ['ITSM_TEST_PASSWORD']
+
 base = os.environ.get('ASSET_URL', 'http://127.0.0.1:5173')
 with sync_playwright() as p:
     browser = p.chromium.launch()
@@ -10,8 +13,8 @@ with sync_playwright() as p:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.goto(base + '/tests/host-lifecycle.html', wait_until='networkidle')
     expect(page.get_by_label('Usuario', exact=True)).to_be_visible()
-    page.get_by_label('Usuario', exact=True).fill('admin')
-    page.get_by_label('Contraseña', exact=True).fill('admin')
+    page.get_by_label('Usuario', exact=True).fill(USERNAME)
+    page.get_by_label('Contraseña', exact=True).fill(PASSWORD)
     page.get_by_role('button', name='Entrar', exact=True).click()
     expect(page.locator('.app-shell')).to_be_visible()
     page.locator('#unmount').click()

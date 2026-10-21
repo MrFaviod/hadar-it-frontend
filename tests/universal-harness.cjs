@@ -13,10 +13,11 @@ function setup(entry='index.html'){
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
  const Vue=c.Vue;c.Vue={...Vue,createApp(o){c.options=o;return {mount(){}};}};vm.runInContext(fs.readFileSync('assets/js/app.js','utf8'),c);c.Vue=Vue;
- const app=Vue.reactive(c.options.data());app.currentUser={id:'admin'};app.can=()=>true;app.showToast=m=>{app.lastToast=m;};
+ // Domain rendering tests use an explicit authorized fixture, never prototype login seeds.
+ const app=Vue.reactive(Object.assign({},c.AssetAccess.data(),c.options.data()));app.security.users=[{id:'domain-fixture',name:'Domain fixture',roleId:'fixture',active:true}];app.activeUserId='domain-fixture';app.authenticated=true;app.serverPermissions=c.AssetAccess.catalog.flatMap(group=>group.permissions.map(permission=>permission.id));app.can=()=>true;app.showToast=m=>{app.lastToast=m;};
  for(const [key,fn] of Object.entries(c.options.methods))app[key]=fn.bind(app);
  app.can=()=>true;app.showToast=m=>{app.lastToast=m;};app.setHash=h=>{app.lastHash=h;};
- for(const [key,fn] of Object.entries(c.options.computed))Object.defineProperty(app,key,{get:()=>fn.call(app),configurable:true});
+ for(const [key,fn] of Object.entries(Object.assign({},c.AssetAccess.computed,c.options.computed)))Object.defineProperty(app,key,{get:()=>fn.call(app),configurable:true});
  const errors=[];
  const host={createElement:tag=>({tag,tagName:tag.toUpperCase(),props:{},children:[],parent:null,addEventListener(){},removeEventListener(){},get options(){return this.children;},get value(){return this.props.value;},set value(v){this.props.value=v;},selected:false,multiple:false}),createText:text=>({tag:'#text',text,children:[]}),createComment:text=>({tag:'#comment',text,children:[]}),setText:(n,t)=>{n.text=t;},setElementText:(n,t)=>{n.text=t;n.children=[];},patchProp:(n,k,o,v)=>{n.props[k]=v;},insert(n,p,a){if(n.parent){const i=n.parent.children.indexOf(n);if(i>=0)n.parent.children.splice(i,1);}const i=a?p.children.indexOf(a):-1;if(i>=0)p.children.splice(i,0,n);else p.children.push(n);n.parent=p;},remove(n){if(n.parent){const i=n.parent.children.indexOf(n);if(i>=0)n.parent.children.splice(i,1);}},parentNode:n=>n.parent,nextSibling(n){return n.parent?n.parent.children[n.parent.children.indexOf(n)+1]||null:null;}};
  function mount(name,props={}){

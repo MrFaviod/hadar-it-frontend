@@ -1,7 +1,7 @@
 """Login refinement acceptance checks against the running frontend.
 
 Covers the audited login contract: required-field and failure focus, session
-rejection, demo disclosure, touch targets, keyboard access, responsive layout
+rejection, no prototype credentials, touch targets, keyboard access, responsive layout
 and the shared primary-button hover contrast in the dark theme.
 
 Run with the dev server up: python3 tests/login-audit.browser.py
@@ -15,6 +15,9 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 BASE = os.environ.get('ASSET_URL', 'http://127.0.0.1:5173')
+USERNAME = os.environ['ITSM_TEST_USERNAME']
+PASSWORD = os.environ['ITSM_TEST_PASSWORD']
+DISABLED_USERNAME = os.environ['ITSM_TEST_DISABLED_USERNAME']
 SESSION_KEY = 'asset-manager.session'
 SHOTS = Path('.verification/audit-after')
 CHECKS = []
@@ -76,7 +79,7 @@ def fresh(browser, width=1440, height=900, scheme='light'):
     page.set_default_timeout(5000)
     page.on('pageerror', lambda error: PAGE_ERRORS.append(str(error)))
     page.on('console', lambda message: CONSOLE_ERRORS.append(message.text)
-            if message.type == 'error' and 'favicon' not in message.text else None)
+            if message.type == 'error' and 'favicon' not in message.text and not re.search(r'status of (401|403)', message.text) else None)
     page.goto(BASE, wait_until='networkidle')
     expect(page.locator('.login')).to_be_visible()
     return context, page
@@ -96,10 +99,6 @@ def login(page, username, password):
     page.get_by_label('Usuario', exact=True).fill(username)
     page.get_by_label('Contraseña', exact=True).fill(password)
     page.get_by_role('button', name='Entrar', exact=True).click()
-
-
-def demo_summary(page):
-    return page.locator('.demo-access > summary')
 
 
 # --- behaviour ------------------------------------------------------------
@@ -145,9 +144,9 @@ def failed_auth_focuses_the_alert_and_stores_no_session(browser):
 @check
 def disabled_account_is_rejected_without_a_session(browser):
     context, page = fresh(browser)
-    login(page, 'inactivo', 'inactivo')
+    login(page, DISABLED_USERNAME, PASSWORD)
     alert = page.locator('.login-form .form-alert')
-    expect(alert).to_contain_text('La cuenta está desactivada.')
+    expect(alert).to_contain_text('Usuario o contraseña incorrectos.')
     assert 'form-alert' in active(page), active(page)
     assert session_stored(page) is None
     assert page.locator('.login').count() == 1
@@ -155,48 +154,34 @@ def disabled_account_is_rejected_without_a_session(browser):
 
 
 @check
-def valid_demo_credentials_open_the_application(browser):
+def installed_credentials_open_the_application_with_http_only_cookie(browser):
     context, page = fresh(browser)
-    login(page, 'admin', 'admin')
+    login(page, USERNAME, PASSWORD)
     expect(page.locator('.app-shell')).to_be_visible()
-    assert session_stored(page) is not None
+    assert session_stored(page) is None
+    cookie = next(item for item in context.cookies() if item['name'] == 'itsm_session')
+    assert cookie['httpOnly'] and cookie['sameSite'] == 'Strict'
+    assert 'itsm_session=' not in page.evaluate('document.cookie')
     assert page.evaluate('location.hash') == '#/panel'
     context.close()
 
 
 @check
-def demo_credentials_stay_collapsed_behind_a_native_disclosure(browser):
+def prototype_credentials_are_not_present(browser):
     context, page = fresh(browser)
-    details = page.locator('details.demo-access')
-    expect(details).to_have_count(1)
-    summary = demo_summary(page)
-    expect(summary).to_have_text(re.compile('Acceso de demostración'))
-    assert details.evaluate('el => el.open') is False
-    body = page.locator('.demo-access__body')
-    expect(body).to_have_count(1)
-    assert body.is_visible() is False
-    assert 'admin' not in page.locator('.login__panel').inner_text().lower(), 'collapsed login repeats demo credentials'
-
-    summary.click()
-    assert details.evaluate('el => el.open') is True
-    expect(page.locator('.demo-access__cred')).to_contain_text('admin')
-    expect(body).to_be_visible()
-    page.get_by_role('button', name='Rellenar credenciales').click()
-    assert page.get_by_label('Usuario', exact=True).input_value() == 'admin'
-    assert page.get_by_label('Contraseña', exact=True).input_value() == 'admin'
+    assert page.locator('.demo-access').count() == 0
+    assert 'admin/admin' not in page.locator('.login').inner_text()
+    assert page.get_by_role('button', name='Rellenar credenciales').count() == 0
     context.close()
 
 
 @check
 def login_targets_met_44px_and_one_primary_action(browser):
     context, page = fresh(browser)
-    demo_summary(page).click()
     targets = {
         'submit': page.get_by_role('button', name='Entrar', exact=True),
         'password reveal': page.get_by_role('button', name='Mostrar contraseña'),
         'theme toggle': page.locator('.login .theme-toggle'),
-        'demo summary': demo_summary(page),
-        'demo fill': page.get_by_role('button', name='Rellenar credenciales'),
     }
     for name, locator in targets.items():
         box = locator.bounding_box()
@@ -206,22 +191,16 @@ def login_targets_met_44px_and_one_primary_action(browser):
 
 
 @check
-def keyboard_reaches_every_login_control_and_opens_the_demo(browser):
+def keyboard_reaches_every_login_control(browser):
     context, page = fresh(browser)
     seen = []
     for _ in range(7):
         page.keyboard.press('Tab')
         seen.append(active(page))
-    for expected in ('theme-toggle', 'login-user', 'login-password', 'input-action', 'login-submit', 'summary'):
+    for expected in ('theme-toggle', 'login-user', 'login-password', 'input-action', 'login-submit'):
         assert any(expected in entry.lower() for entry in seen), (expected, seen)
-
-    demo_summary(page).focus()
-    page.keyboard.press('Enter')
-    assert page.locator('details.demo-access').evaluate('el => el.open') is True
-    page.keyboard.press('Tab')
-    page.keyboard.press('Enter')
-    assert page.get_by_label('Usuario', exact=True).input_value() == 'admin'
-
+    page.get_by_label('Usuario', exact=True).fill(USERNAME)
+    page.get_by_label('Contraseña', exact=True).fill(PASSWORD)
     page.get_by_role('button', name='Entrar', exact=True).focus()
     page.keyboard.press('Enter')
     expect(page.locator('.app-shell')).to_be_visible()
@@ -336,12 +315,10 @@ def mobile_360_has_no_overflow_and_keeps_targets(browser):
     assert chrome['height'] <= 96, chrome
     wrap = page.locator('.login__form-wrap').bounding_box()
     assert wrap['x'] >= 0 and wrap['x'] + wrap['width'] <= layout_width, wrap
-    demo_summary(page).click()
     for name, locator in {
         'submit': page.get_by_role('button', name='Entrar', exact=True),
         'password reveal': page.get_by_role('button', name='Mostrar contraseña'),
         'theme toggle': page.locator('.login .theme-toggle'),
-        'demo summary': demo_summary(page),
     }.items():
         box = locator.bounding_box()
         assert box and box['width'] >= 44 and box['height'] >= 44, (name, box)
@@ -359,7 +336,7 @@ def dark_primary_hover_keeps_text_contrast_on_login_and_shared_buttons(browser):
     assert contrast(colours['color'], colours['background']) >= 4.5, colours
     assert colours['shadow'] != 'none', 'dark primary hover keeps a perceivable non-colour cue'
 
-    login(page, 'admin', 'admin')
+    login(page, USERNAME, PASSWORD)
     expect(page.locator('.app-shell')).to_be_visible()
     page.goto(BASE + '/#/panel', wait_until='networkidle')
     sibling = page.get_by_role('button', name='Nuevo activo').first
@@ -374,7 +351,7 @@ def dark_primary_hover_keeps_text_contrast_on_login_and_shared_buttons(browser):
 @check
 def custom_branding_paints_the_login_chrome(browser):
     context, page = fresh(browser)
-    login(page, 'admin', 'admin')
+    login(page, USERNAME, PASSWORD)
     expect(page.locator('.app-shell')).to_be_visible()
     page.goto(BASE + '/#/configuracion/apariencia', wait_until='networkidle')
     page.locator('[data-od-id="appearance-preset-forest"]').click()

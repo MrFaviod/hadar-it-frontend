@@ -8,13 +8,16 @@ Chromium and a running dev server (ASSET_URL, default http://127.0.0.1:5173).
 import os
 from playwright.sync_api import sync_playwright, expect
 
+USERNAME = os.environ['ITSM_TEST_USERNAME']
+PASSWORD = os.environ['ITSM_TEST_PASSWORD']
+
 BASE = os.environ.get('ASSET_URL', 'http://127.0.0.1:5173')
 
 
 def sign_in(page):
     page.goto(BASE, wait_until='networkidle')
-    page.get_by_label('Usuario', exact=True).fill('admin')
-    page.get_by_label('Contraseña', exact=True).fill('admin')
+    page.get_by_label('Usuario', exact=True).fill(USERNAME)
+    page.get_by_label('Contraseña', exact=True).fill(PASSWORD)
     page.get_by_role('button', name='Entrar', exact=True).click()
     expect(page.locator('.app-shell')).to_be_visible()
 
