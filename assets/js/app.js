@@ -19,6 +19,7 @@
       AccessUserDetail: window.AssetAccessViews.AccessUserDetail,
       AccessSecurity: window.AssetAccessViews.AccessSecurity,
       AssetEditor: window.AssetEditor,
+      AssetConversation: window.AssetConversation,
       AssetFieldsPanel: window.AssetConfigViews.AssetFieldsPanel,
       AssetFormsPanel: window.AssetConfigViews.AssetFormsPanel,
       AssetStatusesPanel: window.AssetConfigViews.AssetStatusesPanel,
@@ -88,6 +89,7 @@
         explorerFilters: { categories: [], sites: [], states: [], locations: [], search: '' },
         explorerSelection: '',
         assetAdmin: initial.assetAdmin,
+        ...window.AssetInventory.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -474,6 +476,7 @@
         if (this.route.name === 'people') return 'Personas';
         if (this.route.name === 'panel') return 'Panel';
         if (this.route.name === 'inventory') return 'Inventario';
+        if (this.route.name === 'conversation') return 'Conversación';
         if (this.route.name === 'map' || this.route.name === 'graph') return 'Infraestructura';
         if (this.route.name === 'datos') return 'Importar y exportar';
         if (this.route.name === 'config') return 'Configuración';
@@ -512,7 +515,7 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }),
+    }, window.AssetInventory.computed),
     watch: {
       activeUserId() { this.changeAppearanceUser(); },
       'config.general': { deep: true, handler(value) {
@@ -571,7 +574,17 @@
         handler(next,previous) {
           this.updateDocumentTitle();
           this.handleWorkspaceRoute(next,previous);
+          this.handleInventoryRoute(next,previous);
         }
+      },
+      inventoryFilters: {
+        deep: true,
+        handler() {
+          if (this.authenticated && this.route.name === 'inventory') this.scheduleInventorySearch();
+        }
+      },
+      authenticated(value) {
+        if (!value) this.clearInventoryState();
       },
       mobileNavOpen(value) {
         if (value) this.userMenuOpen = false;
@@ -586,7 +599,7 @@
         next = { name: 'login', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'login') {
         next = { name: 'inventory', assetId: null, personId: null, section: null };
-      } else if (parsed.name === 'detail' && !this.assets.some((asset) => asset.id === parsed.assetId)) {
+      } else if (parsed.name === 'detail' && !this.assetExists(parsed.assetId)) {
         next = { name: 'inventory', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'person' && !this.people.some((person) => person.id === parsed.personId)) {
         next = { name: 'people', assetId: null, personId: null, section: null };
@@ -604,6 +617,7 @@
       }
     },
     beforeUnmount() {
+      this.clearInventoryState();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -613,7 +627,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods))
   });
   app.mount(target || '#app');
   return app;

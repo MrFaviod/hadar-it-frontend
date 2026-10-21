@@ -10,7 +10,11 @@
     type: 'Ej. Notebook',
     anydesk: 'Ej. 774209618',
     rmm: 'Ej. rmm-2f6b-1042',
-    cost: '0,00'
+    cost: '0,00',
+    site: 'Ej. Sede Central',
+    location: 'Ej. Piso 2 · Administración',
+    responsible: 'Ej. Ana Benítez',
+    quickCode: 'Opcional · único en el inventario'
   };
 
   const AssetCommonField = {
@@ -42,6 +46,13 @@
       statuses() {
         return this.app.assetAdmin.statuses;
       },
+      real() {
+        return !!(this.app.assetEditor && this.app.assetEditor.real);
+      },
+      statusChoices() {
+        if (this.real) return this.app.inventoryStatusOptions().map((status) => ({ id: status.value, label: status.label }));
+        return this.statuses;
+      },
       sites() {
         return this.app.config.sites;
       },
@@ -52,6 +63,9 @@
       },
       isSelect() {
         return ['site', 'locationId', 'assigneeId', 'statusId'].indexOf(this.fieldKey) !== -1;
+      },
+      locked() {
+        return !!(this.real && this.app.assetFieldLocked && this.app.assetFieldLocked(this.fieldKey));
       }
     },
     methods: {
@@ -66,7 +80,7 @@
       <div class="field" :class="{ 'field--invalid': !!error }">
         <label :for="inputId">{{ meta.label }}</label>
 
-        <span v-if="fieldKey === 'site'" class="input-shell">
+        <span v-if="fieldKey === 'site' && !real" class="input-shell">
           <app-icon name="building" />
           <select :id="inputId" :value="draft.site" @change="setSite">
             <option value="">Sin sede</option>
@@ -93,8 +107,12 @@
         <span v-else-if="fieldKey === 'statusId'" class="input-shell">
           <app-icon name="activity" />
           <select :id="inputId" :value="draft.statusId" @change="draft.statusId = $event.target.value">
-            <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.label }}</option>
+            <option v-for="status in statusChoices" :key="status.id" :value="status.id">{{ status.label }}</option>
           </select>
+        </span>
+
+        <span v-else-if="fieldKey === 'description'" class="input-shell input-shell--area">
+          <textarea :id="inputId" rows="3" :value="draft.description" :placeholder="placeholder" :aria-invalid="!!error" @input="setText"></textarea>
         </span>
 
         <span v-else-if="fieldKey === 'cost'" class="input-shell">
@@ -103,9 +121,10 @@
         </span>
 
         <span v-else class="input-shell">
-          <input :id="inputId" :type="fieldKey === 'ip' ? 'text' : 'text'" :value="draft[fieldKey]" :placeholder="placeholder" :aria-invalid="!!error" autocomplete="off" @input="setText" />
+          <input :id="inputId" :type="fieldKey === 'ip' ? 'text' : 'text'" :value="draft[fieldKey]" :placeholder="placeholder" :aria-invalid="!!error" :disabled="locked" autocomplete="off" @input="setText" />
         </span>
 
+        <span v-if="locked" class="field__hint">Tu rol no permite cambiar el responsable; el valor actual se conserva.</span>
         <span v-if="error" class="field__error">{{ error }}</span>
       </div>
     `
@@ -160,6 +179,18 @@
       },
       title() {
         return this.editor.mode === 'create' ? 'Registrar activo' : 'Editar activo';
+      },
+      real() {
+        return !!this.editor.real;
+      },
+      identCode() {
+        if (this.real) return this.editor.mode === 'create' ? 'Opcional · el servidor lo asigna' : this.draft.quickCode;
+        return this.editor.mode === 'create' ? this.codePreview : this.draft.code;
+      },
+      identNote() {
+        return this.real
+          ? 'El ID permanente lo asigna el servidor y nunca cambia. El código rápido se puede editar y debe ser único.'
+          : 'El ID nunca cambia. El código rápido se recalcula si cambia el tipo o la ubicación, y el cambio queda en el historial.';
       }
     },
     methods: {
@@ -195,11 +226,11 @@
             </div>
             <div class="editor-ident__cell">
               <span class="eyebrow">Código rápido</span>
-              <strong class="mono">{{ editor.mode === 'create' ? codePreview : draft.code }}</strong>
+              <strong class="mono">{{ identCode }}</strong>
             </div>
             <p class="editor-ident__note">
               <app-icon name="info" />
-              <span>El ID nunca cambia. El código rápido se recalcula si cambia el tipo o la ubicación, y el cambio queda en el historial.</span>
+              <span>{{ identNote }}</span>
             </p>
           </div>
 
@@ -210,8 +241,8 @@
 
           <section class="editor-section" data-od-id="asset-editor-essentials">
             <div class="editor-section__head">
-              <h3>Alta rápida</h3>
-              <p>Con el nombre y la categoría ya puedes guardar. El resto puede completarse después.</p>
+              <h3>{{ real ? 'Datos del activo' : 'Alta rápida' }}</h3>
+              <p>{{ real ? 'Solo se guardan los campos que admite el inventario del servidor.' : 'Con el nombre y la categoría ya puedes guardar. El resto puede completarse después.' }}</p>
             </div>
             <div class="form-grid">
               <div v-if="errors.category" class="field field--invalid form-grid__full">
@@ -239,7 +270,7 @@
             </div>
           </section>
 
-          <section class="editor-section" data-od-id="asset-editor-photo">
+          <section v-if="!real" class="editor-section" data-od-id="asset-editor-photo">
             <div class="editor-section__head">
               <h3>Fotografía</h3>
               <p>Imagen del equipo o una ilustración del catálogo de dispositivos.</p>
@@ -276,7 +307,7 @@
             </div>
           </section>
 
-          <section v-if="showFov" class="editor-section" data-od-id="asset-editor-fov">
+          <section v-if="!real && showFov" class="editor-section" data-od-id="asset-editor-fov">
             <div class="editor-section__head">
               <h3>Campo de visión</h3>
               <p>Imagen independiente de la fotografía: representa el área que cubre la cámara.</p>
@@ -302,7 +333,7 @@
             </div>
           </section>
 
-          <section class="editor-section" data-od-id="asset-editor-advanced">
+          <section v-if="!real" class="editor-section" data-od-id="asset-editor-advanced">
             <button
               type="button"
               class="editor-toggle"
@@ -404,7 +435,7 @@
         </form>
 
         <template #footer>
-          <p class="modal-foot__hint">* El nombre es obligatorio. Puedes completar el resto más tarde.</p>
+          <p class="modal-foot__hint">* El nombre es obligatorio. El servidor valida el resto de los campos.</p>
           <button type="button" class="btn btn--ghost" @click="app.closeAssetEditor()">Cancelar</button>
           <button type="button" class="btn btn--primary" :disabled="editor.saving" @click="app.saveAsset()">
             {{ editor.mode === 'create' ? 'Registrar activo' : 'Guardar cambios' }}

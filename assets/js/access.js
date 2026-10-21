@@ -149,7 +149,8 @@
     if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(init.body); }
     if (init.method !== 'GET' && vm.csrfToken) headers['X-CSRF-Token'] = vm.csrfToken;
     const state = vm.__assetAccess;
-    const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal: state && state.controller.signal }));
+    const signal = init.signal || (state && state.controller.signal);
+    const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal }));
     const payload = await response.json();
     if (state && state.stopped) throw new Error('Solicitud cancelada.');
     if (!response.ok) {
@@ -423,6 +424,6 @@
   window.AssetAccess = {
     catalog: CATALOG,
     data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
-    computed, methods, start, stop, guardMethods
+    computed, methods, start, stop, guardMethods, request
   };
 })();

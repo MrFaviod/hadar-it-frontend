@@ -26,6 +26,13 @@
       }
       if (parts[0] === 'panel') return { name: 'panel', assetId: null, personId: null, section: null };
       if (parts[0] === 'inventario') return { name: 'inventory', assetId: null, personId: null, section: null };
+      if (parts[0] === 'conversacion') {
+        let assetId = null;
+        if (parts[1] === 'activo' && parts[2]) {
+          try { assetId = decodeURIComponent(parts[2]); } catch (_) { assetId = parts[2]; }
+        }
+        return { name: 'conversation', assetId, personId: null, section: null };
+      }
       if (parts[0] === 'login') return { name: 'login', assetId: null, personId: null, section: null };
       if (parts[0] === 'configuracion') {
         return {
@@ -128,6 +135,7 @@
       if (route.name === 'labels') return '#/etiquetas';
       if (route.name === 'reportAsset') return '#/reporte/' + encodeURIComponent(route.assetId) + (route.section === 'publico' ? '/publico' : '');
       if (route.name === 'panel') return '#/panel';
+      if (route.name === 'conversation') return route.assetId ? '#/conversacion/activo/' + encodeURIComponent(route.assetId) : '#/conversacion';
       if (route.name === 'users') return '#/usuarios';
       if (route.name === 'user') return '#/usuario/' + encodeURIComponent(route.userId || '');
       if (route.name === 'denied') return '#/acceso-denegado';
@@ -172,6 +180,9 @@
         window.location.hash = hash;
       }
     },
+    assetExists(id) {
+      return (this.assets || []).some((asset) => asset.id === id);
+    },
     handleHashChange() {
       let parsed = this.parseRoute();
       if (!this.authenticated) {
@@ -187,7 +198,7 @@
         // Unknown or empty hashes fall back to the panel; keep the address bar in sync.
         this.ensureHash('#/panel');
       }
-      if (parsed.name === 'detail' && !this.assets.some((asset) => asset.id === parsed.assetId)) {
+      if (parsed.name === 'detail' && !this.assetExists(parsed.assetId)) {
         this.ensureHash('#/inventario');
         this.showToast('El activo solicitado ya no está disponible.', 'error');
         parsed = { name: 'inventory', assetId: null, personId: null, section: null };
@@ -314,7 +325,7 @@
       const appName = this.appName || 'Asset Manager';
       if (this.route.name === 'users' || this.route.name === 'user' || this.route.name === 'denied') {
         document.title = this.pageLabel + ' · ' + appName;
-      } else if (['reports', 'warranties', 'labels', 'reportAsset'].includes(this.route.name)) {
+      } else if (['reports', 'warranties', 'labels', 'reportAsset', 'conversation'].includes(this.route.name)) {
         document.title = this.pageLabel + ' · ' + appName;
       } else if (this.route.name === 'login') {
         document.title = 'Acceso · ' + appName;
