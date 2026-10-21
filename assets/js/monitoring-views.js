@@ -810,8 +810,10 @@
               <tbody>
                 <tr v-for="row in deviceRows" :key="row.asset.id" class="mon-table__row" @click="openDevice(row.asset.id)">
                   <th scope="row" class="mon-table__name">
-                    <span class="mon-table__title">{{ row.asset.name }}</span>
-                    <span class="mon-table__meta mono">{{ row.asset.id }} · {{ row.asset.ip }}</span>
+                    <button type="button" class="mon-table__device" @click.stop="openDevice(row.asset.id)">
+                      <span class="mon-table__title">{{ row.asset.name }}</span>
+                      <span class="mon-table__meta mono">{{ row.asset.id }} · {{ row.asset.ip }}</span>
+                    </button>
                   </th>
                   <td><mon-status-pill :status="row.status"></mon-status-pill></td>
                   <td class="mono">{{ row.latencyMs === null ? '—' : fmtNumber(row.latencyMs, 'ms') }}</td>
@@ -1458,8 +1460,18 @@
     },
     methods: {
       rel: rel,
-      toggle() { this.open = !this.open; },
+      toggle() {
+        if (this.open) { this.open = false; return; }
+        this.open = true;
+        this.$nextTick(() => this.$refs.panel?.focus());
+      },
       close() { this.open = false; },
+      onKeydown(event) {
+        if (!this.open || event.key !== 'Escape') return;
+        event.preventDefault();
+        this.open = false;
+        this.$nextTick(() => this.$refs.trigger?.focus());
+      },
       tone(item) { return M.notificationKindMeta(item.kind).tone; },
       icon(item) { return M.notificationKindMeta(item.kind).icon; },
       providerLabel(item) { return M.notificationKindMeta(item.kind).label; },
@@ -1482,18 +1494,18 @@
       }
     },
     template: `
-      <div class="notif" ref="bell">
-        <button type="button" class="icon-button notif__trigger" data-od-id="topbar-notifications"
-                :aria-expanded="open" aria-haspopup="true" aria-controls="notif-panel"
+      <div class="notif" ref="bell" @keydown="onKeydown">
+        <button type="button" class="icon-button notif__trigger" ref="trigger" data-od-id="topbar-notifications"
+                :aria-expanded="open" aria-haspopup="dialog" aria-controls="notif-panel"
                 :aria-label="'Notificaciones: ' + unread.length + ' sin consultar'" @click="toggle">
           <app-icon name="bell"></app-icon>
           <span v-if="unread.length" class="notif__badge mono">{{ unread.length > 9 ? '9+' : unread.length }}</span>
         </button>
         <transition name="dropdown">
-          <div v-if="open" id="notif-panel" class="notif__panel" role="dialog" aria-label="Centro de notificaciones">
+          <div v-if="open" id="notif-panel" ref="panel" class="notif__panel" role="dialog" tabindex="-1" aria-labelledby="notif-title">
             <header class="notif__head">
               <div>
-                <p class="notif__title">Notificaciones</p>
+                <p class="notif__title" id="notif-title">Notificaciones</p>
                 <p class="notif__sub">{{ unread.length }} sin consultar · {{ pending.length }} pendientes de atención</p>
               </div>
               <button type="button" class="text-button text-button--quiet" @click="markAll">Marcar todas</button>
