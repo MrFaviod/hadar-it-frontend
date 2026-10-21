@@ -145,6 +145,7 @@
   <link rel="stylesheet" href="assets/css/views.css">
   <link rel="stylesheet" href="assets/css/config.css">
   <link rel="stylesheet" href="assets/css/assets-admin.css">
+  <link rel="stylesheet" href="assets/css/inventory.css">
   <link rel="stylesheet" href="assets/css/people.css">
   <link rel="stylesheet" href="assets/css/theme.css">
   <link rel="stylesheet" href="assets/css/mobile-responsive.css">
@@ -1021,14 +1022,50 @@
                         <div>
                           <p class="eyebrow">Catálogo</p>
                           <h2 id="config-categories-title">Categorías de activos</h2>
-                          <p>Agrupa los equipos y define la imagen genérica de cada grupo.</p>
+                          <p v-if="inventoryCatalogReady">Las categorías del inventario las define el servidor: agrupan los equipos y fijan su prefijo de código rápido.</p>
+                          <p v-else>Agrupa los equipos y define la imagen genérica de cada grupo.</p>
                         </div>
-                        <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()">
+                        <button v-if="inventoryCatalogReady && inventoryCanConfigure('fields')" type="button" class="btn btn--primary btn--small" data-od-id="create-server-category" @click="openCategoryDialog()">
+                          <app-icon name="plus"></app-icon> Nueva categoría
+                        </button>
+                        <a v-else-if="inventoryCatalogReady" class="btn btn--secondary btn--small" href="#/configuracion/activos" @click.prevent="setHash('#/configuracion/activos')">
+                          <app-icon name="sliders"></app-icon> Configurar en activos
+                        </a>
+                        <button v-else-if="!inventoryServerMode()" type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()">
                           <app-icon name="plus"></app-icon> Nueva categoría
                         </button>
                       </header>
 
-                      <div v-if="categories.length" class="category-manage">
+                      <div v-if="inventoryServerMode() && !inventoryCatalogReady" class="config-note" role="alert">
+                        <app-icon name="info"></app-icon>
+                        <span>
+                          <template v-if="inventoryCatalog.loading">Consultando la configuración del inventario en el servidor…</template>
+                          <template v-else>{{ inventoryCatalog.error || 'La configuración del inventario no está disponible.' }}</template>
+                        </span>
+                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" @click="loadInventoryCatalog({ force: true })">Reintentar</button>
+                      </div>
+
+                      <div v-if="inventoryCatalogReady" class="category-manage">
+                        <article v-for="category in inventoryConfigCategories()" :key="category.id" class="category-row">
+                          <span class="category-row__image"><img :src="assetImage({ category: category.id })" width="640" height="400" alt=""></span>
+                          <div class="category-row__copy">
+                            <div class="category-row__title">
+                              <strong>{{ category.label }}</strong>
+                              <span class="mono">Prefijo {{ category.prefix }}</span>
+                              <span class="chip chip--muted">{{ category.tech.length }} campos técnicos</span>
+                              <span v-if="category.active === false" class="chip chip--outline">Inactiva</span>
+                            </div>
+                            <p>{{ category.tech.length ? category.tech.join(', ') : 'Sin campos técnicos asociados.' }}</p>
+                          </div>
+                          <div v-if="inventoryCanConfigure('fields')" class="config-row-actions">
+                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + category.label" title="Editar categoría" @click="openCategoryDialog(category)">
+                              <app-icon name="pencil"></app-icon>
+                            </button>
+                          </div>
+                        </article>
+                      </div>
+
+                      <div v-else-if="!inventoryServerMode() && categories.length" class="category-manage">
                         <article v-for="category in categories" :key="category.id" class="category-row">
                           <span class="category-row__image"><img :src="category.image" width="640" height="400" alt=""></span>
                           <div class="category-row__copy">
@@ -1049,14 +1086,23 @@
                         </article>
                       </div>
 
-                      <div v-else class="config-empty">
+                      <div v-else-if="inventoryCatalogReady" class="config-empty">
+                        <span class="config-empty__icon"><app-icon name="grid"></app-icon></span>
+                        <h3>Sin categorías</h3>
+                        <p v-if="inventoryCanConfigure('fields')">Crea la primera categoría del catálogo del servidor.</p>
+                        <p v-else>El catálogo del servidor no tiene categorías. Tu rol no permite crearlas.</p>
+                        <button v-if="inventoryCanConfigure('fields')" type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> Crear categoría</button>
+                      </div>
+
+                      <div v-else-if="!inventoryServerMode()" class="config-empty">
                         <span class="config-empty__icon"><app-icon name="grid"></app-icon></span>
                         <h3>Sin categorías</h3>
                         <p>Crea la primera categoría para organizar el inventario.</p>
                         <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> Crear categoría</button>
                       </div>
 
-                      <p class="config-note"><app-icon name="info"></app-icon> La imagen de categoría se usa cuando el activo no tiene una imagen propia. Una categoría con activos no se puede eliminar.</p>
+                      <p v-if="inventoryCatalogReady" class="config-note"><app-icon name="info"></app-icon> El tipo y las opciones de un campo no cambian; las categorías se desactivan sin borrar sus valores. La imagen de categoría solo se usa cuando el activo no tiene una imagen propia.</p>
+                      <p v-else class="config-note"><app-icon name="info"></app-icon> La imagen de categoría se usa cuando el activo no tiene una imagen propia. Una categoría con activos no se puede eliminar.</p>
                     </section>
 
                     <!-- Activos -->
@@ -1076,10 +1122,22 @@
                           <span>{{ tab.label }}</span>
                         </button>
                       </div>
-                      <asset-fields-panel v-if="assetConfigTab === 'campos'" :app="$root"></asset-fields-panel>
-                      <asset-forms-panel v-else-if="assetConfigTab === 'formularios'" :app="$root"></asset-forms-panel>
-                      <asset-statuses-panel v-else-if="assetConfigTab === 'estados'" :app="$root"></asset-statuses-panel>
-                      <asset-identity-panel v-else :app="$root"></asset-identity-panel>
+                      <div v-if="inventoryServerMode() && !inventoryCatalogReady" class="config-note" role="alert">
+                        <app-icon name="info"></app-icon>
+                        <span>
+                          <template v-if="inventoryCatalog.loading">Consultando la configuración del inventario en el servidor…</template>
+                          <template v-else>{{ inventoryCatalog.error || 'La configuración del inventario no está disponible.' }}</template>
+                        </span>
+                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" data-od-id="retry-inventory-catalog" @click="loadInventoryCatalog({ force: true })">Reintentar</button>
+                      </div>
+                      <asset-fields-panel v-if="assetConfigTab === 'campos' && inventoryCatalogReady" :app="$root"></asset-fields-panel>
+                      <asset-forms-panel v-else-if="assetConfigTab === 'formularios' && inventoryCatalogReady" :app="$root"></asset-forms-panel>
+                      <asset-statuses-panel v-else-if="assetConfigTab === 'estados' && inventoryCatalogReady" :app="$root"></asset-statuses-panel>
+                      <asset-identity-panel v-else-if="assetConfigTab === 'identificacion' && inventoryCatalogReady" :app="$root"></asset-identity-panel>
+                      <asset-fields-panel v-else-if="!inventoryServerMode() && assetConfigTab === 'campos'" :app="$root"></asset-fields-panel>
+                      <asset-forms-panel v-else-if="!inventoryServerMode() && assetConfigTab === 'formularios'" :app="$root"></asset-forms-panel>
+                      <asset-statuses-panel v-else-if="!inventoryServerMode() && assetConfigTab === 'estados'" :app="$root"></asset-statuses-panel>
+                      <asset-identity-panel v-else-if="!inventoryServerMode()" :app="$root"></asset-identity-panel>
                     </div>
 
                     <!-- Sedes -->
@@ -1348,8 +1406,28 @@
                     <button v-if="can('assets.edit') && currentAsset.retired && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="restoreAsset(currentAsset)">
                       <app-icon name="restore"></app-icon> Restaurar
                     </button>
+                    <button v-if="can('assets.edit') && serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="cloneInventoryAsset(currentAsset)">
+                      <app-icon name="copy"></app-icon> Duplicar
+                    </button>
+                    <button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--ghost" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
+                      <app-icon name="package"></app-icon> Archivar
+                    </button>
+                    <button v-if="!inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="openInventoryLifecycle(currentAsset, 'restore')">
+                      <app-icon name="restore"></app-icon> Restaurar
+                    </button>
+                    <button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--ghost" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
+                      <app-icon name="archive"></app-icon> Dar de baja
+                    </button>
                   </div>
                 </header>
+
+                <div v-if="serverAssetMode && currentAsset.archived" class="retired-banner" role="status">
+                  <span class="retired-banner__icon"><app-icon name="archive"></app-icon></span>
+                  <div class="retired-banner__copy">
+                    <strong>Archivado{{ currentAsset.archivedAt ? ' el ' + assetDate(currentAsset.archivedAt) : '' }}</strong>
+                    <p>{{ currentAsset.archivedBy ? 'Archivado por ' + currentAsset.archivedBy + '. ' : '' }}El registro y su historial se conservan; puedes restaurarlo cuando lo necesites.</p>
+                  </div>
+                </div>
 
                 <div v-if="currentAsset.retired && !serverAssetMode" class="retired-banner" role="status">
                   <span class="retired-banner__icon"><app-icon name="alert"></app-icon></span>
@@ -1473,24 +1551,24 @@
                         </dl>
                       </section>
 
-                      <section v-if="!serverAssetMode" class="detail-group" aria-labelledby="detail-group-economic">
+                      <section v-if="!serverAssetMode || currentAsset.cost" class="detail-group" aria-labelledby="detail-group-economic">
                         <div class="detail-group__head">
                           <h3 id="detail-group-economic">Información económica</h3>
                         </div>
                         <dl class="field-grid">
-                          <div class="detail-field detail-field--cost detail-field--wide"><dt>Coste</dt><dd>{{ formatCurrency(currentAsset.cost) }}</dd></div>
+                          <div class="detail-field detail-field--cost detail-field--wide"><dt>Coste</dt><dd class="mono">{{ serverAssetMode ? currentAsset.cost : formatCurrency(currentAsset.cost) }}</dd></div>
                         </dl>
                       </section>
 
-                      <section v-if="!serverAssetMode && assetTechFields(currentAsset.category).length" class="detail-group" aria-labelledby="detail-group-technical">
+                      <section v-if="serverAssetMode ? inventoryTechnicalFields(currentAsset.category).length : assetTechFields(currentAsset.category).length" class="detail-group" aria-labelledby="detail-group-technical">
                         <div class="detail-group__head">
                           <h3 id="detail-group-technical">Campos técnicos</h3>
                           <button v-if="can('assets.edit')" type="button" class="text-button text-button--quiet" @click="openAssetEdit(currentAsset)">Editar</button>
                         </div>
                         <dl class="field-grid">
-                          <div v-for="field in assetTechFields(currentAsset.category)" :key="field.key" class="detail-field">
+                          <div v-for="field in (serverAssetMode ? inventoryTechnicalFields(currentAsset.category) : assetTechFields(currentAsset.category))" :key="field.key" class="detail-field">
                             <dt>{{ field.label }}</dt>
-                            <dd>{{ assetFieldValue(currentAsset, field) }}</dd>
+                            <dd>{{ serverAssetMode ? inventoryFieldValue(currentAsset, field) : assetFieldValue(currentAsset, field) }}</dd>
                           </div>
                         </dl>
                       </section>
@@ -1580,9 +1658,66 @@
                   <asset-maintenance-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
                   <asset-monitoring-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
 
+                  <section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
+                    <header class="panel-head">
+                      <div>
+                        <p class="eyebrow">Trazabilidad</p>
+                        <h2 id="server-history-title">Historial del servidor</h2>
+                      </div>
+                      <span class="mono info-panel__meta">{{ inventoryHistory.total }} eventos</span>
+                    </header>
+                    <p v-if="inventoryHistory.loading" class="config-note" role="status">Consultando el historial…</p>
+                    <p v-else-if="inventoryHistory.error" class="field__error" role="alert">{{ inventoryHistory.error }}</p>
+                    <ol v-else-if="inventoryHistory.items.length" class="history-list">
+                      <li v-for="entry in inventoryHistory.items" :key="entry.id" class="history-item">
+                        <span class="history-item__mark" aria-hidden="true"></span>
+                        <div class="history-item__copy">
+                          <strong>{{ entry.title }}</strong>
+                          <p>
+                            <span>{{ entry.actor || 'Sistema' }}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{{ assetDateTime(entry.createdAt) }}</span>
+                          </p>
+                          <p v-if="entry.reason" class="cell-note">{{ entry.reason }}</p>
+                          <p v-if="entry.quickCodeOld && entry.quickCodeOld !== entry.quickCodeNew" class="cell-note mono">{{ entry.quickCodeOld }} → {{ entry.quickCodeNew }}</p>
+                        </div>
+                      </li>
+                    </ol>
+                    <p v-else class="config-note">El servidor no registra eventos para este activo.</p>
+                    <button v-if="inventoryHistoryHasMore" type="button" class="btn btn--ghost btn--small" @click="inventoryHistoryNextPage()">Ver más eventos</button>
+                  </section>
+
                   <asset-movements v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-movements>
 
                   <asset-history v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-history>
+
+                  <section v-if="serverAssetMode" class="operations-panel" aria-labelledby="operations-title">
+                    <header class="panel-head">
+                      <div>
+                        <p class="eyebrow">Ciclo de vida</p>
+                        <h2 id="operations-title">Conservación y eliminación</h2>
+                      </div>
+                      <span class="chip chip--muted">Entorno del servidor: {{ inventoryEnvironmentLabel() }}</span>
+                    </header>
+                    <div class="operations-grid">
+                      <article class="operations-card">
+                        <h3>Archivar conserva el registro</h3>
+                        <p>Archivar deja el activo fuera del inventario operativo y conserva su ficha y su historial. Puedes restaurarlo cuando lo necesites.</p>
+                        <button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'archive')">Archivar activo</button>
+                        <button v-else-if="inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'restore')">Restaurar activo</button>
+                      </article>
+                      <article class="operations-card operations-card--danger">
+                        <h3>Eliminación definitiva</h3>
+                        <p v-if="!inventoryPurgePolicy()">El servidor no informó su política de eliminación, así que la acción no se ofrece desde el navegador.</p>
+                        <p v-else-if="inventoryPurgePolicy().environment === 'production'">En producción exige el permiso {{ inventoryPurgePolicy().permission }}, archivar antes, escribir el ID permanente y el motivo.</p>
+                        <p v-else>En desarrollo se confirma con un paso explícito. El servidor sigue comprobando el permiso y el motivo.</p>
+                        <button v-if="!inventoryLifecycleAllowed('purge', currentAsset)" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openInventoryLifecycle(currentAsset, 'purge')">
+                          <app-icon name="trash"></app-icon> Eliminar activo
+                        </button>
+                        <span v-else-if="inventoryPurgePolicy()" class="cell-muted">Requiere el permiso {{ inventoryPurgePolicy().permission }} y que el activo cumpla las condiciones del servidor.</span>
+                      </article>
+                    </div>
+                  </section>
 
                   <section v-if="!serverAssetMode" class="operations-panel" aria-labelledby="operations-title">
                     <header class="panel-head">
@@ -1685,7 +1820,17 @@
             </div>
             <p v-if="categoryErrors.label" class="field__error">{{ categoryErrors.label }}</p>
           </div>
-          <div class="field">
+          <div v-if="inventoryServerMode()" class="field" :class="{ 'field--invalid': categoryErrors.prefix }">
+            <label for="category-prefix">Prefijo del código rápido</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="hash"></app-icon>
+              <input id="category-prefix" v-model="categoryDialog.prefix" type="text" maxlength="6" placeholder="Ej. NB"
+                     :aria-invalid="!!categoryErrors.prefix" aria-describedby="category-prefix-hint">
+            </div>
+            <p id="category-prefix-hint" class="field__hint">1 a 6 caracteres alfanuméricos; el servidor lo usa para el correlativo.</p>
+            <p v-if="categoryErrors.prefix" class="field__error">{{ categoryErrors.prefix }}</p>
+          </div>
+          <div v-else class="field">
             <label for="category-description">Descripción</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="info"></app-icon>
@@ -1696,7 +1841,27 @@
           </div>
         </div>
 
-        <div class="field">
+        <div v-if="inventoryServerMode()" class="config-form-grid">
+          <div class="field">
+            <label for="category-type">Tipo de equipo</label>
+            <div class="input-shell input-shell--plain">
+              <app-icon name="tag"></app-icon>
+              <input id="category-type" v-model="categoryDialog.type" type="text" placeholder="Ej. Notebook">
+            </div>
+            <p class="field__hint">Nombre del tipo que se propone al registrar un activo.</p>
+          </div>
+          <div class="field">
+            <span class="field__label">Disponibilidad</span>
+            <label class="switch">
+              <input type="checkbox" v-model="categoryDialog.active">
+              <span class="switch__track" aria-hidden="true"></span>
+              <span class="switch__label">{{ categoryDialog.active ? 'Categoría activa' : 'Categoría inactiva' }}</span>
+            </label>
+            <p class="field__hint">Desactivar conserva los activos y sus valores guardados.</p>
+          </div>
+        </div>
+
+        <div v-if="!inventoryServerMode()" class="field">
           <span class="field__label">Imagen de categoría</span>
           <div class="image-picker">
             <span class="image-picker__preview"><img :src="categoryDialog.image" width="640" height="400" alt="Vista previa de la categoría"></span>
@@ -2110,6 +2275,64 @@
       <template #footer>
         <button type="button" class="btn btn--ghost" @click="closeDeleteAsset()">Cancelar</button>
         <button type="submit" form="asset-delete-form" class="btn btn--danger">Eliminar definitivamente</button>
+      </template>
+    </modal-shell>
+
+    <modal-shell
+      :open="inventoryLifecycle.open"
+      eyebrow="Ciclo de vida del servidor"
+      :title="inventoryLifecycle.kind === 'purge' ? 'Eliminar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : (inventoryLifecycle.kind === 'retire' ? 'Dar de baja ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : (inventoryLifecycle.kind === 'restore' ? 'Restaurar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : 'Archivar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo')))"
+      @close="closeInventoryLifecycle()"
+    >
+      <form id="inventory-lifecycle-form" class="form-stack" novalidate @submit.prevent="confirmInventoryLifecycle()">
+        <div v-if="inventoryLifecycle.kind === 'purge'" class="config-note config-note--danger">
+          <app-icon name="alert"></app-icon>
+          <p>La eliminación definitiva borra el activo del inventario. El servidor conserva el identificador en su registro de bajas y aplica su propia política.</p>
+        </div>
+        <div v-else-if="inventoryLifecycle.kind === 'archive'" class="config-note">
+          <app-icon name="info"></app-icon>
+          <p>Archivar conserva la ficha, sus imágenes y su historial. Puedes restaurar el activo después.</p>
+        </div>
+        <div v-else-if="inventoryLifecycle.kind === 'restore'" class="config-note">
+          <app-icon name="restore"></app-icon>
+          <p>El activo vuelve al inventario operativo con su identificador y su historial.</p>
+        </div>
+        <div v-else class="config-note config-note--hold">
+          <app-icon name="info"></app-icon>
+          <p>La baja conserva el registro completo y exige un motivo. El estado final lo define la configuración del servidor.</p>
+        </div>
+        <div v-if="inventoryLifecycle.asset" class="delete-identity">
+          <span class="eyebrow">Activo seleccionado</span>
+          <strong>{{ inventoryLifecycle.asset.name }}</strong>
+          <span class="mono">{{ inventoryLifecycle.asset.id }} · {{ inventoryLifecycle.asset.quickCode || '' }}</span>
+        </div>
+        <template v-if="inventoryLifecycle.kind === 'purge' && inventoryPurgePolicy() && inventoryPurgePolicy().typedIdRequired">
+          <div class="field">
+            <label for="inventory-purge-typed">Escribe el ID permanente para confirmar</label>
+            <div class="input-shell">
+              <input id="inventory-purge-typed" v-model="inventoryLifecycle.typed" type="text" autocomplete="off" :placeholder="inventoryLifecycle.assetId" />
+            </div>
+          </div>
+        </template>
+        <div v-if="inventoryLifecycle.kind === 'retire' || (inventoryLifecycle.kind === 'purge' && inventoryPurgePolicy() && inventoryPurgePolicy().reasonRequired)" class="field">
+          <label for="inventory-lifecycle-reason">Motivo <span v-if="inventoryLifecycle.kind === 'retire'">(obligatorio, 4 a 500 caracteres)</span><span v-else>(obligatorio)</span></label>
+          <div class="input-shell input-shell--area">
+            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="3" placeholder="Ej. Sustituido por renovación del parque"></textarea>
+          </div>
+        </div>
+        <div v-else-if="inventoryLifecycle.kind === 'archive'" class="field">
+          <label for="inventory-lifecycle-reason">Motivo <span class="field__optional">(opcional)</span></label>
+          <div class="input-shell input-shell--area">
+            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="2" placeholder="Ej. Equipo retirado del servicio"></textarea>
+          </div>
+        </div>
+        <p v-if="inventoryLifecycle.error" class="field__error" role="alert">{{ inventoryLifecycle.error }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" :disabled="inventoryLifecycle.busy" @click="closeInventoryLifecycle()">Cancelar</button>
+        <button type="submit" form="inventory-lifecycle-form" class="btn" :class="inventoryLifecycle.kind === 'purge' || inventoryLifecycle.kind === 'retire' ? 'btn--danger' : 'btn--primary'" :disabled="inventoryLifecycle.busy">
+          {{ inventoryLifecycle.busy ? 'Procesando…' : (inventoryLifecycle.kind === 'purge' ? 'Eliminar definitivamente' : (inventoryLifecycle.kind === 'retire' ? 'Dar de baja' : (inventoryLifecycle.kind === 'restore' ? 'Restaurar activo' : 'Archivar activo'))) }}
+        </button>
       </template>
     </modal-shell>
 

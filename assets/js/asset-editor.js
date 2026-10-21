@@ -34,6 +34,9 @@
       inputId() {
         return this.idPrefix + '-' + this.fieldKey;
       },
+      errorId() {
+        return this.inputId + '-error';
+      },
       error() {
         return this.errors[this.fieldKey] || '';
       },
@@ -50,8 +53,8 @@
         return !!(this.app.assetEditor && this.app.assetEditor.real);
       },
       statusChoices() {
-        if (this.real) return this.app.inventoryStatusOptions().map((status) => ({ id: status.value, label: status.label }));
-        return this.statuses;
+        if (this.real) return this.app.inventoryStatusOptions().map((status) => ({ id: status.value, label: status.label, disabled: !!status.disabled }));
+        return this.statuses.map((status) => ({ id: status.id, label: status.label, disabled: false }));
       },
       sites() {
         return this.app.config.sites;
@@ -98,7 +101,7 @@
 
         <span v-else-if="fieldKey === 'assigneeId'" class="input-shell">
           <app-icon name="user" />
-          <select :id="inputId" :value="draft.assigneeId" @change="draft.assigneeId = $event.target.value">
+          <select :id="inputId" :value="draft.assigneeId" :disabled="locked" :aria-describedby="locked ? errorId : null" @change="draft.assigneeId = $event.target.value">
             <option value="">Sin asignar</option>
             <option v-for="person in people" :key="person.id" :value="person.id">{{ person.name }} · {{ person.role }}</option>
           </select>
@@ -107,25 +110,25 @@
         <span v-else-if="fieldKey === 'statusId'" class="input-shell">
           <app-icon name="activity" />
           <select :id="inputId" :value="draft.statusId" @change="draft.statusId = $event.target.value">
-            <option v-for="status in statusChoices" :key="status.id" :value="status.id">{{ status.label }}</option>
+            <option v-for="status in statusChoices" :key="status.id" :value="status.id" :disabled="status.disabled">{{ status.label }}</option>
           </select>
         </span>
 
         <span v-else-if="fieldKey === 'description'" class="input-shell input-shell--area">
-          <textarea :id="inputId" rows="3" :value="draft.description" :placeholder="placeholder" :aria-invalid="!!error" @input="setText"></textarea>
+          <textarea :id="inputId" rows="3" :value="draft.description" :placeholder="placeholder" :aria-invalid="!!error" :aria-describedby="error ? errorId : null" @input="setText"></textarea>
         </span>
 
         <span v-else-if="fieldKey === 'cost'" class="input-shell">
-          <input :id="inputId" type="number" min="0" step="0.01" :value="draft.cost" :placeholder="placeholder" @input="setText" />
+          <input :id="inputId" type="number" min="0" step="0.01" :value="draft.cost" :placeholder="placeholder" :aria-invalid="!!error" :aria-describedby="error ? errorId : null" @input="setText" />
           <span class="input-suffix">EUR</span>
         </span>
 
         <span v-else class="input-shell">
-          <input :id="inputId" :type="fieldKey === 'ip' ? 'text' : 'text'" :value="draft[fieldKey]" :placeholder="placeholder" :aria-invalid="!!error" :disabled="locked" autocomplete="off" @input="setText" />
+          <input :id="inputId" type="text" :value="draft[fieldKey]" :placeholder="placeholder" :aria-invalid="!!error" :aria-describedby="error ? errorId : null" :disabled="locked" autocomplete="off" @input="setText" />
         </span>
 
-        <span v-if="locked" class="field__hint">Tu rol no permite cambiar el responsable; el valor actual se conserva.</span>
-        <span v-if="error" class="field__error">{{ error }}</span>
+        <span v-if="locked" :id="errorId" class="field__hint">Tu rol no permite cambiar el responsable; el valor actual se conserva.</span>
+        <span v-if="error" class="field__error" role="alert">{{ error }}</span>
       </div>
     `
   };
@@ -148,8 +151,11 @@
       errors() {
         return this.app.assetEditorErrors || {};
       },
+      categories() {
+        return this.real ? this.app.inventoryCategoryChoices : this.app.config.categories;
+      },
       categoryLabel() {
-        const category = this.app.config.categories.find((item) => item.id === this.draft.category);
+        const category = this.categories.find((item) => item.id === this.draft.category);
         return category ? category.label : 'Activo';
       },
       quickKeys() {
@@ -159,20 +165,40 @@
         return this.app.assetFormKeys('advanced', this.draft.category);
       },
       techFields() {
-        return this.app.assetTechFields(this.draft.category);
+        return this.real ? this.app.inventoryTechnicalFields(this.draft.category) : this.app.assetTechFields(this.draft.category);
       },
       showWarranty() {
+        if (this.real) return false;
         return this.app.assetForm(this.draft.category).advanced.indexOf('warranty') !== -1;
       },
       showFov() {
+        if (this.real) return this.app.inventoryCategoryHasFov(this.draft.category);
         return !!this.app.assetForm(this.draft.category).fov;
       },
       codePreview() {
         return this.app.assetNextCode(this.draft.category, this.draft.site, this.draft.id);
       },
       fallbackImage() {
-        const category = this.app.config.categories.find((item) => item.id === this.draft.category);
-        return category ? category.image : 'assets/svg/devices/other.svg';
+        const category = this.categories.find((item) => item.id === this.draft.category);
+        return (category && category.image) || 'assets/svg/devices/other.svg';
+      },
+      ownPhoto() {
+        return this.real ? (this.draft.photoUrl || '') : (this.draft.image || '');
+      },
+      ownFov() {
+        return this.real ? (this.draft.fovUrl || '') : (this.draft.fovImage || '');
+      },
+      mediaAsset() {
+        return {
+          id: this.editor.id,
+          serverAsset: true,
+          archived: false,
+          category: this.draft.categoryText || this.draft.category,
+          categoryText: this.draft.categoryText || this.draft.category
+        };
+      },
+      mediaReady() {
+        return !this.real || (this.editor.mode === 'edit' && !!this.editor.id);
       },
       warranty() {
         return this.draft.warranty || { until: '', provider: '', note: '' };
@@ -184,21 +210,26 @@
         return !!this.editor.real;
       },
       identCode() {
-        if (this.real) return this.editor.mode === 'create' ? 'Opcional · el servidor lo asigna' : this.draft.quickCode;
+        if (this.real) return this.editor.mode === 'create' ? 'El servidor lo asigna al guardar' : this.draft.quickCode;
         return this.editor.mode === 'create' ? this.codePreview : this.draft.code;
       },
       identNote() {
         return this.real
-          ? 'El ID permanente lo asigna el servidor y nunca cambia. El código rápido se puede editar y debe ser único.'
+          ? 'El ID permanente lo asigna el servidor y nunca cambia. El código rápido se puede editar en datos avanzados y debe ser único.'
           : 'El ID nunca cambia. El código rápido se recalcula si cambia el tipo o la ubicación, y el cambio queda en el historial.';
       }
     },
     methods: {
       techValue(field) {
-        const tech = this.draft.tech || {};
+        const tech = this.draft.technical || this.draft.tech || {};
         return field.type === 'boolean' ? tech[field.key] === true : (tech[field.key] === undefined ? '' : tech[field.key]);
       },
       setTech(field, value) {
+        if (this.real) {
+          if (!this.draft.technical) this.draft.technical = {};
+          this.draft.technical[field.key] = value;
+          return;
+        }
         if (!this.draft.tech) this.draft.tech = {};
         this.draft.tech[field.key] = value;
       },
@@ -208,6 +239,24 @@
       setWarranty(key, value) {
         if (!this.draft.warranty) this.draft.warranty = { until: '', provider: '', note: '' };
         this.draft.warranty[key] = value;
+      },
+      async handlePhoto(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) return;
+        await this.app.uploadInventoryImage(this.mediaAsset, 'photo', file);
+      },
+      async handleFov(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = '';
+        if (!file) return;
+        await this.app.uploadInventoryImage(this.mediaAsset, 'fov', file);
+      },
+      async removePhoto() {
+        await this.app.removeInventoryImage(this.mediaAsset, 'photo');
+      },
+      async removeFov() {
+        await this.app.removeInventoryImage(this.mediaAsset, 'fov');
       }
     },
     template: `
@@ -246,14 +295,14 @@
             </div>
             <div class="form-grid">
               <div v-if="errors.category" class="field field--invalid form-grid__full">
-                <span class="field__error">{{ errors.category }}</span>
+                <span class="field__error" role="alert">{{ errors.category }}</span>
               </div>
               <div class="field form-grid__full">
                 <label for="asset-editor-category">Categoría</label>
                 <span class="input-shell">
                   <app-icon name="grid" />
                   <select id="asset-editor-category" :value="draft.category" @change="app.applyAssetCategory($event.target.value)">
-                    <option v-for="category in app.config.categories" :key="category.id" :value="category.id">{{ category.label }}</option>
+                    <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.label }}</option>
                   </select>
                 </span>
                 <span class="field__hint">El formulario se adapta a la categoría: {{ categoryLabel }}.</span>
@@ -270,26 +319,29 @@
             </div>
           </section>
 
-          <section v-if="!real" class="editor-section" data-od-id="asset-editor-photo">
+          <section class="editor-section" data-od-id="asset-editor-photo">
             <div class="editor-section__head">
               <h3>Fotografía</h3>
-              <p>Imagen del equipo o una ilustración del catálogo de dispositivos.</p>
+              <p>{{ real ? 'Imagen propia del activo; si no hay, se usa la ilustración de la categoría.' : 'Imagen del equipo o una ilustración del catálogo de dispositivos.' }}</p>
             </div>
             <div class="photo-editor">
               <figure class="photo-editor__frame">
-                <img :src="draft.image || fallbackImage" :alt="draft.name ? 'Fotografía de ' + draft.name : 'Imagen del activo'" />
-                <figcaption class="mono">{{ draft.hasOwnImage ? 'IMAGEN PROPIA' : 'ILUSTRACIÓN DE CATEGORÍA' }}</figcaption>
+                <img :src="ownPhoto || fallbackImage" :alt="draft.name ? 'Fotografía de ' + draft.name : 'Imagen del activo'" />
+                <figcaption class="mono">{{ ownPhoto ? 'IMAGEN PROPIA' : 'ILUSTRACIÓN DE CATEGORÍA' }}</figcaption>
               </figure>
               <div class="photo-editor__controls">
-                <label class="btn btn--secondary btn--small photo-upload">
-                  <app-icon name="upload" />
-                  <span>Subir fotografía</span>
-                  <input type="file" accept="image/*" class="sr-only" @change="app.handleAssetPhoto" />
-                </label>
-                <button v-if="draft.hasOwnImage" type="button" class="text-button" @click="app.removeAssetPhoto()">Volver a la ilustración</button>
-                <p class="field__hint">JPG o PNG de hasta 1 MB. La imagen se guarda en este navegador.</p>
-                <p v-if="errors.image" class="field__error">{{ errors.image }}</p>
-                <div class="preset-grid preset-grid--compact">
+                <template v-if="mediaReady">
+                  <label class="btn btn--secondary btn--small photo-upload">
+                    <app-icon name="upload" />
+                    <span>Subir fotografía</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only" @change="handlePhoto" />
+                  </label>
+                  <button v-if="ownPhoto" type="button" class="text-button" @click="removePhoto">Volver a la ilustración</button>
+                  <p class="field__hint">{{ real ? 'PNG, JPG, WebP o GIF de hasta 1 MB. Se guarda en el servidor.' : 'JPG o PNG de hasta 1 MB. La imagen se guarda en este navegador.' }}</p>
+                  <p v-if="errors.image || app.inventoryMediaError" class="field__error" role="alert">{{ errors.image || app.inventoryMediaError }}</p>
+                </template>
+                <p v-else class="field__hint">Guarda el activo para añadir su fotografía.</p>
+                <div v-if="!real" class="preset-grid preset-grid--compact">
                   <button
                     v-for="preset in app.deviceImagePresets"
                     :key="preset.src"
@@ -307,14 +359,14 @@
             </div>
           </section>
 
-          <section v-if="!real && showFov" class="editor-section" data-od-id="asset-editor-fov">
+          <section v-if="showFov" class="editor-section" data-od-id="asset-editor-fov">
             <div class="editor-section__head">
               <h3>Campo de visión</h3>
               <p>Imagen independiente de la fotografía: representa el área que cubre la cámara.</p>
             </div>
             <div class="photo-editor photo-editor--compact">
               <figure class="photo-editor__frame photo-editor__frame--diagram">
-                <img v-if="draft.fovImage" :src="draft.fovImage" alt="Campo de visión de la cámara" />
+                <img v-if="ownFov" :src="ownFov" alt="Campo de visión de la cámara" />
                 <div v-else class="photo-editor__empty">
                   <app-icon name="camera" />
                   <span>Sin imagen de cobertura</span>
@@ -322,18 +374,21 @@
                 <figcaption class="mono">CAMPO DE VISIÓN</figcaption>
               </figure>
               <div class="photo-editor__controls">
-                <label class="btn btn--secondary btn--small photo-upload">
-                  <app-icon name="upload" />
-                  <span>Subir imagen de cobertura</span>
-                  <input type="file" accept="image/*" class="sr-only" @change="app.handleAssetFov" />
-                </label>
-                <button v-if="draft.fovImage" type="button" class="text-button" @click="app.removeAssetFov()">Quitar imagen</button>
-                <p v-if="errors.fov" class="field__error">{{ errors.fov }}</p>
+                <template v-if="mediaReady">
+                  <label class="btn btn--secondary btn--small photo-upload">
+                    <app-icon name="upload" />
+                    <span>Subir imagen de cobertura</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only" @change="handleFov" />
+                  </label>
+                  <button v-if="ownFov" type="button" class="text-button" @click="removeFov">Quitar imagen</button>
+                  <p v-if="errors.fov || app.inventoryMediaError" class="field__error" role="alert">{{ errors.fov || app.inventoryMediaError }}</p>
+                </template>
+                <p v-else class="field__hint">Guarda el activo para añadir el campo de visión.</p>
               </div>
             </div>
           </section>
 
-          <section v-if="!real" class="editor-section" data-od-id="asset-editor-advanced">
+          <section class="editor-section" data-od-id="asset-editor-advanced">
             <button
               type="button"
               class="editor-toggle"
@@ -343,10 +398,10 @@
             >
               <app-icon :name="editor.advancedOpen ? 'chevron-down' : 'chevron-right'" />
               <span class="editor-toggle__label">Datos avanzados</span>
-              <span class="editor-toggle__hint">{{ editor.advancedOpen ? 'Ocultar' : 'Serie, coste, garantía, acceso remoto y campos técnicos' }}</span>
+              <span class="editor-toggle__hint">{{ editor.advancedOpen ? 'Ocultar' : (real ? 'Serie, coste, estado, descripción y campos técnicos' : 'Serie, coste, garantía, acceso remoto y campos técnicos') }}</span>
             </button>
 
-            <div v-show="editor.advancedOpen" id="asset-editor-advanced-fields" class="editor-advanced">
+            <div v-if="editor.advancedOpen" id="asset-editor-advanced-fields" class="editor-advanced">
               <div v-if="advancedKeys.length" class="form-grid">
                 <asset-common-field
                   v-for="key in advancedKeys"
@@ -357,6 +412,17 @@
                   :errors="errors"
                   id-prefix="asset-adv"
                 />
+              </div>
+
+              <div v-if="real" class="form-grid">
+                <div class="field">
+                  <label for="asset-editor-quick-code">Código rápido manual</label>
+                  <span class="input-shell">
+                    <input id="asset-editor-quick-code" type="text" maxlength="32" :value="draft.quickCode" placeholder="Opcional" autocomplete="off" @input="draft.quickCode = $event.target.value" />
+                  </span>
+                  <span class="field__hint">Opcional. Si lo dejas vacío o sin cambios, el servidor conserva o genera el correlativo.</span>
+                  <span v-if="errors.quickCode" class="field__error" role="alert">{{ errors.quickCode }}</span>
+                </div>
               </div>
 
               <div v-if="showWarranty" class="warranty-editor">
@@ -374,7 +440,7 @@
                     <span class="input-shell">
                       <input id="asset-warranty-until" type="date" :value="warranty.until" @input="setWarranty('until', $event.target.value)" />
                     </span>
-                    <span v-if="errors.warranty" class="field__error">{{ errors.warranty }}</span>
+                    <span v-if="errors.warranty" class="field__error" role="alert">{{ errors.warranty }}</span>
                   </div>
                   <div class="field">
                     <label :for="'asset-warranty-provider'">Proveedor</label>
@@ -394,9 +460,10 @@
               <div v-if="techFields.length" class="tech-editor">
                 <h4>Campos técnicos · {{ categoryLabel }}</h4>
                 <div class="form-grid">
-                  <div v-for="field in techFields" :key="field.key" class="field" :class="{ 'field--inline': field.type === 'boolean' }">
+                  <div v-for="field in techFields" :key="field.key" class="field" :class="{ 'field--inline': field.type === 'boolean', 'field--invalid': !!errors['technical.' + field.key] }">
                     <label :for="'asset-tech-' + field.key">
                       {{ field.label }}<span v-if="field.unit" class="field__unit">({{ field.unit }})</span>
+                      <span v-if="field.required" class="field__required" aria-hidden="true">*</span>
                     </label>
                     <label v-if="field.type === 'boolean'" class="switch">
                       <input
@@ -415,7 +482,7 @@
                       </select>
                     </span>
                     <span v-else-if="field.type === 'textarea'" class="input-shell input-shell--area">
-                      <textarea :id="'asset-tech-' + field.key" rows="3" :value="techValue(field)" @input="setTech(field, $event.target.value)"></textarea>
+                      <textarea :id="'asset-tech-' + field.key" rows="3" :value="techValue(field)" :maxlength="field.maxLength || null" @input="setTech(field, $event.target.value)"></textarea>
                     </span>
                     <span v-else class="input-shell">
                       <input
@@ -423,10 +490,16 @@
                         :type="field.type === 'number' ? 'number' : (field.type === 'date' ? 'date' : 'text')"
                         :value="techValue(field)"
                         :placeholder="field.hint || ''"
+                        :min="field.minimum !== null && field.minimum !== undefined ? field.minimum : null"
+                        :max="field.maximum !== null && field.maximum !== undefined ? field.maximum : null"
+                        :maxlength="field.maxLength || null"
+                        :aria-invalid="!!errors['technical.' + field.key]"
+                        :aria-describedby="errors['technical.' + field.key] ? 'asset-tech-error-' + field.key : null"
                         @input="setTech(field, $event.target.value)"
                       />
                     </span>
                     <span v-if="field.hint && field.type !== 'text' && field.type !== 'number'" class="field__hint">{{ field.hint }}</span>
+                    <span v-if="errors['technical.' + field.key]" :id="'asset-tech-error-' + field.key" class="field__error" role="alert">{{ errors['technical.' + field.key] }}</span>
                   </div>
                 </div>
               </div>

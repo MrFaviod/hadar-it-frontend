@@ -535,9 +535,9 @@
         }
       },
       assetConfigTab(value) {
-        if (value === 'formularios' && !this.formDraft && this.categories.length) {
-          this.openFormDraft(this.categories[0].id);
-        }
+        if (value !== 'formularios' || this.formDraft) return;
+        const categories = this.inventoryCatalogReady ? this.inventoryConfigCategories() : this.categories;
+        if (categories.length) this.openFormDraft(categories[0].id);
       },
       assets: {
         deep: true,

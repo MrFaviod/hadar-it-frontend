@@ -13,7 +13,8 @@
         { id: 'assets.view', label: 'Ver' },
         { id: 'assets.edit', label: 'Editar' },
         { id: 'assets.assign', label: 'Asignar responsables' },
-        { id: 'assets.remote', label: 'Acceso remoto' }
+        { id: 'assets.remote', label: 'Acceso remoto' },
+        { id: 'assets.purge', label: 'Eliminar definitivamente' }
       ]
     },
     {
@@ -72,8 +73,12 @@
   }, []);
   const PERMISSION_SET = new Set(PERMISSION_IDS);
 
+  // The catalog tab holds field/category forms (config.categories) and
+  // status/rule forms (config.general); either grant reaches the section, and
+  // each control still checks its own backend permission.
+  const CONFIG_SECTION_PERMISSIONS = { activos: ['config.categories', 'config.general'] };
   const CONFIG_PERMISSION_BY_SECTION = {
-    activos: 'assets.edit',
+    activos: 'config.categories',
     general: 'config.general',
     apariencia: 'config.general',
     categorias: 'config.categories',
@@ -111,12 +116,19 @@
   function deniedRoute() { return { name: 'denied', assetId: null, personId: null, userId: null, section: null }; }
   function homeRoute() { return { name: 'panel', assetId: null, personId: null, userId: null, section: null }; }
   function configPermission(section) { return CONFIG_PERMISSION_BY_SECTION[text(section, '')] || null; }
-  function routePermission(route) {
-    if (['users', 'user'].includes(route.name)) return 'users.view';
-    if (['people', 'person'].includes(route.name)) return 'people.view';
-    if (route.name === 'config') return configPermission(route.section) || 'security';
-    if (['login', 'denied'].includes(route.name)) return null;
-    return 'assets.view';
+  function sectionPermissions(section) {
+    const id = text(section, '');
+    if (CONFIG_SECTION_PERMISSIONS[id]) return CONFIG_SECTION_PERMISSIONS[id].slice();
+    const permission = configPermission(id);
+    return permission ? [permission] : ['security'];
+  }
+  function allows(vm, permissions) { return permissions.some(permission => vm.can(permission)); }
+  function routePermissions(route) {
+    if (['users', 'user'].includes(route.name)) return ['users.view'];
+    if (['people', 'person'].includes(route.name)) return ['people.view'];
+    if (route.name === 'config') return sectionPermissions(route.section);
+    if (['login', 'denied'].includes(route.name)) return [];
+    return ['assets.view'];
   }
   function closeSensitiveDialogs(vm) {
     SENSITIVE_DIALOG_KEYS.forEach(key => { if (vm[key] && typeof vm[key] === 'object') vm[key].open = false; });
@@ -146,7 +158,10 @@
   async function request(vm, path, options) {
     const init = Object.assign({ method: 'GET' }, options || {});
     const headers = { Accept: 'application/json' };
-    if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(init.body); }
+    // Inventory images travel as raw bytes; every other write stays JSON. The
+    // browser owns the binary Content-Type, so no JSON header is invented.
+    const binary = typeof ArrayBuffer !== 'undefined' && (init.body instanceof ArrayBuffer || ArrayBuffer.isView(init.body) || (typeof Blob !== 'undefined' && init.body instanceof Blob));
+    if (init.body !== undefined && !binary) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(init.body); }
     if (init.method !== 'GET' && vm.csrfToken) headers['X-CSRF-Token'] = vm.csrfToken;
     const state = vm.__assetAccess;
     const signal = init.signal || (state && state.controller.signal);
@@ -199,7 +214,7 @@
       if (permission === 'security') return this.can('roles.manage') || this.can('sessions.manage');
       return !!(this.authenticated && this.currentUser && this.currentUser.active && this.effectivePermissions.includes(permission));
     },
-    canConfig(section) { return this.can(configPermission(section) || 'security'); },
+    canConfig(section) { return allows(this, sectionPermissions(section)); },
     requirePermission(permission) { const allowed = this.can(permission); if (!allowed && this.showToast) this.showToast(messages.forbidden, 'error'); return allowed; },
     roleLabel(id) { const role = roleFor(this, id); return role ? role.name : 'Sin rol'; },
     userPersonLabel(user) { const person = user && user.personId && (this.people || []).find(item => item.id === user.personId); return person ? person.name : user && user.personId ? 'Persona no disponible' : 'Sin vincular'; },
@@ -212,8 +227,8 @@
     accessRoute(route) {
       if (!this.authenticated || !this.currentUser || !this.currentUser.active) return loginRoute();
       const next = route && route.name === 'login' ? homeRoute() : route || homeRoute();
-      const permission = routePermission(next);
-      return !permission || this.can(permission) ? next : deniedRoute();
+      const permissions = routePermissions(next);
+      return !permissions.length || allows(this, permissions) ? next : deniedRoute();
     },
     async checkAccessSession() {
       if (!this.authenticated || this.__assetAccess && this.__assetAccess.stopped) return false;
@@ -304,27 +319,38 @@
     openRetireDialog: () => 'assets.edit',
     confirmRetire: () => 'assets.edit',
     restoreAsset: () => 'assets.edit',
-    openDeleteAsset: () => 'assets.edit',
-    confirmDeleteAsset: () => 'assets.edit',
-    openAssetField: () => 'assets.edit',
-    saveAssetField: () => 'assets.edit',
-    requestDeleteAssetField: () => 'assets.edit',
-    openAssetStatusDialog: () => 'assets.edit',
-    saveAssetStatus: () => 'assets.edit',
-    requestDeleteAssetStatus: () => 'assets.edit',
-    openFormDraft: () => 'assets.edit',
-    saveFormDraft: () => 'assets.edit',
-    saveAssetIdRules: () => 'assets.edit',
-    setOperationsMode: () => 'assets.edit',
-    applyAssetAdminConfirm: () => 'assets.edit'
+    openDeleteAsset: (vm) => purgePermission(vm),
+    confirmDeleteAsset: (vm) => purgePermission(vm),
+    openAssetField: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    saveAssetField: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    setAssetFieldActive: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    requestDeleteAssetField: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    openAssetStatusDialog: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    saveAssetStatus: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    setAssetStatusActive: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    requestDeleteAssetStatus: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    openFormDraft: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    saveFormDraft: (vm) => serverMode(vm) ? 'config.categories' : 'assets.edit',
+    saveAssetIdRules: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    resetAssetIdRules: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    saveInventoryTransitionsDraft: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    applyAssetAdminConfirm: (vm) => serverMode(vm) ? 'config.general' : 'assets.edit',
+    setOperationsMode: (vm) => serverMode(vm) ? null : 'assets.edit'
   };
+
+  function serverMode(vm) { return !!(vm.inventoryServerMode ? vm.inventoryServerMode() : vm.authenticated); }
+  function purgePermission(vm) {
+    const policy = vm.inventoryPurgePolicy ? vm.inventoryPurgePolicy() : null;
+    return policy && policy.permission ? policy.permission : 'assets.edit';
+  }
 
   function confirmPermission(vm) {
     const kind = vm.confirmDialog && vm.confirmDialog.kind;
     if (kind === 'delete-category') return 'config.categories';
     if (kind === 'delete-site' || kind === 'delete-location') return 'config.sites';
     if (kind === 'delete-department') return 'config.departments';
-    if (kind === 'delete-asset-field' || kind === 'delete-asset-status') return 'assets.edit';
+    if (kind === 'delete-asset-field') return serverMode(vm) ? 'config.categories' : 'assets.edit';
+    if (kind === 'delete-asset-status') return serverMode(vm) ? 'config.general' : 'assets.edit';
     if (kind === 'delete-user') return 'users.edit';
     if (kind === 'delete-role') return 'roles.manage';
     return null;
@@ -337,7 +363,7 @@
       if (typeof original !== 'function') return;
       result[name] = function () {
         const permission = wrapperPermissions[name](this);
-        if (!this.requirePermission(permission)) return false;
+        if (permission && !this.requirePermission(permission)) return false;
         return original.apply(this, arguments);
       };
     });

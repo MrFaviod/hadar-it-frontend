@@ -38,6 +38,32 @@ function json(payload, status) {
   return { ok: code < 400, status: code, json: async () => payload };
 }
 
+const CONFIG = {
+  commonFields: ['name', 'category', 'type', 'brand', 'model', 'serial', 'ip', 'site', 'locationId', 'assigneeId', 'cost', 'statusId', 'image', 'description'],
+  fields: [{ key: 'cpu', label: 'Procesador', type: 'text', active: true, required: false, options: [], unit: '', hint: '', maxLength: 500 }],
+  categories: [
+    { id: 'notebooks', label: 'Notebooks', prefix: 'NB', type: 'Notebook', icon: 'laptop', active: true, fov: false, quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'], advanced: ['serial', 'cost', 'statusId', 'description'], tech: ['cpu'], transitions: null },
+    { id: 'servidores', label: 'Servidores', prefix: 'SER', type: 'Servidor', icon: 'server', active: true, fov: false, quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'], advanced: ['serial', 'cost', 'statusId', 'description'], tech: ['cpu'], transitions: null },
+    { id: 'switches', label: 'Switches', prefix: 'SW', type: 'Switch', icon: 'network', active: true, fov: false, quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'ip'], advanced: ['serial', 'cost', 'statusId', 'description'], tech: ['cpu'], transitions: null }
+  ],
+  statuses: [
+    { id: 'in_use', label: 'Asignado', tone: 'ok', final: false, active: true },
+    { id: 'in_storage', label: 'En resguardo', tone: 'hold', final: false, active: true },
+    { id: 'maintenance', label: 'Mantenimiento', tone: 'warn', final: false, active: true },
+    { id: 'retired', label: 'Dado de baja', tone: 'down', final: true, active: true }
+  ],
+  rules: {},
+  operations: { environment: 'development', purge: { confirmationRequired: true, humanOnly: true, permission: 'assets.edit', archivedRequired: false, typedIdRequired: false, reasonRequired: false } }
+};
+
+function configAware(handler) {
+  return (call, count) => (call.url === '/api/v1/inventory/config' ? json(CONFIG) : handler(call, count));
+}
+
+async function openCatalog(app) {
+  assert.equal(await app.loadInventoryCatalog(), true);
+}
+
 function stubFetch(c, handler) {
   const calls = [];
   c.fetch = async (url, init) => {
@@ -70,16 +96,18 @@ test('inventory reads the server collection instead of the prototype assets', as
 
 test('search asks the server for the query and filters of the whole collection', async () => {
   const { c, app } = setup();
-  const calls = stubFetch(c, () => json({ items: [], total: 0, limit: 25, offset: 0 }));
+  const calls = stubFetch(c, configAware(() => json({ items: [], total: 0, limit: 25, offset: 0 })));
+  await openCatalog(app);
   app.inventoryFilters.query = 'matriz';
   app.inventoryFilters.category = 'servidores';
   app.inventoryFilters.status = 'in_storage';
 
   await app.loadInventory();
 
-  assert.match(calls[0].url, /query=matriz/);
-  assert.match(calls[0].url, /category=Servidores/);
-  assert.match(calls[0].url, /status=in_storage/);
+  const search = calls.find((call) => call.url.indexOf('/api/v1/assets/search') === 0);
+  assert.match(search.url, /query=matriz/);
+  assert.match(search.url, /category=Servidores/);
+  assert.match(search.url, /status=in_storage/);
 });
 
 test('pagination is bounded and asks for the next server offset', async () => {
@@ -124,10 +152,11 @@ test('detail is fetched by permanent id even when the asset is outside the curre
 
 test('create posts only the fields the inventory API accepts', async () => {
   const { c, app } = setup();
-  const calls = stubFetch(c, (call) => {
+  const calls = stubFetch(c, configAware((call) => {
     if (call.init.method === 'POST') return json(dto({ quickCode: 'SW-CEN-001', name: 'Switch Aruba' }), 201);
     return json({ items: [dto({ quickCode: 'SW-CEN-001', name: 'Switch Aruba' })], total: 1, limit: 25, offset: 0 });
-  });
+  }));
+  await openCatalog(app);
 
   app.openAssetCreate();
   app.assetEditor.draft.name = 'Switch Aruba';
@@ -138,7 +167,7 @@ test('create posts only the fields the inventory API accepts', async () => {
 
   assert.ok(await app.saveAsset());
 
-  const post = calls[0];
+  const post = calls.find((call) => call.init.method === 'POST');
   assert.equal(post.url, '/api/v1/assets');
   assert.equal(post.init.method, 'POST');
   assert.equal(post.body.name, 'Switch Aruba');
@@ -150,22 +179,23 @@ test('create posts only the fields the inventory API accepts', async () => {
   for (const unsupported of ['id', 'code', 'image', 'cost', 'warranty', 'tech', 'assigneeId', 'statusId', 'history', 'retired']) {
     assert.equal(unsupported in post.body, false, unsupported + ' is not part of the API contract');
   }
-  assert.equal(calls[1].url.indexOf('/api/v1/assets/search?'), 0, 'inventory is reloaded from the server');
+  assert.ok(calls.some((call) => call.url.indexOf('/api/v1/assets/search?') === 0), 'inventory is reloaded from the server');
 });
 
 test('update patches the permanent id and keeps the quick code mutable', async () => {
   const { c, app } = setup();
-  const calls = stubFetch(c, (call) => {
+  const calls = stubFetch(c, configAware((call) => {
     if (call.init.method === 'PATCH') return json(dto({ quickCode: 'NB-CEN-999' }));
     return json({ items: [dto({ quickCode: 'NB-CEN-999' })], total: 1, limit: 25, offset: 0 });
-  });
+  }));
+  await openCatalog(app);
   app.inventoryDetail = { id: ASSET_ID, asset: app.inventoryMapAsset(dto()), loading: false, error: '', requestId: 0 };
 
   app.openAssetEdit(app.inventoryDetail.asset);
   app.assetEditor.draft.quickCode = 'NB-CEN-999';
   assert.ok(await app.saveAsset());
 
-  const patch = calls[0];
+  const patch = calls.find((call) => call.init.method === 'PATCH');
   assert.equal(patch.url, '/api/v1/assets/' + ASSET_ID);
   assert.equal(patch.init.method, 'PATCH');
   assert.equal(patch.body.quickCode, 'NB-CEN-999');
@@ -174,24 +204,27 @@ test('update patches the permanent id and keeps the quick code mutable', async (
 
 test('validation blocks the request and marks the field', async () => {
   const { c, app } = setup();
-  const calls = stubFetch(c, () => json({ items: [], total: 0, limit: 25, offset: 0 }));
+  const calls = stubFetch(c, configAware(() => json({ items: [], total: 0, limit: 25, offset: 0 })));
+  await openCatalog(app);
+  const afterCatalog = calls.length;
 
   app.openAssetCreate();
   app.assetEditor.draft.name = '   ';
   assert.equal(await app.saveAsset(), false);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, afterCatalog);
   assert.ok(app.assetEditorErrors.name);
 
   app.assetEditor.draft.name = 'Switch Aruba';
   app.assetEditor.draft.responsible = 'x'.repeat(121);
   assert.equal(await app.saveAsset(), false);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, afterCatalog);
   assert.ok(app.assetEditorErrors.responsible);
 });
 
 test('a conflicting quick code is reported without writing local state', async () => {
   const { c, app } = setup();
-  stubFetch(c, () => json({ error: { code: 'conflict', message: 'quick code already exists' } }, 409));
+  stubFetch(c, configAware(() => json({ error: { code: 'conflict', message: 'quick code already exists' } }, 409)));
+  await openCatalog(app);
 
   app.openAssetCreate();
   app.assetEditor.draft.name = 'Switch Aruba';
@@ -204,7 +237,9 @@ test('a conflicting quick code is reported without writing local state', async (
 });
 
 test('server categories map to the existing illustration and keep the server label', async () => {
-  const { app } = setup();
+  const { c, app } = setup();
+  stubFetch(c, configAware(() => json({ items: [], total: 0, limit: 25, offset: 0 })));
+  await openCatalog(app);
   const mapped = app.inventoryMapAsset(dto({ category: 'Notebooks' }));
   assert.equal(mapped.image, 'assets/svg/devices/notebook.svg');
   assert.equal(mapped.category, 'notebooks');
@@ -261,6 +296,8 @@ test('a response started before a session clear never revives the old list', asy
 test('a save that resolves after logout does not report success', async () => {
   const { c, app } = setup();
   let release = null;
+  stubFetch(c, configAware(() => json({ items: [], total: 0, limit: 25, offset: 0 })));
+  await openCatalog(app);
   c.AssetAccess.request = () => new Promise((resolve) => { release = resolve; });
 
   app.openAssetCreate();

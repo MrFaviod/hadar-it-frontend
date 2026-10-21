@@ -1,0 +1,38 @@
+/* Phase 4 inventory: server-backed media, history and configuration additions.
+   Only new surface area is styled here; the imported design tokens remain in app.css. */
+
+.transition-rows {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.transition-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 38px;
+  align-items: center;
+  gap: 8px;
+}
+
+.transition-row .input-shell {
+  min-width: 0;
+}
+
+.transition-row .input-shell select {
+  width: 100%;
+}
+
+.asset-history {
+  grid-column: 1 / -1;
+}
+
+.asset-history .history-item__copy strong {
+  display: block;
+  font-size: 14px;
+}
+
+.asset-history .history-item__copy p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
