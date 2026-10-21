@@ -69,13 +69,9 @@ html[data-theme="dark"] ::selection {
   color: #f4fbfa;
 }
 
-html[data-theme="dark"] .login__visual,
+html[data-theme="dark"] .login__chrome,
 html[data-theme="dark"] .sidebar {
   background: var(--chrome-bg);
-}
-
-html[data-theme="dark"] .login__panel {
-  background: var(--paper);
 }
 
 html[data-theme="dark"] .app-shell {
@@ -101,9 +97,14 @@ html[data-theme="dark"] .btn--primary {
   color: #f4fbfa;
 }
 
+/* Hover darkens the fill in both themes; the ring keeps the state perceivable
+   without lightening the label, which would drop the dark ratio below 4.5:1. */
 html[data-theme="dark"] .btn--primary:hover {
-  background: #199488;
+  background: #147c73;
   color: #f4fbfa;
+  box-shadow:
+    0 0 0 1px rgba(244, 251, 250, 0.32),
+    0 8px 20px -14px rgba(0, 0, 0, 0.9);
 }
 
 html[data-theme="dark"] .skip-link {
@@ -217,14 +218,24 @@ html[data-theme="dark"] .theme-toggle:hover {
   white-space: nowrap;
 }
 
-.login__panel {
-  position: relative;
+/* The login header is chrome-dark in both themes, so its toggle keeps chrome colours. */
+.login__chrome .theme-toggle,
+html[data-theme="dark"] .login__chrome .theme-toggle {
+  border-color: rgba(167, 223, 215, 0.32);
+  background: transparent;
+  color: #dbe8ea;
 }
 
-.login__theme-row {
-  display: flex;
-  justify-content: flex-end;
-  margin: -10px 0 14px;
+.login__chrome .theme-toggle .od-icon,
+html[data-theme="dark"] .login__chrome .theme-toggle .od-icon {
+  color: var(--teal-200);
+}
+
+.login__chrome .theme-toggle:hover,
+html[data-theme="dark"] .login__chrome .theme-toggle:hover {
+  border-color: rgba(167, 223, 215, 0.62);
+  background: rgba(167, 223, 215, 0.12);
+  color: #ffffff;
 }
 
 @media (max-width: 640px) {
@@ -235,10 +246,5 @@ html[data-theme="dark"] .theme-toggle:hover {
   .theme-toggle {
     width: 44px;
     padding: 0;
-  }
-
-  .login__theme-row {
-    margin-top: -9px;
-    margin-bottom: 12px;
   }
 }

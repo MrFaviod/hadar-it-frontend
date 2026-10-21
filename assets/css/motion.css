@@ -63,28 +63,10 @@
     to { opacity: 1; transform: scaleX(1); }
   }
 
-  /* Login: brand side settles first, then the form reads top to bottom. */
-  .login__visual {
-    animation: motion-fade 420ms var(--ease-out) both;
+  /* Login: one brief fade on the form; nothing else competes with the fields. */
+  .login__form-wrap {
+    animation: motion-fade 240ms var(--ease-out) both;
   }
-  .login__brand,
-  .login__foot {
-    animation: motion-rise var(--motion-enter) var(--motion-ease) both;
-  }
-  .login__brand { animation-delay: 60ms; }
-  .login__foot { animation-delay: 160ms; }
-
-  .login__form-wrap > * {
-    animation: motion-rise var(--motion-enter) var(--motion-ease) both;
-  }
-  .login__form-wrap > :nth-child(1) { animation-delay: 80ms; }
-  .login__form-wrap > :nth-child(2) { animation-delay: 110ms; }
-  .login__form-wrap > :nth-child(3) { animation-delay: 140ms; }
-  .login__form-wrap > :nth-child(4) { animation-delay: 170ms; }
-  .login__form-wrap > :nth-child(5) { animation-delay: 200ms; }
-  .login__form-wrap > :nth-child(6) { animation-delay: 240ms; }
-  .login__form-wrap > :nth-child(7) { animation-delay: 290ms; }
-  .login__form-wrap > :nth-child(n + 8) { animation-delay: 330ms; }
 
   /* Validation feedback eases in where it appears; no shake, no reflow jump. */
   .login-form .field__error,
@@ -178,9 +160,6 @@
     from { opacity: 0.45; transform: scale(1); }
     to { opacity: 0; transform: scale(2.6); }
   }
-  @keyframes motion-settle {
-    from { opacity: 0; transform: translate(-46%, -52%) scale(0.97); }
-  }
 
   /* Navigation: the active marker grows in when the section changes. */
   .nav-link.is-active::before,
@@ -206,10 +185,5 @@
   tr:hover .asset-thumb img,
   .asset-thumb:hover img {
     transform: scale(1.05);
-  }
-
-  /* Login art settles after the panel fades in; its own SVG then idles. */
-  .login__topology {
-    animation: motion-settle 900ms var(--motion-ease) 120ms both;
   }
 }

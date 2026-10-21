@@ -2039,8 +2039,8 @@
 /* --------------------------------------------------- integration details */
 
 .sidebar .nav-link__count--alert {
-  background: color-mix(in oklab, var(--danger-600) 82%, var(--paper));
-  color: var(--paper);
+  background: var(--danger-050);
+  color: var(--danger-700);
   font-variant-numeric: tabular-nums;
 }
 

@@ -177,33 +177,23 @@
     <!-- Acceso / aplicación: un único cambio animado al iniciar o cerrar sesión -->
     <transition name="auth" mode="out-in">
     <section v-if="route.name === 'login'" class="login" aria-labelledby="login-title">
-      <aside class="login__visual" :aria-label="appName">
+      <header class="login__chrome">
         <div class="login__brand">
-          <img :src="brandLogo" width="48" height="48" alt="">
+          <img :src="brandLogo" width="40" height="40" alt="">
           <span>{{ appName }}</span>
         </div>
-
-        <img class="login__topology" src="assets/svg/login-topology.svg" width="720" height="720" alt="">
-
-        <p class="login__foot">Entorno de demostración</p>
-      </aside>
+        <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
+                :title="themeToggleLabel" @click="toggleTheme">
+          <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
+          <span class="theme-toggle__label">{{ themeToggleText }}</span>
+        </button>
+      </header>
 
       <main class="login__panel">
         <div class="login__form-wrap">
-          <div class="login__theme-row">
-            <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
-                    :title="themeToggleLabel" @click="toggleTheme">
-              <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
-              <span class="theme-toggle__label">{{ themeToggleText }}</span>
-            </button>
-          </div>
-          <div class="login__mobile-brand">
-            <img :src="brandCompactLogo" width="36" height="36" alt="">
-            <span>{{ appName }}</span>
-          </div>
           <h1 id="login-title">Iniciar sesión</h1>
 
-          <form class="login-form" @submit.prevent="submitLogin" novalidate>
+          <form class="login-form" @submit.prevent="submitLoginWithFocus" novalidate>
             <div class="field" :class="{ 'field--invalid': loginErrors.username }">
               <label for="login-user">Usuario</label>
               <div class="input-shell">
@@ -233,7 +223,7 @@
               <p v-if="loginErrors.password" id="login-password-error" class="field__error">{{ loginErrors.password }}</p>
             </div>
 
-            <div v-if="loginErrors.general" class="form-alert" role="alert">
+            <div v-if="loginErrors.general" class="form-alert" role="alert" tabindex="-1">
               <app-icon name="alert"></app-icon>
               <span>{{ loginErrors.general }}</span>
             </div>
@@ -245,15 +235,14 @@
             </button>
           </form>
 
-          <div class="demo-card">
-            <div class="demo-card__head">
-              <span class="demo-card__dot" aria-hidden="true"></span>
-              <p>Acceso de demostración</p>
+          <details class="demo-access">
+            <summary class="demo-access__summary">Acceso de demostración</summary>
+            <div class="demo-access__body">
+              <p class="demo-access__cred">Usuario <strong>admin</strong><span aria-hidden="true">·</span>Contraseña <strong>admin</strong></p>
+              <button type="button" class="text-button demo-access__fill" @click="fillDemo">Rellenar credenciales</button>
+              <p class="demo-access__hint">Otros accesos demo: operador/operador · lector/lector</p>
             </div>
-            <p>Usuario <strong>admin</strong><span aria-hidden="true">·</span>Contraseña <strong>admin</strong></p>
-            <button type="button" class="text-button" @click="fillDemo">Rellenar credenciales</button>
-            <p class="access-demo-hint">Otros accesos demo: operador/operador · lector/lector</p>
-          </div>
+          </details>
         </div>
       </main>
     </section>

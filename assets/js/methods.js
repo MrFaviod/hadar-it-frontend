@@ -363,6 +363,16 @@
       this.loginForm.password = 'admin';
       this.loginErrors = { username: '', password: '', general: '' };
     },
+    submitLoginWithFocus() {
+      this.submitLogin();
+      this.$nextTick(() => {
+        const field = this.loginErrors.username ? 'login-user' : this.loginErrors.password ? 'login-password' : null;
+        const target = field
+          ? document.getElementById(field)
+          : document.querySelector('.login-form .form-alert');
+        if (target && typeof target.focus === 'function') target.focus();
+      });
+    },
     validateLoginField(field) {
       if (field === 'username' && !this.loginForm.username.trim()) {
         this.loginErrors.username = 'Introduce tu usuario.';

@@ -1,6 +1,6 @@
 /* Organization branding overrides are opt-in; the original preset keeps existing tokens. */
 html[data-branding="custom"] .sidebar,
-html[data-branding="custom"] .login__visual { background: var(--brand-primary); color: white; }
+html[data-branding="custom"] .login__chrome { background: var(--brand-primary); color: white; }
 html[data-branding="custom"] .btn--primary { background: var(--brand-button); border-color: var(--brand-button); color: var(--brand-on-button); }
 html[data-branding="custom"] .btn--primary:hover:not(:disabled) { background: var(--brand-button); color: var(--brand-on-button); box-shadow: 0 0 0 3px color-mix(in oklch,var(--brand-button) 25%,transparent); transform: translateY(-1px); }
 html[data-branding="custom"] .brand,
@@ -12,7 +12,7 @@ html[data-density="compact"] .data-table td { padding-block: 9px; }
 html[data-density="compact"] .field input:not([type="checkbox"]):not([type="radio"]),
 html[data-density="compact"] .field select { min-height: 44px; }
 html[data-branding] .sidebar, html[data-branding] .topbar,
-html[data-branding] .login__visual { transition: background-color var(--dur-slow) var(--ease-out),color var(--dur-slow) var(--ease-out); }
+html[data-branding] .login__chrome { transition: background-color var(--dur-slow) var(--ease-out),color var(--dur-slow) var(--ease-out); }
 .appearance { min-width: 0; }
 .appearance h3 { margin: 0; font-family: var(--font-display); font-size: 15px; color: var(--text); }
 .appearance p { color: var(--muted); line-height: 1.6; }
@@ -137,7 +137,7 @@ html[data-branding] .login__visual { transition: background-color var(--dur-slow
 .appearance-conflict label { display: flex; align-items: center; gap: 8px; min-height: 44px; font-size: 12px; }
 @media (max-width: 1200px) { .appearance-workspace { grid-template-columns: 1fr; } .appearance-preview-panel { position: static; } }
 @media (max-width: 680px) { .appearance .config-section__head,.appearance-mode,.appearance-apply { align-items: stretch; flex-direction: column; } .appearance-gallery { grid-template-columns: 1fr; } .appearance-preset__sample { height: 76px; } .appearance-tools { justify-content: flex-start; } .appearance-resource-grid,.appearance-compare { grid-template-columns: 1fr; } .appearance-section-title { flex-wrap: wrap; } .appearance-apply>div:last-child { justify-content: flex-end; } .appearance-session { display: none; } .appearance-specimen__stats { grid-template-columns: 1fr 1fr; } }
-@media (prefers-reduced-motion: reduce) { .appearance-specimen, html[data-branding] .sidebar,html[data-branding] .topbar,html[data-branding] .login__visual { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .appearance-specimen, html[data-branding] .sidebar,html[data-branding] .topbar,html[data-branding] .login__chrome { transition: none; } }
 
 html[data-branding="custom"] .sidebar .nav-link,html[data-branding="custom"] .sidebar .side-category { color: white; }
 html[data-branding="custom"] .sidebar .nav-link .od-icon,html[data-branding="custom"] .sidebar .side-category .od-icon { color: white; }

@@ -32,10 +32,13 @@ test('M2 motion.css animates only opacity and transform, and only without reduce
  assert.match(css,/prefers-reduced-motion:\s*reduce[\s\S]*auth-/,'reduced motion neutralises the auth transition');
 });
 
-test('M3 login entrance staggers the brand and the form, and validation messages ease in',()=>{
+test('M3 login keeps one brief form entrance and validation messages ease in',()=>{
  const css=motion();
- for(const sel of ['.login__brand','.login__form-wrap > ','.login-form .field__error','.login-form .form-alert'])assert.ok(css.includes(sel),sel+' is animated');
- assert.match(css,/animation-delay/,'login entrance uses a temporal progression');
+ assert.match(css,/\.login__form-wrap \{\s*animation: motion-fade [^;]+;/,'the login form fades in once');
+ assert.doesNotMatch(css,/\.login__form-wrap > :nth-child\(/,'the login no longer staggers every child');
+ assert.doesNotMatch(css,/\.login__visual|\.login__topology/,'the retired login art carries no motion rules');
+ for(const sel of ['.login-form .field__error','.login-form .form-alert'])assert.ok(css.includes(sel),sel+' is animated');
+ for(const block of topLevelBlocks(css))if(/login__form-wrap/.test(block.body))assert.match(block.head,/prefers-reduced-motion:\s*no-preference/,'the login entrance is gated by the motion preference');
 });
 
 test('M4 Dashboard entrance plays once on access and is not replayed by ordinary interactions',async()=>{
@@ -101,10 +104,9 @@ test('M8 empty-search illustration moves the lens lightly and drops the filler m
  assert.doesNotMatch(svg,/#8cb9b6/,'floating dashes are removed');
 });
 
-test('M9 light motion reaches navigation, status, empty states, thumbnails and the login art',()=>{
+test('M9 light motion reaches navigation, status, empty states and thumbnails',()=>{
  const css=motion();
- for(const sel of ['.nav-link.is-active::before','.side-category.is-active::before','.status-dot--down::after','.noc-alert-dot--critica::after','.empty-state','.asset-thumb img','.login__topology'])assert.ok(css.includes(sel),sel+' has a motion rule');
- assert.match(css,/@keyframes\s+motion-settle\s*\{\s*from\s*\{[^}]*translate\(-46%,\s*-52%\)/,'login art settles from its own resting translate');
+ for(const sel of ['.nav-link.is-active::before','.side-category.is-active::before','.status-dot--down::after','.noc-alert-dot--critica::after','.empty-state','.asset-thumb img'])assert.ok(css.includes(sel),sel+' has a motion rule');
  const gated=topLevelBlocks(css).filter(b=>/no-preference/.test(b.head)).map(b=>b.body).join('\n');
- for(const sel of ['.status-dot--down::after','.empty-state','.login__topology'])assert.ok(gated.includes(sel),sel+' animation is gated');
+ for(const sel of ['.status-dot--down::after','.empty-state'])assert.ok(gated.includes(sel),sel+' animation is gated');
 });
