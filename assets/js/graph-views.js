@@ -57,8 +57,28 @@
       prefs() {
         return this.app.graphPrefs || {};
       },
+      source() {
+        const app = this.app;
+        if (!app || !app.serverGraphMode) return app;
+        const org = app.organizationGraphSource;
+        if (this._sourceFor === org) return this._source;
+        const proxy = new Proxy(app, {
+          get(target, prop) {
+            if (prop === 'assets') return org.assets;
+            if (prop === 'sites') return org.sites;
+            if (prop === 'relations') return org.relations;
+            if (prop === 'categories') return org.categories;
+            const value = target[prop];
+            return typeof value === 'function' ? value.bind(target) : value;
+          }
+        });
+        this._source = proxy;
+        this._sourceFor = org;
+        return proxy;
+      },
       assets() {
-        return Array.isArray(this.app.assets) ? this.app.assets : [];
+        const list = this.source && this.source.assets;
+        return Array.isArray(list) ? list : [];
       },
       categories() {
         return Array.isArray(this.app.categories) ? this.app.categories : [];
@@ -73,7 +93,7 @@
         return this.focusId || '';
       },
       focusAsset() {
-        return this.activeFocusId ? Engine.assetById(this.app, this.activeFocusId) : null;
+        return this.activeFocusId ? Engine.assetById(this.source, this.activeFocusId) : null;
       },
       mode() {
         return this.focusAsset ? 'focus' : 'global';
@@ -95,9 +115,9 @@
           search: this.filters.search
         };
         if (this.mode === 'focus' && this.focusAsset) {
-          return Engine.focusData(this.app, this.focusAsset.id, this.depth, engineFilters);
+          return Engine.focusData(this.source, this.focusAsset.id, this.depth, engineFilters);
         }
-        return Engine.graphData(this.app, engineFilters);
+        return Engine.graphData(this.source, engineFilters);
       },
       baseNodes() {
         return this.baseData.nodes || [];

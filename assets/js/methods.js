@@ -211,7 +211,7 @@
           parsed = { name: 'maintenance', incidentId: '', assetId: null, personId: null, section: null };
         }
       }
-      if (parsed.name === 'person' && !this.people.some((person) => person.id === parsed.personId)) {
+      if (parsed.name === 'person' && !this.serverOrganizationMode && !this.people.some((person) => person.id === parsed.personId)) {
         this.ensureHash('#/personas');
         this.showToast('La persona solicitada ya no está disponible.', 'error');
         parsed = { name: 'people', assetId: null, personId: null, section: null };

@@ -15,7 +15,9 @@
       },
       floorView() {
         if (!this.activeFloorId) return null;
-        return Engine.floorView(this.app, this.filters, this.activeFloorId);
+        // `source` is the composed canonical model in server mode and the app
+        // itself in prototype mode; geometry is always read from it.
+        return Engine.floorView(this.source, this.filters, this.activeFloorId);
       },
       floor() {
         return this.floorView ? this.floorView.floor : null;
@@ -34,7 +36,7 @@
       },
       camera() {
         if (!this.selectedAsset || this.selectedAsset.category !== 'camaras') return null;
-        return Engine.cameraView(this.app, this.selectedAsset);
+        return Engine.cameraView(this.source, this.selectedAsset);
       },
       fovCone() {
         const asset = this.selectedAsset;
@@ -65,7 +67,7 @@
           ? Engine.clusterPoints(sources, 90 / this.floorZoom)
           : sources.map((source) => ({ id: source.id, x: source.x, y: source.y, points: [source], count: 1 }));
         return grouped.map((cluster) => {
-          const asset = (this.app.assets || []).find((item) => item.id === cluster.points[0].id) || null;
+          const asset = (this.source.assets || []).find((item) => item.id === cluster.points[0].id) || null;
           if (!asset) return null;
           return {
             id: cluster.id,
@@ -93,7 +95,7 @@
       },
       selectedRoomData() {
         if (!this.selectedRoom || !this.floorView) return null;
-        const room = Engine.roomById(this.app, this.selectedRoom);
+        const room = Engine.roomById(this.source, this.selectedRoom);
         if (!room) return null;
         const assets = this.floorView.assets.filter((asset) => asset.locationId === room.id);
         return { room: room, assets: assets };
@@ -101,17 +103,17 @@
       selectedPath() {
         const asset = this.selectedAsset;
         if (!asset) return '';
-        const room = Engine.roomOfAsset(this.app, asset);
-        const floor = room ? Engine.floorById(this.app, room.floor) : null;
-        const building = floor ? Engine.buildingById(this.app, floor.building) : null;
-        const site = this.app.sites.find((item) => item.id === asset.site);
+        const room = Engine.roomOfAsset(this.source, asset);
+        const floor = room ? Engine.floorById(this.source, room.floor) : null;
+        const building = floor ? Engine.buildingById(this.source, floor.building) : null;
+        const site = this.source.sites.find((item) => item.id === asset.site);
         return [site ? site.label : asset.site, building ? building.name : '', floor ? floor.name : '', room ? room.name : '']
           .filter(Boolean).join(' › ');
       },
     },
     methods: {
       openFloor(floorId, options) {
-        const floor = Engine.floorById(this.app, floorId);
+        const floor = Engine.floorById(this.source, floorId);
         if (!floor) return;
         this.level = 'floor';
         this.activeFloorId = floorId;
@@ -122,11 +124,11 @@
         this.floorZoom = 1;
         if (!options || options.keepSelection !== true) this.selectedId = '';
         if (!options || options.silent !== true) {
-          this.announce = 'Plano abierto: ' + floor.name + ', ' + Engine.buildingById(this.app, floor.building).name + '.';
+          this.announce = 'Plano abierto: ' + floor.name + ', ' + Engine.buildingById(this.source, floor.building).name + '.';
         }
       },
       openPlan(planId) {
-        const plan = Engine.planById(this.app, planId);
+        const plan = Engine.planById(this.source, planId);
         if (plan) this.openFloor(plan.floor);
       },
       backToGeo() {
@@ -140,13 +142,13 @@
         if (floorId && floorId !== this.activeFloorId) this.openFloor(floorId, { silent: true });
         this.selectedRoom = roomId;
         this.selectedId = '';
-        const room = Engine.roomById(this.app, roomId);
+        const room = Engine.roomById(this.source, roomId);
         this.announce = 'Sala ' + (room ? room.name : '') + ' seleccionada.';
       },
       showAssetFloor() {
         const asset = this.selectedAsset;
         if (!asset) return;
-        const floorId = Engine.floorOfAsset(this.app, asset);
+        const floorId = Engine.floorOfAsset(this.source, asset);
         if (floorId) this.openFloor(floorId, { keepSelection: true });
       },
       zoomFloor(factor) {
@@ -170,20 +172,30 @@
         const rect = this.$refs.paper.getBoundingClientRect();
         const x = ((event.clientX - rect.left) / rect.width) * Engine.PLAN_W;
         const y = ((event.clientY - rect.top) / rect.height) * Engine.PLAN_H;
-        Engine.setPosition(this.app, this.drag.id, this.activeFloorId, x, y);
+        Engine.setPosition(this.source, this.drag.id, this.activeFloorId, x, y);
       },
       onMarkerUp() {
         if (this.drag) {
-          const asset = (this.app.assets || []).find((item) => item.id === this.drag.id);
+          const asset = (this.source.assets || []).find((item) => item.id === this.drag.id);
           this.announce = 'Posición de ' + (asset ? asset.name : 'activo') + ' actualizada en el plano.';
+          this.persistServerPosition(this.drag.id, this.activeFloorId);
         }
         this.drag = null;
         window.removeEventListener('pointermove', this.onMarkerMove);
         window.removeEventListener('pointerup', this.onMarkerUp);
       },
       clearPosition(assetId) {
-        Engine.removePosition(this.app, assetId);
+        Engine.removePosition(this.source, assetId);
         this.announce = 'Posición individual eliminada; el activo vuelve a su sala.';
+        if (this.app.serverMapMode) {
+          this.app.saveOrganizationPosition(assetId, '', null, null);
+        }
+      },
+      persistServerPosition(assetId, floorId) {
+        if (!this.app.serverMapMode) return;
+        const position = this.maps.positions[assetId];
+        if (!position) return;
+        this.app.saveOrganizationPosition(assetId, floorId || position.floor, position.x, position.y);
       },
       startMarkerKey(event, marker) {
         if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
@@ -196,7 +208,8 @@
         if (event.key === 'ArrowRight') next.x += step;
         if (event.key === 'ArrowUp') next.y -= step;
         if (event.key === 'ArrowDown') next.y += step;
-        Engine.setPosition(this.app, marker.asset.id, this.activeFloorId, next.x, next.y);
+        Engine.setPosition(this.source, marker.asset.id, this.activeFloorId, next.x, next.y);
+        this.persistServerPosition(marker.asset.id, this.activeFloorId);
         this.announce = 'Posición de ' + marker.asset.name + ' ajustada.';
         event.preventDefault();
       },
@@ -210,9 +223,9 @@
         if (this.plan) Engine.setPlan(this.app, this.plan.id, { opacity: Number(value) });
       },
       floorLabel(floorId) {
-        const floor = Engine.floorById(this.app, floorId);
+        const floor = Engine.floorById(this.source, floorId);
         if (!floor) return '';
-        const building = Engine.buildingById(this.app, floor.building);
+        const building = Engine.buildingById(this.source, floor.building);
         return (building ? building.name + ' · ' : '') + floor.name;
       },
       percentX(value) {

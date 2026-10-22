@@ -293,6 +293,10 @@
     },
 
     openSiteDialog(site) {
+      if (this.serverOrganizationMode) {
+        const record = site ? this.organizationLocationById(site.id) : null;
+        return this.openOrganizationLocationDialog({ level: 'site', location: record });
+      }
       if (site) {
         this.siteDialog = {
           open: true,
@@ -312,6 +316,11 @@
     },
 
     saveSite() {
+      // Under server authority the hierarchy dialog is the only writer.
+      if (this.serverOrganizationMode) {
+        const dialog = this.organization.dialogs.location;
+        return dialog.open ? this.saveOrganizationLocationDialog() : this.openOrganizationLocationDialog({ level: 'site' });
+      }
       const label = this.siteDialog.label.trim();
       const short = this.siteDialog.short.trim();
       const errors = { label: '', short: '', general: '' };
@@ -346,6 +355,12 @@
     },
 
     requestDeleteSite(site) {
+      // The canonical API never deletes a location: it deactivates it so stored
+      // assets and history keep a resolvable reference.
+      if (this.serverOrganizationMode) {
+        const record = this.organizationLocationById(site && site.id);
+        return this.setOrganizationLocationActive(record, record ? record.active === false : true);
+      }
       const count = this.siteAssetCount(site.id);
       const peopleCount = this.people.filter((person) => person.siteId === site.id).length;
       if (count || peopleCount) {
@@ -377,6 +392,10 @@
     },
 
     openLocationDialog(site, location) {
+      if (this.serverOrganizationMode) {
+        const record = location ? this.organizationLocationById(location.id) : null;
+        return this.openOrganizationLocationDialog({ level: 'building', parentId: site && site.id, location: record });
+      }
       if (!site) return;
       if (location) {
         this.locationDialog = {
@@ -396,6 +415,10 @@
     },
 
     saveLocation() {
+      if (this.serverOrganizationMode) {
+        const dialog = this.organization.dialogs.location;
+        return dialog.open ? this.saveOrganizationLocationDialog() : this.openOrganizationLocationDialog({ level: 'building' });
+      }
       const site = this.config.sites.find((item) => item.id === this.locationDialog.siteId);
       const label = this.locationDialog.label.trim();
       const errors = { label: '', general: '' };
@@ -430,6 +453,10 @@
     },
 
     requestDeleteLocation(site, location) {
+      if (this.serverOrganizationMode) {
+        const record = this.organizationLocationById(location && location.id);
+        return this.setOrganizationLocationActive(record, record ? record.active === false : true);
+      }
       const count = this.locationAssetCount(site.id, location.id);
       if (count) {
         this.confirmDialog = Object.assign(blankConfirm(), {

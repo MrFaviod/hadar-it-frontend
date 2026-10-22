@@ -517,6 +517,13 @@
         const category = this.inventoryCategoryId(categoryText) || categoryText;
         const images = dto.images && typeof dto.images === 'object' ? dto.images : {};
         const photoUrl = text(images.photo);
+        // The canonical label is display text; the person id is the identity the
+        // detail header and the assign dialog act on. Legacy payloads carry only
+        // the free-text responsible, so the display falls back to it and no id or
+        // canonical label is ever invented from a name.
+        const responsibleLabel = text(dto.responsibleLabel);
+        const responsibleText = text(dto.responsible) || responsibleLabel;
+        const responsiblePersonId = text(dto.responsiblePersonId);
         return {
           id: text(dto.id),
           code: text(dto.quickCode),
@@ -530,9 +537,16 @@
           serial: text(dto.serial),
           ip: text(dto.ip),
           site: text(dto.site),
+          siteId: text(dto.siteId),
           location: text(dto.location),
-          responsible: text(dto.responsible),
-          assignee: text(dto.responsible),
+          locationId: text(dto.locationId),
+          responsible: responsibleText,
+          responsibleLabel,
+          responsiblePersonId,
+          assignee: responsibleText,
+          assigneeId: responsiblePersonId,
+          positionX: text(dto.positionX),
+          positionY: text(dto.positionY),
           statusId: meta.value,
           status: meta.label,
           statusTone: meta.tone,
@@ -728,7 +742,13 @@
             action: text(item.action),
             title: this.inventoryHistoryTitle(item.action),
             reason: text(item.reason),
+            notes: text(item.notes),
             actor: text(item.actorUsername),
+            actorId: text(item.actorId),
+            source: text(item.source),
+            entityType: text(item.entityType) || 'asset',
+            entityId: text(item.entityId) || text(item.assetId),
+            effectiveAt: text(item.effectiveAt),
             quickCodeOld: text(item.quickCodeOld),
             quickCodeNew: text(item.quickCodeNew),
             statusOld: text(item.statusOld),
@@ -736,6 +756,7 @@
             archivedOld: item.archivedOld === null || item.archivedOld === undefined ? null : !!item.archivedOld,
             archivedNew: item.archivedNew === null || item.archivedNew === undefined ? null : !!item.archivedNew,
             changes: item.changes && typeof item.changes === 'object' ? copy(item.changes) : {},
+            recordedAt: text(item.createdAt),
             createdAt: text(item.createdAt)
           }));
           this.inventoryHistory.total = Number(payload.total) || 0;
@@ -759,7 +780,14 @@
           archived: 'Activo archivado',
           restored: 'Activo restaurado',
           retired: 'Activo dado de baja',
-          purged: 'Eliminación definitiva'
+          purged: 'Eliminación definitiva',
+          assigned: 'Responsable asignado',
+          returned: 'Responsable devuelto',
+          transferred: 'Activo trasladado',
+          relationship_created: 'Relación creada',
+          relationship_updated: 'Relación modificada',
+          relationship_removed: 'Relación eliminada',
+          host_moved: 'Host cambiado'
         };
         return titles[text(action)] || 'Cambio registrado';
       },

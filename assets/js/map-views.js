@@ -5,6 +5,17 @@
   const Data = window.AssetMapData;
   const FloorLogic = window.AssetMapFloorLogic || { computed: {}, methods: {} };
 
+  // The canonical map payload carries organization geometry only. Cartographic
+  // preferences (base, labels, clusters, camera) are local presentation state
+  // persisted in `app.maps.prefs`, so they are composed for reads when the
+  // active map model has none. Nothing is written to either side.
+  function mapsWithPrefs(maps, app) {
+    if (!maps || maps.prefs) return maps;
+    const local = Engine.mapsOf(app);
+    if (!local || !local.prefs) return maps;
+    return Object.assign({}, maps, { prefs: local.prefs });
+  }
+
   // The explorer keeps the geographic view and the interior floor view in one
   // component so filters, selection and the location tree survive when the
   // manager moves between them. MapLibre is instantiated once and only hidden
@@ -48,8 +59,28 @@
       };
     },
     computed: Object.assign({}, FloorLogic.computed, {
+      source() {
+        const app = this.app;
+        if (!app || !app.serverMapMode) return app;
+        const org = app.organizationMapSource;
+        if (this._sourceFor === org) return this._source;
+        const proxy = new Proxy(app, {
+          get(target, prop) {
+            if (prop === 'assets') return org.assets;
+            if (prop === 'sites') return org.sites;
+            if (prop === 'maps') return mapsWithPrefs(org.maps, target);
+            if (prop === 'categories') return org.categories;
+            if (prop === 'assetAdmin') return org.assetAdmin;
+            const value = target[prop];
+            return typeof value === 'function' ? value.bind(target) : value;
+          }
+        });
+        this._source = proxy;
+        this._sourceFor = org;
+        return proxy;
+      },
       maps() {
-        return Engine.mapsOf(this.app);
+        return Engine.mapsOf(this.source);
       },
       prefs() {
         return this.maps.prefs;
@@ -61,29 +92,29 @@
         return this.app.sites || [];
       },
       statuses() {
-        return Engine.statusOptions(this.app);
+        return Engine.statusOptions(this.source);
       },
       canEdit() {
         return typeof this.app.can === 'function' ? this.app.can('assets.edit') : true;
       },
       counts() {
-        return Engine.counts(this.app, this.filters);
+        return Engine.counts(this.source, this.filters);
       },
       tree() {
-        return Engine.tree(this.app, this.filters);
+        return Engine.tree(this.source, this.filters);
       },
       sitePoints() {
-        return Engine.sitePoints(this.app, this.filters);
+        return Engine.sitePoints(this.source, this.filters);
       },
       selectedAsset() {
         if (!this.selectedId) return null;
-        return (this.app.assets || []).find((asset) => asset.id === this.selectedId) || null;
+        return (this.source.assets || []).find((asset) => asset.id === this.selectedId) || null;
       },
       activeSite() {
-        return this.activeSiteId ? Engine.siteById(this.app, this.activeSiteId) : null;
+        return this.activeSiteId ? Engine.siteById(this.source, this.activeSiteId) : null;
       },
       activeSiteGeo() {
-        return this.activeSiteId ? Engine.siteGeo(this.app, this.activeSiteId) : null;
+        return this.activeSiteId ? Engine.siteGeo(this.source, this.activeSiteId) : null;
       },
       activeSiteStats() {
         if (!this.activeSiteId) return null;
@@ -101,7 +132,7 @@
       },
       legend() {
         const families = [];
-        (this.app.assets || []).forEach((asset) => {
+        (this.source.assets || []).forEach((asset) => {
           if (this.filters.categories.length && this.filters.categories.indexOf(asset.category) === -1) return;
           const family = window.AssetRelationsData ? window.AssetRelationsData.familyOf(asset.category) : 'network';
           if (!families.some((item) => item.id === family)) {
@@ -159,10 +190,10 @@
       },
       focusId(value) {
         if (!value) return;
-        const asset = (this.app.assets || []).find((item) => item.id === value);
+        const asset = (this.source.assets || []).find((item) => item.id === value);
         if (!asset) return;
         this.selectedId = asset.id;
-        const floorId = Engine.floorOfAsset(this.app, asset);
+        const floorId = Engine.floorOfAsset(this.source, asset);
         if (floorId) this.openFloor(floorId, { keepSelection: true });
       },
       selectedId(value) {
@@ -173,17 +204,17 @@
       this.reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       const initial = this.focusId || this.selectedId;
       if (initial) {
-        const asset = (this.app.assets || []).find((item) => item.id === initial);
+        const asset = (this.source.assets || []).find((item) => item.id === initial);
         if (asset) {
           this.selectedId = initial;
-          const floorId = Engine.floorOfAsset(this.app, asset);
+          const floorId = Engine.floorOfAsset(this.source, asset);
           if (floorId) this.openFloor(floorId, { keepSelection: true, silent: true });
         }
       } else if (this.app.explorerSelection) {
         this.selectedId = this.app.explorerSelection;
       }
       if (!this.activeSiteId && this.activeFloorId) {
-        const floor = Engine.floorById(this.app, this.activeFloorId);
+        const floor = Engine.floorById(this.source, this.activeFloorId);
         if (floor) this.activeSiteId = floor.site;
       }
       if (!this.openSiteId) {
@@ -191,7 +222,7 @@
         this.openSiteId = this.activeSiteId || (first ? first.id : '');
       }
       if (!this.openBuildingId) {
-        const floor = this.activeFloorId ? Engine.floorById(this.app, this.activeFloorId) : null;
+        const floor = this.activeFloorId ? Engine.floorById(this.source, this.activeFloorId) : null;
         const site = this.tree.find((item) => item.id === this.openSiteId);
         const building = floor && floor.building
           ? floor.building
@@ -428,15 +459,15 @@
         return this.openBuildingId === buildingId;
       },
       openAsset(id) {
-        const asset = (this.app.assets || []).find((item) => item.id === id);
+        const asset = (this.source.assets || []).find((item) => item.id === id);
         if (asset) this.app.openAsset(asset);
       },
       selectAsset(id) {
-        const asset = (this.app.assets || []).find((item) => item.id === id);
+        const asset = (this.source.assets || []).find((item) => item.id === id);
         if (!asset) return;
         this.selectedId = id;
         this.selectedRoom = '';
-        const floorId = Engine.floorOfAsset(this.app, asset);
+        const floorId = Engine.floorOfAsset(this.source, asset);
         if (floorId && (this.level === 'floor' || this.activeFloorId === floorId)) {
           this.activeFloorId = floorId;
           this.activeSiteId = asset.site;

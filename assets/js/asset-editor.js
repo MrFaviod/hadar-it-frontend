@@ -57,7 +57,7 @@
         return this.statuses.map((status) => ({ id: status.id, label: status.label, disabled: false }));
       },
       sites() {
-        return this.app.config.sites;
+        return this.app.sites;
       },
       placeholder() {
         if (this.fieldKey === 'anydeskId') return PLACEHOLDERS.anydesk;

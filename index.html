@@ -147,6 +147,7 @@
   <link rel="stylesheet" href="assets/css/assets-admin.css">
   <link rel="stylesheet" href="assets/css/inventory.css">
   <link rel="stylesheet" href="assets/css/people.css">
+<link rel="stylesheet" href="assets/css/organization.css">
   <link rel="stylesheet" href="assets/css/theme.css">
   <link rel="stylesheet" href="assets/css/mobile-responsive.css">
   <link rel="stylesheet" href="assets/css/access.css">
@@ -639,13 +640,13 @@
                 <div class="stats-strip" role="list" aria-label="Indicadores de personas">
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="user"></app-icon></span>
-                    <div><span class="stat__value">{{ people.length }}</span><span class="stat__label">Personas registradas</span></div>
+                    <div><span class="stat__value">{{ serverOrganizationMode ? organization.people.total : people.length }}</span><span class="stat__label">Personas registradas</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="check"></app-icon></span>
                     <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">Personas activas</span></div>
                   </div>
-                  <div class="stat" role="listitem">
+                  <div v-if="!serverOrganizationMode" class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
                     <div><span class="stat__value">{{ peopleWithAssetsCount() }}</span><span class="stat__label">Con activos asignados</span></div>
                   </div>
@@ -706,6 +707,9 @@
                   </button>
                 </div>
 
+                <p v-if="serverOrganizationMode && organization.people.error" class="form-error" role="alert">{{ organization.people.error }}</p>
+                <p v-if="serverOrganizationMode && organization.people.loading && !organization.people.loaded" class="cell-note" role="status">Cargando el directorio del servidor…</p>
+
                 <div v-if="filteredPeople.length" class="table-panel people-table-panel">
                   <table class="asset-table people-table">
                     <caption class="sr-only">Personas del directorio. Selecciona un nombre para abrir su ficha.</caption>
@@ -734,7 +738,7 @@
                         <td data-label="Cargo"><span class="cell-strong">{{ person.role || 'Sin cargo' }}</span></td>
                         <td data-label="Departamento"><span class="type-tag">{{ departmentLabel(person.departmentId) }}</span></td>
                         <td data-label="Sede"><span class="cell-strong">{{ personSiteLabel(person.siteId) }}</span></td>
-                        <td data-label="Activos"><span class="person-assets-count">{{ personAssetCount(person.id) }}</span></td>
+                        <td data-label="Activos"><span class="person-assets-count">{{ personAssetCountLabel(person) }}</span></td>
                         <td data-label="Estado">
                           <span class="status-pill" :class="person.active ? 'status-pill--online' : 'status-pill--retired'">{{ personStatusLabel(person) }}</span>
                         </td>
@@ -752,6 +756,12 @@
                     </tbody>
                   </table>
                 </div>
+
+                <nav v-if="serverOrganizationMode && organization.people.total > organization.people.limit" class="pager" aria-label="Páginas del directorio">
+                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset === 0 || organization.people.loading" @click="prevOrganizationPeoplePage">Anteriores</button>
+                  <span class="cell-note mono">{{ organization.people.offset + 1 }}–{{ Math.min(organization.people.offset + organization.people.limit, organization.people.total) }} de {{ organization.people.total }}</span>
+                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset + organization.people.limit >= organization.people.total || organization.people.loading" @click="nextOrganizationPeoplePage">Siguientes</button>
+                </nav>
 
                 <div v-else class="empty-state">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
@@ -878,6 +888,9 @@
                                   <button v-if="can('assets.assign')" type="button" class="quick-action quick-action--danger" :aria-label="'Desasignar ' + asset.name" title="Desasignar" @click="removeAssignment(asset)">
                                     <app-icon name="close"></app-icon><span>Desasignar</span>
                                   </button>
+                                  <button v-if="can('assets.edit') && !asset.retired" type="button" class="quick-action" :aria-label="'Trasladar ' + asset.name" title="Trasladar" @click="openOrganizationTransfer(asset)">
+                                    <app-icon name="arrow-right"></app-icon><span>Trasladar</span>
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -901,6 +914,7 @@
                             <div class="person-asset-card__actions">
                               <button v-if="can('assets.assign')" type="button" class="text-button" @click="openAssignAsset(asset)"><app-icon name="user"></app-icon> Reasignar</button>
                               <button v-if="can('assets.assign')" type="button" class="text-button text-button--danger" @click="removeAssignment(asset)"><app-icon name="close"></app-icon> Desasignar</button>
+                              <button v-if="can('assets.edit') && !asset.retired" type="button" class="text-button" @click="openOrganizationTransfer(asset)"><app-icon name="arrow-right"></app-icon> Trasladar</button>
                             </div>
                           </div>
                         </article>
@@ -917,6 +931,73 @@
                     </div>
                   </section>
                 </div>
+
+                <section v-if="serverOrganizationMode" class="panel person-history" aria-labelledby="person-history-title">
+                  <header class="panel__head">
+                    <div>
+                      <h2 id="person-history-title">Historial de la persona</h2>
+                      <p>{{ organization.personHistory.total }} eventos registrados por el servidor.</p>
+                    </div>
+                  </header>
+                  <p v-if="organization.personHistory.error" class="form-error" role="alert">{{ organization.personHistory.error }}</p>
+                  <ol v-if="organization.personHistory.items.length" class="history-list">
+                    <li v-for="item in organization.personHistory.items" :key="item.id" class="history-list__item">
+                      <div>
+                        <strong>{{ item.title }}</strong>
+                        <span class="cell-note">{{ item.actorUsername || 'Sistema' }} · {{ item.source }} · {{ formatServerTimestamp(item.recordedAt) }}</span>
+                        <span v-if="item.effectiveAt" class="cell-note">Efectivo: {{ formatServerTimestamp(item.effectiveAt) }}</span>
+                        <p v-if="item.reason" class="cell-note">Motivo: {{ item.reason }}</p>
+                        <p v-if="item.notes" class="cell-note">Notas: {{ item.notes }}</p>
+                      </div>
+                    </li>
+                  </ol>
+                  <p v-else-if="!organization.personHistory.loading" class="cell-note">Sin eventos registrados.</p>
+                  <button v-if="organizationHistoryHasMore(organization.personHistory)" type="button" class="btn btn--ghost btn--small" :disabled="organization.personHistory.loading" @click="organizationPersonHistoryNextPage">
+                    Cargar más eventos
+                  </button>
+                </section>
+
+                <section v-if="serverOrganizationMode && organizationDirectoryMode" class="panel person-history" aria-labelledby="person-assets-history-title">
+                  <header class="panel__head">
+                    <div>
+                      <h2 id="person-assets-history-title">Movimientos de sus activos</h2>
+                      <p>Asignaciones, devoluciones y traslados leídos del historial de cada activo.</p>
+                    </div>
+                  </header>
+                  <p v-if="organization.personAssetHistory.loading" class="config-note" role="status">Consultando el historial de activos…</p>
+                  <p v-else-if="organization.personAssetHistory.error" class="form-error" role="alert">{{ organization.personAssetHistory.error }}</p>
+                  <ol v-else-if="organization.personAssetHistory.items.length" class="history-list">
+                    <li v-for="entry in organization.personAssetHistory.items" :key="entry.id" class="history-list__item">
+                      <div>
+                        <strong>{{ entry.title }}</strong>
+                        <span class="cell-note">
+                          <a :href="'#/activo/' + entry.assetId">{{ entry.assetName || entry.assetId }}</a>
+                          <template v-if="entry.quickCode"> · <span class="mono">{{ entry.quickCode }}</span></template>
+                        </span>
+                        <span class="cell-note">{{ entry.actorUsername || 'Sistema' }} · {{ entry.source || 'servidor' }} · {{ formatServerTimestamp(entry.recordedAt) }}</span>
+                        <span v-if="entry.effectiveAt" class="cell-note">Efectivo: {{ formatServerTimestamp(entry.effectiveAt) }}</span>
+                        <p v-if="entry.reason" class="cell-note">Motivo: {{ entry.reason }}</p>
+                        <p v-if="entry.notes" class="cell-note">Notas: {{ entry.notes }}</p>
+                        <ul v-if="organizationHistoryChanges(entry).length" class="history-changes">
+                          <li v-for="change in organizationHistoryChanges(entry)" :key="change.key">
+                            <span class="cell-note">{{ change.label }}:</span>
+                            <span class="mono">{{ change.old }} → {{ change.new }}</span>
+                          </li>
+                        </ul>
+                      </div>
+                    </li>
+                  </ol>
+                  <p v-else class="cell-note">El servidor no registra movimientos para los activos de esta persona.</p>
+                </section>
+              </section>
+
+              <section v-else-if="route.name === 'person' && serverOrganizationMode && !currentPerson" class="page person-page" aria-labelledby="person-missing-title">
+                <button type="button" class="back-link" @click="backToPeople"><app-icon name="arrow-left"></app-icon> Volver al directorio</button>
+                <section class="panel config-empty">
+                  <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
+                  <h1 id="person-missing-title">{{ organization.personDetail.loading ? 'Cargando la ficha…' : (organizationDenied ? 'Sin permiso para ver el directorio' : 'La ficha no está disponible') }}</h1>
+                  <p>{{ organizationDenied ? 'Tu cuenta no tiene el permiso para consultar personas.' : (organization.personDetail.error || 'El servidor no devolvió esta persona.') }}</p>
+                </section>
               </section>
 
               <!-- Configuración -->
@@ -1153,7 +1234,103 @@
                         </button>
                       </header>
 
-                      <div v-if="sites.length" class="site-manage">
+                      <p v-if="!organizationSitesConfigMode" class="config-note" role="note">
+                        <app-icon name="info"></app-icon> Necesitas el permiso de configuración de sedes para crear o modificar la estructura. La consulta sigue dependiendo del permiso de activos.
+                      </p>
+                      <p v-if="organization.locations.error" class="form-error" role="alert">{{ organization.locations.error }}</p>
+                      <p v-else-if="organization.locations.loading" class="config-note" role="status">Consultando las ubicaciones del servidor…</p>
+
+                      <div v-if="serverOrganizationMode" class="site-manage site-manage--server">
+                        <article v-for="site in organizationConfigSites" :key="site.id" class="site-row">
+                          <header class="site-row__head">
+                            <span class="site-row__icon"><app-icon name="building"></app-icon></span>
+                            <div class="site-row__copy">
+                              <h3>{{ site.name }} <span class="level-tag">{{ organizationLevelName(site.level) }}</span></h3>
+                              <p>{{ organizationLocationChildren(site.id, 'building').length }} {{ organizationLocationChildren(site.id, 'building').length === 1 ? 'edificio' : 'edificios' }} · {{ site.description || 'Sin descripción' }}</p>
+                              <p v-if="site.latitude !== null && site.longitude !== null" class="cell-note mono">{{ site.latitude }}, {{ site.longitude }}</p>
+                              <p v-if="!site.active" class="cell-note">Inactiva</p>
+                            </div>
+                            <div v-if="organizationSitesConfigMode" class="config-row-actions">
+                              <button type="button" class="config-icon-action" :aria-label="'Añadir edificio en ' + site.name" title="Añadir edificio" @click="openOrganizationLocationDialog({ level: 'building', parentId: site.id })">
+                                <app-icon name="plus"></app-icon>
+                              </button>
+                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + site.name" title="Editar sede" @click="openOrganizationLocationDialog({ level: 'site', location: site })">
+                                <app-icon name="pencil"></app-icon>
+                              </button>
+                              <button type="button" class="config-icon-action" :aria-label="(site.active ? 'Desactivar ' : 'Reactivar ') + site.name" :title="site.active ? 'Desactivar sede' : 'Reactivar sede'" @click="setOrganizationLocationActive(site, !site.active)">
+                                <app-icon :name="site.active ? 'close' : 'restore'"></app-icon>
+                              </button>
+                            </div>
+                          </header>
+
+                          <div class="location-list">
+                            <div v-for="building in organizationLocationChildren(site.id, 'building')" :key="building.id" class="location-branch">
+                              <div class="location-row" :class="{ 'location-row--inactive': !building.active }">
+                                <span class="location-row__pin"><app-icon name="building"></app-icon></span>
+                                <span class="location-row__label">{{ building.name }} <span class="level-tag">{{ organizationLevelName(building.level) }}</span></span>
+                                <span class="location-row__count">{{ organizationLocationChildren(building.id, 'floor').length }} {{ organizationLocationChildren(building.id, 'floor').length === 1 ? 'piso' : 'pisos' }}</span>
+                                <div v-if="organizationSitesConfigMode" class="config-row-actions">
+                                  <button type="button" class="config-icon-action" :aria-label="'Añadir piso en ' + building.name" title="Añadir piso" @click="openOrganizationLocationDialog({ level: 'floor', parentId: building.id })">
+                                    <app-icon name="plus"></app-icon>
+                                  </button>
+                                  <button type="button" class="config-icon-action" :aria-label="'Editar ' + building.name" title="Editar edificio" @click="openOrganizationLocationDialog({ level: 'building', location: building })">
+                                    <app-icon name="pencil"></app-icon>
+                                  </button>
+                                  <button type="button" class="config-icon-action" :aria-label="(building.active ? 'Desactivar ' : 'Reactivar ') + building.name" @click="setOrganizationLocationActive(building, !building.active)">
+                                    <app-icon :name="building.active ? 'close' : 'restore'"></app-icon>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div v-for="floor in organizationLocationChildren(building.id, 'floor')" :key="floor.id" class="location-branch location-branch--floor">
+                                <div class="location-row" :class="{ 'location-row--inactive': !floor.active }">
+                                  <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
+                                  <span class="location-row__label">
+                                    {{ floor.name }} <span class="level-tag">{{ organizationLevelName(floor.level) }}</span>
+                                    <span v-if="floor.planRef" class="cell-note"> · Plano: {{ floor.planRef }}<template v-if="floor.planPage"> (pág. {{ floor.planPage }})</template></span>
+                                  </span>
+                                  <span class="location-row__count">{{ organizationLocationChildren(floor.id, 'room_zone').length }} {{ organizationLocationChildren(floor.id, 'room_zone').length === 1 ? 'sala o zona' : 'salas o zonas' }}</span>
+                                  <div v-if="organizationSitesConfigMode" class="config-row-actions">
+                                    <button type="button" class="config-icon-action" :aria-label="'Añadir sala o zona en ' + floor.name" title="Añadir sala o zona" @click="openOrganizationLocationDialog({ level: 'room_zone', parentId: floor.id })">
+                                      <app-icon name="plus"></app-icon>
+                                    </button>
+                                    <button type="button" class="config-icon-action" :aria-label="'Editar ' + floor.name" title="Editar piso" @click="openOrganizationLocationDialog({ level: 'floor', location: floor })">
+                                      <app-icon name="pencil"></app-icon>
+                                    </button>
+                                    <button type="button" class="config-icon-action" :aria-label="(floor.active ? 'Desactivar ' : 'Reactivar ') + floor.name" @click="setOrganizationLocationActive(floor, !floor.active)">
+                                      <app-icon :name="floor.active ? 'close' : 'restore'"></app-icon>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                <div v-for="room in organizationLocationChildren(floor.id, 'room_zone')" :key="room.id" class="location-row location-row--room" :class="{ 'location-row--inactive': !room.active }">
+                                  <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
+                                  <span class="location-row__label">{{ room.name }} <span class="level-tag">{{ organizationLevelName(room.level) }}</span></span>
+                                  <span class="location-row__count">{{ room.description || 'Sin descripción' }}</span>
+                                  <div v-if="organizationSitesConfigMode" class="config-row-actions">
+                                    <button type="button" class="config-icon-action" :aria-label="'Editar ' + room.name" title="Editar sala o zona" @click="openOrganizationLocationDialog({ level: 'room_zone', location: room })">
+                                      <app-icon name="pencil"></app-icon>
+                                    </button>
+                                    <button type="button" class="config-icon-action" :aria-label="(room.active ? 'Desactivar ' : 'Reactivar ') + room.name" @click="setOrganizationLocationActive(room, !room.active)">
+                                      <app-icon :name="room.active ? 'close' : 'restore'"></app-icon>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <p v-if="!organizationLocationChildren(site.id, 'building').length" class="location-list__empty">Sin edificios todavía.</p>
+                          </div>
+                        </article>
+
+                        <div v-if="!organizationConfigSites.length && !organization.locations.loading && !organization.locations.error" class="config-empty">
+                          <span class="config-empty__icon"><app-icon name="building"></app-icon></span>
+                          <h3>Sin sedes</h3>
+                          <p>El servidor no tiene sedes registradas.</p>
+                          <button v-if="organizationSitesConfigMode" type="button" class="btn btn--primary btn--small" data-od-id="create-server-location" @click="openOrganizationLocationDialog({ level: 'site' })"><app-icon name="plus"></app-icon> Crear sede</button>
+                        </div>
+                      </div>
+
+                      <div v-else-if="sites.length" class="site-manage">
                         <article v-for="site in sites" :key="site.id" class="site-row">
                           <header class="site-row__head">
                             <span class="site-row__icon"><app-icon name="building"></app-icon></span>
@@ -1196,7 +1373,7 @@
                         </article>
                       </div>
 
-                      <div v-else class="config-empty">
+                      <div v-else-if="!serverOrganizationMode" class="config-empty">
                         <span class="config-empty__icon"><app-icon name="building"></app-icon></span>
                         <h3>Sin sedes</h3>
                         <p>Crea una sede para asignar activos y ubicaciones.</p>
@@ -1225,20 +1402,34 @@
                         <span><strong>{{ departments.length }}</strong> {{ departments.length === 1 ? 'departamento' : 'departamentos' }}</span>
                       </div>
 
+                      <p v-if="serverOrganizationMode && organization.departments.error" class="form-error" role="alert">{{ organization.departments.error }}</p>
+                      <p v-else-if="serverOrganizationMode && organization.departments.loading" class="config-note" role="status">Consultando los departamentos del servidor…</p>
+                      <p v-if="serverOrganizationMode && !organizationDepartmentsConfigMode" class="config-note" role="note">
+                        <app-icon name="info"></app-icon> Necesitas el permiso de configuración de departamentos para crear, editar o desactivar.
+                      </p>
+
                       <div v-if="departments.length" class="department-manage">
                         <article v-for="department in departments" :key="department.id" class="department-row">
                           <span class="department-row__icon"><app-icon name="grid"></app-icon></span>
                           <div class="department-row__copy">
-                            <strong>{{ department.label }}</strong>
+                            <strong>
+                              {{ department.label }}
+                              <span v-if="serverOrganizationMode && department.active === false" class="level-tag">Inactivo</span>
+                            </strong>
                             <span class="mono">{{ departmentPeopleCount(department.id) }} {{ departmentPeopleCount(department.id) === 1 ? 'persona' : 'personas' }}</span>
                           </div>
                           <div class="config-row-actions">
-                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + department.label" title="Editar departamento" @click="openDepartmentDialog(department)">
-                              <app-icon name="pencil"></app-icon>
-                            </button>
-                            <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + department.label" title="Eliminar departamento" @click="requestDeleteDepartment(department)">
-                              <app-icon name="trash"></app-icon>
-                            </button>
+                            <template v-if="!serverOrganizationMode || organizationDepartmentsConfigMode">
+                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + department.label" title="Editar departamento" @click="openDepartmentDialog(department)">
+                                <app-icon name="pencil"></app-icon>
+                              </button>
+                              <button v-if="serverOrganizationMode" type="button" class="config-icon-action" :aria-label="(department.active === false ? 'Reactivar ' : 'Desactivar ') + department.label" :title="department.active === false ? 'Reactivar departamento' : 'Desactivar departamento'" @click="setOrganizationDepartmentActive(department, department.active === false)">
+                                <app-icon :name="department.active === false ? 'restore' : 'close'"></app-icon>
+                              </button>
+                              <button v-else type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + department.label" title="Eliminar departamento" @click="requestDeleteDepartment(department)">
+                                <app-icon name="trash"></app-icon>
+                              </button>
+                            </template>
                           </div>
                         </article>
                       </div>
@@ -1246,8 +1437,9 @@
                       <div v-else class="config-empty">
                         <span class="config-empty__icon"><app-icon name="user"></app-icon></span>
                         <h3>Sin departamentos</h3>
-                        <p>Crea el primer departamento para organizar al equipo.</p>
-                        <button type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()"><app-icon name="plus"></app-icon> Crear departamento</button>
+                        <p v-if="serverOrganizationMode">El servidor no tiene departamentos registrados.</p>
+                        <p v-else>Crea el primer departamento para organizar al equipo.</p>
+                        <button v-if="!serverOrganizationMode || organizationDepartmentsConfigMode" type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()"><app-icon name="plus"></app-icon> Crear departamento</button>
                       </div>
 
                       <p class="config-note"><app-icon name="info"></app-icon> Un departamento con personas asociadas no se puede eliminar. Las personas no se borran: se desactivan para conservar sus asignaciones.</p>
@@ -1317,6 +1509,7 @@
                     <warranty-settings v-else-if="route.section === 'garantias'" :app="$root"></warranty-settings>
                     <qr-settings v-else-if="route.section === 'qr'" :app="$root"></qr-settings>
                     <label-settings v-else-if="route.section === 'etiquetas'" :app="$root"></label-settings>
+                    <organization-relation-types v-if="serverOrganizationMode && route.section === 'relaciones'" :app="$root"></organization-relation-types>
                     <relations-settings v-else-if="route.section === 'relaciones'" :app="$root"></relations-settings>
 
                     <maintenance-settings v-else-if="route.section === 'mantenimiento'" :app="$root"></maintenance-settings>
@@ -1333,12 +1526,35 @@
 
               <!-- Explorador de infraestructura -->
               <section v-else-if="route.name === 'map'" class="page" aria-labelledby="infra-title">
-                <map-explorer ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></map-explorer>
+                <p v-if="serverOrganizationMode" class="server-notice" role="status">
+                  <app-icon name="map-pin"></app-icon>
+                  Ubicaciones y posiciones del servidor. Las posiciones se guardan como coordenadas relativas al plano; la referencia del plano es solo metadato.
+                  <span v-if="organization.map.truncated">Hay más posiciones de las mostradas.</span>
+                  <span v-if="organization.map.error"> · {{ organization.map.error }}</span>
+                </p>
+                <map-explorer v-if="!serverOrganizationMode || organizationAssetsMode" ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></map-explorer>
+                <div v-else class="config-empty" role="status">
+                  <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
+                  <h2>Sin permiso para el mapa</h2>
+                  <p>Tu cuenta no tiene el permiso de lectura de activos, que habilita las ubicaciones del servidor.</p>
+                </div>
               </section>
 
               <!-- Grafo de relaciones -->
               <section v-else-if="route.name === 'graph'" class="page" aria-labelledby="graph-title">
-                <graph-explorer ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></graph-explorer>
+                <p v-if="serverOrganizationMode" class="server-notice" role="status">
+                  <app-icon name="network"></app-icon>
+                  Grafo del servidor con profundidad {{ organization.graph.depth }}.
+                  <span>{{ organization.graph.nodes.length }} nodos y {{ organization.graph.edges.length }} relaciones.</span>
+                  <span v-if="organization.graph.truncated">Resultado limitado: {{ organization.graph.nodesTruncated ? 'faltan nodos' : '' }}{{ organization.graph.truncated && organization.graph.nodesTruncated && organization.graph.edgesTruncated ? ' y ' : '' }}{{ organization.graph.edgesTruncated ? 'faltan relaciones' : '' }}.</span>
+                  <span v-if="serverGraphMode && organization.graph.error"> · {{ organization.graph.error }}</span>
+                </p>
+                <graph-explorer v-if="!serverOrganizationMode || organizationAssetsMode" ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></graph-explorer>
+                <div v-else class="config-empty" role="status">
+                  <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
+                  <h2>Sin permiso para el grafo</h2>
+                  <p>Tu cuenta no tiene el permiso de lectura de activos, que habilita el grafo del servidor.</p>
+                </div>
               </section>
 
               <!-- Mantenimiento e incidentes -->
@@ -1393,6 +1609,15 @@
                   <div class="detail-head__actions">
                     <button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
                       <app-icon name="pencil"></app-icon> Editar activo
+                    </button>
+                    <button v-if="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="assign-asset" @click="openAssignAsset(currentAsset)">
+                      <app-icon name="user"></app-icon> {{ currentAsset.responsiblePersonId ? 'Reasignar responsable' : 'Asignar responsable' }}
+                    </button>
+                    <button v-if="serverAssetMode && can('assets.assign') && currentAsset.responsiblePersonId" type="button" class="btn btn--ghost" data-od-id="return-asset" @click="removeAssignment(currentAsset)">
+                      <app-icon name="close"></app-icon> Quitar responsable
+                    </button>
+                    <button v-if="can('assets.edit') && currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="transfer-asset" @click="openOrganizationTransfer(currentAsset)">
+                      <app-icon name="arrow-right"></app-icon> Trasladar
                     </button>
                     <a v-if="currentAsset.serverAsset" class="btn btn--ghost" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
                       <app-icon name="send"></app-icon> Consultar sobre este activo
@@ -1654,6 +1879,7 @@
                   <asset-qr-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
 
                   <asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
+                  <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations>
 
                   <asset-maintenance-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
                   <asset-monitoring-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
@@ -1676,9 +1902,25 @@
                           <p>
                             <span>{{ entry.actor || 'Sistema' }}</span>
                             <span aria-hidden="true">·</span>
-                            <span>{{ assetDateTime(entry.createdAt) }}</span>
+                            <span>{{ assetDateTime(entry.recordedAt || entry.createdAt) }}</span>
+                            <template v-if="entry.source">
+                              <span aria-hidden="true">·</span>
+                              <span>Origen: {{ entry.source }}</span>
+                            </template>
+                            <template v-if="entry.entityType">
+                              <span aria-hidden="true">·</span>
+                              <span>Entidad: {{ entry.entityType }}</span>
+                            </template>
                           </p>
-                          <p v-if="entry.reason" class="cell-note">{{ entry.reason }}</p>
+                          <p v-if="entry.effectiveAt" class="cell-note">Efectivo: {{ assetDateTime(entry.effectiveAt) }}</p>
+                          <p v-if="entry.reason" class="cell-note">Motivo: {{ entry.reason }}</p>
+                          <p v-if="entry.notes" class="cell-note">Notas: {{ entry.notes }}</p>
+                          <ul v-if="organizationHistoryChanges(entry).length" class="history-changes">
+                            <li v-for="change in organizationHistoryChanges(entry)" :key="change.key">
+                              <span class="cell-note">{{ change.label }}:</span>
+                              <span class="mono">{{ change.old }} → {{ change.new }}</span>
+                            </li>
+                          </ul>
                           <p v-if="entry.quickCodeOld && entry.quickCodeOld !== entry.quickCodeNew" class="cell-note mono">{{ entry.quickCodeOld }} → {{ entry.quickCodeNew }}</p>
                         </div>
                       </li>
@@ -2046,6 +2288,86 @@
       </template>
     </modal-shell>
 
+    <!-- Estructura física del servidor -->
+    <modal-shell :open="organization.dialogs.location.open" :title="organization.dialogs.location.mode === 'edit' ? 'Editar ubicación' : 'Nueva ubicación'" eyebrow="Estructura" @close="closeOrganizationLocationDialog">
+      <form id="hierarchy-location-form" class="form-stack" @submit.prevent="saveOrganizationLocationDialog" novalidate>
+        <div class="field">
+          <span class="field__label">Nivel</span>
+          <p class="cell-note">{{ organizationLevelName(organization.dialogs.location.level) }}</p>
+          <p class="field__hint">El nivel no cambia después de crear la ubicación.</p>
+        </div>
+        <div v-if="organization.dialogs.location.level !== 'site'" class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.parentId }">
+          <label for="org-location-parent">Ubicación superior</label>
+          <div class="input-shell input-shell--plain">
+            <select id="org-location-parent" v-model="organization.dialogs.location.parentId" :aria-invalid="organization.dialogs.location.fieldErrors.parentId ? 'true' : 'false'" :aria-describedby="organization.dialogs.location.fieldErrors.parentId ? 'org-location-parent-error' : 'org-location-parent-hint'">
+              <option value="">Selecciona una ubicación</option>
+              <option v-for="parent in organizationParentChoices(organization.dialogs.location.level, organization.dialogs.location.id)" :key="parent.id" :value="parent.id">{{ organizationLevelName(parent.level) }} · {{ parent.name }}</option>
+            </select>
+          </div>
+          <p id="org-location-parent-hint" class="field__hint">Solo se listan ubicaciones activas del nivel inmediatamente superior.</p>
+          <p id="org-location-parent-error" v-if="organization.dialogs.location.fieldErrors.parentId" class="field__error">{{ organization.dialogs.location.fieldErrors.parentId }}</p>
+        </div>
+        <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.name }">
+          <label for="org-location-name">Nombre</label>
+          <div class="input-shell input-shell--plain">
+            <input id="org-location-name" v-model="organization.dialogs.location.name" type="text" maxlength="120" autocomplete="off" :aria-invalid="organization.dialogs.location.fieldErrors.name ? 'true' : 'false'">
+          </div>
+          <p v-if="organization.dialogs.location.fieldErrors.name" class="field__error">{{ organization.dialogs.location.fieldErrors.name }}</p>
+        </div>
+        <div class="field">
+          <label for="org-location-description">Descripción</label>
+          <div class="input-shell input-shell--plain">
+            <textarea id="org-location-description" v-model="organization.dialogs.location.description" rows="2" maxlength="500"></textarea>
+          </div>
+        </div>
+        <template v-if="organization.dialogs.location.level === 'site'">
+          <div class="field-row">
+            <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.latitude }">
+              <label for="org-location-latitude">Latitud</label>
+              <div class="input-shell input-shell--plain">
+                <input id="org-location-latitude" v-model="organization.dialogs.location.latitude" type="text" inputmode="decimal" autocomplete="off" placeholder="-25.28">
+              </div>
+            </div>
+            <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.longitude }">
+              <label for="org-location-longitude">Longitud</label>
+              <div class="input-shell input-shell--plain">
+                <input id="org-location-longitude" v-model="organization.dialogs.location.longitude" type="text" inputmode="decimal" autocomplete="off" placeholder="-57.63">
+              </div>
+            </div>
+          </div>
+          <p class="field__hint">Coordenadas opcionales y solo para la sede; se informan juntas.</p>
+        </template>
+        <template v-if="organization.dialogs.location.level === 'floor'">
+          <div class="field">
+            <label for="org-location-plan-ref">Referencia del plano</label>
+            <div class="input-shell input-shell--plain">
+              <input id="org-location-plan-ref" v-model="organization.dialogs.location.planRef" type="text" maxlength="200" autocomplete="off" placeholder="Ej. plano-p4.pdf">
+            </div>
+            <p class="field__hint">Texto de referencia para el visor. No sube ningún archivo.</p>
+          </div>
+          <div class="field">
+            <label for="org-location-plan-page">Página del plano</label>
+            <div class="input-shell input-shell--plain">
+              <input id="org-location-plan-page" v-model="organization.dialogs.location.planPage" type="text" maxlength="16" autocomplete="off" placeholder="Ej. 2">
+            </div>
+          </div>
+        </template>
+        <div v-if="organization.dialogs.location.mode === 'edit'" class="field field--check">
+          <label class="check">
+            <input type="checkbox" v-model="organization.dialogs.location.active">
+            <span>Ubicación activa</span>
+          </label>
+        </div>
+        <p v-if="organization.dialogs.location.error" class="form-error" role="alert">{{ organization.dialogs.location.error }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeOrganizationLocationDialog">Cancelar</button>
+        <button type="submit" form="hierarchy-location-form" class="btn btn--primary" :disabled="organization.dialogs.location.busy">
+          {{ organization.dialogs.location.busy ? 'Guardando…' : 'Guardar ubicación' }}
+        </button>
+      </template>
+    </modal-shell>
+
     <!-- Asignación -->
     <modal-shell :open="assignDialog.open" :title="assignDialog.mode === 'person' ? 'Asignar responsable' : 'Asignar activo'" eyebrow="Asignación" size="wide" @close="closeAssignDialog">
       <div class="assign-dialog">
@@ -2087,7 +2409,24 @@
           <p v-if="!assignPeople.length" class="assign-empty">No hay personas que coincidan con la búsqueda.</p>
         </div>
 
-        <div v-else class="assign-options" role="group" aria-label="Activos sin responsable">
+        <div v-if="serverOrganizationMode" class="assign-audit">
+          <label class="field">
+            <span class="field__label">Motivo</span>
+            <input v-model="assignDialog.reason" type="text" maxlength="500" placeholder="Motivo del cambio (opcional)">
+          </label>
+          <label class="field">
+            <span class="field__label">Notas</span>
+            <input v-model="assignDialog.notes" type="text" maxlength="500" placeholder="Notas adicionales (opcional)">
+          </label>
+          <label class="field">
+            <span class="field__label">Fecha efectiva</span>
+            <input v-model="assignDialog.effectiveAt" type="datetime-local" aria-describedby="assign-effective-hint">
+            <span id="assign-effective-hint" class="field__hint">Se envía con la zona horaria del navegador.</span>
+          </label>
+          <p v-if="assignDialog.mode === 'person'" class="cell-note">Elegir «Sin responsable» devuelve el activo al servidor y conserva el motivo.</p>
+        </div>
+
+        <div v-if="assignDialog.mode === 'asset'" class="assign-options" role="group" aria-label="Activos sin responsable">
           <button v-for="asset in assignAssets" :key="asset.id" type="button" class="assign-option"
                   :class="{ 'is-selected': assignDialog.selectedId === asset.id }" :aria-pressed="assignDialog.selectedId === asset.id"
                   @click="selectAssignAsset(asset.id)">
@@ -2099,8 +2438,63 @@
         </div>
       </div>
       <template #footer>
+        <p v-if="assignDialog.error" class="form-error" role="alert">{{ assignDialog.error }}</p>
         <button type="button" class="btn btn--ghost" @click="closeAssignDialog">Cancelar</button>
         <button type="button" class="btn btn--primary" @click="confirmAssignment">{{ assignDialog.mode === 'person' ? 'Guardar responsable' : 'Asignar activo' }}</button>
+      </template>
+    </modal-shell>
+
+    <!-- Traslado de activo -->
+    <modal-shell :open="transferDialog.open" title="Trasladar activo" eyebrow="Ubicación" size="normal" @close="closeOrganizationTransfer">
+      <form id="transfer-form" class="form-stack" @submit.prevent="confirmOrganizationTransfer" novalidate>
+        <p v-if="transferDialog.assetName" class="form-intro">{{ transferDialog.assetName }}</p>
+        <div class="field" :class="{ 'field--invalid': transferDialog.fieldErrors.siteId }">
+          <label for="transfer-site">Sede</label>
+          <div class="input-shell input-shell--plain">
+            <select id="transfer-site" v-model="transferDialog.siteId" :aria-invalid="transferDialog.fieldErrors.siteId ? 'true' : 'false'" aria-describedby="transfer-site-error" @change="transferDialog.locationId = ''">
+              <option value="">Sin cambio de sede</option>
+              <option v-for="site in transferSites" :key="site.id" :value="site.id">{{ site.label }}</option>
+            </select>
+          </div>
+          <p id="transfer-site-error" v-if="transferDialog.fieldErrors.siteId" class="field__error">{{ transferDialog.fieldErrors.siteId }}</p>
+        </div>
+        <div class="field" :class="{ 'field--invalid': transferDialog.fieldErrors.locationId }">
+          <label for="transfer-location">Ubicación dentro de la sede</label>
+          <div class="input-shell input-shell--plain">
+            <select id="transfer-location" v-model="transferDialog.locationId" :disabled="!transferDialog.siteId" :aria-invalid="transferDialog.fieldErrors.locationId ? 'true' : 'false'" aria-describedby="transfer-location-hint">
+              <option value="">Sin cambio de ubicación</option>
+              <option v-for="location in transferLocations" :key="location.id" :value="location.id">{{ location.label }}</option>
+            </select>
+          </div>
+          <p id="transfer-location-hint" class="field__hint">Solo se listan las ubicaciones de la sede elegida.</p>
+          <p v-if="transferDialog.fieldErrors.locationId" class="field__error">{{ transferDialog.fieldErrors.locationId }}</p>
+        </div>
+        <div class="field">
+          <label for="transfer-reason">Motivo</label>
+          <div class="input-shell input-shell--plain">
+            <input id="transfer-reason" v-model="transferDialog.reason" type="text" maxlength="200" autocomplete="off" placeholder="Ej. Mudanza al edificio norte">
+          </div>
+        </div>
+        <div class="field">
+          <label for="transfer-notes">Notas</label>
+          <div class="input-shell input-shell--plain">
+            <textarea id="transfer-notes" v-model="transferDialog.notes" rows="2" maxlength="1000"></textarea>
+          </div>
+        </div>
+        <div class="field">
+          <label for="transfer-effective">Fecha efectiva</label>
+          <div class="input-shell input-shell--plain">
+            <input id="transfer-effective" v-model="transferDialog.effectiveAt" type="datetime-local">
+          </div>
+          <p class="field__hint">Opcional. Se registra aparte de la fecha de carga del evento.</p>
+        </div>
+        <p v-if="transferDialog.error" class="form-error" role="alert">{{ transferDialog.error }}</p>
+      </form>
+      <template #footer>
+        <button type="button" class="btn btn--ghost" @click="closeOrganizationTransfer">Cancelar</button>
+        <button type="submit" form="transfer-form" class="btn btn--primary" :disabled="transferDialog.busy">
+          {{ transferDialog.busy ? 'Trasladando…' : 'Trasladar activo' }}
+        </button>
       </template>
     </modal-shell>
 
@@ -2499,6 +2893,7 @@
   <script src="assets/js/search-engine.js"></script>
   <script src="assets/js/search-views.js"></script>
   <script src="assets/js/workspace-runtime.js"></script>
+  <script src="assets/js/organization-api.js"></script>
   <script src="assets/js/inventory-api.js"></script>
   <script src="assets/js/conversation.js"></script>
   <script src="assets/js/app.js"></script>

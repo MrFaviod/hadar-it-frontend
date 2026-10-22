@@ -423,6 +423,12 @@
     },
 
     requestDeleteDepartment(department) {
+      // The canonical directory keeps departments for stored people, so an
+      // authenticated session deactivates instead of deleting.
+      if (this.serverOrganizationMode) {
+        const record = this.organizationDepartmentById(department && department.id) || department;
+        return this.setOrganizationDepartmentActive(record, record ? record.active === false : true);
+      }
       const count = this.departmentPeopleCount(department.id);
       if (count) {
         this.confirmDialog = {

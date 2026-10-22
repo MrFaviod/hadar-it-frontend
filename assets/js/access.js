@@ -85,7 +85,10 @@
     sedes: 'config.sites',
     personas: 'config.departments',
     integraciones: 'config.integrations',
-    relaciones: 'assets.edit',
+    // The relationship vocabulary is general configuration on the server, not
+    // an asset edit: administering types needs config.general, while editing an
+    // individual relation still needs assets.edit.
+    relaciones: 'config.general',
     mantenimiento: 'assets.edit',
     supervision: 'assets.edit',
     alertas: 'assets.edit',

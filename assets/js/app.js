@@ -3,6 +3,80 @@
 
   // React calls this factory after the ordered runtime has loaded.
   window.mountAssetApp = function (target) {
+  // Extracted so the phase-5 server adapter can delegate to the prototype
+  // people views instead of duplicating their filter semantics.
+  window.AssetAppPeopleComputed = {
+      filteredPeople() {
+        const filters = this.prefs.people;
+        const term = filters.search.trim().toLocaleLowerCase('es');
+        const collator = new Intl.Collator('es', { sensitivity: 'base' });
+        return this.people.filter((person) => {
+          if (filters.site !== 'all' && person.siteId !== filters.site) return false;
+          if (filters.department !== 'all' && person.departmentId !== filters.department) return false;
+          if (filters.status === 'active' && !person.active) return false;
+          if (filters.status === 'inactive' && person.active) return false;
+          if (!term) return true;
+          const haystack = [
+            person.name, person.role, person.email, person.phone,
+            this.departmentLabel(person.departmentId), this.siteLabel(person.siteId)
+          ].join(' ').toLocaleLowerCase('es');
+          return haystack.indexOf(term) !== -1;
+        }).sort((a, b) => collator.compare(a.name, b.name));
+      },
+      peopleFilterCount() {
+        const filters = this.prefs.people;
+        let count = 0;
+        if (filters.search.trim()) count += 1;
+        if (filters.site !== 'all') count += 1;
+        if (filters.department !== 'all') count += 1;
+        if (filters.status !== 'all') count += 1;
+        return count;
+      },
+      peopleFilterDescription() {
+        const filters = this.prefs.people;
+        const pieces = [];
+        if (filters.search.trim()) pieces.push('“' + filters.search.trim() + '”');
+        if (filters.department !== 'all') pieces.push(this.departmentLabel(filters.department));
+        if (filters.site !== 'all') pieces.push(this.siteLabel(filters.site));
+        if (filters.status === 'active') pieces.push('Solo activas');
+        if (filters.status === 'inactive') pieces.push('Solo inactivas');
+        return pieces.join(' · ');
+      },
+      currentPerson() {
+        if (this.route.name !== 'person' || !this.route.personId) return null;
+        return this.people.find((person) => person.id === this.route.personId) || null;
+      },
+      personAssets() {
+        if (!this.currentPerson) return [];
+        return this.assets
+          .filter((asset) => asset.assigneeId === this.currentPerson.id)
+          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+      },
+      assignContextAsset() {
+        if (!this.assignDialog.assetId) return null;
+        return this.assets.find((asset) => asset.id === this.assignDialog.assetId) || null;
+      },
+      assignTargetPerson() {
+        if (!this.assignDialog.personId) return null;
+        return this.personById(this.assignDialog.personId);
+      },
+      assignPeople() {
+        const term = this.assignDialog.search.trim().toLocaleLowerCase('es');
+        const currentId = this.assignDialog.mode === 'person' ? this.assignDialog.personId : '';
+        return this.people
+          .filter((person) => person.active || person.id === currentId)
+          .filter((person) => !term || [person.name, person.role].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
+          .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      },
+      assignAssets() {
+        const term = this.assignDialog.search.trim().toLocaleLowerCase('es');
+        return this.assets
+          .filter((asset) => !asset.assigneeId)
+          .filter((asset) => !term || [asset.name, asset.id, asset.type].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
+          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+      },
+  };
+
   const Store = window.AssetStore;
   const initial = Store.initialState();
 
@@ -32,6 +106,8 @@
       AssetMovements: window.AssetOpsViews.AssetMovements,
       BulkEditor: window.AssetOpsViews.BulkEditor,
       AssetRelations: window.AssetRelationViews.AssetRelations,
+      OrganizationRelations: window.AssetRelationViews.OrganizationRelations,
+      OrganizationRelationTypes: window.AssetRelationViews.OrganizationRelationTypes,
       RelationsSettings: window.AssetRelationViews.RelationsSettings,
       GraphExplorer: window.AssetGraphView,
       MapExplorer: window.AssetMapViews.MapExplorer,
@@ -90,6 +166,7 @@
         explorerSelection: '',
         assetAdmin: initial.assetAdmin,
         ...window.AssetInventory.data(),
+        ...window.AssetOrganization.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -342,75 +419,7 @@
       assignedCount() {
         return this.assets.filter((asset) => !!this.assigneeLabel(asset)).length;
       },
-      filteredPeople() {
-        const filters = this.prefs.people;
-        const term = filters.search.trim().toLocaleLowerCase('es');
-        const collator = new Intl.Collator('es', { sensitivity: 'base' });
-        return this.people.filter((person) => {
-          if (filters.site !== 'all' && person.siteId !== filters.site) return false;
-          if (filters.department !== 'all' && person.departmentId !== filters.department) return false;
-          if (filters.status === 'active' && !person.active) return false;
-          if (filters.status === 'inactive' && person.active) return false;
-          if (!term) return true;
-          const haystack = [
-            person.name, person.role, person.email, person.phone,
-            this.departmentLabel(person.departmentId), this.siteLabel(person.siteId)
-          ].join(' ').toLocaleLowerCase('es');
-          return haystack.indexOf(term) !== -1;
-        }).sort((a, b) => collator.compare(a.name, b.name));
-      },
-      peopleFilterCount() {
-        const filters = this.prefs.people;
-        let count = 0;
-        if (filters.search.trim()) count += 1;
-        if (filters.site !== 'all') count += 1;
-        if (filters.department !== 'all') count += 1;
-        if (filters.status !== 'all') count += 1;
-        return count;
-      },
-      peopleFilterDescription() {
-        const filters = this.prefs.people;
-        const pieces = [];
-        if (filters.search.trim()) pieces.push('“' + filters.search.trim() + '”');
-        if (filters.department !== 'all') pieces.push(this.departmentLabel(filters.department));
-        if (filters.site !== 'all') pieces.push(this.siteLabel(filters.site));
-        if (filters.status === 'active') pieces.push('Solo activas');
-        if (filters.status === 'inactive') pieces.push('Solo inactivas');
-        return pieces.join(' · ');
-      },
-      currentPerson() {
-        if (this.route.name !== 'person' || !this.route.personId) return null;
-        return this.people.find((person) => person.id === this.route.personId) || null;
-      },
-      personAssets() {
-        if (!this.currentPerson) return [];
-        return this.assets
-          .filter((asset) => asset.assigneeId === this.currentPerson.id)
-          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
-      },
-      assignContextAsset() {
-        if (!this.assignDialog.assetId) return null;
-        return this.assets.find((asset) => asset.id === this.assignDialog.assetId) || null;
-      },
-      assignTargetPerson() {
-        if (!this.assignDialog.personId) return null;
-        return this.personById(this.assignDialog.personId);
-      },
-      assignPeople() {
-        const term = this.assignDialog.search.trim().toLocaleLowerCase('es');
-        const currentId = this.assignDialog.mode === 'person' ? this.assignDialog.personId : '';
-        return this.people
-          .filter((person) => person.active || person.id === currentId)
-          .filter((person) => !term || [person.name, person.role].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
-          .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-      },
-      assignAssets() {
-        const term = this.assignDialog.search.trim().toLocaleLowerCase('es');
-        return this.assets
-          .filter((asset) => !asset.assigneeId)
-          .filter((asset) => !term || [asset.name, asset.id, asset.type].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
-          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
-      },
+      ...window.AssetAppPeopleComputed,
       remoteCount() {
         const anydesk = this.settings.anydeskEnabled;
         const rmm = this.settings.rmmEnabled;
@@ -515,7 +524,7 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed),
     watch: {
       activeUserId() { this.changeAppearanceUser(); },
       'config.general': { deep: true, handler(value) {
@@ -528,9 +537,28 @@
           Store.writeJSON(window.localStorage, Store.KEYS.prefs, value);
         }
       },
+      // The directory is a bounded server query: a real filter change asks the
+      // server again from offset 0 instead of re-reading the page in memory.
+      'prefs.people': {
+        deep: true,
+        handler() {
+          if (!this.serverOrganizationMode || !this.organizationDirectoryMode) return;
+          if (!this.route || this.route.name !== 'people') return;
+          this.scheduleOrganizationPeopleSearch();
+        }
+      },
+      // The assignment sheet searches the same bounded endpoints it reads.
+      'assignDialog.search'(value) {
+        if (!this.serverOrganizationMode || !this.assignDialog || !this.assignDialog.open) return;
+        if (this.assignDialog.mode === 'person') this.scheduleOrganizationPeopleSearch({ query: value });
+        else this.scheduleOrganizationAssetSearch(value);
+      },
       people: {
         deep: true,
         handler(value) {
+          // The server directory is authoritative in phase 5; it never reaches
+          // localStorage, so a load, a 500 or a 401 cannot persist server people.
+          if (this.serverOrganizationMode) return;
           Store.writeJSON(window.localStorage, Store.KEYS.people, value);
         }
       },
@@ -575,6 +603,7 @@
           this.updateDocumentTitle();
           this.handleWorkspaceRoute(next,previous);
           this.handleInventoryRoute(next,previous);
+          this.handleOrganizationRoute(next,previous);
         }
       },
       inventoryFilters: {
@@ -584,7 +613,10 @@
         }
       },
       authenticated(value) {
-        if (!value) this.clearInventoryState();
+        if (!value) {
+          this.clearInventoryState();
+          this.clearOrganizationState();
+        }
       },
       mobileNavOpen(value) {
         if (value) this.userMenuOpen = false;
@@ -601,7 +633,7 @@
         next = { name: 'inventory', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'detail' && !this.assetExists(parsed.assetId)) {
         next = { name: 'inventory', assetId: null, personId: null, section: null };
-      } else if (parsed.name === 'person' && !this.people.some((person) => person.id === parsed.personId)) {
+      } else if (parsed.name === 'person' && !this.serverOrganizationMode && !this.people.some((person) => person.id === parsed.personId)) {
         next = { name: 'people', assetId: null, personId: null, section: null };
       }
       next = this.accessRoute(next);
@@ -618,6 +650,7 @@
     },
     beforeUnmount() {
       this.clearInventoryState();
+      this.clearOrganizationState();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -627,7 +660,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods))
   });
   app.mount(target || '#app');
   return app;

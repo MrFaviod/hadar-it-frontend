@@ -8,6 +8,9 @@ const { setup } = require('./universal-harness.cjs');
 
 const ASSET_ID = '11111111-2222-3333-4444-555555555555';
 const OTHER_ID = '99999999-8888-7777-6666-555555555555';
+const PERSON_ID = 'aaaaaaaa-1111-2222-3333-444444444444';
+const SITE_ID = 'dddddddd-1111-2222-3333-444444444444';
+const LOCATION_ID = 'eeeeeeee-1111-2222-3333-444444444444';
 
 function dto(overrides) {
   return Object.assign(
@@ -23,9 +26,19 @@ function dto(overrides) {
       ip: '10.0.0.15',
       site: 'Sede Central',
       location: 'Piso 4 · Dirección',
+      siteId: SITE_ID,
+      locationId: LOCATION_ID,
       responsible: 'Ana Benítez',
+      responsibleLabel: 'Ana Benítez',
+      responsiblePersonId: PERSON_ID,
+      positionX: '0.25',
+      positionY: '0.5',
       status: 'in_use',
       description: '',
+      archived: false,
+      archivedAt: null,
+      archivedBy: null,
+      images: {},
       createdAt: '2026-01-05T10:00:00Z',
       updatedAt: '2026-01-06T11:30:00Z'
     },
@@ -72,6 +85,20 @@ function stubFetch(c, handler) {
     return handler(call, calls.length);
   };
   return calls;
+}
+
+// The shared harness installs an always-true `can` lambda. Rebinding the
+// adapter's own methods restores the production permission evaluation used by
+// the Vue views, so a missing permission still hides the action.
+function realAccess(permissions) {
+  const { c, app } = setup();
+  for (const name of ['can', 'requirePermission']) {
+    assert.equal(typeof c.options.methods[name], 'function', 'AssetAccess.methods.' + name + ' must exist');
+    app[name] = c.options.methods[name].bind(app);
+  }
+  app.serverPermissions = permissions.slice();
+  app.csrfToken = 'csrf-test-token';
+  return { c, app };
 }
 
 test('inventory reads the server collection instead of the prototype assets', async () => {
@@ -148,6 +175,60 @@ test('detail is fetched by permanent id even when the asset is outside the curre
   assert.equal(app.currentAsset.code, 'SRV-DC-004');
   assert.equal(app.currentAsset.serverAsset, true);
   assert.equal(app.serverAssetMode, true);
+});
+
+test('detail keeps the canonical responsible person and location identifiers', async () => {
+  const { c, app } = realAccess(['assets.view', 'assets.assign']);
+  const calls = stubFetch(c, () => json(dto()));
+  app.route = { name: 'detail', assetId: ASSET_ID };
+
+  assert.equal(await app.loadInventoryDetail(ASSET_ID), true);
+
+  const asset = app.currentAsset;
+  assert.equal(calls.length, 1);
+  assert.equal(asset.id, ASSET_ID);
+  // The detail header and the assign dialog read the person id, not the label.
+  assert.equal(asset.responsiblePersonId, PERSON_ID);
+  assert.equal(asset.assigneeId, PERSON_ID);
+  assert.equal(asset.responsibleLabel, 'Ana Benítez');
+  assert.equal(asset.responsible, 'Ana Benítez');
+  assert.equal(asset.assignee, 'Ana Benítez');
+  assert.equal(app.assetResponsibleText(asset), 'Ana Benítez');
+  // Labels stay display text; the canonical ids travel beside them.
+  assert.equal(asset.site, 'Sede Central');
+  assert.equal(asset.siteId, SITE_ID);
+  assert.equal(asset.location, 'Piso 4 · Dirección');
+  assert.equal(asset.locationId, LOCATION_ID);
+  assert.equal(asset.positionX, '0.25');
+  assert.equal(asset.positionY, '0.5');
+  // The return action uses exactly this condition in the detail template.
+  assert.equal(app.can('assets.assign'), true);
+  assert.equal(app.serverAssetMode && app.can('assets.assign') && !!asset.responsiblePersonId, true);
+});
+
+test('a legacy payload without canonical identifiers keeps its text labels', () => {
+  const { app } = setup();
+  const asset = app.inventoryMapAsset(dto({
+    responsible: 'Marta Ríos',
+    responsibleLabel: undefined,
+    responsiblePersonId: undefined,
+    siteId: undefined,
+    locationId: undefined,
+    positionX: undefined,
+    positionY: undefined
+  }));
+
+  assert.equal(asset.responsible, 'Marta Ríos');
+  assert.equal(asset.assignee, 'Marta Ríos');
+  assert.equal(app.assetResponsibleText(asset), 'Marta Ríos');
+  // No identity or canonical label is invented from a label or a prototype record.
+  assert.equal(asset.responsibleLabel, '');
+  assert.equal(asset.responsiblePersonId, '');
+  assert.equal(asset.assigneeId, '');
+  assert.equal(asset.siteId, '');
+  assert.equal(asset.locationId, '');
+  assert.equal(asset.positionX, '');
+  assert.equal(asset.positionY, '');
 });
 
 test('create posts only the fields the inventory API accepts', async () => {

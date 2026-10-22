@@ -1,0 +1,199 @@
+/* Fase 5 — superficies de organización con autoridad del servidor.
+   Sólo tokens existentes: sin colores nuevos, sin sombras duras y con estados
+   legibles en ambos temas. */
+
+.server-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-3, 12px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.server-notice .icon,
+.server-notice app-icon {
+  color: var(--teal-700);
+  flex: none;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-3, 12px);
+  flex-wrap: wrap;
+}
+
+.pager .mono {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.person-history {
+  margin-top: var(--space-4, 16px);
+}
+
+.person-history .history-list,
+.relation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2, 8px);
+}
+
+.history-list__item,
+.relation-list__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+  min-width: 0;
+}
+
+.history-list__item > div,
+.relation-list__item > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.history-list__item .cell-note,
+.relation-list__item .cell-note {
+  overflow-wrap: anywhere;
+}
+
+.assign-audit {
+  display: grid;
+  gap: var(--space-3, 12px);
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.relation-group,
+.relation-form {
+  display: grid;
+  gap: var(--space-3, 12px);
+  margin-top: var(--space-4, 16px);
+}
+
+.relation-group h3 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.relation-form {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+}
+
+.relation-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2, 8px);
+}
+
+@media (max-width: 640px) {
+  .history-list__item,
+  .relation-list__item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pager {
+    justify-content: space-between;
+  }
+}
+
+/* Jerarquía canónica: sede → edificio → piso → sala o zona */
+.site-manage--server .site-row + .site-row {
+  margin-top: var(--space-3, 12px);
+}
+
+.level-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  vertical-align: middle;
+}
+
+.location-branch {
+  margin-top: var(--space-2, 8px);
+  padding-left: var(--space-3, 12px);
+  border-left: 1px solid var(--border);
+}
+
+.location-branch--floor {
+  margin-left: var(--space-3, 12px);
+}
+
+.location-row--room {
+  margin-left: var(--space-3, 12px);
+}
+
+.location-row--inactive .location-row__label,
+.location-row--inactive .location-row__count {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.history-changes {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+}
+
+.history-changes li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Formularios de estructura */
+.field-row {
+  display: grid;
+  gap: var(--space-3, 12px);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.field--check .check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.field--check .check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--teal-700);
+}

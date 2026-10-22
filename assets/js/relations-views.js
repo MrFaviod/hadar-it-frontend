@@ -535,4 +535,441 @@
       `
     }
   };
+
+  /* Phase 5 server relationship surfaces. They read the canonical adapter state
+   * (`app.organization`) and reuse the same vocabulary, tones and controls as
+   * the prototype panel; nothing here invents an endpoint or a cycle rule. */
+  window.AssetRelationViews.OrganizationRelations = {
+    name: 'OrganizationRelations',
+    components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
+    props: {
+      asset: { type: Object, required: true },
+      app: { type: Object, required: true }
+    },
+    data() {
+      return {
+        loading: false,
+        error: '',
+        formOpen: false,
+        mode: 'create',
+        id: '',
+        sourceId: '',
+        targetId: '',
+        typeKey: '',
+        direction: 'outgoing',
+        reason: '',
+        notes: '',
+        effectiveAt: '',
+        formError: '',
+        busy: false,
+        search: ''
+      };
+    },
+    computed: {
+      state() {
+        return this.app.organization.relations;
+      },
+      types() {
+        return this.app.organization.types.items.filter((type) => type.active || this.typeKey === type.key);
+      },
+      canEdit() {
+        return typeof this.app.can === 'function' ? this.app.can('assets.edit') : false;
+      },
+      outgoing() {
+        return this.state.items.filter((edge) => edge.direction !== 'incoming');
+      },
+      incoming() {
+        return this.state.items.filter((edge) => edge.direction === 'incoming');
+      },
+      typeChoices() {
+        return this.types.map((type) => ({ id: type.key, label: type.label }));
+      },
+      targetOptions() {
+        // The server applies the typed term to its bounded page; the panel only
+        // keeps the asset itself out of its own relation targets.
+        return this.app.organization.assetSearch.items.filter((asset) => asset.id !== this.asset.id);
+      },
+      hostDialog() {
+        return this.app.organization.dialogs.hostMove;
+      },
+      hostOptions() {
+        // The bounded server page is the only destination source. Nothing is
+        // filtered out here: the server decides whether a host is valid and its
+        // message is what the operator reads.
+        return this.app.organization.assetSearch.items;
+      }
+    },
+    watch: {
+      'asset.id': {
+        immediate: true,
+        handler() {
+          this.reload();
+        }
+      },
+      search(value) {
+        // Typed target text asks the server for a bounded page instead of
+        // filtering the single page the form opened with.
+        if (!this.formOpen || this.mode !== 'create') return;
+        if (typeof this.app.scheduleOrganizationAssetSearch !== 'function') return;
+        this.app.scheduleOrganizationAssetSearch(value);
+      },
+      'hostDialog.search'(value) {
+        // The destination search is a bounded server query, never a client
+        // filter over the first page the dialog opened with.
+        if (!this.hostDialog.open) return;
+        if (typeof this.app.scheduleOrganizationAssetSearch !== 'function') return;
+        this.app.scheduleOrganizationAssetSearch(value);
+      }
+    },
+    methods: {
+      reload() {
+        if (!this.asset || !this.asset.id) return;
+        this.app.loadOrganizationRelations(this.asset.id);
+        this.app.loadOrganizationRelationTypes();
+      },
+      typeLabel(edge) {
+        return edge.direction === 'incoming' ? edge.inverse || edge.label : edge.label || edge.typeKey;
+      },
+      otherLabel(edge) {
+        const otherId = edge.direction === 'incoming' ? edge.from : edge.to;
+        const hit = this.app.organization.assetSearch.items.find((item) => item.id === otherId);
+        return hit ? hit.name || hit.code : otherId;
+      },
+      openCreate() {
+        this.formOpen = true;
+        this.mode = 'create';
+        this.id = '';
+        this.sourceId = this.asset.id;
+        this.targetId = '';
+        this.typeKey = this.types.length ? this.types[0].key : '';
+        this.direction = 'outgoing';
+        this.reason = '';
+        this.notes = '';
+        this.effectiveAt = '';
+        this.formError = '';
+        this.search = '';
+        this.app.searchOrganizationAssets('');
+      },
+      openEdit(edge) {
+        this.formOpen = true;
+        this.mode = 'edit';
+        this.id = edge.id;
+        this.sourceId = edge.from;
+        this.targetId = edge.to;
+        this.typeKey = edge.typeKey || edge.type;
+        this.reason = edge.reason || '';
+        this.notes = edge.notes || '';
+        this.effectiveAt = '';
+        this.formError = '';
+      },
+      openHostMove(edge) {
+        this.app.openOrganizationHostMove(edge, {
+          // Only this panel's own server record may name the child. When the
+          // edge points at another asset the dialog falls back to the id.
+          childName: edge.from === this.asset.id ? this.asset.name : ''
+        });
+      },
+      selectHost(assetId) {
+        if (typeof this.app.selectOrganizationHost === 'function') this.app.selectOrganizationHost(assetId);
+      },
+      closeHostMove() {
+        if (typeof this.app.closeOrganizationHostMove === 'function') this.app.closeOrganizationHostMove();
+      },
+      submitHostMove() {
+        if (typeof this.app.confirmOrganizationHostMove === 'function') this.app.confirmOrganizationHostMove();
+      },
+      close() {
+        this.formOpen = false;
+      },
+      async save() {
+        if (!this.canEdit) {
+          this.formError = 'No tienes permiso para modificar relaciones.';
+          return;
+        }
+        this.formError = '';
+        const dialog = this.app.organization.dialogs.relation;
+        dialog.mode = this.mode;
+        dialog.id = this.id;
+        dialog.sourceId = this.sourceId;
+        dialog.targetId = this.targetId;
+        dialog.typeKey = this.typeKey;
+        dialog.reason = this.reason;
+        dialog.notes = this.notes;
+        dialog.effectiveAt = this.effectiveAt;
+        dialog.error = '';
+        this.busy = true;
+        const ok = await this.app.saveOrganizationRelation();
+        this.busy = false;
+        this.formError = dialog.error || this.app.organization.dialogs.relation.error || '';
+        if (ok) this.formOpen = false;
+      },
+      async remove(edge) {
+        if (!this.canEdit) {
+          this.error = 'No tienes permiso para eliminar relaciones.';
+          return;
+        }
+        const ok = await this.app.removeOrganizationRelation(edge);
+        if (!ok) this.error = this.app.organization.relations.error || 'No se pudo eliminar la relación.';
+      },
+      timestamp(value) {
+        return this.app.formatServerTimestamp(value);
+      }
+    },
+    template: `
+      <section class="panel relations-panel" aria-labelledby="server-relations-title">
+        <header class="panel__head">
+          <div>
+            <h2 id="server-relations-title">Relaciones</h2>
+            <p>{{ state.total }} relaciones del servidor</p>
+          </div>
+          <button v-if="canEdit" type="button" class="btn btn--secondary btn--small" @click="openCreate">
+            <app-icon name="plus" /> Añadir relación
+          </button>
+        </header>
+
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+        <p v-if="!canEdit" class="cell-note">Solo lectura: tu rol no permite modificar relaciones.</p>
+
+        <form v-if="formOpen" class="relation-form" @submit.prevent="save">
+          <div class="field">
+            <label for="server-relation-type">Tipo</label>
+            <span class="input-shell">
+              <select id="server-relation-type" v-model="typeKey">
+                <option v-for="type in typeChoices" :key="type.id" :value="type.id">{{ type.label }}</option>
+              </select>
+            </span>
+          </div>
+          <div v-if="mode === 'create'" class="field">
+            <label for="server-relation-target">Activo relacionado</label>
+            <span class="input-shell">
+              <input id="server-relation-target" v-model="search" type="search" placeholder="Buscar por nombre o código" autocomplete="off">
+            </span>
+            <span class="field__hint">Se usa el identificador del activo que devuelve el servidor.</span>
+            <span class="input-shell">
+              <select id="server-relation-target-select" v-model="targetId">
+                <option value="">Selecciona un activo</option>
+                <option v-for="asset in targetOptions" :key="asset.id" :value="asset.id">{{ asset.name || asset.code }}</option>
+              </select>
+            </span>
+          </div>
+          <div class="field">
+            <label for="server-relation-reason">Motivo</label>
+            <span class="input-shell"><input id="server-relation-reason" v-model="reason" type="text" maxlength="500"></span>
+          </div>
+          <div class="field">
+            <label for="server-relation-notes">Notas</label>
+            <span class="input-shell"><input id="server-relation-notes" v-model="notes" type="text" maxlength="500"></span>
+          </div>
+          <div class="field">
+            <label for="server-relation-effective">Fecha efectiva</label>
+            <span class="input-shell"><input id="server-relation-effective" v-model="effectiveAt" type="datetime-local"></span>
+            <span class="field__hint">Opcional. Se registra junto al momento en que el servidor guardó el cambio.</span>
+          </div>
+          <p v-if="formError" class="form-error" role="alert">{{ formError }}</p>
+          <div class="relation-form__actions">
+            <button type="button" class="btn btn--ghost btn--small" @click="close">Cancelar</button>
+            <button type="submit" class="btn btn--primary btn--small" :disabled="busy || !targetId && mode === 'create'">Guardar relación</button>
+          </div>
+        </form>
+
+        <modal-shell :open="hostDialog.open" title="Cambiar host" eyebrow="Alojamiento" size="wide" @close="closeHostMove">
+          <div class="form-stack host-move">
+            <div class="assign-context">
+              <span class="assign-context__icon"><app-icon name="layers" /></span>
+              <div>
+                <strong>{{ hostDialog.childName || hostDialog.childId }}</strong>
+                <span class="mono">{{ hostDialog.childId }}</span>
+              </div>
+              <span class="cell-note">Activo que cambia de host</span>
+            </div>
+
+            <div class="field">
+              <label for="server-host-search">Nuevo host</label>
+              <span class="input-shell">
+                <input id="server-host-search" v-model="hostDialog.search" type="search" placeholder="Buscar por nombre o código" autocomplete="off" aria-describedby="server-host-search-hint">
+              </span>
+              <span id="server-host-search-hint" class="field__hint">Búsqueda acotada al servidor; el identificador que se envía es el suyo.</span>
+            </div>
+
+            <div v-if="hostOptions.length" class="assign-options" role="group" aria-label="Hosts disponibles">
+              <button v-for="asset in hostOptions" :key="asset.id" type="button" class="assign-option"
+                      :class="{ 'is-selected': hostDialog.newHostId === asset.id }" :aria-pressed="hostDialog.newHostId === asset.id"
+                      @click="selectHost(asset.id)">
+                <span class="assign-option__thumb"><app-icon name="layers" /></span>
+                <span>
+                  <strong>{{ asset.name || asset.code }}</strong>
+                  <small>{{ asset.id }}<template v-if="asset.code"> · {{ asset.code }}</template></small>
+                </span>
+                <app-icon v-if="hostDialog.newHostId === asset.id" name="check" />
+              </button>
+            </div>
+            <p v-else-if="!app.organization.assetSearch.loading" class="assign-empty">No hay activos que coincidan con la búsqueda.</p>
+            <p v-if="app.organization.assetSearch.error" class="form-error" role="alert">{{ app.organization.assetSearch.error }}</p>
+
+            <div class="field">
+              <label for="server-host-reason">Motivo</label>
+              <span class="input-shell"><input id="server-host-reason" v-model="hostDialog.reason" type="text" maxlength="500" aria-describedby="server-host-reason-hint"></span>
+              <span id="server-host-reason-hint" class="field__hint">Obligatorio. El servidor exige al menos 4 caracteres.</span>
+            </div>
+            <div class="field">
+              <label for="server-host-notes">Notas</label>
+              <span class="input-shell"><input id="server-host-notes" v-model="hostDialog.notes" type="text" maxlength="500"></span>
+            </div>
+            <div class="field">
+              <label for="server-host-effective">Fecha efectiva</label>
+              <span class="input-shell"><input id="server-host-effective" v-model="hostDialog.effectiveAt" type="datetime-local" aria-describedby="server-host-effective-hint"></span>
+              <span id="server-host-effective-hint" class="field__hint">Opcional. Se envía con la zona horaria del navegador.</span>
+            </div>
+
+            <p v-if="hostDialog.error" class="form-error" role="alert">{{ hostDialog.error }}</p>
+          </div>
+          <template #footer>
+            <button type="button" class="btn btn--ghost" @click="closeHostMove">Cancelar</button>
+            <button type="button" class="btn btn--primary" :disabled="hostDialog.busy || !hostDialog.newHostId" @click="submitHostMove">
+              {{ hostDialog.busy ? 'Guardando…' : 'Guardar cambio de host' }}
+            </button>
+          </template>
+        </modal-shell>
+
+        <div v-if="outgoing.length" class="relation-group">
+          <h3>Salientes</h3>
+          <ul class="relation-list">
+            <li v-for="edge in outgoing" :key="edge.id" class="relation-list__item" :class="'tone--' + (edge.tone || 'network')">
+              <div>
+                <strong>{{ typeLabel(edge) }}</strong>
+                <span class="cell-note">{{ otherLabel(edge) }} · {{ timestamp(edge.recordedAt || edge.createdAt) }}</span>
+                <p v-if="edge.reason" class="cell-note">Motivo: {{ edge.reason }}</p>
+              </div>
+              <div class="quick-actions">
+                <button v-if="canEdit" type="button" class="quick-action" @click="openEdit(edge)"><app-icon name="pencil" /><span>Editar</span></button>
+                <button v-if="canEdit && edge.typeKey === 'hosted_in'" type="button" class="quick-action" @click="openHostMove(edge)"><app-icon name="layers" /><span>Cambiar host</span></button>
+                <button v-if="canEdit" type="button" class="quick-action quick-action--danger" @click="remove(edge)"><app-icon name="trash" /><span>Eliminar</span></button>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div v-if="incoming.length" class="relation-group">
+          <h3>Entrantes</h3>
+          <ul class="relation-list">
+            <li v-for="edge in incoming" :key="edge.id" class="relation-list__item" :class="'tone--' + (edge.tone || 'network')">
+              <div>
+                <strong>{{ typeLabel(edge) }}</strong>
+                <span class="cell-note">{{ otherLabel(edge) }}</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <p v-if="!outgoing.length && !incoming.length && !state.loading" class="cell-note">Sin relaciones registradas.</p>
+      </section>
+    `
+  };
+
+  window.AssetRelationViews.OrganizationRelationTypes = {
+    name: 'OrganizationRelationTypes',
+    props: { app: { type: Object, required: true } },
+    computed: {
+      types() {
+        return this.app.organization.types.items;
+      },
+      dialog() {
+        return this.app.organization.dialogs.type;
+      },
+      canConfigure() {
+        return typeof this.app.canConfig === 'function' ? this.app.canConfig('relaciones') : false;
+      }
+    },
+    watch: {
+      types() {
+        if (!this.types.length) this.app.loadOrganizationRelationTypes({ includeInactive: true });
+      }
+    },
+    created() {
+      this.app.loadOrganizationRelationTypes({ includeInactive: true });
+    },
+    methods: {
+      edit(type) {
+        this.app.openOrganizationTypeDialog(type);
+      },
+      create() {
+        this.app.openOrganizationTypeDialog(null);
+      },
+      close() {
+        this.app.closeOrganizationTypeDialog();
+      },
+      async save() {
+        await this.app.saveOrganizationType();
+      }
+    },
+    template: `
+      <section class="panel" aria-labelledby="server-types-title">
+        <header class="panel__head">
+          <div>
+            <h2 id="server-types-title">Tipos de relación</h2>
+            <p>Vocabulario administrado por el servidor.</p>
+          </div>
+          <button v-if="canConfigure" type="button" class="btn btn--secondary btn--small" @click="create">
+            <app-icon name="plus" /> Nuevo tipo
+          </button>
+        </header>
+
+        <p v-if="!canConfigure" class="cell-note">Solo lectura: necesitas el permiso de configuración general.</p>
+        <p v-if="app.organization.types.error" class="form-error" role="alert">{{ app.organization.types.error }}</p>
+
+        <div v-if="types.length" class="table-panel">
+          <table class="asset-table">
+            <caption class="sr-only">Tipos de relación disponibles</caption>
+            <thead>
+              <tr><th scope="col">Clave</th><th scope="col">Directa</th><th scope="col">Inversa</th><th scope="col">Contención</th><th scope="col">Estado</th><th scope="col"><span class="sr-only">Acciones</span></th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="type in types" :key="type.key" class="asset-row">
+                <td data-label="Clave"><span class="mono">{{ type.key }}</span></td>
+                <td data-label="Directa"><span class="cell-strong">{{ type.label }}</span></td>
+                <td data-label="Inversa"><span class="cell-strong">{{ type.inverse }}</span></td>
+                <td data-label="Contención"><span class="type-tag">{{ type.containment ? 'Sí' : 'No' }}</span></td>
+                <td data-label="Estado"><span class="status-pill" :class="type.active ? 'status-pill--online' : 'status-pill--retired'">{{ type.active ? 'Activo' : 'Inactivo' }}</span></td>
+                <td data-label="Acciones">
+                  <button v-if="canConfigure" type="button" class="quick-action" @click="edit(type)"><app-icon name="pencil" /><span>Editar</span></button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else-if="!app.organization.types.loading" class="cell-note">Sin tipos configurados.</p>
+
+        <modal-shell :open="dialog.open" title="Tipo de relación" eyebrow="Configuración" @close="close">
+          <form id="server-type-form" class="field-stack" @submit.prevent="save">
+            <label class="field">
+              <span class="field__label">Clave</span>
+              <input v-model="dialog.key" type="text" :disabled="dialog.mode === 'edit'" maxlength="48" pattern="[a-z0-9_]+" required>
+              <span class="field__hint">Minúsculas, números y guion bajo. No se puede cambiar después.</span>
+            </label>
+            <label class="field">
+              <span class="field__label">Etiqueta directa</span>
+              <input v-model="dialog.forwardLabel" type="text" maxlength="80" required>
+            </label>
+            <label class="field">
+              <span class="field__label">Etiqueta inversa</span>
+              <input v-model="dialog.inverseLabel" type="text" maxlength="80" required>
+            </label>
+            <label class="field field--inline">
+              <input v-model="dialog.containment" type="checkbox">
+              <span>Semántica de contención (rechaza ciclos de alojamiento)</span>
+            </label>
+            <label v-if="dialog.mode === 'edit'" class="field field--inline">
+              <input v-model="dialog.active" type="checkbox">
+              <span>Tipo activo</span>
+            </label>
+            <p v-if="dialog.error" class="form-error" role="alert">{{ dialog.error }}</p>
+          </form>
+          <template #footer>
+            <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
+            <button type="submit" form="server-type-form" class="btn btn--primary" :disabled="dialog.busy">Guardar tipo</button>
+          </template>
+        </modal-shell>
+      </section>
+    `
+  };
 })();
