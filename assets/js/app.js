@@ -167,6 +167,7 @@
         assetAdmin: initial.assetAdmin,
         ...window.AssetInventory.data(),
         ...window.AssetOrganization.data(),
+        ...window.AssetRedundancy.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -524,7 +525,7 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed, window.AssetOrganization.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed),
     watch: {
       activeUserId() { this.changeAppearanceUser(); },
       'config.general': { deep: true, handler(value) {
@@ -604,6 +605,7 @@
           this.handleWorkspaceRoute(next,previous);
           this.handleInventoryRoute(next,previous);
           this.handleOrganizationRoute(next,previous);
+          this.handleRedundancyRoute(next,previous);
         }
       },
       inventoryFilters: {
@@ -616,6 +618,7 @@
         if (!value) {
           this.clearInventoryState();
           this.clearOrganizationState();
+          this.clearRedundancyState();
         }
       },
       mobileNavOpen(value) {
@@ -651,6 +654,7 @@
     beforeUnmount() {
       this.clearInventoryState();
       this.clearOrganizationState();
+      this.clearRedundancyState();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -660,7 +664,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods))
   });
   app.mount(target || '#app');
   return app;

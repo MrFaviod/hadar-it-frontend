@@ -597,6 +597,25 @@
         // filtered out here: the server decides whether a host is valid and its
         // message is what the operator reads.
         return this.app.organization.assetSearch.items;
+      },
+      redundancyState() {
+        return this.app.redundancy.assetGroups;
+      },
+      redundancyDialog() {
+        return this.app.redundancy.dialog;
+      },
+      redundancyGroups() {
+        return this.redundancyState.items;
+      },
+      redundancyCanEdit() {
+        // La escritura de grupos exige el permiso de edición de inventario; el
+        // servidor vuelve a decidir sobre el grupo y cada activo implicado.
+        return typeof this.app.can === 'function'
+          ? this.app.can('assets.view') && this.app.can('assets.edit')
+          : false;
+      },
+      redundancySearchOptions() {
+        return this.app.redundancy.assetSearch.items.filter((item) => item.id !== this.asset.id);
       }
     },
     watch: {
@@ -619,13 +638,65 @@
         if (!this.hostDialog.open) return;
         if (typeof this.app.scheduleOrganizationAssetSearch !== 'function') return;
         this.app.scheduleOrganizationAssetSearch(value);
+      },
+      'redundancyDialog.search'(value) {
+        // La búsqueda de réplicas también es una página acotada del servidor.
+        if (!this.redundancyDialog.open) return;
+        if (typeof this.app.scheduleRedundancyAssetSearch !== 'function') return;
+        this.app.scheduleRedundancyAssetSearch(value);
       }
+    },
+    beforeUnmount() {
+      // La ficha desmontada no deja un diálogo abierto ni una búsqueda en cola, y
+      // una operación de panel que seguía en vuelo deja de ser suya: el cierre del
+      // panel avanza la época de panel, así que su respuesta tardía no informa de
+      // un éxito, no refresca y no escribe un error en el estado compartido.
+      if (typeof this.app.closeRedundancyDialog === 'function') this.app.closeRedundancyDialog();
+      if (typeof this.app.cancelRedundancySearchTimer === 'function') this.app.cancelRedundancySearchTimer();
+      if (typeof this.app.redundancyBumpPanel === 'function') this.app.redundancyBumpPanel();
     },
     methods: {
       reload() {
         if (!this.asset || !this.asset.id) return;
         this.app.loadOrganizationRelations(this.asset.id);
         this.app.loadOrganizationRelationTypes();
+        this.app.loadRedundancyGroupsForAsset(this.asset.id);
+      },
+      memberFacts(member) {
+        return this.app.redundancyMemberFacts(member);
+      },
+      openRedundancy() {
+        return this.app.openRedundancyCreate(this.asset);
+      },
+      editRedundancy(group) {
+        return this.app.openRedundancyEdit(group);
+      },
+      closeRedundancy() {
+        this.app.closeRedundancyDialog();
+      },
+      changeRedundancyMode(value) {
+        this.app.setRedundancyDialogMode(value);
+      },
+      addRedundancyMember(asset) {
+        return this.app.addRedundancyMember(asset);
+      },
+      removeRedundancyMember(assetId) {
+        return this.app.removeRedundancyMember(assetId);
+      },
+      changeRedundancyShare(assetId, value) {
+        return this.app.setRedundancyShare(assetId, value);
+      },
+      changeRedundancyRole(assetId, value) {
+        return this.app.setRedundancyRole(assetId, value);
+      },
+      submitRedundancy() {
+        return this.app.saveRedundancyGroup();
+      },
+      deactivateRedundancy(group) {
+        return this.app.deactivateRedundancyGroup(group);
+      },
+      reactivateRedundancy(group) {
+        return this.app.reactivateRedundancyGroup(group);
       },
       typeLabel(edge) {
         return edge.direction === 'incoming' ? edge.inverse || edge.label : edge.label || edge.typeKey;
@@ -863,6 +934,144 @@
 
         <p v-if="!outgoing.length && !incoming.length && !state.loading" class="cell-note">Sin relaciones registradas.</p>
       </section>
+
+      <section class="panel redundancy-panel" aria-labelledby="server-redundancy-title">
+        <header class="panel__head">
+          <div>
+            <h2 id="server-redundancy-title">Redundancia</h2>
+            <span class="cell-note">Grupos del servidor que incluyen este activo</span>
+          </div>
+          <button v-if="redundancyCanEdit" type="button" class="btn btn--secondary btn--small" @click="openRedundancy">Nuevo grupo</button>
+        </header>
+        <p class="cell-note">Describe la configuración del inventario: la aplicación no reparte tráfico, no replica datos y no conmuta réplicas.</p>
+
+        <p v-if="redundancyState.loading" class="cell-note" role="status">Consultando los grupos del servidor…</p>
+        <p v-else-if="redundancyState.error" class="form-error" role="alert">{{ redundancyState.error }}</p>
+        <template v-else>
+          <ul v-if="redundancyGroups.length" class="redundancy-list">
+            <li v-for="group in redundancyGroups" :key="group.id" class="redundancy-item">
+              <div class="redundancy-item__head">
+                <strong>{{ group.name }}</strong>
+                <span class="status" :class="group.active ? 'status--ok' : 'status--hold'">{{ group.active ? 'Activo' : 'Inactivo' }}</span>
+              </div>
+              <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ group.memberCount }} réplicas</span>
+              <p v-if="group.description" class="cell-note">{{ group.description }}</p>
+              <ul class="redundancy-members">
+                <li v-for="member in group.members" :key="member.assetId" :class="{ 'is-current': member.assetId === asset.id }">
+                  <span>{{ member.name || member.assetId }}</span>
+                  <span class="cell-note">{{ member.assetId === asset.id ? 'Este activo · ' : '' }}{{ memberFacts(member) }}</span>
+                </li>
+              </ul>
+              <div v-if="redundancyCanEdit" class="quick-actions">
+                <button type="button" class="quick-action" @click="editRedundancy(group)"><app-icon name="pencil" /><span>Editar</span></button>
+                <button v-if="group.active" type="button" class="quick-action quick-action--danger"
+                        :disabled="app.redundancy.busyId === group.id" @click="deactivateRedundancy(group)">
+                  <app-icon name="minus" /><span>Desactivar</span>
+                </button>
+                <button v-else type="button" class="quick-action" :disabled="app.redundancy.busyId === group.id" @click="reactivateRedundancy(group)">
+                  <app-icon name="refresh" /><span>Reactivar</span>
+                </button>
+              </div>
+            </li>
+          </ul>
+          <p v-else-if="redundancyState.truncated" class="cell-note">
+            Se examinaron {{ redundancyState.examined }} de {{ redundancyState.total }} grupos del servidor y ninguno incluye este activo; el resto no se consultó en esta página.
+          </p>
+          <p v-else-if="redundancyState.loaded" class="cell-note">Este activo no pertenece a ningún grupo de redundancia.</p>
+          <p v-if="redundancyState.truncated && redundancyGroups.length" class="cell-note">
+            Se examinaron {{ redundancyState.examined }} de {{ redundancyState.total }} grupos del servidor; puede haber grupos fuera de esta página.
+          </p>
+          <p v-else-if="redundancyGroups.length && redundancyState.loaded" class="cell-note">Se examinaron {{ redundancyState.examined }} de {{ redundancyState.total }} grupos.</p>
+        </template>
+        <p v-if="!redundancyCanEdit && redundancyGroups.length" class="cell-note">Solo lectura: tu rol no permite modificar grupos de redundancia.</p>
+      </section>
+
+      <modal-shell :open="redundancyDialog.open" title="Grupo de redundancia" eyebrow="Réplicas" size="wide" @close="closeRedundancy">
+        <div class="form-stack redundancy-form">
+          <div class="field">
+            <label for="redundancy-name">Nombre</label>
+            <span class="input-shell"><input id="redundancy-name" v-model="redundancyDialog.name" type="text" maxlength="160"></span>
+          </div>
+          <div class="field">
+            <label for="redundancy-description">Descripción</label>
+            <span class="input-shell">
+              <input id="redundancy-description" v-model="redundancyDialog.description" type="text" maxlength="1000" aria-describedby="redundancy-description-hint">
+            </span>
+            <span id="redundancy-description-hint" class="field__hint">Opcional. Si queda vacía, el servidor borra la descripción guardada.</span>
+          </div>
+          <div class="field">
+            <label for="redundancy-mode">Modo</label>
+            <span class="input-shell">
+              <select id="redundancy-mode" :value="redundancyDialog.groupMode" @change="changeRedundancyMode($event.target.value)">
+                <option value="active_active">Activo/activo · reparto de carga</option>
+                <option value="active_passive">Activo/pasivo · principal y respaldo</option>
+              </select>
+            </span>
+            <span class="field__hint">Cambiar el modo envía la lista completa de réplicas en la misma petición.</span>
+          </div>
+
+          <div class="field">
+            <label for="redundancy-search">Añadir réplica</label>
+            <span class="input-shell">
+              <input id="redundancy-search" v-model="redundancyDialog.search" type="search" maxlength="120" aria-describedby="redundancy-search-hint">
+            </span>
+            <span id="redundancy-search-hint" class="field__hint">Búsqueda acotada al servidor; se envía el identificador del activo.</span>
+          </div>
+          <div v-if="redundancySearchOptions.length" class="assign-options" role="group" aria-label="Activos encontrados">
+            <button v-for="asset in redundancySearchOptions" :key="asset.id" type="button" class="assign-option"
+                    :data-redundancy-add="asset.id" @click="addRedundancyMember(asset)">
+              <span class="assign-option__thumb"><app-icon name="server" /></span>
+              <span>
+                <strong>{{ asset.name || asset.quickCode || asset.id }}</strong>
+                <small>{{ asset.id }}<template v-if="asset.quickCode"> · {{ asset.quickCode }}</template></small>
+              </span>
+              <app-icon name="plus" />
+            </button>
+          </div>
+          <p v-else-if="!app.redundancy.assetSearch.loading" class="assign-empty">No hay activos que coincidan con la búsqueda.</p>
+          <p v-if="app.redundancy.assetSearch.error" class="form-error" role="alert">{{ app.redundancy.assetSearch.error }}</p>
+
+          <ul v-if="redundancyDialog.members.length" class="redundancy-draft">
+            <li v-for="member in redundancyDialog.members" :key="member.assetId" class="redundancy-draft__item">
+              <div class="redundancy-draft__name">
+                <strong>{{ member.name || member.quickCode || member.assetId }}</strong>
+                <span class="cell-note mono">{{ member.assetId }}</span>
+                <span v-if="member.archived" class="cell-note">Archivado</span>
+              </div>
+              <div v-if="redundancyDialog.groupMode === 'active_passive'" class="field">
+                <label :for="'redundancy-role-' + member.assetId">Rol</label>
+                <span class="input-shell">
+                  <select :id="'redundancy-role-' + member.assetId" :data-redundancy-role="member.assetId"
+                          :value="member.role" @change="changeRedundancyRole(member.assetId, $event.target.value)">
+                    <option value="primary">Principal</option>
+                    <option value="backup">Respaldo</option>
+                  </select>
+                </span>
+              </div>
+              <div v-else class="field">
+                <label :for="'redundancy-share-' + member.assetId">Reparto de carga (%)</label>
+                <span class="input-shell">
+                  <input :id="'redundancy-share-' + member.assetId" :data-redundancy-share="member.assetId"
+                         :value="member.share" inputmode="decimal" @input="changeRedundancyShare(member.assetId, $event.target.value)">
+                </span>
+              </div>
+              <button type="button" class="quick-action quick-action--danger" :data-redundancy-remove="member.assetId"
+                      :aria-label="'Quitar ' + (member.name || member.assetId)" @click="removeRedundancyMember(member.assetId)">
+                <app-icon name="trash" />
+              </button>
+            </li>
+          </ul>
+          <p class="cell-note">{{ app.redundancyDraftSummary() }}</p>
+          <p class="cell-note">El reparto y los roles son configuración descriptiva; el servidor vuelve a validarlos.</p>
+          <p v-if="redundancyDialog.error" class="form-error" role="alert">{{ redundancyDialog.error }}</p>
+        </div>
+        <template #footer>
+          <button type="button" class="btn btn--ghost" @click="closeRedundancy">Cancelar</button>
+          <button type="button" class="btn btn--primary" :disabled="redundancyDialog.busy" @click="submitRedundancy">
+            {{ redundancyDialog.busy ? 'Guardando…' : 'Guardar grupo' }}
+          </button>
+        </template>
+      </modal-shell>
     `
   };
 

@@ -197,3 +197,160 @@
   height: 16px;
   accent-color: var(--teal-700);
 }
+
+/* ---------------------------------------------------------- redundancia */
+/* Describe réplicas ya inventariadas. Sin colores nuevos, sin sombras duras
+   y con el recorte de página siempre visible. */
+
+.redundancy-panel {
+  margin-top: var(--space-4, 16px);
+}
+
+.redundancy-panel .panel__head {
+  align-items: flex-start;
+}
+
+.redundancy-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2, 8px);
+}
+
+.redundancy-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+  min-width: 0;
+}
+
+.redundancy-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.redundancy-item__head strong {
+  overflow-wrap: anywhere;
+}
+
+.redundancy-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.redundancy-members li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.redundancy-members .cell-note {
+  overflow-wrap: anywhere;
+}
+
+.redundancy-members .is-current > span:first-child {
+  color: var(--teal-700);
+  font-weight: 600;
+}
+
+.redundancy-draft {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2, 8px);
+}
+
+.redundancy-draft__item {
+  display: grid;
+  gap: var(--space-2, 8px);
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 190px) auto;
+  align-items: end;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--paper);
+  min-width: 0;
+}
+
+.redundancy-draft__name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.redundancy-draft__name strong,
+.redundancy-draft__name .mono {
+  overflow-wrap: anywhere;
+}
+
+.redundancy-form {
+  min-width: 0;
+}
+
+/* Panel del grafo: bloque bajo el lienzo, sin overlays que tapen el diagrama. */
+.graph-redundancy {
+  display: grid;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+  padding: 14px 16px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.graph-redundancy__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+.graph-redundancy__head h2 {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin: 0 0 2px;
+}
+
+.redundancy-list--graph .redundancy-item {
+  background: transparent;
+}
+
+.graph-inspector__redundancy {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.graph-inspector__redundancy h3 {
+  font-size: 13px;
+}
+
+/* Marca de réplica: un punto, distinto de las aristas dirigidas de alojamiento. */
+.gnode__redundancy circle {
+  fill: var(--teal-700);
+  stroke: var(--paper);
+  stroke-width: 2;
+}
+
+@media (max-width: 640px) {
+  .redundancy-draft__item {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+}

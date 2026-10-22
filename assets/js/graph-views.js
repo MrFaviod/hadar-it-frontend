@@ -32,6 +32,7 @@
     data() {
       const shared = this.app.explorerFilters || {};
       return {
+        redundancyOpen: true,
         filters: {
           categories: (shared.categories || []).slice(),
           sites: (shared.sites || []).slice(),
@@ -157,6 +158,7 @@
             label: this.shortName(asset),
             hiddenCount: this.hiddenCount(asset.id),
             selected: this.selectedId === asset.id,
+            redundancy: this.redundancyMembership[asset.id] || null,
             isFocus: this.mode === 'focus' && asset.id === this.activeFocusId,
             frame: frame
           };
@@ -244,6 +246,39 @@
       mapHref() {
         const id = this.focusId || this.selectedId;
         return id ? '#/infra/mapa/activo/' + encodeURIComponent(id) : '#/infra/mapa';
+      },
+      // Los grupos vienen de la misma página acotada que la ficha del activo.
+      // El grafo no pide nodos ni aristas de redundancia al servidor.
+      redundancyGroups() {
+        if (!this.app.serverGraphMode || !this.app.redundancy) return [];
+        return this.app.redundancy.groups.items;
+      },
+      redundancyMembership() {
+        return (this.app.redundancyMembership) || {};
+      },
+      redundancyLoaded() {
+        return !!(this.app.redundancy && this.app.redundancy.groups.loaded);
+      },
+      redundancyTotal() {
+        return this.app.redundancy ? this.app.redundancy.groups.total : 0;
+      },
+      redundancyTruncated() {
+        return this.redundancyGroups.length < this.redundancyTotal;
+      },
+      showRedundancy() {
+        return !!(this.redundancyOpen && this.app.serverGraphMode);
+      },
+      // Sólo los grupos con algún miembro visible: el panel nunca presenta un
+      // grupo como si sus réplicas estuvieran en este grafo cuando no lo están.
+      redundancyOptions() {
+        const ids = this.visibleNodeIds || [];
+        return this.redundancyGroups.filter(function (group) {
+          return group.members.some(function (member) { return ids.indexOf(member.assetId) !== -1; });
+        });
+      },
+      selectedRedundancy() {
+        if (!this.selectedAsset) return [];
+        return this.redundancyGroupsFor(this.selectedAsset.id);
       }
     },
     watch: {
@@ -459,6 +494,22 @@
           window.cancelAnimationFrame(this.raf);
           this.raf = null;
         }
+      },
+      redundancyGroupsFor(assetId) {
+        const id = String(assetId || '');
+        if (!id) return [];
+        return this.redundancyGroups.filter(function (group) {
+          return group.members.some(function (member) { return member.assetId === id; });
+        });
+      },
+      memberFacts(member) {
+        return typeof this.app.redundancyMemberFacts === 'function' ? this.app.redundancyMemberFacts(member) : '';
+      },
+      selectedMemberFacts(group) {
+        if (!this.selectedAsset || !group) return '';
+        const asset = this.selectedAsset;
+        const member = group.members.find(function (item) { return item.assetId === asset.id; });
+        return member ? this.memberFacts(member) : '';
       },
       resetLayout() {
         if (!this.sim) return;
@@ -828,6 +879,10 @@
           <button type="button" class="btn btn--ghost btn--small" @click="resetLayout">
             <app-icon name="refresh"></app-icon> Reacomodar
           </button>
+          <button v-if="app.serverGraphMode" type="button" class="btn btn--ghost btn--small"
+                  :aria-pressed="redundancyOpen" @click="redundancyOpen = !redundancyOpen">
+            <app-icon name="layers"></app-icon> Redundancia
+          </button>
           <button v-if="canEdit" type="button" class="btn btn--primary btn--small" @click="app.goToConfig('relaciones')">
             <app-icon name="sliders"></app-icon> Tipos
           </button>
@@ -916,6 +971,10 @@
                        @keydown.enter.prevent="selectNode(node.id)" @keydown.space.prevent="selectNode(node.id)">
                       <circle class="gnode__halo" r="32"></circle>
                       <circle class="gnode__plate" r="23"></circle>
+                      <g v-if="node.redundancy" class="gnode__redundancy"
+                         :aria-label="'En ' + node.redundancy.count + ' grupos de redundancia'">
+                        <circle r="6" cx="-19" cy="-19"></circle>
+                      </g>
                       <svg class="gnode__glyph" x="-11" y="-11" width="22" height="22" viewBox="0 0 24 24"
                            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
                            stroke-linejoin="round" v-html="glyph(node.icon)"></svg>
@@ -967,7 +1026,41 @@
               <span class="graph-status__hint">Tab y flechas para navegar · Enter abre la ficha · E expande · C contrae</span>
             </div>
             <p class="sr-only" aria-live="polite">{{ announce }}</p>
+
+            <section v-if="showRedundancy" class="panel graph-redundancy" aria-labelledby="graph-redundancy-title">
+              <header class="graph-redundancy__head">
+                <div>
+                  <h2 id="graph-redundancy-title">Redundancia</h2>
+                  <span class="cell-note">Configuración del inventario; no reparte tráfico ni conmuta réplicas</span>
+                </div>
+                <button type="button" class="icon-button" aria-label="Ocultar la redundancia del grafo" @click="redundancyOpen = false">
+                  <app-icon name="close"></app-icon>
+                </button>
+              </header>
+              <p v-if="app.redundancy && app.redundancy.groups.error" class="form-error" role="alert">{{ app.redundancy.groups.error }}</p>
+              <p v-else-if="!redundancyOptions.length" class="cell-note">No hay grupos de redundancia en la página consultada.</p>
+              <ul v-else class="redundancy-list redundancy-list--graph">
+                <li v-for="group in redundancyOptions" :key="group.id" class="redundancy-item">
+                  <div class="redundancy-item__head">
+                    <strong>{{ group.name }}</strong>
+                    <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ group.active ? 'Activo' : 'Inactivo' }}</span>
+                  </div>
+                  <ul class="redundancy-members">
+                    <li v-for="member in group.members" :key="member.assetId">
+                      <button type="button" class="text-button" @click="selectNode(member.assetId, { center: true })">
+                        {{ member.name || member.assetId }}
+                      </button>
+                      <span class="cell-note">{{ memberFacts(member) }}</span>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+              <p v-if="redundancyTruncated" class="cell-note">
+                Se cargaron {{ redundancyGroups.length }} de {{ redundancyTotal }} grupos; el resto no se consultó en esta página.
+              </p>
+            </section>
           </div>
+
 
           <aside v-if="selectedAsset" class="graph-inspector" data-od-id="graph-inspector" aria-label="Activo seleccionado">
             <header class="graph-inspector__head">
@@ -1017,6 +1110,20 @@
               </li>
             </ul>
             <p v-else class="graph-inspector__empty">Este activo todavía no tiene vínculos registrados.</p>
+
+            <div v-if="selectedRedundancy.length" class="graph-inspector__redundancy">
+              <div class="graph-inspector__subhead">
+                <h3>Redundancia</h3>
+                <span class="mono">{{ selectedRedundancy.length }}</span>
+              </div>
+              <ul class="redundancy-members">
+                <li v-for="group in selectedRedundancy" :key="group.id">
+                  <strong>{{ group.name }}</strong>
+                  <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ selectedMemberFacts(group) }}</span>
+                </li>
+              </ul>
+              <p class="cell-note">El alojamiento sigue siendo la relación dirigida «Alojado en»; el grupo sólo describe la réplica.</p>
+            </div>
 
             <div class="graph-inspector__foot">
               <button type="button" class="btn btn--ghost btn--small" :disabled="!selectedHidden.length"
