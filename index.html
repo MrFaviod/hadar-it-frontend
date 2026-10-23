@@ -346,7 +346,7 @@
         <div class="sidebar__foot">
           <div class="sidebar__note">
             <app-icon name="info"></app-icon>
-            <p v-if="serverInventory"><strong>Inventario del servidor</strong><span>Inventario, ficha, conversación y mantenimiento usan la API. El resto de módulos sigue con datos de demostración locales.</span></p>
+            <p v-if="serverInventory"><strong>Inventario del servidor</strong><span>Inventario, ficha, conversación, mantenimiento, supervisión y notificaciones usan la API. El resto de módulos sigue con datos de demostración locales.</span></p>
             <p v-else><strong>Datos de demostración</strong><span>Los cambios se guardan solo en este navegador.</span></p>
           </div>
         </div>
@@ -1888,7 +1888,7 @@
                   <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations>
 
                   <asset-maintenance-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
-                  <asset-monitoring-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
+                  <asset-monitoring-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
 
                   <section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
                     <header class="panel-head">
@@ -2861,6 +2861,7 @@
   <script src="assets/js/maintenance-dialogs.js"></script>
   <script src="assets/js/maintenance-views.js"></script>
   <script src="assets/js/maintenance-panels.js"></script>
+  <script src="assets/js/monitoring-api.js"></script>
   <script src="assets/js/monitoring-views.js"></script>
   <script src="assets/js/monitoring-settings.js"></script>
   <script src="assets/js/graph-layout.js"></script>

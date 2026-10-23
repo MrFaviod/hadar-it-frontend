@@ -428,8 +428,10 @@
     assets,
     config.sites
   );
+  // Monitoring is server-owned after phase 8. The prototype dataset only feeds
+  // the disclosed phase-10 dashboard and is never restored from localStorage.
   const monitoring = window.AssetMonitorEngine.normalize(
-    readJSON(window.localStorage, KEYS.monitoring, null),
+    null,
     assets,
     config.categories,
     config.sites

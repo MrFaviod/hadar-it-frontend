@@ -219,16 +219,8 @@
         this.showToast('El activo enfocado ya no está disponible.', 'error');
         parsed = { name: parsed.name, assetId: null, personId: null, section: null, focusId: '' };
       }
-      if (parsed.name === 'monitorDevice' && !this.assets.some((asset) => asset.id === parsed.assetId)) {
-        this.ensureHash('#/supervision');
-        this.showToast('El dispositivo solicitado ya no está disponible.', 'error');
-        parsed = { name: 'monitoring', assetId: null, personId: null, section: 'dispositivos', incidentId: '', alertId: '' };
-      }
-      if (parsed.name === 'monitorAlert' && !((this.maintenance && this.maintenance.alerts) || []).some((alert) => alert.id === parsed.alertId)) {
-        this.ensureHash('#/supervision/alertas');
-        this.showToast('La alerta solicitada ya no está disponible.', 'error');
-        parsed = { name: 'monitoring', assetId: null, personId: null, section: 'alertas', incidentId: '', alertId: '' };
-      }
+      // Device and alert routes are server-owned: the route is applied while the
+      // canonical detail loads, and only the API's 404 becomes an empty state.
       this.applyRoute(parsed);
     },
     applyRoute(next) {

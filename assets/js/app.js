@@ -177,6 +177,7 @@
         ...window.AssetRedundancy.data(),
         ...window.AssetPhase6.data(),
         ...window.AssetMaintenanceApi.data(),
+        ...window.AssetMonitoringApi.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -481,8 +482,7 @@
         }, 0);
       },
       monitorAlertCount() {
-        if (!this.monitoring || !this.maintenance) return 0;
-        return (this.maintenance.alerts || []).filter((alert) => alert.state === 'open').length;
+        return this.monitoringActiveAlertCount || 0;
       },
       pageLabel() {
         if (this.route.name === 'reports') return 'Reportes';
@@ -541,9 +541,9 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.maintainMaintenanceIdentity(); },
+      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -602,12 +602,6 @@
           Store.writeJSON(window.localStorage, Store.KEYS.maps, value);
         }
       },
-      monitoring: {
-        deep: true,
-        handler(value) {
-          Store.writeJSON(window.localStorage, Store.KEYS.monitoring, value);
-        }
-      },
       route: {
         immediate: true,
         handler(next,previous) {
@@ -617,6 +611,7 @@
           this.handleOrganizationRoute(next,previous);
           this.handleRedundancyRoute(next,previous);
           this.handleMaintenanceRoute(next,previous);
+          this.handleMonitoringRoute(next,previous);
         }
       },
       inventoryFilters: {
@@ -632,8 +627,10 @@
           this.clearRedundancyState();
           this.clearPhase6State();
           this.clearMaintenanceState();
+          this.clearMonitoringState();
         } else {
           this.maintainMaintenanceIdentity();
+          this.maintainMonitoringIdentity();
         }
       },
       mobileNavOpen(value) {
@@ -672,6 +669,7 @@
       this.clearRedundancyState();
       this.clearPhase6State();
       this.clearMaintenanceState();
+      this.clearMonitoringState();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -681,7 +679,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods))
   });
   app.mount(target || '#app');
   return app;

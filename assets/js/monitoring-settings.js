@@ -1,1153 +1,1188 @@
 (function () {
   'use strict';
 
-  const M = window.AssetMonitorEngine;
-  const Data = window.ASSET_MONITOR;
+  const Mapping = window.AssetMonitoringApiMapping;
   const Views = window.Views = window.Views || {};
+  const DAYS = [
+    { id: 0, label: 'L' }, { id: 1, label: 'M' }, { id: 2, label: 'X' }, { id: 3, label: 'J' },
+    { id: 4, label: 'V' }, { id: 5, label: 'S' }, { id: 6, label: 'D' }
+  ];
+  const METRIC_LABELS = { latency: 'Latencia', cpu: 'CPU', memory: 'Memoria', disk: 'Disco', temperature: 'Temperatura' };
+  const PROFILE_KEYS = ['enabled', 'checkType', 'intervalSeconds', 'metrics', 'thresholds', 'minimumDurationSeconds', 'exporterId', 'snmpModule', 'snmpAuthRef'];
 
-  const DAY_LABELS = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
-
-  function fmtDateTime(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleString('es-ES', {
-      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
-    });
+  function text(value) {
+    return typeof value === 'string' ? value.trim() : '';
   }
 
-  function daysLabel(days) {
-    return (days || []).slice().sort().map((day) => DAY_LABELS[day]).join(' ');
+  function numOrNull(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
-  function scopeLabel(scope) {
-    return scope === 'category' ? 'Categoría' : 'Dispositivo';
+  function idsFromText(value) {
+    return text(value).split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
   }
 
+  function hasRawSecret(input) {
+    if (!input || typeof input !== 'object') return false;
+    return ['token', 'password', 'secret', 'webhook', 'webhookUrl', 'url'].some((key) => Object.prototype.hasOwnProperty.call(input, key));
+  }
+
+  function profileForm(profile) {
+    return {
+      category: profile ? profile.category : '',
+      enabled: profile ? !!profile.enabled : false,
+      checkType: profile ? profile.checkType || '' : '',
+      intervalSeconds: profile ? profile.intervalSeconds : 60,
+      metrics: profile ? profile.metrics.slice() : ['latency'],
+      thresholds: profile && profile.thresholds ? JSON.parse(JSON.stringify(profile.thresholds)) : {},
+      minimumDurationSeconds: profile ? profile.minimumDurationSeconds : 300,
+      exporterId: profile ? profile.exporterId || '' : '',
+      snmpModule: profile ? profile.snmpModule || '' : '',
+      snmpAuthRef: profile ? profile.snmpAuthRef || '' : ''
+    };
+  }
+
+  function assetForm() {
+    return {
+      assetId: '', enabled: '', checkType: '', target: '', intervalSeconds: '', metrics: [],
+      thresholds: {}, minimumDurationSeconds: '', exporterId: '', snmpModule: '', snmpAuthRef: ''
+    };
+  }
+
+  function windowForm(window) {
+    return {
+      id: window ? window.id : '',
+      name: window ? window.name || '' : '',
+      assetIds: window ? (window.assetIds || []).slice() : [],
+      assetIdsText: '',
+      daysOfWeek: window && window.daysOfWeek && window.daysOfWeek.length ? window.daysOfWeek.slice() : [0, 1, 2, 3, 4],
+      startTime: window ? window.startTime || '22:00' : '22:00',
+      endTime: window ? window.endTime || '23:00' : '23:00',
+      timezone: window ? window.timezone || 'Europe/Madrid' : 'Europe/Madrid',
+      enabled: window ? window.enabled !== false : true
+    };
+  }
+
+  function ruleForm(rule) {
+    return {
+      id: rule ? rule.id : '',
+      name: rule ? rule.name || '' : '',
+      enabled: rule ? rule.enabled !== false : true,
+      minimumSeverity: rule ? rule.minimumSeverity || 'info' : 'info',
+      recipientIds: rule ? (rule.recipientIds || []).join(', ') : '',
+      channelIds: rule ? (rule.channelIds || []).slice() : [],
+      escalationRecipientIds: rule ? (rule.escalationRecipientIds || []).join(', ') : '',
+      scheduleEnabled: !!(rule && rule.schedule),
+      timezone: rule && rule.schedule ? rule.schedule.timezone || 'Europe/Madrid' : 'Europe/Madrid',
+      start: rule && rule.schedule ? rule.schedule.start || '22:00' : '22:00',
+      end: rule && rule.schedule ? rule.schedule.end || '06:00' : '06:00',
+      acknowledgeAfterSeconds: rule ? rule.acknowledgeAfterSeconds : 900,
+      retryIntervalSeconds: rule ? rule.retryIntervalSeconds : 60,
+      escalateAfterSeconds: rule ? rule.escalateAfterSeconds : 0,
+      maxAttempts: rule ? rule.maxAttempts : 3
+    };
+  }
+
+  function channelForm(channel) {
+    return {
+      id: channel ? channel.id : '',
+      kind: channel ? channel.kind : 'internal',
+      name: channel ? channel.name || '' : '',
+      enabled: channel ? channel.enabled !== false : true,
+      secretRef: channel ? channel.secretRef || '' : '',
+      subjectPrefix: channel && channel.config ? channel.config.subjectPrefix || '' : '',
+      chatId: channel && channel.config ? channel.config.chatId || '' : ''
+    };
+  }
+
+  function metricOptions(presets) {
+    return (presets && presets.metrics && presets.metrics.length)
+      ? presets.metrics
+      : Object.keys(METRIC_LABELS).map((id) => ({ id, label: METRIC_LABELS[id], unit: '' }));
+  }
+
+  // ---------------------------------------------------------------- monitoring
   Views.MonitoringSettings = {
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
     data() {
       return {
-        draft: { assetId: '', checkIds: ['availability'], intervalMinutes: 15 }
+        tab: 'categories',
+        profile: profileForm(null),
+        selectedCategory: '',
+        override: assetForm(),
+        exporter: { name: '', kind: 'blackbox', module: 'icmp', address: '', enabled: true },
+        busy: false,
+        error: '',
+        notice: ''
       };
     },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      checks() { return this.monitoring.checks; },
-      policies() { return this.monitoring.policies; },
-      exceptions() { return this.monitoring.exceptions; },
-      categories() { return this.app.categories || []; },
-      assets() { return (this.app.assets || []).filter((asset) => !asset.retired); },
-      canEdit() { return this.app.can('assets.edit'); },
-      ranges() { return Data.RANGES; },
+      canProfiles() { return this.app.monitoringConfigurable; },
+      canExporters() { return this.app.monitoringIntegrations; },
+      canAssets() { return this.app.monitoringEditable; },
+      config() { return this.app.monitoringConfig; },
+      loading() { return this.app.monitoringConfigLoading; },
+      profiles() { return this.app.monitoringProfiles; },
+      exporters() { return this.app.monitoringExporters; },
+      presets() { return this.app.monitoringPresets; },
+      metrics() { return metricOptions(this.presets); },
+      checkTypes() {
+        const presets = this.presets.checkTypes;
+        return presets && presets.length
+          ? presets
+          : ['icmp', 'http', 'tcp', 'dns', 'snmp', 'node', 'windows'].map((id) => ({ id, label: Mapping.checkMeta(id).label }));
+      },
+      intervals() {
+        return this.presets.intervals && this.presets.intervals.length ? this.presets.intervals : [30, 60, 300];
+      },
+      durations() {
+        return this.presets.minimumDurations && this.presets.minimumDurations.length ? this.presets.minimumDurations : [0, 60, 300, 900];
+      },
+      categories() {
+        return (this.app.categories || []).map((category) => ({ id: category.id, name: category.name }));
+      },
+      assets() {
+        return this.app.monitoringAssets.map((asset) => ({
+          id: asset.id,
+          label: (asset.name || asset.id) + ' · ' + (asset.quickCode || asset.id)
+        }));
+      },
       tabs() {
         return [
-          { id: 'estado', label: 'Estado' },
-          { id: 'dispositivos', label: 'Dispositivos' },
-          { id: 'alertas', label: 'Alertas' }
+          { id: 'categories', label: 'Categorías' },
+          { id: 'assets', label: 'Excepciones' },
+          { id: 'exporters', label: 'Exportadores' }
         ];
-      },
-      assetOptions() {
-        return this.assets.slice().sort((a, b) => a.name.localeCompare(b.name, 'es'));
-      },
-      enabledPolicies() { return this.policies.filter((policy) => policy.enabled).length; }
+      }
+    },
+    watch: {
+      profiles: {
+        handler() {
+          if (!this.selectedCategory && this.profiles.length) this.selectProfile(this.profiles[0].category);
+        }
+      }
+    },
+    async mounted() {
+      if (this.app.monitoringAvailable) await Promise.all([this.app.loadMonitoringConfig(), this.app.loadMonitoringAssetDirectory()]);
+      if (this.profiles.length && !this.selectedCategory) this.selectProfile(this.profiles[0].category);
     },
     methods: {
-      categoryLabel(id) {
-        const category = this.categories.find((item) => item.id === id);
-        return category ? category.label : id;
+      fmtValue(value, unit) {
+        if (value === null || value === undefined || value === '') return '—';
+        return String(value) + (unit ? ' ' + unit : '');
       },
-      assetName(id) {
-        const asset = this.assets.find((item) => item.id === id);
-        return asset ? asset.name : id;
+      profileFor(category) {
+        return this.profiles.find((profile) => profile.category === category) || null;
       },
-      checkLabel(id) {
-        const check = this.checks.find((item) => item.id === id);
-        return check ? check.label : id;
+      selectProfile(category) {
+        const profile = this.profileFor(category);
+        this.selectedCategory = category;
+        this.profile = profileForm(profile);
+        this.error = '';
+        this.notice = '';
       },
-      hasCheck(list, id) { return list.indexOf(id) !== -1; },
-      togglePolicyCheck(policy, id) {
-        if (!this.canEdit) return;
-        const next = policy.checkIds.indexOf(id) === -1
-          ? policy.checkIds.concat([id])
-          : policy.checkIds.filter((item) => item !== id);
-        const result = M.savePolicy(this.monitoring, policy.category, {
-          enabled: policy.enabled,
-          intervalMinutes: policy.intervalMinutes,
-          checkIds: next
-        });
-        if (!result.ok) this.app.showToast(result.errors[0]);
+      metricLabel(id) { return METRIC_LABELS[id] || id; },
+      toggleProfileMetric(id) {
+        const index = this.profile.metrics.indexOf(id);
+        if (index === -1) this.profile.metrics.push(id);
+        else this.profile.metrics.splice(index, 1);
       },
-      togglePolicyEnabled(policy) {
-        if (!this.canEdit) return;
-        const result = M.savePolicy(this.monitoring, policy.category, {
-          enabled: !policy.enabled,
-          intervalMinutes: policy.intervalMinutes,
-          checkIds: policy.checkIds
-        });
-        this.app.showToast(result.ok
-          ? this.categoryLabel(policy.category) + (policy.enabled ? ' supervisada.' : ' fuera de la supervisión.')
-          : result.errors[0]);
+      setThreshold(metric, level, value) {
+        const parsed = numOrNull(value);
+        const current = this.profile.thresholds[metric] || {};
+        if (parsed === null) delete current[level];
+        else current[level] = parsed;
+        if (Object.keys(current).length) this.profile.thresholds[metric] = current;
+        else delete this.profile.thresholds[metric];
       },
-      setPolicyInterval(policy, event) {
-        const value = Number(event.target.value);
-        const result = M.savePolicy(this.monitoring, policy.category, {
-          enabled: policy.enabled, intervalMinutes: value, checkIds: policy.checkIds
-        });
-        if (!result.ok) {
-          event.target.value = policy.intervalMinutes;
-          this.app.showToast(result.errors[0]);
+      async saveProfile() {
+        if (!this.canProfiles || this.busy) return;
+        if (this.profile.enabled && !this.profile.checkType) {
+          this.error = 'Una comprobación activa necesita un tipo.';
           return;
         }
-        this.app.showToast('Frecuencia de ' + this.categoryLabel(policy.category) + ': cada ' + policy.intervalMinutes + ' min.');
-      },
-      setThreshold(check, field, event) {
-        const value = Number(event.target.value);
-        const result = M.saveThresholds(this.monitoring, {
-          id: check.id,
-          warn: field === 'warn' ? value : check.warn,
-          crit: field === 'crit' ? value : check.crit
-        });
-        if (!result.ok) {
-          event.target.value = check[field];
-          this.app.showToast(result.errors[0]);
+        this.busy = true;
+        const body = {
+          enabled: !!this.profile.enabled,
+          checkType: this.profile.checkType || null,
+          intervalSeconds: numOrNull(this.profile.intervalSeconds),
+          metrics: this.profile.metrics.slice(),
+          thresholds: JSON.parse(JSON.stringify(this.profile.thresholds)),
+          minimumDurationSeconds: numOrNull(this.profile.minimumDurationSeconds),
+          exporterId: this.profile.exporterId || null,
+          snmpModule: this.profile.snmpModule || null,
+          snmpAuthRef: this.profile.snmpAuthRef || null
+        };
+        const result = await this.app.updateMonitoringProfile(this.profile.category, body);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar el perfil.';
+        else {
+          this.app.showToast('Perfil de supervisión guardado.');
+          this.selectProfile(this.profile.category);
+          this.notice = 'Perfil de ' + this.profile.category + ' guardado.';
         }
       },
-      toggleDraftCheck(id) {
-        this.draft.checkIds = this.draft.checkIds.indexOf(id) === -1
-          ? this.draft.checkIds.concat([id])
-          : this.draft.checkIds.filter((item) => item !== id);
-      },
-      addException() {
-        if (!this.draft.assetId) {
-          this.app.showToast('Selecciona el activo que quieres incorporar.');
+      async saveOverride() {
+        if (!this.canAssets || this.busy) return;
+        const assetId = text(this.override.assetId);
+        if (!assetId) {
+          this.error = 'Indica el identificador del activo.';
           return;
         }
-        const asset = this.assets.find((item) => item.id === this.draft.assetId);
-        const result = M.saveException(this.monitoring, this.draft.assetId, {
-          enabled: true,
-          intervalMinutes: this.draft.intervalMinutes,
-          checkIds: this.draft.checkIds,
-          asset: asset
-        });
-        if (!result.ok) {
-          this.app.showToast(result.errors[0]);
+        if (this.override.target && /(token|password|secret)=/i.test(this.override.target)) {
+          this.error = 'El destino no puede contener credenciales.';
           return;
         }
-        this.app.showToast(asset.name + ' incorporado a la supervisión.');
-        this.draft = { assetId: '', checkIds: ['availability'], intervalMinutes: 15 };
+        this.busy = true;
+        const body = {};
+        if (this.override.enabled === 'inherit') body.enabled = null;
+        else if (this.override.enabled !== '') body.enabled = this.override.enabled === 'true';
+        if (text(this.override.checkType)) body.checkType = text(this.override.checkType);
+        if (text(this.override.target)) body.target = text(this.override.target);
+        if (this.override.intervalSeconds !== '') body.intervalSeconds = numOrNull(this.override.intervalSeconds);
+        if (this.override.metrics.length) body.metrics = this.override.metrics.slice();
+        if (Object.keys(this.override.thresholds).length) body.thresholds = JSON.parse(JSON.stringify(this.override.thresholds));
+        if (this.override.minimumDurationSeconds !== '') body.minimumDurationSeconds = numOrNull(this.override.minimumDurationSeconds);
+        if (text(this.override.exporterId)) body.exporterId = text(this.override.exporterId);
+        if (text(this.override.snmpModule)) body.snmpModule = text(this.override.snmpModule);
+        if (text(this.override.snmpAuthRef)) body.snmpAuthRef = text(this.override.snmpAuthRef);
+        if (!Object.keys(body).length) {
+          this.busy = false;
+          this.error = 'No hay ningún valor que guardar.';
+          return;
+        }
+        const result = await this.app.updateMonitoringAsset(assetId, body);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar la excepción.';
+        else {
+          this.notice = 'Excepción guardada para ' + assetId + '.';
+          this.app.showToast('Excepción de supervisión guardada.');
+        }
       },
-      removeException(exception) {
-        const result = M.removeException(this.monitoring, exception.assetId);
-        this.app.showToast(result.ok ? 'Excepción eliminada: el activo vuelve a la política de su categoría.' : result.errors[0]);
+      toggleDraftMetric(id) {
+        const index = this.override.metrics.indexOf(id);
+        if (index === -1) this.override.metrics.push(id);
+        else this.override.metrics.splice(index, 1);
       },
-      toggleExceptionEnabled(exception) {
-        const result = M.saveException(this.monitoring, exception.assetId, {
-          enabled: !exception.enabled,
-          intervalMinutes: exception.intervalMinutes,
-          checkIds: exception.checkIds
+      async saveExporter() {
+        if (!this.canExporters || this.busy) return;
+        if (!text(this.exporter.name) || !text(this.exporter.module)) {
+          this.error = 'El exportador necesita nombre y módulo.';
+          return;
+        }
+        this.busy = true;
+        const result = await this.app.saveMonitoringExporter({
+          name: this.exporter.name,
+          kind: this.exporter.kind,
+          module: this.exporter.module,
+          address: this.exporter.address,
+          enabled: !!this.exporter.enabled
         });
-        this.app.showToast(result.ok ? 'Excepción actualizada.' : result.errors[0]);
-      },
-      savePrefs(payload) {
-        M.savePrefs(this.monitoring, payload);
-      },
-      fmtDateTime: fmtDateTime
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar el exportador.';
+        else {
+          this.notice = 'Exportador guardado.';
+          this.exporter = { name: '', kind: 'blackbox', module: 'icmp', address: '', enabled: true };
+        }
+      }
     },
     template: `
-      <section class="config-section mon-settings" data-od-id="mon-settings" aria-labelledby="config-mon-title">
-        <header class="config-section__head">
-          <div>
-            <p class="eyebrow">Operación técnica</p>
-            <h2 id="config-mon-title">Supervisión</h2>
-            <p class="config-section__lead">Comprobaciones por categoría, excepciones individuales y umbrales. La disponibilidad básica es el nivel mínimo; cada categoría suma las métricas que su equipo puede reportar.</p>
+      <section class="page mon-page mon-settings" aria-labelledby="mon-settings-title">
+        <header class="mon-head">
+          <div class="mon-head__copy">
+            <p class="eyebrow"><span class="eyebrow__line"></span> Configuración</p>
+            <h1 id="mon-settings-title">Supervisión</h1>
+            <p class="page-sub">Comprobaciones reales, perfiles por categoría y destinos validados por el servidor.</p>
           </div>
-          <span class="chip chip--muted">{{ enabledPolicies }} de {{ policies.length }} categorías · {{ exceptions.length }} excepciones</span>
-        </header>
-
-        <p v-if="!canEdit" class="mon-lock">Tu rol puede consultar la configuración, pero no modificarla.</p>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Comprobaciones por categoría</h3>
-              <p class="mon-settings__sub">Activa una categoría y elige qué métricas se comprueban en cada intervalo.</p>
-            </div>
-          </header>
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table">
-              <thead>
-                <tr>
-                  <th scope="col">Categoría</th>
-                  <th scope="col">Comprobaciones</th>
-                  <th scope="col">Frecuencia</th>
-                  <th scope="col">Supervisión</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="policy in policies" :key="policy.category" :class="{ 'is-off': !policy.enabled }">
-                  <th scope="row">{{ categoryLabel(policy.category) }}</th>
-                  <td>
-                    <span class="mon-toggle-group">
-                      <button v-for="check in checks" :key="check.id" type="button" class="mon-toggle"
-                              :class="{ 'is-on': hasCheck(policy.checkIds, check.id) }"
-                              :aria-pressed="hasCheck(policy.checkIds, check.id)"
-                              :disabled="!canEdit" @click="togglePolicyCheck(policy, check.id)">
-                        {{ check.label }}
-                      </button>
-                    </span>
-                  </td>
-                  <td>
-                    <span class="mon-interval">
-                      <input class="mon-input mono" type="number" min="1" max="1440" :value="policy.intervalMinutes"
-                             :disabled="!canEdit" aria-label="Minutos entre comprobaciones" @change="setPolicyInterval(policy, $event)">
-                      <span class="mon-interval__unit">min</span>
-                    </span>
-                  </td>
-                  <td>
-                    <button type="button" class="mon-switch" :class="{ 'is-on': policy.enabled }"
-                            :aria-pressed="policy.enabled" :disabled="!canEdit" @click="togglePolicyEnabled(policy)">
-                      <span class="mon-switch__dot"></span>
-                      {{ policy.enabled ? 'Activa' : 'Inactiva' }}
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Umbrales</h3>
-              <p class="mon-settings__sub">Valores compartidos por todas las categorías. El aviso es el primer nivel; el crítico genera alerta.</p>
-            </div>
-          </header>
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table mon-settings-table--narrow">
-              <thead>
-                <tr>
-                  <th scope="col">Comprobación</th>
-                  <th scope="col">Aviso</th>
-                  <th scope="col">Crítico</th>
-                  <th scope="col">Unidad</th>
-                  <th scope="col">Sentido</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="check in checks" :key="check.id">
-                  <th scope="row">
-                    <span class="mon-settings-table__name"><app-icon :name="check.icon"></app-icon> {{ check.label }}</span>
-                    <span class="mon-settings-table__hint">{{ check.hint }}</span>
-                  </th>
-                  <td>
-                    <input class="mon-input mono" type="number" step="0.1" :value="check.warn" :disabled="!canEdit"
-                           :aria-label="'Umbral de aviso de ' + check.label" @change="setThreshold(check, 'warn', $event)">
-                  </td>
-                  <td>
-                    <input class="mon-input mono" type="number" step="0.1" :value="check.crit" :disabled="!canEdit"
-                           :aria-label="'Umbral crítico de ' + check.label" @change="setThreshold(check, 'crit', $event)">
-                  </td>
-                  <td class="mono">{{ check.unit }}</td>
-                  <td class="mon-settings-table__direction">{{ check.direction === 'below' ? 'Por debajo' : 'Por encima' }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Excepciones individuales</h3>
-              <p class="mon-settings__sub">Un activo puede entrar o salir de la supervisión aunque su categoría no lo haga. Las computadoras de usuario se incorporan así.</p>
-            </div>
-          </header>
-
-          <div class="mon-exception-form">
-            <label class="field">
-              <span class="field__label">Activo</span>
-              <span class="select-field">
-                <select v-model="draft.assetId" :disabled="!canEdit">
-                  <option value="">Selecciona un activo</option>
-                  <option v-for="asset in assetOptions" :key="asset.id" :value="asset.id">{{ asset.id }} · {{ asset.name }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Frecuencia</span>
-              <span class="mon-interval">
-                <input v-model.number="draft.intervalMinutes" class="mon-input mono" type="number" min="1" max="1440" :disabled="!canEdit">
-                <span class="mon-interval__unit">min</span>
-              </span>
-            </label>
-            <div class="field">
-              <span class="field__label">Comprobaciones</span>
-              <span class="mon-toggle-group">
-                <button v-for="check in checks" :key="check.id" type="button" class="mon-toggle"
-                        :class="{ 'is-on': hasCheck(draft.checkIds, check.id) }" :disabled="!canEdit"
-                        :aria-pressed="hasCheck(draft.checkIds, check.id)" @click="toggleDraftCheck(check.id)">{{ check.label }}</button>
-              </span>
-            </div>
-            <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="addException">
-              <app-icon name="plus"></app-icon> Incorporar
+          <div class="mon-head__actions">
+            <button type="button" class="btn btn--secondary" :disabled="loading" @click="app.loadMonitoringConfig()">
+              <app-icon name="refresh"></app-icon> {{ loading ? 'Actualizando…' : 'Actualizar' }}
             </button>
           </div>
+        </header>
 
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table">
-              <thead>
-                <tr>
-                  <th scope="col">Activo</th>
-                  <th scope="col">Comprobaciones</th>
-                  <th scope="col">Frecuencia</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="exception in exceptions" :key="exception.assetId">
-                  <th scope="row">{{ assetName(exception.assetId) }}</th>
-                  <td>
-                    <span class="mon-tag-group">
-                      <span v-for="id in exception.checkIds" :key="id" class="mon-tag">{{ checkLabel(id) }}</span>
-                    </span>
-                  </td>
-                  <td class="mono">{{ exception.intervalMinutes }} min</td>
-                  <td>
-                    <button type="button" class="mon-switch" :class="{ 'is-on': exception.enabled }"
-                            :aria-pressed="exception.enabled" :disabled="!canEdit" @click="toggleExceptionEnabled(exception)">
-                      <span class="mon-switch__dot"></span>
-                      {{ exception.enabled ? 'Activa' : 'Inactiva' }}
-                    </button>
-                  </td>
-                  <td class="mon-settings-table__actions">
-                    <button type="button" class="text-button text-button--quiet" :disabled="!canEdit" @click="removeException(exception)">Quitar</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-if="!exceptions.length" class="empty-state">No hay excepciones: cada activo sigue la política de su categoría.</p>
-          </div>
+        <div class="mon-tabs" role="tablist" aria-label="Configuración de supervisión">
+          <button v-for="item in tabs" :key="item.id" type="button" class="mon-tab" role="tab"
+                  :aria-selected="tab === item.id" :class="{ 'is-active': tab === item.id }" @click="tab = item.id">{{ item.label }}</button>
         </div>
 
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Preferencias</h3>
-              <p class="mon-settings__sub">Valores iniciales de las vistas de supervisión.</p>
-            </div>
-          </header>
-          <div class="mon-prefs">
-            <label class="field">
-              <span class="field__label">Período inicial</span>
-              <span class="select-field">
-                <select :value="monitoring.prefs.range" :disabled="!canEdit" @change="savePrefs({ range: $event.target.value })">
-                  <option v-for="range in ranges" :key="range.id" :value="range.id">{{ range.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Pestaña inicial</span>
-              <span class="select-field">
-                <select :value="monitoring.prefs.defaultTab" :disabled="!canEdit" @change="savePrefs({ defaultTab: $event.target.value })">
-                  <option v-for="tab in tabs" :key="tab.id" :value="tab.id">{{ tab.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="mon-check">
-              <input type="checkbox" :checked="monitoring.prefs.showUnmonitored" :disabled="!canEdit"
-                     @change="savePrefs({ showUnmonitored: $event.target.checked })">
-              <span>Mostrar los equipos sin supervisión en la lista de dispositivos</span>
-            </label>
-            <label class="mon-check">
-              <input type="checkbox" :checked="monitoring.prefs.autoRefresh" :disabled="!canEdit"
-                     @change="savePrefs({ autoRefresh: $event.target.checked })">
-              <span>Actualización automática de los indicadores cada {{ monitoring.prefs.refreshSeconds }} s</span>
-            </label>
+        <p v-if="!canProfiles && !canExporters && !canAssets" class="mon-lock">No tienes permisos para modificar la supervisión. Puedes consultar la configuración existente.</p>
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando la configuración del servidor…</p>
+        <div v-else-if="app.monitoringConfigError" class="mon-notice" role="alert"><span class="mon-notice__text">{{ app.monitoringConfigError }}</span></div>
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+        <p v-if="notice" class="mon-panel__sub" role="status">{{ notice }}</p>
+
+        <div v-if="tab === 'categories'" class="mon-grid mon-grid--split">
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Perfiles por categoría</h2>
+              <span class="mon-panel__sub">No crean activos ni destinos</span>
+            </header>
+            <ul class="mon-settings__list">
+              <li v-for="profile in profiles" :key="profile.category">
+                <div>
+                  <button type="button" class="mon-settings-table__name" :class="{ 'is-active': profile.category === selectedCategory }"
+                          @click="selectProfile(profile.category)">
+                    {{ profile.category }}
+                    <span class="mon-tag" :class="profile.enabled ? 'mon-tag--ok' : 'mon-tag--neutral'">{{ profile.enabled ? 'Activo' : 'Inactivo' }}</span>
+                  </button>
+                  <span class="mon-settings-table__hint mono">{{ profile.checkType || 'Sin tipo' }} · {{ profile.intervalSeconds || '—' }} s · {{ (profile.metrics || []).join(', ') || 'Sin métricas' }}</span>
+                </div>
+              </li>
+            </ul>
+            <p v-if="!profiles.length" class="empty-state">El servidor no devolvió perfiles de categoría.</p>
           </div>
+
+          <form class="mon-panel mon-settings__block" @submit.prevent="saveProfile">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Perfil {{ profile.category || 'sin categoría' }}</h2>
+            </header>
+            <label class="field">
+              <span class="field__label">Categoría</span>
+              <span class="select-field">
+                <select v-model="profile.category" :disabled="!canProfiles" @change="selectProfile(profile.category)">
+                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Habilitar comprobación</span>
+              <span class="select-field">
+                <select v-model="profile.enabled" :disabled="!canProfiles">
+                  <option :value="true">Sí</option>
+                  <option :value="false">No</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Tipo de comprobación</span>
+              <span class="select-field">
+                <select v-model="profile.checkType" :disabled="!canProfiles">
+                  <option value="">Sin tipo</option>
+                  <option v-for="type in checkTypes" :key="type.id" :value="type.id">{{ type.label }}</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Intervalo (segundos)</span>
+              <input v-model.number="profile.intervalSeconds" type="number" min="10" step="1" :disabled="!canProfiles">
+            </label>
+            <fieldset class="field">
+              <legend class="field__label">Métricas</legend>
+              <div class="mon-toggle-group">
+                <label v-for="metric in metrics" :key="metric.id" class="mon-toggle">
+                  <input type="checkbox" :value="metric.id" :checked="profile.metrics.indexOf(metric.id) !== -1"
+                         :disabled="!canProfiles" @change="toggleProfileMetric(metric.id)">
+                  <span>{{ metric.label }}</span>
+                </label>
+              </div>
+            </fieldset>
+            <div class="mon-thresholds">
+              <div class="mon-settings-table__head">Métrica</div>
+              <div class="mon-settings-table__head">Aviso</div>
+              <div class="mon-settings-table__head">Crítica</div>
+              <template v-for="metric in metrics" :key="'th-' + metric.id">
+                <div class="mon-settings-table__name">{{ metric.label }}</div>
+                <input class="mon-input" type="number" step="0.01" :disabled="!canProfiles"
+                       :aria-label="'Umbral de aviso de ' + metric.label"
+                       :value="profile.thresholds[metric.id] ? profile.thresholds[metric.id].warning : ''"
+                       @input="setThreshold(metric.id, 'warning', $event.target.value)">
+                <input class="mon-input" type="number" step="0.01" :disabled="!canProfiles"
+                       :aria-label="'Umbral crítico de ' + metric.label"
+                       :value="profile.thresholds[metric.id] ? profile.thresholds[metric.id].critical : ''"
+                       @input="setThreshold(metric.id, 'critical', $event.target.value)">
+              </template>
+            </div>
+            <label class="field">
+              <span class="field__label">Duración mínima antes de avisar</span>
+              <span class="select-field">
+                <select v-model.number="profile.minimumDurationSeconds" :disabled="!canProfiles">
+                  <option v-for="duration in durations" :key="duration" :value="duration">{{ duration === 0 ? 'Sin espera' : duration + ' s' }}</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Exportador</span>
+              <input v-model="profile.exporterId" type="text" maxlength="80" :disabled="!canProfiles" placeholder="Referencia de exportador">
+            </label>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Módulo SNMP</span>
+                <input v-model="profile.snmpModule" type="text" maxlength="80" :disabled="!canProfiles">
+              </label>
+              <label class="field">
+                <span class="field__label">Credencial SNMP</span>
+                <input v-model="profile.snmpAuthRef" type="text" maxlength="80" :disabled="!canProfiles" placeholder="Referencia del despliegue">
+                <span class="field__hint">Solo la referencia; la credencial vive fuera de la aplicación.</span>
+              </label>
+            </div>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canProfiles || busy || !profile.category">{{ busy ? 'Guardando…' : 'Guardar perfil' }}</button>
+            </div>
+          </form>
+        </div>
+
+        <div v-if="tab === 'assets'" class="mon-stack">
+          <form class="mon-panel mon-exception-form" @submit.prevent="saveOverride">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Excepción por activo</h2>
+              <span class="mon-panel__sub">Sobrescribe el perfil de su categoría; los campos vacíos no se envían</span>
+            </header>
+            <label class="field">
+              <span class="field__label">Activo</span>
+              <input v-model="override.assetId" type="text" list="mon-asset-options" maxlength="80" :disabled="!canAssets" placeholder="UUID canónico del activo">
+              <span class="field__hint">Lista los primeros {{ assets.length }} de {{ app.monitoringAssetsTotal }} activos del servidor; para el resto, indica su UUID canónico.</span>
+              <datalist id="mon-asset-options">
+                <option v-for="asset in assets" :key="asset.id" :value="asset.id">{{ asset.label }}</option>
+              </datalist>
+            </label>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Supervisión</span>
+                <span class="select-field">
+                  <select v-model="override.enabled" :disabled="!canAssets">
+                    <option value="">Sin cambio</option>
+                    <option value="inherit">Heredar del perfil (limpiar excepción)</option>
+                    <option value="true">Activa</option>
+                    <option value="false">Inactiva</option>
+                  </select>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field__label">Tipo de comprobación</span>
+                <span class="select-field">
+                  <select v-model="override.checkType" :disabled="!canAssets">
+                    <option value="">Heredar del perfil</option>
+                    <option v-for="type in checkTypes" :key="type.id" :value="type.id">{{ type.label }}</option>
+                  </select>
+                </span>
+              </label>
+            </div>
+            <label class="field">
+              <span class="field__label">Destino</span>
+              <input v-model="override.target" type="text" maxlength="255" :disabled="!canAssets" placeholder="Host, URL o dirección IP">
+              <span class="field__hint">El servidor valida el destino. No incluyas credenciales ni parámetros secretos.</span>
+            </label>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Intervalo (segundos)</span>
+                <input v-model="override.intervalSeconds" type="number" min="10" step="1" :disabled="!canAssets" placeholder="Heredar">
+              </label>
+              <label class="field">
+                <span class="field__label">Duración mínima</span>
+                <span class="select-field">
+                  <select v-model="override.minimumDurationSeconds" :disabled="!canAssets">
+                    <option value="">Heredar del perfil</option>
+                    <option v-for="duration in durations" :key="duration" :value="duration">{{ duration === 0 ? 'Sin espera' : duration + ' s' }}</option>
+                  </select>
+                </span>
+              </label>
+            </div>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Exportador</span>
+                <input v-model="override.exporterId" type="text" maxlength="80" :disabled="!canAssets" placeholder="Heredar">
+              </label>
+              <label class="field">
+                <span class="field__label">Módulo SNMP</span>
+                <input v-model="override.snmpModule" type="text" maxlength="80" :disabled="!canAssets" placeholder="Heredar">
+              </label>
+            </div>
+            <label class="field">
+              <span class="field__label">Credencial SNMP</span>
+              <input v-model="override.snmpAuthRef" type="text" maxlength="80" :disabled="!canAssets" placeholder="Heredar o referencia del despliegue">
+            </label>
+            <fieldset class="field">
+              <legend class="field__label">Métricas</legend>
+              <div class="mon-toggle-group">
+                <label v-for="metric in metrics" :key="'asset-' + metric.id" class="mon-toggle">
+                  <input type="checkbox" :value="metric.id" :checked="override.metrics.indexOf(metric.id) !== -1"
+                         :disabled="!canAssets" @change="toggleDraftMetric(metric.id)">
+                  <span>{{ metric.label }}</span>
+                </label>
+              </div>
+            </fieldset>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canAssets || busy">{{ busy ? 'Guardando…' : 'Guardar excepción' }}</button>
+            </div>
+          </form>
+          <p class="mon-panel__sub">Los perfiles no crean filas por activo. Una excepción solo se guarda cuando la envías y el servidor la valida.</p>
+        </div>
+
+        <div v-if="tab === 'exporters'" class="mon-grid mon-grid--split">
+          <div class="mon-panel">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">Exportadores</h2></header>
+            <ul class="mon-settings__list">
+              <li v-for="exporter in exporters" :key="exporter.id">
+                <span class="mon-settings-table__name">{{ exporter.name }}</span>
+                <span class="mon-settings-table__hint mono">{{ exporter.kind }} · {{ exporter.module }} · {{ exporter.enabled ? 'activo' : 'inactivo' }}</span>
+              </li>
+            </ul>
+            <p v-if="!exporters.length" class="empty-state">Sin exportadores configurados.</p>
+          </div>
+          <form class="mon-panel mon-channel__form" @submit.prevent="saveExporter">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">Nuevo exportador</h2></header>
+            <label class="field">
+              <span class="field__label">Nombre</span>
+              <input v-model="exporter.name" type="text" maxlength="80" :disabled="!canExporters" required>
+            </label>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Tipo</span>
+                <span class="select-field">
+                  <select v-model="exporter.kind" :disabled="!canExporters">
+                    <option value="blackbox">Blackbox</option>
+                    <option value="snmp">SNMP</option>
+                    <option value="node">Node exporter</option>
+                    <option value="windows">Windows exporter</option>
+                  </select>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field__label">Módulo</span>
+                <input v-model="exporter.module" type="text" maxlength="80" :disabled="!canExporters" required>
+              </label>
+            </div>
+            <label class="field">
+              <span class="field__label">Dirección</span>
+              <input v-model="exporter.address" type="text" maxlength="255" :disabled="!canExporters" placeholder="Opcional; sin credenciales">
+            </label>
+            <label class="field">
+              <span class="field__label">Estado</span>
+              <span class="select-field">
+                <select v-model="exporter.enabled" :disabled="!canExporters">
+                  <option :value="true">Activo</option>
+                  <option :value="false">Inactivo</option>
+                </select>
+              </span>
+            </label>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canExporters || busy">{{ busy ? 'Guardando…' : 'Guardar exportador' }}</button>
+            </div>
+          </form>
         </div>
       </section>
     `
   };
 
+  // ---------------------------------------------------------------- alerts
   Views.AlertSettings = {
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
     data() {
       return {
-        silenceDraft: { scope: 'asset', target: '', hours: 4, reason: '' },
-        windowDraft: { label: '', start: '01:00', end: '02:30', days: [1, 2, 3, 4, 5], categories: [], sites: [], reason: '', active: true }
+        tab: 'windows',
+        window: windowForm(null),
+        silence: { assetId: '', hours: 4, comment: '' },
+        editingWindowId: '',
+        busy: false,
+        error: '',
+        notice: ''
       };
     },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      silences() { return this.monitoring.silences; },
-      windows() { return this.monitoring.windows; },
-      assets() { return (this.app.assets || []).filter((asset) => !asset.retired); },
-      categories() { return this.app.categories || []; },
-      sites() { return this.app.sites || []; },
-      prefs() { return this.monitoring.prefs; },
-      canEdit() { return this.app.can('assets.edit'); },
-      dayLabels() { return DAY_LABELS; },
-      silenceTargets() {
-        return this.silenceDraft.scope === 'category' ? this.categories : this.assets;
+      canEdit() { return this.app.monitoringEditable; },
+      windows() { return this.app.monitoringWindows; },
+      loading() { return this.app.monitoringWindowsLoading; },
+      assets() {
+        const rows = this.app.monitoringAssets.map((asset) => ({
+          id: asset.id,
+          label: (asset.name || asset.id) + ' · ' + (asset.quickCode || asset.id)
+        }));
+        const seen = {};
+        rows.forEach((row) => { seen[row.id] = true; });
+        (this.window.assetIds || []).forEach((id) => {
+          if (id && !seen[id]) {
+            seen[id] = true;
+            rows.push({ id, label: id });
+          }
+        });
+        return rows;
+      },
+      days() { return DAYS; },
+      tabs() { return [{ id: 'windows', label: 'Ventanas' }, { id: 'silences', label: 'Silencios' }]; }
+    },
+    async mounted() {
+      if (this.app.monitoringAvailable) {
+        await Promise.all([
+          this.app.loadMonitoringConfig(),
+          this.app.loadMonitoringWindows(),
+          this.app.loadMonitoringAssetDirectory()
+        ]);
       }
+      this.prefillPreparedWindow();
     },
     methods: {
-      fmtDateTime: fmtDateTime,
-      daysLabel: daysLabel,
-      scopeLabel: scopeLabel,
-      targetLabel(silence) {
-        if (silence.scope === 'category') {
-          const category = this.categories.find((item) => item.id === silence.target);
-          return category ? category.label : silence.target;
-        }
-        const asset = this.assets.find((item) => item.id === silence.target);
-        return asset ? asset.name : silence.target;
+      fmtDateTime(iso) { return iso ? new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'; },
+      prefillPreparedWindow() {
+        const prepared = this.app.monitoringApi && this.app.monitoringApi.prepared;
+        if (!prepared) return;
+        this.window = windowForm(prepared);
+        this.editingWindowId = '';
+        this.tab = 'windows';
+        this.error = '';
+        this.notice = 'Ventana preparada desde la alerta' + (prepared.name ? ' «' + prepared.name + '»' : '') + '. Revísala y guárdala cuando quieras.';
       },
-      addSilence() {
-        const result = M.addSilence(this.monitoring, this.silenceDraft, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        if (!result.ok) {
-          this.app.showToast(result.errors[0]);
+      toggleDay(id) {
+        const index = this.window.daysOfWeek.indexOf(id);
+        if (index === -1) this.window.daysOfWeek.push(id);
+        else this.window.daysOfWeek.splice(index, 1);
+      },
+      toggleAsset(id) {
+        const index = this.window.assetIds.indexOf(id);
+        if (index === -1) this.window.assetIds.push(id);
+        else this.window.assetIds.splice(index, 1);
+      },
+      editWindow(item) {
+        this.window = windowForm(item);
+        this.editingWindowId = item.id;
+        this.tab = 'windows';
+        this.error = '';
+        this.notice = '';
+        this.app.clearMonitoringPrepared();
+      },
+      resetWindow() {
+        this.window = windowForm(null);
+        this.editingWindowId = '';
+        this.error = '';
+        this.notice = '';
+        this.app.clearMonitoringPrepared();
+      },
+      async saveWindow() {
+        if (!this.canEdit || this.busy) return;
+        if (!text(this.window.name) || !this.window.assetIds.length || !this.window.daysOfWeek.length) {
+          this.error = 'La ventana necesita nombre, al menos un activo y un día.';
           return;
         }
-        this.app.showToast('Silenciamiento programado.');
-        this.silenceDraft = { scope: 'asset', target: '', hours: 4, reason: '' };
+        this.busy = true;
+        const body = {
+          name: text(this.window.name),
+          assetIds: this.window.assetIds.slice(),
+          daysOfWeek: this.window.daysOfWeek.slice().sort((a, b) => a - b),
+          startTime: this.window.startTime,
+          endTime: this.window.endTime,
+          timezone: text(this.window.timezone),
+          enabled: this.window.enabled !== false
+        };
+        if (this.editingWindowId) body.id = this.editingWindowId;
+        const result = await this.app.saveMonitoringWindow(body);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar la ventana.';
+        else {
+          const updated = !!this.editingWindowId;
+          this.resetWindow();
+          this.notice = updated ? 'Ventana actualizada.' : 'Ventana creada.';
+        }
       },
-      removeSilence(silence) {
-        const result = M.removeSilence(this.monitoring, silence.id);
-        this.app.showToast(result.ok ? 'Silenciamiento eliminado.' : result.errors[0]);
-      },
-      toggleDay(day) {
-        this.windowDraft.days = this.windowDraft.days.indexOf(day) === -1
-          ? this.windowDraft.days.concat([day])
-          : this.windowDraft.days.filter((item) => item !== day);
-      },
-      toggleWindowCategory(id) {
-        this.windowDraft.categories = this.windowDraft.categories.indexOf(id) === -1
-          ? this.windowDraft.categories.concat([id])
-          : this.windowDraft.categories.filter((item) => item !== id);
-      },
-      addWindow() {
-        const result = M.saveWindow(this.monitoring, this.windowDraft);
-        if (!result.ok) {
-          this.app.showToast(result.errors[0]);
+      async createSilence() {
+        if (!this.canEdit || this.busy) return;
+        const assetId = text(this.silence.assetId);
+        if (!assetId) {
+          this.error = 'Indica el activo que quieres silenciar.';
           return;
         }
-        this.app.showToast('Ventana de mantenimiento creada.');
-        this.windowDraft = { label: '', start: '01:00', end: '02:30', days: [1, 2, 3, 4, 5], categories: [], sites: [], reason: '', active: true };
-      },
-      toggleWindowActive(window) {
-        const result = M.saveWindow(this.monitoring, Object.assign({}, window, { active: !window.active }));
-        this.app.showToast(result.ok ? 'Ventana ' + (window.active ? 'activada' : 'desactivada') + '.' : result.errors[0]);
-      },
-      removeWindow(window) {
-        const result = M.removeWindow(this.monitoring, window.id);
-        this.app.showToast(result.ok ? 'Ventana eliminada.' : result.errors[0]);
-      },
-      savePrefs(payload) {
-        M.savePrefs(this.monitoring, payload);
-      },
-      windowCategoryLabel(id) {
-        const category = this.categories.find((item) => item.id === id);
-        return category ? category.label : id;
+        if (!text(this.silence.comment)) {
+          this.error = 'Indica el motivo del silencio.';
+          return;
+        }
+        this.busy = true;
+        const result = await this.app.silenceMonitoringAsset(assetId, { hours: this.silence.hours, comment: this.silence.comment });
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo crear el silencio.';
+        else {
+          this.notice = 'Silencio aplicado al activo ' + assetId + '.';
+          this.silence = { assetId: '', hours: 4, comment: '' };
+          this.app.showToast('Silencio de supervisión aplicado.');
+        }
       }
     },
     template: `
-      <section class="config-section mon-settings" data-od-id="alert-settings" aria-labelledby="config-alerts-title">
-        <header class="config-section__head">
-          <div>
-            <p class="eyebrow">Operación técnica</p>
-            <h2 id="config-alerts-title">Alertas</h2>
-            <p class="config-section__lead">Silenciamientos, ventanas de mantenimiento y agrupación de eventos. Las ventanas no ocultan la alerta: solo detienen los avisos externos mientras dura el trabajo.</p>
+      <section class="page mon-page mon-settings" aria-labelledby="alert-settings-title">
+        <header class="mon-head">
+          <div class="mon-head__copy">
+            <p class="eyebrow"><span class="eyebrow__line"></span> Configuración</p>
+            <h1 id="alert-settings-title">Alertas</h1>
+            <p class="page-sub">Ventanas de mantenimiento y silencios creados en el servidor. Las alertas no se ocultan.</p>
           </div>
-          <span class="chip chip--muted">{{ silences.length }} silencios · {{ windows.length }} ventanas</span>
         </header>
 
-        <p v-if="!canEdit" class="mon-lock">Tu rol puede consultar la configuración, pero no modificarla.</p>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Silenciamientos</h3>
-              <p class="mon-settings__sub">Un silencio detiene los avisos de un dispositivo o de una categoría completa hasta su fecha de fin.</p>
-            </div>
-          </header>
-
-          <div class="mon-exception-form mon-exception-form--silence">
-            <label class="field">
-              <span class="field__label">Alcance</span>
-              <span class="select-field">
-                <select v-model="silenceDraft.scope" :disabled="!canEdit">
-                  <option value="asset">Dispositivo</option>
-                  <option value="category">Categoría</option>
-                </select>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Destino</span>
-              <span class="select-field">
-                <select v-model="silenceDraft.target" :disabled="!canEdit">
-                  <option value="">Selecciona</option>
-                  <option v-for="item in silenceTargets" :key="item.id" :value="item.id">{{ item.name || item.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Duración</span>
-              <span class="mon-interval">
-                <input v-model.number="silenceDraft.hours" class="mon-input mono" type="number" min="1" max="720" :disabled="!canEdit">
-                <span class="mon-interval__unit">h</span>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Motivo</span>
-              <input v-model="silenceDraft.reason" type="text" maxlength="200" :disabled="!canEdit" placeholder="Trabajo programado, revisión física…">
-            </label>
-            <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="addSilence">
-              <app-icon name="slash"></app-icon> Silenciar
-            </button>
-          </div>
-
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table">
-              <thead>
-                <tr>
-                  <th scope="col">Alcance</th>
-                  <th scope="col">Destino</th>
-                  <th scope="col">Hasta</th>
-                  <th scope="col">Motivo</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="silence in silences" :key="silence.id">
-                  <th scope="row">{{ scopeLabel(silence.scope) }}</th>
-                  <td>{{ targetLabel(silence) }}</td>
-                  <td class="mono">{{ fmtDateTime(silence.until) }}</td>
-                  <td class="mon-settings-table__hint">{{ silence.reason || 'Sin motivo indicado' }}</td>
-                  <td class="mon-settings-table__actions">
-                    <button type="button" class="text-button text-button--quiet" :disabled="!canEdit" @click="removeSilence(silence)">Quitar</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-if="!silences.length" class="empty-state">No hay silenciamientos programados.</p>
-          </div>
+        <div class="mon-tabs" role="tablist" aria-label="Configuración de alertas">
+          <button v-for="item in tabs" :key="item.id" type="button" class="mon-tab" role="tab"
+                  :aria-selected="tab === item.id" :class="{ 'is-active': tab === item.id }" @click="tab = item.id">{{ item.label }}</button>
         </div>
+        <p v-if="!canEdit" class="mon-lock">No tienes permisos para crear silencios o ventanas.</p>
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+        <p v-if="notice" class="mon-panel__sub" role="status">{{ notice }}</p>
 
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Ventanas de mantenimiento</h3>
-              <p class="mon-settings__sub">Bloquean los envíos externos en el horario indicado. Las alertas siguen visibles y escalan cuando la ventana termina.</p>
-            </div>
-          </header>
-
-          <div class="mon-window-form">
+        <div v-if="tab === 'windows'" class="mon-stack">
+          <form class="mon-panel mon-window-form" @submit.prevent="saveWindow">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">{{ editingWindowId ? 'Editar ventana' : 'Nueva ventana' }}</h2>
+              <span class="mon-panel__sub">Se repite por día y hora; se sincroniza con Alertmanager cuando está configurado</span>
+            </header>
             <label class="field">
               <span class="field__label">Nombre</span>
-              <input v-model="windowDraft.label" type="text" maxlength="60" :disabled="!canEdit" placeholder="Respaldo nocturno">
+              <input v-model="window.name" type="text" maxlength="80" :disabled="!canEdit" required>
             </label>
+            <fieldset class="field">
+              <legend class="field__label">Activos</legend>
+              <div class="mon-toggle-group">
+                <label v-for="asset in assets" :key="asset.id" class="mon-toggle">
+                  <input type="checkbox" :value="asset.id" :checked="window.assetIds.indexOf(asset.id) !== -1" :disabled="!canEdit" @change="toggleAsset(asset.id)">
+                  <span>{{ asset.label }}</span>
+                </label>
+              </div>
+              <input v-model="window.assetIdsText" type="text" class="mon-input" placeholder="Si el activo no aparece, escribe su UUID y sepáralo con comas"
+                     :disabled="!canEdit" @change="window.assetIds = Array.from(new Set(window.assetIds.concat(window.assetIdsText.split(/[\\s,]+/).filter(Boolean))))">
+            </fieldset>
+            <fieldset class="field">
+              <legend class="field__label">Días</legend>
+              <div class="mon-toggle-group">
+                <label v-for="day in days" :key="day.id" class="mon-toggle mon-toggle--day">
+                  <input type="checkbox" :value="day.id" :checked="window.daysOfWeek.indexOf(day.id) !== -1" :disabled="!canEdit" @change="toggleDay(day.id)">
+                  <span>{{ day.label }}</span>
+                </label>
+              </div>
+            </fieldset>
             <div class="mon-window-form__times">
               <label class="field">
-                <span class="field__label">Desde</span>
-                <input v-model="windowDraft.start" class="mon-input mono" type="time" :disabled="!canEdit">
+                <span class="field__label">Inicio</span>
+                <input v-model="window.startTime" type="time" :disabled="!canEdit" required>
               </label>
               <label class="field">
-                <span class="field__label">Hasta</span>
-                <input v-model="windowDraft.end" class="mon-input mono" type="time" :disabled="!canEdit">
+                <span class="field__label">Fin</span>
+                <input v-model="window.endTime" type="time" :disabled="!canEdit" required>
+              </label>
+              <label class="field">
+                <span class="field__label">Zona horaria</span>
+                <input v-model="window.timezone" type="text" maxlength="64" :disabled="!canEdit" required>
               </label>
             </div>
-            <div class="field">
-              <span class="field__label">Días</span>
-              <span class="mon-toggle-group">
-                <button v-for="(label, index) in dayLabels" :key="label + index" type="button" class="mon-toggle mon-toggle--day"
-                        :class="{ 'is-on': windowDraft.days.indexOf(index) !== -1 }" :aria-pressed="windowDraft.days.indexOf(index) !== -1"
-                        :disabled="!canEdit" @click="toggleDay(index)">{{ label }}</button>
-              </span>
-            </div>
-            <div class="field">
-              <span class="field__label">Categorías afectadas</span>
-              <span class="mon-toggle-group">
-                <button v-for="category in categories" :key="category.id" type="button" class="mon-toggle"
-                        :class="{ 'is-on': windowDraft.categories.indexOf(category.id) !== -1 }"
-                        :aria-pressed="windowDraft.categories.indexOf(category.id) !== -1"
-                        :disabled="!canEdit" @click="toggleWindowCategory(category.id)">{{ category.label }}</button>
-              </span>
-              <span class="field__hint">Sin selección, la ventana aplica a todo el parque.</span>
-            </div>
             <label class="field">
-              <span class="field__label">Motivo</span>
-              <input v-model="windowDraft.reason" type="text" maxlength="200" :disabled="!canEdit">
+              <span class="field__label">Estado</span>
+              <span class="select-field">
+                <select v-model="window.enabled" :disabled="!canEdit">
+                  <option :value="true">Activa</option>
+                  <option :value="false">Inactiva</option>
+                </select>
+              </span>
             </label>
-            <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="addWindow">
-              <app-icon name="plus"></app-icon> Crear ventana
-            </button>
-          </div>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canEdit || busy">{{ busy ? 'Guardando…' : 'Guardar ventana' }}</button>
+              <button v-if="editingWindowId" type="button" class="btn btn--ghost" @click="resetWindow">Cancelar edición</button>
+            </div>
+          </form>
 
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table">
-              <thead>
-                <tr>
-                  <th scope="col">Ventana</th>
-                  <th scope="col">Horario</th>
-                  <th scope="col">Días</th>
-                  <th scope="col">Alcance</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="window in windows" :key="window.id" :class="{ 'is-off': !window.active }">
-                  <th scope="row">
-                    {{ window.label }}
-                    <span class="mon-settings-table__hint">{{ window.reason }}</span>
-                  </th>
-                  <td class="mono">{{ window.start }} – {{ window.end }}</td>
-                  <td class="mono">{{ daysLabel(window.days) }}</td>
-                  <td>
-                    <span v-if="window.categories.length" class="mon-tag-group">
-                      <span v-for="id in window.categories" :key="id" class="mon-tag">{{ windowCategoryLabel(id) }}</span>
-                    </span>
-                    <span v-else class="cell-muted">Todo el parque</span>
-                  </td>
-                  <td>
-                    <button type="button" class="mon-switch" :class="{ 'is-on': window.active }" :aria-pressed="window.active"
-                            :disabled="!canEdit" @click="toggleWindowActive(window)">
-                      <span class="mon-switch__dot"></span>
-                      {{ window.active ? 'Activa' : 'Inactiva' }}
-                    </button>
-                  </td>
-                  <td class="mon-settings-table__actions">
-                    <button type="button" class="text-button text-button--quiet" :disabled="!canEdit" @click="removeWindow(window)">Quitar</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="mon-panel">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">Ventanas registradas</h2></header>
+            <p v-if="loading" class="mon-panel__sub" role="status">Cargando ventanas…</p>
+            <ul v-else class="mon-settings__list">
+              <li v-for="item in windows" :key="item.id">
+                <div>
+                  <span class="mon-settings-table__name">{{ item.name }}</span>
+                  <span class="mon-settings-table__hint mono">{{ item.startTime }}–{{ item.endTime }} · {{ item.timezone }} · {{ item.enabled ? 'activa' : 'inactiva' }}</span>
+                </div>
+                <button type="button" class="text-button" :disabled="!canEdit" @click="editWindow(item)">Editar</button>
+              </li>
+            </ul>
+            <p v-if="!windows.length && !loading" class="empty-state">No hay ventanas de mantenimiento.</p>
           </div>
         </div>
 
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Preferencias de alertas</h3>
-              <p class="mon-settings__sub">Cómo se agrupan y se destacan los eventos en las vistas operativas.</p>
+        <div v-if="tab === 'silences'" class="mon-stack">
+          <form class="mon-panel mon-exception-form mon-exception-form--silence" @submit.prevent="createSilence">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">Silenciar un activo</h2></header>
+            <p class="mon-panel__sub">El silencio detiene avisos externos, pero no cambia el estado de la alerta. Los silencios por alerta se crean desde su detalle.</p>
+            <label class="field">
+              <span class="field__label">Activo</span>
+              <input v-model="silence.assetId" type="text" list="alert-asset-options" maxlength="80" :disabled="!canEdit" placeholder="UUID canónico">
+              <datalist id="alert-asset-options">
+                <option v-for="asset in assets" :key="asset.id" :value="asset.id">{{ asset.label }}</option>
+              </datalist>
+            </label>
+            <div class="mon-hours">
+              <label class="field mon-hours__field">
+                <span class="field__label">Duración</span>
+                <select v-model.number="silence.hours" :disabled="!canEdit">
+                  <option :value="1">1 hora</option>
+                  <option :value="4">4 horas</option>
+                  <option :value="8">8 horas</option>
+                  <option :value="24">24 horas</option>
+                  <option :value="72">3 días</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field__label">Motivo</span>
+                <input v-model="silence.comment" type="text" maxlength="200" :disabled="!canEdit" required>
+              </label>
             </div>
-          </header>
-          <div class="mon-prefs">
-            <label class="mon-check">
-              <input type="checkbox" :checked="prefs.groupRepeats" :disabled="!canEdit" @change="savePrefs({ groupRepeats: $event.target.checked })">
-              <span>Agrupar los eventos repetidos de una misma condición en una sola alerta</span>
-            </label>
-            <label class="mon-check">
-              <input type="checkbox" :checked="prefs.highlightIntermittent" :disabled="!canEdit" @change="savePrefs({ highlightIntermittent: $event.target.checked })">
-              <span>Destacar los fallos intermitentes con más de un corte</span>
-            </label>
-          </div>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canEdit || busy">{{ busy ? 'Aplicando…' : 'Silenciar activo' }}</button>
+            </div>
+          </form>
+          <p class="mon-panel__sub">El historial de silencios de una alerta se consulta en su ficha. No se muestra aquí una lista inventada.</p>
         </div>
       </section>
     `
   };
 
+  // ---------------------------------------------------------------- notifications
   Views.NotificationSettings = {
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
     data() {
       return {
-        editing: null,
-        ruleDraft: {
-          id: '', label: '', severity: '', categories: [], sites: [], channels: ['smtp'],
-          afterMinutes: 15, window: 'always', requireUnack: true, recipients: '', enabled: true
-        },
-        consultedAlertId: ''
+        tab: 'channels',
+        channel: channelForm(null),
+        rule: ruleForm(null),
+        editingRuleId: '',
+        busy: false,
+        error: '',
+        notice: ''
       };
     },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      channels() { return this.monitoring.channels; },
-      rules() { return this.monitoring.escalations; },
-      prefs() { return this.monitoring.prefs; },
-      assets() { return (this.app.assets || []).filter((asset) => !asset.retired); },
-      alerts() { return (this.app.maintenance && this.app.maintenance.alerts) || []; },
-      activeAlerts() { return this.alerts.filter((alert) => alert.state === 'open'); },
-      canEdit() { return this.app.can('config.integrations'); },
-      categories() { return this.app.categories || []; },
-      days() { return DAY_LABELS; },
-      smtpState() { return M.channelState(this.monitoring, 'smtp'); },
-      telegramState() { return M.channelState(this.monitoring, 'telegram'); },
-      sampleAlert() {
-        return this.alerts.find((alert) => alert.id === this.consultedAlertId)
-          || this.activeAlerts[0]
-          || this.alerts[0]
-          || null;
-      },
-      smtpPreview() {
-        return this.sampleAlert ? M.preview(this.monitoring, 'smtp', this.sampleAlert, this.app.assets) : null;
-      },
-      telegramPreview() {
-        return this.sampleAlert ? M.preview(this.monitoring, 'telegram', this.sampleAlert, this.app.assets) : null;
-      },
-      consultedPlan() {
-        return this.sampleAlert ? M.escalationPlan(this.monitoring, this.sampleAlert, this.app.assets, Date.now()) : null;
-      },
-      activeRuleCount() {
-        return this.rules.filter((rule) => rule.enabled).length;
-      }
+      canEdit() { return this.app.monitoringIntegrations; },
+      loading() { return this.app.notificationConfigLoading; },
+      errorFromApi() { return this.app.notificationConfigError; },
+      channels() { return this.app.notificationChannels; },
+      rules() { return this.app.notificationRules; },
+      defaults() { return this.app.notificationDefaults; },
+      recipients() { return this.app.notificationRecipients; },
+      testStates() { return this.app.notificationTestStates; },
+      severities() { return [{ id: 'info', label: 'Media' }, { id: 'warning', label: 'Alta' }, { id: 'critical', label: 'Crítica' }]; },
+      tabs() { return [{ id: 'channels', label: 'Canales' }, { id: 'rules', label: 'Reglas' }]; },
+      channelKinds() { return [{ id: 'internal', label: 'Avisos internos' }, { id: 'smtp', label: 'SMTP' }, { id: 'telegram', label: 'Telegram' }]; }
+    },
+    async mounted() {
+      if (this.app.monitoringAvailable) await this.app.loadNotificationConfig();
     },
     methods: {
-      fmtDateTime: fmtDateTime,
-      daysLabel: daysLabel,
-      channelStatusLabel(state) {
-        if (!state.configured) return 'Sin configurar';
-        if (!state.enabled) return 'Desactivado';
-        return 'Listo para enviar';
+      channelKindLabel(kind) { return (this.channelKinds.find((item) => item.id === kind) || {}).label || kind; },
+      channelState(channel) {
+        if (!channel.enabled) return 'Inactivo';
+        return channel.configured ? 'Configurado' : 'Falta la credencial';
       },
-      channelTone(state) {
-        if (!state.configured) return 'neutral';
-        if (!state.enabled) return 'warn';
-        return 'ok';
+      testState(channel) {
+        const state = this.testStates[channel.id];
+        return state ? (state.state === 'pending' ? 'En cola' : state.state) : '';
       },
-      saveSmtp() {
-        const result = M.saveChannel(this.monitoring, 'smtp', this.channels.smtp);
-        this.app.showToast(result.ok ? 'Preferencias de correo guardadas.' : result.errors[0]);
+      editChannel(item) {
+        this.channel = channelForm(item);
+        this.tab = 'channels';
+        this.error = '';
       },
-      saveTelegram() {
-        const result = M.saveChannel(this.monitoring, 'telegram', this.channels.telegram);
-        this.app.showToast(result.ok ? 'Preferencias de Telegram guardadas.' : result.errors[0]);
-      },
-      toggleSmtp() {
-        const next = !this.channels.smtp.enabled;
-        const result = M.saveChannel(this.monitoring, 'smtp', Object.assign({}, this.channels.smtp, { enabled: next }));
-        this.app.showToast(result.ok ? (next ? 'Correo activado.' : 'Correo desactivado.') : result.errors[0]);
-      },
-      toggleTelegram() {
-        const next = !this.channels.telegram.enabled;
-        const result = M.saveChannel(this.monitoring, 'telegram', Object.assign({}, this.channels.telegram, { enabled: next }));
-        this.app.showToast(result.ok ? (next ? 'Telegram activado.' : 'Telegram desactivado.') : result.errors[0]);
-      },
-      testChannel(id) {
-        const result = M.testChannel(this.monitoring, id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok ? 'Mensaje de prueba simulado. No sale ninguna comunicación real.' : result.errors[0]);
-      },
-      toggleDraft(list, id) {
-        const next = list.indexOf(id) === -1 ? list.concat([id]) : list.filter((item) => item !== id);
-        return next;
-      },
-      toggleChannel(id) {
-        this.ruleDraft.channels = this.toggleDraft(this.ruleDraft.channels, id);
-      },
-      toggleCategory(id) {
-        this.ruleDraft.categories = this.toggleDraft(this.ruleDraft.categories, id);
-      },
-      editRule(rule) {
-        this.editing = rule.id;
-        this.ruleDraft = Object.assign({}, rule, {
-          categories: rule.categories.slice(),
-          sites: rule.sites.slice(),
-          channels: rule.channels.slice()
-        });
-      },
-      resetRule() {
-        this.editing = null;
-        this.ruleDraft = {
-          id: '', label: '', severity: '', categories: [], sites: [], channels: ['smtp'],
-          afterMinutes: 15, window: 'always', requireUnack: true, recipients: '', enabled: true
-        };
-      },
-      saveRule() {
-        const result = M.saveEscalation(this.monitoring, this.ruleDraft);
-        if (!result.ok) {
-          this.app.showToast(result.errors[0]);
+      resetChannel() { this.channel = channelForm(null); this.error = ''; },
+      async saveChannel() {
+        if (!this.canEdit || this.busy) return;
+        if (hasRawSecret(this.channel)) {
+          this.error = 'No introduzcas tokens ni contraseñas. Usa solo la referencia de credencial del despliegue.';
           return;
         }
-        this.app.showToast(this.editing ? 'Regla actualizada.' : 'Regla creada.');
-        this.resetRule();
-      },
-      toggleRule(rule) {
-        const result = M.saveEscalation(this.monitoring, Object.assign({}, rule, { enabled: !rule.enabled }));
-        this.app.showToast(result.ok ? 'Regla ' + (rule.enabled ? 'activada' : 'desactivada') + '.' : result.errors[0]);
-      },
-      removeRule(rule) {
-        const result = M.removeEscalation(this.monitoring, rule.id);
-        this.app.showToast(result.ok ? 'Regla eliminada.' : result.errors[0]);
-      },
-      restoreRules() {
-        M.restoreEscalations(this.monitoring);
-        this.app.showToast('Reglas de escalamiento restauradas a los valores iniciales.');
-      },
-      savePrefs(payload) {
-        M.savePrefs(this.monitoring, payload);
-      },
-      toggleBusinessDay(day) {
-        const days = this.prefs.businessHours.days.indexOf(day) === -1
-          ? this.prefs.businessHours.days.concat([day])
-          : this.prefs.businessHours.days.filter((item) => item !== day);
-        this.savePrefs({ businessHours: Object.assign({}, this.prefs.businessHours, { days: days }) });
-      },
-      planStatusLabel(item) {
-        const labels = {
-          sent: 'Enviada', scheduled: 'Programada', window: 'Bloqueada por ventana', silenced: 'Bloqueada por silencio',
-          channel: 'Canal sin configurar', disabled: 'Canal desactivado', acknowledged: 'Omitida por reconocimiento',
-          skipped: 'No aplica', closed: 'Alerta cerrada'
+        if (!text(this.channel.name)) {
+          this.error = 'El canal necesita un nombre.';
+          return;
+        }
+        if (this.channel.kind !== 'internal' && !text(this.channel.secretRef)) {
+          this.error = 'Indica la referencia de credencial configurada en el despliegue.';
+          return;
+        }
+        this.busy = true;
+        const config = {};
+        if (this.channel.kind === 'smtp' && text(this.channel.subjectPrefix)) config.subjectPrefix = text(this.channel.subjectPrefix);
+        if (this.channel.kind === 'telegram' && text(this.channel.chatId)) config.chatId = text(this.channel.chatId);
+        const body = {
+          kind: this.channel.kind,
+          name: text(this.channel.name),
+          enabled: !!this.channel.enabled,
+          secretRef: this.channel.kind === 'internal' ? null : text(this.channel.secretRef),
+          config
         };
-        return labels[item.status] || item.status;
+        if (this.channel.id) body.id = this.channel.id;
+        const result = await this.app.saveNotificationChannel(body);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar el canal.';
+        else {
+          this.notice = 'Canal guardado.';
+          this.resetChannel();
+        }
       },
-      severityLabel(severity) {
-        if (!severity) return 'Cualquiera';
-        return M.severityMeta(severity).label;
+      async testChannel(item) {
+        if (!this.canEdit || this.busy) return;
+        this.busy = true;
+        this.error = '';
+        this.notice = '';
+        const result = await this.app.testNotificationChannel(item.id);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo encolar la prueba.';
+        else this.notice = 'Prueba encolada. El servidor confirmará el resultado en la bandeja; no se declara entregada.';
       },
-      windowLabel(value) {
-        if (value === 'business') return 'Horario laboral';
-        if (value === 'after_hours') return 'Fuera de horario';
-        return 'Siempre';
+      editRule(item) {
+        this.rule = ruleForm(item);
+        this.editingRuleId = item.id;
+        this.tab = 'rules';
+        this.error = '';
       },
-      channelLabel(id) { return M.channelMeta(id).label; },
-      categoriesLabel(list) {
-        if (!list.length) return 'Todas las categorías';
-        return list.map((id) => {
-          const category = this.categories.find((item) => item.id === id);
-          return category ? category.label : id;
-        }).join(', ');
+      resetRule() { this.rule = ruleForm(null); this.editingRuleId = ''; this.error = ''; },
+      toggleChannel(id) {
+        const index = this.rule.channelIds.indexOf(id);
+        if (index === -1) this.rule.channelIds.push(id);
+        else this.rule.channelIds.splice(index, 1);
+      },
+      async saveRule() {
+        if (!this.canEdit || this.busy) return;
+        if (!text(this.rule.name)) {
+          this.error = 'La regla necesita un nombre.';
+          return;
+        }
+        if (!this.rule.channelIds.length) {
+          this.error = 'La regla necesita al menos un canal.';
+          return;
+        }
+        if (!this.editingRuleId && !idsFromText(this.rule.recipientIds).length) {
+          this.error = 'Una regla nueva necesita al menos un destinatario canónico.';
+          return;
+        }
+        this.busy = true;
+        const body = {
+          name: text(this.rule.name),
+          enabled: !!this.rule.enabled,
+          minimumSeverity: this.rule.minimumSeverity,
+          recipientIds: idsFromText(this.rule.recipientIds),
+          channelIds: this.rule.channelIds.slice(),
+          escalationRecipientIds: idsFromText(this.rule.escalationRecipientIds),
+          schedule: this.rule.scheduleEnabled ? {
+            timezone: text(this.rule.timezone),
+            start: text(this.rule.start),
+            end: text(this.rule.end)
+          } : null,
+          acknowledgeAfterSeconds: Number(this.rule.acknowledgeAfterSeconds) || 0,
+          retryIntervalSeconds: Number(this.rule.retryIntervalSeconds) || 0,
+          escalateAfterSeconds: Number(this.rule.escalateAfterSeconds) || 0,
+          maxAttempts: Number(this.rule.maxAttempts) || 1
+        };
+        if (this.editingRuleId) body.id = this.editingRuleId;
+        const result = await this.app.saveNotificationRule(body);
+        this.busy = false;
+        if (!result.ok) this.error = result.error || 'No se pudo guardar la regla.';
+        else {
+          this.notice = 'Regla guardada.';
+          this.resetRule();
+        }
       }
     },
     template: `
-      <section class="config-section mon-settings" data-od-id="notification-settings" aria-labelledby="config-notif-title">
-        <header class="config-section__head">
-          <div>
-            <p class="eyebrow">Operación técnica</p>
-            <h2 id="config-notif-title">Notificaciones</h2>
-            <p class="config-section__lead">Canales externos opcionales y reglas de escalamiento. Nada sale de la aplicación: la configuración es simulada y las vistas previas muestran el mensaje que se enviaría.</p>
+      <section class="page mon-page mon-settings" aria-labelledby="notif-settings-title">
+        <header class="mon-head">
+          <div class="mon-head__copy">
+            <p class="eyebrow"><span class="eyebrow__line"></span> Configuración</p>
+            <h1 id="notif-settings-title">Notificaciones</h1>
+            <p class="page-sub">Canales y reglas del servidor. Las credenciales solo se referencian; nunca se guardan en el navegador.</p>
           </div>
-          <span class="chip chip--muted">{{ activeRuleCount }} reglas activas</span>
         </header>
 
-        <p v-if="!canEdit" class="mon-lock">Tu rol puede consultar la configuración, pero no modificarla.</p>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Correo SMTP</h3>
-              <p class="mon-settings__sub">Remitente, destinatarios y plantilla del mensaje.</p>
-            </div>
-            <div class="mon-settings__actions">
-              <span class="mon-tag" :class="'mon-tag--' + channelTone(smtpState)">{{ channelStatusLabel(smtpState) }}</span>
-              <button type="button" class="mon-switch" :class="{ 'is-on': channels.smtp.enabled }"
-                      :aria-pressed="channels.smtp.enabled" :disabled="!canEdit" @click="toggleSmtp">
-                <span class="mon-switch__dot"></span>{{ channels.smtp.enabled ? 'Activo' : 'Inactivo' }}
-              </button>
-            </div>
-          </header>
-
-          <div class="mon-channel">
-            <div class="mon-channel__form">
-              <div class="form-grid--two">
-                <label class="field">
-                  <span class="field__label">Servidor</span>
-                  <input v-model="channels.smtp.host" type="text" :disabled="!canEdit" placeholder="smtp.example.invalid">
-                </label>
-                <label class="field">
-                  <span class="field__label">Puerto</span>
-                  <input v-model.number="channels.smtp.port" class="mon-input mono" type="number" min="1" max="65535" :disabled="!canEdit">
-                </label>
-              </div>
-              <div class="form-grid--two">
-                <label class="field">
-                  <span class="field__label">Remitente</span>
-                  <input v-model="channels.smtp.from" type="email" :disabled="!canEdit" placeholder="noc@example.invalid">
-                </label>
-                <label class="field">
-                  <span class="field__label">Nombre visible</span>
-                  <input v-model="channels.smtp.fromName" type="text" :disabled="!canEdit">
-                </label>
-              </div>
-              <label class="field">
-                <span class="field__label">Destinatarios</span>
-                <input v-model="channels.smtp.recipients" type="text" :disabled="!canEdit" placeholder="guardia@example.invalid; soporte@example.invalid">
-                <span class="field__hint">Separados por punto y coma.</span>
-              </label>
-              <label class="field">
-                <span class="field__label">Asunto</span>
-                <input v-model="channels.smtp.subject" type="text" :disabled="!canEdit">
-                <span class="field__hint">Variables disponibles: {severity}, {asset}, {site}, {title}, {message}, {detectedAt}, {state}, {link}.</span>
-              </label>
-              <label class="field">
-                <span class="field__label">Plantilla del cuerpo</span>
-                <textarea v-model="channels.smtp.template" rows="6" :disabled="!canEdit"></textarea>
-              </label>
-              <label class="mon-check">
-                <input type="checkbox" v-model="channels.smtp.secure" :disabled="!canEdit">
-                <span>Conexión cifrada (STARTTLS)</span>
-              </label>
-              <div class="mon-channel__actions">
-                <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="saveSmtp">Guardar</button>
-                <button type="button" class="btn btn--ghost" :disabled="!canEdit" @click="testChannel('smtp')">Enviar prueba</button>
-                <span v-if="channels.smtp.lastTestAt" class="mon-channel__note mono">{{ fmtDateTime(channels.smtp.lastTestAt) }} · {{ channels.smtp.lastTestResult === 'ok' ? 'prueba correcta' : 'error de prueba' }}</span>
-              </div>
-            </div>
-            <div v-if="smtpPreview" class="mon-preview">
-              <p class="mon-preview__head"><app-icon name="mail"></app-icon> Representación del mensaje</p>
-              <p class="mon-preview__line"><span>De</span> {{ smtpPreview.from }}</p>
-              <p class="mon-preview__line"><span>Para</span> {{ smtpPreview.to }}</p>
-              <p class="mon-preview__line"><span>Asunto</span> {{ smtpPreview.subject }}</p>
-              <pre class="mon-preview__body">{{ smtpPreview.body }}</pre>
-            </div>
-          </div>
+        <div class="mon-tabs" role="tablist" aria-label="Configuración de notificaciones">
+          <button v-for="item in tabs" :key="item.id" type="button" class="mon-tab" role="tab"
+                  :aria-selected="tab === item.id" :class="{ 'is-active': tab === item.id }" @click="tab = item.id">{{ item.label }}</button>
         </div>
 
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Telegram Bot</h3>
-              <p class="mon-settings__sub">Bot, destinatarios y presentación del mensaje. El token es de demostración.</p>
-            </div>
-            <div class="mon-settings__actions">
-              <span class="mon-tag" :class="'mon-tag--' + channelTone(telegramState)">{{ channelStatusLabel(telegramState) }}</span>
-              <button type="button" class="mon-switch" :class="{ 'is-on': channels.telegram.enabled }"
-                      :aria-pressed="channels.telegram.enabled" :disabled="!canEdit" @click="toggleTelegram">
-                <span class="mon-switch__dot"></span>{{ channels.telegram.enabled ? 'Activo' : 'Inactivo' }}
-              </button>
-            </div>
-          </header>
+        <p v-if="!canEdit" class="mon-lock">No tienes permisos para modificar canales ni reglas.</p>
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando la configuración de notificaciones…</p>
+        <div v-else-if="errorFromApi" class="mon-notice" role="alert"><span class="mon-notice__text">{{ errorFromApi }}</span></div>
+        <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+        <p v-if="notice" class="mon-panel__sub" role="status">{{ notice }}</p>
 
-          <div class="mon-channel">
-            <div class="mon-channel__form">
-              <div class="form-grid--two">
-                <label class="field">
-                  <span class="field__label">Nombre del bot</span>
-                  <input v-model="channels.telegram.botName" type="text" :disabled="!canEdit" placeholder="noc_bot">
-                </label>
-                <label class="field">
-                  <span class="field__label">Token</span>
-                  <input v-model="channels.telegram.token" type="text" :disabled="!canEdit" placeholder="000000:AAF-DEMO">
-                </label>
-              </div>
-              <label class="field">
-                <span class="field__label">Chats o grupos</span>
-                <input v-model="channels.telegram.chatIds" type="text" :disabled="!canEdit" placeholder="-1001234567890; 482119034">
-                <span class="field__hint">Separados por punto y coma.</span>
-              </label>
-              <div class="form-grid--two">
-                <label class="field">
-                  <span class="field__label">Formato</span>
-                  <span class="select-field">
-                    <select v-model="channels.telegram.parseMode" :disabled="!canEdit">
-                      <option value="Markdown">Markdown</option>
-                      <option value="HTML">HTML</option>
-                      <option value="Texto">Texto plano</option>
-                    </select>
-                  </span>
-                </label>
-                <label class="field">
-                  <span class="field__label">Última prueba</span>
-                  <input :value="channels.telegram.lastTestAt ? fmtDateTime(channels.telegram.lastTestAt) : 'Sin pruebas'" type="text" readonly>
-                </label>
-              </div>
-              <label class="field">
-                <span class="field__label">Plantilla del mensaje</span>
-                <textarea v-model="channels.telegram.template" rows="5" :disabled="!canEdit"></textarea>
-              </label>
-              <div class="mon-channel__actions">
-                <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="saveTelegram">Guardar</button>
-                <button type="button" class="btn btn--ghost" :disabled="!canEdit" @click="testChannel('telegram')">Enviar prueba</button>
-                <span class="mon-channel__note">Los canales son opcionales: el escalamiento puede quedar desactivado hasta configurarlos.</span>
-              </div>
-            </div>
-            <div v-if="telegramPreview" class="mon-preview mon-preview--chat">
-              <p class="mon-preview__head"><app-icon name="send"></app-icon> Representación en Telegram</p>
-              <p class="mon-preview__line"><span>Bot</span> {{ telegramPreview.bot }}</p>
-              <p class="mon-preview__line"><span>Chats</span> {{ telegramPreview.chat }}</p>
-              <pre class="mon-preview__body mon-preview__body--chat">{{ telegramPreview.body }}</pre>
-            </div>
-          </div>
-        </div>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Reglas de escalamiento</h3>
-              <p class="mon-settings__sub">Severidad, horario, categoría y tiempo sin reconocimiento definen a quién se avisa y cuándo.</p>
-            </div>
-            <button type="button" class="text-button" :disabled="!canEdit" @click="restoreRules">Restaurar valores iniciales</button>
-          </header>
-
-          <div class="mon-table-wrap">
-            <table class="mon-settings-table">
-              <thead>
-                <tr>
-                  <th scope="col">Regla</th>
-                  <th scope="col">Condición</th>
-                  <th scope="col">Espera</th>
-                  <th scope="col">Canales</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="rule in rules" :key="rule.id" :class="{ 'is-off': !rule.enabled }">
-                  <th scope="row">
-                    {{ rule.label }}
-                    <span class="mon-settings-table__hint">{{ severityLabel(rule.severity) }} · {{ windowLabel(rule.window) }}<span v-if="rule.requireUnack"> · solo sin reconocer</span></span>
-                  </th>
-                  <td class="mon-settings-table__hint">{{ categoriesLabel(rule.categories) }}</td>
-                  <td class="mono">{{ rule.afterMinutes === 0 ? 'Inmediato' : rule.afterMinutes + ' min' }}</td>
-                  <td>
-                    <span class="mon-tag-group">
-                      <span v-for="id in rule.channels" :key="id" class="mon-tag">{{ channelLabel(id) }}</span>
-                    </span>
-                  </td>
-                  <td>
-                    <button type="button" class="mon-switch" :class="{ 'is-on': rule.enabled }" :aria-pressed="rule.enabled"
-                            :disabled="!canEdit" @click="toggleRule(rule)">
-                      <span class="mon-switch__dot"></span>{{ rule.enabled ? 'Activa' : 'Inactiva' }}
-                    </button>
-                  </td>
-                  <td class="mon-settings-table__actions">
-                    <button type="button" class="text-button" :disabled="!canEdit" @click="editRule(rule)">Editar</button>
-                    <button type="button" class="text-button text-button--quiet" :disabled="!canEdit" @click="removeRule(rule)">Quitar</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+        <div v-if="tab === 'channels'" class="mon-stack">
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Canales</h2>
+              <span class="mon-panel__sub">Retención {{ app.notificationRetentionDays || '—' }} días · el aviso interno no necesita credenciales</span>
+            </header>
+            <ul class="mon-settings__list">
+              <li v-for="item in channels" :key="item.id" class="mon-channel">
+                <div>
+                  <span class="mon-settings-table__name">{{ item.name }}</span>
+                  <span class="mon-settings-table__hint mono">{{ channelKindLabel(item.kind) }} · {{ channelState(item) }}<template v-if="item.secretRef"> · ref {{ item.secretRef }}</template></span>
+                  <span v-if="testState(item)" class="mon-panel__sub">Prueba {{ testState(item) }}. El servidor no expone el resultado externo.</span>
+                </div>
+                <div class="mon-channel__actions">
+                  <button type="button" class="text-button" :disabled="!canEdit" @click="editChannel(item)">Editar</button>
+                  <button type="button" class="text-button" :disabled="!canEdit" @click="testChannel(item)">Enviar prueba</button>
+                </div>
+              </li>
+            </ul>
+            <p v-if="!channels.length" class="empty-state">Sin canales configurados.</p>
           </div>
 
-          <div class="mon-rule-form">
-            <p class="mon-rule-form__title">{{ editing ? 'Editar regla' : 'Nueva regla' }}</p>
+          <form class="mon-panel mon-channel__form" @submit.prevent="saveChannel">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">{{ channel.id ? 'Editar canal' : 'Nuevo canal' }}</h2></header>
+            <div class="mon-channel__note">
+              La contraseña SMTP o el token de Telegram viven en el despliegue. Aquí solo se indica la referencia que los resuelve.
+            </div>
             <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Tipo</span>
+                <span class="select-field">
+                  <select v-model="channel.kind" :disabled="!canEdit">
+                    <option v-for="kind in channelKinds" :key="kind.id" :value="kind.id">{{ kind.label }}</option>
+                  </select>
+                </span>
+              </label>
               <label class="field">
                 <span class="field__label">Nombre</span>
-                <input v-model="ruleDraft.label" type="text" maxlength="60" :disabled="!canEdit" placeholder="Altas sin reconocer">
+                <input v-model="channel.name" type="text" maxlength="80" :disabled="!canEdit" required>
               </label>
-              <label class="field">
-                <span class="field__label">Severidad</span>
-                <span class="select-field">
-                  <select v-model="ruleDraft.severity" :disabled="!canEdit">
-                    <option value="">Cualquiera</option>
-                    <option value="critica">Crítica</option>
-                    <option value="alta">Alta</option>
-                    <option value="media">Media</option>
-                    <option value="baja">Baja</option>
-                  </select>
-                </span>
-              </label>
-            </div>
-            <div class="form-grid--two">
-              <label class="field">
-                <span class="field__label">Espera sin reconocimiento</span>
-                <span class="mon-interval">
-                  <input v-model.number="ruleDraft.afterMinutes" class="mon-input mono" type="number" min="0" max="10080" :disabled="!canEdit">
-                  <span class="mon-interval__unit">min</span>
-                </span>
-              </label>
-              <label class="field">
-                <span class="field__label">Horario</span>
-                <span class="select-field">
-                  <select v-model="ruleDraft.window" :disabled="!canEdit">
-                    <option value="always">Siempre</option>
-                    <option value="business">Horario laboral</option>
-                    <option value="after_hours">Fuera de horario</option>
-                  </select>
-                </span>
-              </label>
-            </div>
-            <div class="field">
-              <span class="field__label">Canales</span>
-              <span class="mon-toggle-group">
-                <button v-for="id in ['smtp', 'telegram']" :key="id" type="button" class="mon-toggle"
-                        :class="{ 'is-on': ruleDraft.channels.indexOf(id) !== -1 }" :aria-pressed="ruleDraft.channels.indexOf(id) !== -1"
-                        :disabled="!canEdit" @click="toggleChannel(id)">{{ channelLabel(id) }}</button>
-              </span>
-            </div>
-            <div class="field">
-              <span class="field__label">Categorías</span>
-              <span class="mon-toggle-group">
-                <button v-for="category in categories" :key="category.id" type="button" class="mon-toggle"
-                        :class="{ 'is-on': ruleDraft.categories.indexOf(category.id) !== -1 }"
-                        :aria-pressed="ruleDraft.categories.indexOf(category.id) !== -1"
-                        :disabled="!canEdit" @click="toggleCategory(category.id)">{{ category.label }}</button>
-              </span>
-              <span class="field__hint">Sin selección, la regla aplica a todas las categorías.</span>
             </div>
             <label class="field">
-              <span class="field__label">Destinatarios adicionales</span>
-              <input v-model="ruleDraft.recipients" type="text" maxlength="300" :disabled="!canEdit" placeholder="opcional">
+              <span class="field__label">Referencia de credencial</span>
+              <input v-model="channel.secretRef" type="text" maxlength="80" :disabled="!canEdit || channel.kind === 'internal'"
+                     placeholder="monitoring_smtp_ops">
+              <span class="field__hint">Nombre definido en monitoring_secrets. Nunca escribas aquí el token ni la contraseña.</span>
             </label>
-            <div class="mon-rule-form__checks">
-              <label class="mon-check">
-                <input type="checkbox" v-model="ruleDraft.requireUnack" :disabled="!canEdit">
-                <span>Enviar solo si la alerta sigue sin reconocer</span>
-              </label>
-              <label class="mon-check">
-                <input type="checkbox" v-model="ruleDraft.enabled" :disabled="!canEdit">
-                <span>Regla activa</span>
-              </label>
-            </div>
-            <div class="mon-channel__actions">
-              <button type="button" class="btn btn--secondary" :disabled="!canEdit" @click="saveRule">{{ editing ? 'Guardar cambios' : 'Crear regla' }}</button>
-              <button v-if="editing" type="button" class="btn btn--ghost" @click="resetRule">Cancelar</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="mon-settings__block">
-          <header class="mon-settings__head">
-            <div>
-              <h3 class="mon-settings__title">Consulta de escalamiento</h3>
-              <p class="mon-settings__sub">Elige una alerta para ver qué se enviaría y cuál sería el siguiente aviso.</p>
-            </div>
-            <label class="mon-consult">
-              <span class="sr-only">Alerta a consultar</span>
+            <label v-if="channel.kind === 'smtp'" class="field">
+              <span class="field__label">Prefijo del asunto</span>
+              <input v-model="channel.subjectPrefix" type="text" maxlength="60" :disabled="!canEdit" placeholder="[ITMS]">
+            </label>
+            <label v-if="channel.kind === 'telegram'" class="field">
+              <span class="field__label">Chat de destino</span>
+              <input v-model="channel.chatId" type="text" maxlength="80" :disabled="!canEdit" placeholder="Opcional si la referencia ya incluye el chat">
+              <span class="field__hint">Dato no secreto. Si la referencia es un token, indica aquí el chat.</span>
+            </label>
+            <label class="field">
+              <span class="field__label">Estado</span>
               <span class="select-field">
-                <select v-model="consultedAlertId">
-                  <option value="">Alerta más reciente</option>
-                  <option v-for="alert in alerts" :key="alert.id" :value="alert.id">{{ alert.id }} · {{ alert.message.slice(0, 42) }}</option>
+                <select v-model="channel.enabled" :disabled="!canEdit">
+                  <option :value="true">Activo</option>
+                  <option :value="false">Inactivo</option>
                 </select>
               </span>
             </label>
-          </header>
-
-          <ul v-if="consultedPlan" class="mon-plan mon-plan--compact">
-            <li v-for="item in consultedPlan.items" :key="item.rule.id" class="mon-plan__item">
-              <div class="mon-plan__head">
-                <span class="mon-plan__label">{{ item.rule.label }}</span>
-                <span class="mon-tag">{{ planStatusLabel(item) }}</span>
-              </div>
-              <p class="mon-plan__meta">
-                {{ item.rule.afterMinutes === 0 ? 'Inmediato' : 'A los ' + item.rule.afterMinutes + ' min' }} ·
-                {{ item.channels.map(channel => channel.label).join(' + ') }} · {{ fmtDateTime(item.at) }}
-              </p>
-            </li>
-          </ul>
-
-          <div class="mon-prefs">
-            <div class="field">
-              <span class="field__label">Horario laboral para las reglas</span>
-              <div class="mon-hours">
-                <label class="mon-hours__field">
-                  <span>Desde</span>
-                  <input class="mon-input mono" type="time" :value="prefs.businessHours.from" :disabled="!canEdit"
-                         @change="savePrefs({ businessHours: Object.assign({}, prefs.businessHours, { from: $event.target.value }) })">
-                </label>
-                <label class="mon-hours__field">
-                  <span>Hasta</span>
-                  <input class="mon-input mono" type="time" :value="prefs.businessHours.to" :disabled="!canEdit"
-                         @change="savePrefs({ businessHours: Object.assign({}, prefs.businessHours, { to: $event.target.value }) })">
-                </label>
-                <span class="mon-toggle-group">
-                  <button v-for="(label, index) in days" :key="label + index" type="button" class="mon-toggle mon-toggle--day"
-                          :class="{ 'is-on': prefs.businessHours.days.indexOf(index) !== -1 }"
-                          :aria-pressed="prefs.businessHours.days.indexOf(index) !== -1"
-                          :disabled="!canEdit" @click="toggleBusinessDay(index)">{{ label }}</button>
-                </span>
-              </div>
-              <span class="field__hint">Sin turnos ni rotaciones: el horario solo decide cuándo aplica una regla.</span>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canEdit || busy">{{ busy ? 'Guardando…' : 'Guardar canal' }}</button>
+              <button v-if="channel.id" type="button" class="btn btn--ghost" @click="resetChannel">Cancelar edición</button>
             </div>
+          </form>
+        </div>
+
+        <div v-if="tab === 'rules'" class="mon-stack">
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Reglas</h2>
+              <span class="mon-panel__sub">Severidad mínima, destinatarios canónicos, canales, horario, reconocimiento y reintentos</span>
+            </header>
+            <ul class="mon-settings__list">
+              <li v-for="item in rules" :key="item.id">
+                <div>
+                  <span class="mon-settings-table__name">{{ item.name }} <span v-if="item.builtIn" class="mon-tag">Predeterminada</span></span>
+                  <span class="mon-settings-table__hint">
+                    {{ item.minimumSeverity }} · {{ item.channelIds.length }} canales · reconocer {{ item.acknowledgeAfterSeconds }} s · reintento {{ item.retryIntervalSeconds }} s
+                  </span>
+                  <span class="mon-settings-table__hint mono">
+                    Destinatarios: {{ item.recipientIds.length ? item.recipientIds.join(', ') : 'todas las identidades activas' }}
+                  </span>
+                </div>
+                <button type="button" class="text-button" :disabled="!canEdit" @click="editRule(item)">Editar</button>
+              </li>
+            </ul>
+            <p v-if="!rules.length" class="empty-state">Sin reglas configuradas.</p>
           </div>
+
+          <form class="mon-panel mon-rule-form" @submit.prevent="saveRule">
+            <header class="mon-panel__head"><h2 class="mon-panel__title">{{ editingRuleId ? 'Editar regla' : 'Nueva regla' }}</h2></header>
+            <div class="mon-rule-form__title">
+              <label class="field">
+                <span class="field__label">Nombre</span>
+                <input v-model="rule.name" type="text" maxlength="80" :disabled="!canEdit" required>
+              </label>
+              <label class="field">
+                <span class="field__label">Severidad mínima</span>
+                <span class="select-field">
+                  <select v-model="rule.minimumSeverity" :disabled="!canEdit">
+                    <option v-for="severity in severities" :key="severity.id" :value="severity.id">{{ severity.label }}</option>
+                  </select>
+                </span>
+              </label>
+            </div>
+            <label class="field">
+              <span class="field__label">Destinatarios (IDs canónicos)</span>
+              <input v-model="rule.recipientIds" type="text" list="notification-recipients" maxlength="400" :disabled="!canEdit"
+                     placeholder="u-..., u-... o vacío en la regla predeterminada">
+              <datalist id="notification-recipients">
+                <option v-for="recipient in recipients" :key="recipient.id" :value="recipient.id">{{ recipient.label }}</option>
+              </datalist>
+              <span class="field__hint">Solo identidades existentes. El servidor valida que sean personas activas.</span>
+            </label>
+            <fieldset class="field">
+              <legend class="field__label">Canales</legend>
+              <div class="mon-toggle-group">
+                <label v-for="item in channels" :key="'rule-channel-' + item.id" class="mon-toggle">
+                  <input type="checkbox" :value="item.id" :checked="rule.channelIds.indexOf(item.id) !== -1" :disabled="!canEdit" @change="toggleChannel(item.id)">
+                  <span>{{ item.name }}</span>
+                </label>
+              </div>
+            </fieldset>
+            <label class="field">
+              <span class="field__label">Escalado a</span>
+              <input v-model="rule.escalationRecipientIds" type="text" list="notification-recipients" maxlength="400" :disabled="!canEdit"
+                     placeholder="IDs separados por comas; vacío para no escalar">
+            </label>
+            <label class="field">
+              <span class="field__label">
+                <input v-model="rule.scheduleEnabled" type="checkbox" :disabled="!canEdit"> Limitar a una franja horaria
+              </span>
+            </label>
+            <div v-if="rule.scheduleEnabled" class="mon-window-form__times">
+              <label class="field">
+                <span class="field__label">Zona horaria</span>
+                <input v-model="rule.timezone" type="text" maxlength="64" :disabled="!canEdit">
+              </label>
+              <label class="field">
+                <span class="field__label">Inicio</span>
+                <input v-model="rule.start" type="time" :disabled="!canEdit">
+              </label>
+              <label class="field">
+                <span class="field__label">Fin</span>
+                <input v-model="rule.end" type="time" :disabled="!canEdit">
+              </label>
+            </div>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Espera de reconocimiento (s)</span>
+                <input v-model.number="rule.acknowledgeAfterSeconds" type="number" min="0" step="30" :disabled="!canEdit">
+              </label>
+              <label class="field">
+                <span class="field__label">Reintento (s)</span>
+                <input v-model.number="rule.retryIntervalSeconds" type="number" min="0" step="10" :disabled="!canEdit">
+              </label>
+            </div>
+            <div class="form-grid--two">
+              <label class="field">
+                <span class="field__label">Escalado tras (s)</span>
+                <input v-model.number="rule.escalateAfterSeconds" type="number" min="0" step="60" :disabled="!canEdit">
+                <span class="field__hint">0 desactiva el escalado.</span>
+              </label>
+              <label class="field">
+                <span class="field__label">Intentos máximos</span>
+                <input v-model.number="rule.maxAttempts" type="number" min="1" max="20" step="1" :disabled="!canEdit">
+              </label>
+            </div>
+            <label class="field">
+              <span class="field__label">Estado</span>
+              <span class="select-field">
+                <select v-model="rule.enabled" :disabled="!canEdit">
+                  <option :value="true">Activa</option>
+                  <option :value="false">Inactiva</option>
+                </select>
+              </span>
+            </label>
+            <div class="mon-settings__actions">
+              <button type="submit" class="btn btn--primary" :disabled="!canEdit || busy">{{ busy ? 'Guardando…' : 'Guardar regla' }}</button>
+              <button v-if="editingRuleId" type="button" class="btn btn--ghost" @click="resetRule">Cancelar edición</button>
+            </div>
+          </form>
         </div>
       </section>
     `

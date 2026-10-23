@@ -1676,6 +1676,56 @@
   gap: 8px;
 }
 
+.mon-settings__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mon-settings__list > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--slate-150);
+}
+
+.mon-settings__list > li:last-child {
+  border-bottom: 0;
+}
+
+.mon-settings__list > li > div {
+  min-width: 0;
+}
+
+.mon-settings__list button.mon-settings-table__name {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mon-settings__list button.mon-settings-table__name.is-active {
+  color: var(--teal-700);
+}
+
+.mon-thresholds {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 82px 82px;
+  align-items: center;
+  gap: 6px 8px;
+  max-width: 100%;
+}
+
+.mon-thresholds .mon-input {
+  width: 100%;
+  min-width: 0;
+}
+
 .mon-lock {
   margin: 0;
   padding: 10px 14px;

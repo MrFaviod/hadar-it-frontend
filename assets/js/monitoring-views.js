@@ -1,8 +1,7 @@
 (function () {
   'use strict';
 
-  const M = window.AssetMonitorEngine;
-  const Data = window.ASSET_MONITOR;
+  const Mapping = window.AssetMonitoringApiMapping;
   const Views = window.Views = window.Views || {};
   let chartSeq = 0;
 
@@ -47,14 +46,6 @@
     return String(rounded).replace('.', ',') + (unit ? ' ' + unit : '');
   }
 
-  function fmtValue(row) {
-    if (!row || row.value === null || row.value === undefined) return '—';
-    if (row.check.id === 'services' && Number.isFinite(row.up) && Number.isFinite(row.total)) {
-      return row.up + ' de ' + row.total + ' · ' + fmtNumber(row.value, '%');
-    }
-    return fmtNumber(row.value, row.check.unit);
-  }
-
   function duration(minutes) {
     if (minutes === null || minutes === undefined) return '—';
     if (minutes < 60) return minutes + ' min';
@@ -64,8 +55,26 @@
     return Math.floor(hours / 24) + ' d ' + (hours % 24) + ' h';
   }
 
-  function toneOfStatus(id) {
-    return M.statusMeta(id).tone;
+  function periodLabel(period) {
+    return period === '7d' ? '7 días' : (period === '30d' ? '30 días' : '24 horas');
+  }
+
+  function secondsLabel(seconds) {
+    const value = Number(seconds);
+    if (!Number.isFinite(value) || value <= 0) return 'Sin espera';
+    if (value < 60) return value + ' s';
+    if (value < 3600) return Math.round(value / 60) + ' min';
+    return Math.round(value / 360) / 10 + ' h';
+  }
+
+  function hashFromUrl(url) {
+    if (!url) return '';
+    try {
+      const parsed = new URL(url, window.location.href);
+      return parsed.hash || '';
+    } catch (error) {
+      return url.charAt(0) === '#' ? url : '';
+    }
   }
 
   // ---------------------------------------------------------------- charts
@@ -84,8 +93,11 @@
       return { uid: 'mon-chart-' + (chartSeq += 1) };
     },
     computed: {
+      validPoints() {
+        return (this.points || []).filter((point) => point && Number.isFinite(point.value));
+      },
       geometry() {
-        const points = (this.points || []).filter((point) => point && Number.isFinite(point.value));
+        const points = this.validPoints;
         const width = 640;
         const height = this.height;
         const top = 12;
@@ -100,8 +112,6 @@
         const stepX = width / (points.length - 1);
         const coords = points.map((point, index) => ({
           x: index * stepX,
-          // A sample outside the visible domain (a full outage under an 80 %
-          // floor) is pinned to the edge instead of drawing outside the box.
           y: top + clamp(1 - (point.value - low) / (high - low), 0, 1) * spanY,
           value: point.value,
           label: point.label
@@ -111,13 +121,7 @@
         const last = coords[coords.length - 1];
         const midIndex = Math.round((coords.length - 1) / 2);
         return {
-          width: width,
-          height: height,
-          line: line,
-          area: area,
-          low: low,
-          high: high,
-          last: last,
+          width, height, line, area, low, high, last,
           ticks: [
             { y: top, value: high },
             { y: top + spanY / 2, value: (high + low) / 2 },
@@ -131,7 +135,7 @@
         };
       },
       summary() {
-        const points = (this.points || []).filter((point) => point && Number.isFinite(point.value));
+        const points = this.validPoints;
         if (!points.length) return null;
         const values = points.map((point) => point.value);
         const total = values.reduce((sum, value) => sum + value, 0);
@@ -141,6 +145,11 @@
           max: Math.max.apply(null, values),
           avg: Math.round((total / values.length) * 100) / 100
         };
+      },
+      emptyText() {
+        return this.validPoints.length
+          ? 'Se necesitan al menos dos muestras para dibujar la serie.'
+          : 'Sin datos en el período seleccionado.';
       }
     },
     methods: {
@@ -176,7 +185,7 @@
           <text v-for="entry in geometry.xLabels" :key="'x' + entry.x" class="mon-chart__axis"
                 :x="entry.x" :y="geometry.height - 4" :text-anchor="entry.anchor">{{ entry.label }}</text>
         </svg>
-        <p v-else class="mon-chart__empty">Sin datos en el período seleccionado.</p>
+        <p v-else class="mon-chart__empty">{{ emptyText }}</p>
       </figure>
     `
   };
@@ -211,7 +220,7 @@
   Views.MonStatusPill = {
     props: { status: { type: String, required: true } },
     computed: {
-      meta() { return M.statusMeta(this.status); }
+      meta() { return Mapping.statusMeta(this.status); }
     },
     template: `
       <span class="mon-pill" :class="'mon-pill--' + meta.tone">
@@ -244,41 +253,53 @@
     props: {
       open: { type: Boolean, default: false },
       alert: { type: Object, default: null },
+      assetId: { type: String, default: '' },
       app: { type: Object, required: true }
     },
     emits: ['close', 'saved'],
     data() {
-      return { hours: 4, reason: '', errors: [] };
+      return { hours: 4, reason: '', busy: false, error: '' };
     },
     watch: {
       open(value) {
-        if (value) {
-          this.hours = 4;
-          this.reason = '';
-          this.errors = [];
-        }
+        if (!value) return;
+        this.hours = 4;
+        this.reason = '';
+        this.busy = false;
+        this.error = '';
+      }
+    },
+    computed: {
+      targetLabel() {
+        if (this.alert) return this.alert.quickCode || this.alert.assetName || 'la alerta';
+        return this.assetId ? 'el activo ' + this.assetId : 'el recurso';
       }
     },
     methods: {
-      submit() {
-        if (!this.alert) return;
-        const result = M.silence(this.app.monitoring, this.app.maintenance, this.alert.id, this.hours, this.reason, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
+      async submit() {
+        if (this.busy) return;
+        this.busy = true;
+        this.error = '';
+        const options = { hours: this.hours, comment: this.reason };
+        const result = this.alert
+          ? await this.app.silenceMonitoringAlert(this.alert.id, options)
+          : await this.app.silenceMonitoringAsset(this.assetId, options);
+        this.busy = false;
         if (!result.ok) {
-          this.errors = result.errors;
+          this.error = result.error || 'No se pudo crear el silencio.';
           return;
         }
-        this.app.showToast(this.alert.id + ' silenciada durante ' + this.hours + ' h.');
+        this.app.showToast('Silencio de ' + this.hours + ' h aplicado a ' + this.targetLabel + '.');
         this.$emit('saved', result);
         this.$emit('close');
       }
     },
     template: `
-      <modal-shell :open="open" title="Silenciar alerta" eyebrow="Notificaciones" size="normal" @close="$emit('close')">
+      <modal-shell :open="open" title="Silenciar avisos" eyebrow="Alertas" size="normal" @close="$emit('close')">
         <div class="form-stack">
           <p class="form-intro">
-            El silenciamiento detiene los avisos externos. La alerta sigue visible y su estado operativo no cambia.
+            El silencio detiene las notificaciones externas, pero la alerta sigue visible y no cambia su estado.
+            Se registra en el servidor con su fecha de fin.
           </p>
           <label class="field">
             <span class="field__label">Duración</span>
@@ -296,13 +317,15 @@
           <label class="field">
             <span class="field__label">Motivo</span>
             <input v-model="reason" type="text" maxlength="200" placeholder="Revisión física, ventana de trabajo…">
-            <span class="field__hint">Queda registrado en los acontecimientos de la alerta.</span>
+            <span class="field__hint">Queda registrado en el historial de la alerta.</span>
           </label>
-          <p v-if="errors.length" class="form-error">{{ errors[0] }}</p>
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost" @click="$emit('close')">Cancelar</button>
-          <button type="button" class="btn btn--primary" @click="submit">Silenciar</button>
+          <button type="button" class="btn btn--ghost" :disabled="busy" @click="$emit('close')">Cancelar</button>
+          <button type="button" class="btn btn--primary" :disabled="busy" @click="submit">
+            {{ busy ? 'Silenciando…' : 'Silenciar' }}
+          </button>
         </template>
       </modal-shell>
     `
@@ -317,93 +340,100 @@
     },
     emits: ['close', 'saved'],
     data() {
-      return { form: { title: '', priority: 'alta', assigneeId: '', description: '' }, errors: [] };
-    },
-    computed: {
-      asset() {
-        if (!this.alert) return null;
-        return (this.app.assets || []).find((asset) => asset.id === this.alert.assetId) || null;
-      },
-      people() {
-        return (this.app.people || []).filter((person) => person.active !== false);
-      }
+      return { incidentId: '', busy: false, error: '' };
     },
     watch: {
-      open(value) {
-        if (!value || !this.alert) return;
-        const asset = this.asset;
-        this.errors = [];
-        this.form = {
-          title: (asset ? asset.name : this.alert.assetId) + ' · ' + M.alertKindMeta(this.alert.kind).label,
-          priority: this.alert.severity === 'critica' ? 'critica' : (this.alert.severity || 'alta'),
-          assigneeId: '',
-          description: this.alert.message
-        };
+      open: {
+        // A dialog mounted already open, as on a direct alert link, must load
+        // the canonical incident choices too.
+        immediate: true,
+        handler(value) {
+          if (!value) return;
+          this.incidentId = this.alert && this.alert.incident ? this.alert.incident.id : '';
+          this.busy = false;
+          this.error = '';
+          this.loadIncidents();
+        }
+      }
+    },
+    computed: {
+      incidentState() {
+        const api = this.app.maintenanceApi;
+        return api && api.incidents ? api.incidents : null;
+      },
+      incidents() {
+        return this.incidentState ? this.incidentState.items || [] : [];
+      },
+      incidentsLoading() {
+        return !!(this.incidentState && this.incidentState.loading);
+      },
+      incidentsLoaded() {
+        return !!(this.incidentState && this.incidentState.loaded);
+      },
+      incidentsError() {
+        return this.incidentState ? this.incidentState.error : '';
       }
     },
     methods: {
-      submit() {
-        if (!this.form.title.trim()) {
-          this.errors = ['El incidente necesita un título.'];
-          return;
-        }
-        const result = M.convertToIncident(this.app.monitoring, this.app.maintenance, this.app.assets, this.alert.id, {
-          title: this.form.title,
-          description: this.form.description,
-          priority: this.form.priority,
-          assigneeId: this.form.assigneeId,
-          assetId: this.alert.assetId
-        }, { actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador' });
+      async loadIncidents(force) {
+        const state = this.incidentState;
+        if (!state || state.loading) return false;
+        if (!force && state.loaded && !state.error) return true;
+        return this.app.loadMaintenanceIncidents({ reset: true });
+      },
+      retryIncidents() {
+        return this.loadIncidents(true);
+      },
+      async submit() {
+        if (!this.alert || this.busy) return;
+        this.busy = true;
+        this.error = '';
+        const result = await this.app.linkMonitoringIncident(this.alert.id, this.incidentId);
+        this.busy = false;
         if (!result.ok) {
-          this.errors = result.errors;
+          this.error = result.error || 'No se pudo vincular la alerta al incidente.';
           return;
         }
-        this.app.showToast('Incidente ' + result.incident.id + ' creado desde ' + this.alert.id + '.');
+        this.app.showToast(this.incidentId ? 'Alerta vinculada al incidente.' : 'Incidente creado desde la alerta.');
         this.$emit('saved', result);
         this.$emit('close');
       }
     },
     template: `
-      <modal-shell :open="open" title="Crear incidente desde la alerta" eyebrow="Mantenimiento" size="wide" @close="$emit('close')">
+      <modal-shell :open="open" title="Vincular a mantenimiento" eyebrow="Incidente" size="normal" @close="$emit('close')">
         <div class="form-stack">
           <p class="form-intro">
-            Los datos del dispositivo y del evento se reutilizan. No se crea nada hasta confirmar este formulario.
+            La alerta se vincula a un incidente canónico. La vinculación no resuelve la alerta ni cierra el incidente.
           </p>
           <label class="field">
-            <span class="field__label">Título</span>
-            <input v-model="form.title" type="text" maxlength="120">
+            <span class="field__label">Incidente</span>
+            <span class="select-field">
+              <select v-model="incidentId">
+                <option value="">Crear un incidente nuevo</option>
+                <option v-for="incident in incidents" :key="incident.id" :value="incident.id">
+                  {{ incident.code || incident.id }} · {{ incident.title || incident.summary || 'Sin título' }}
+                </option>
+              </select>
+            </span>
+            <span class="field__hint">Los incidentes existentes vienen del servicio de mantenimiento.</span>
           </label>
-          <div class="form-grid--two">
-            <label class="field">
-              <span class="field__label">Prioridad</span>
-              <span class="select-field">
-                <select v-model="form.priority">
-                  <option value="critica">Crítica</option>
-                  <option value="alta">Alta</option>
-                  <option value="media">Media</option>
-                  <option value="baja">Baja</option>
-                </select>
-              </span>
-            </label>
-            <label class="field">
-              <span class="field__label">Responsable</span>
-              <span class="select-field">
-                <select v-model="form.assigneeId">
-                  <option value="">Sin asignar</option>
-                  <option v-for="person in people" :key="person.id" :value="person.id">{{ person.name }}</option>
-                </select>
-              </span>
-            </label>
+          <p v-if="incidentsLoading" class="field__hint" role="status">Cargando incidentes existentes…</p>
+          <div v-else-if="incidentsError" class="mon-notice mon-notice--warn" role="alert">
+            <span class="mon-notice__text">{{ incidentsError }}</span>
+            <div class="mon-notice__actions">
+              <button type="button" class="btn btn--ghost" @click="retryIncidents">Reintentar</button>
+            </div>
           </div>
-          <label class="field">
-            <span class="field__label">Descripción</span>
-            <textarea v-model="form.description" rows="4" maxlength="600"></textarea>
-          </label>
-          <p v-if="errors.length" class="form-error">{{ errors[0] }}</p>
+          <p v-else-if="incidentsLoaded && !incidents.length" class="field__hint">
+            El servicio de mantenimiento no devolvió incidentes existentes; puedes crear uno nuevo.
+          </p>
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost" @click="$emit('close')">Cancelar</button>
-          <button type="button" class="btn btn--primary" @click="submit">Crear incidente</button>
+          <button type="button" class="btn btn--ghost" :disabled="busy" @click="$emit('close')">Cancelar</button>
+          <button type="button" class="btn btn--primary" :disabled="busy" @click="submit">
+            {{ busy ? 'Guardando…' : (incidentId ? 'Vincular alerta' : 'Crear incidente') }}
+          </button>
         </template>
       </modal-shell>
     `
@@ -422,55 +452,61 @@
     },
     props: { app: { type: Object, required: true } },
     data() {
-      const section = this.app.route && this.app.route.section ? this.app.route.section : (this.app.monitoring.prefs.defaultTab || 'estado');
+      const section = this.app.route && this.app.route.section ? this.app.route.section : 'estado';
+      // The route loads the alert page from the shared filters; the controls
+      // start from that same state so they can never describe another scope.
+      const alerts = (this.app.monitoringApi && this.app.monitoringApi.alertFilters) || {};
       return {
         tab: ['estado', 'dispositivos', 'alertas'].indexOf(section) !== -1 ? section : 'estado',
-        range: this.app.monitoring.prefs.range,
-        filters: { query: '', category: 'all', site: 'all', status: 'all', severity: 'all', state: 'active', ack: 'all', silenced: 'all', assetId: 'all' },
+        filters: {
+          query: '', category: 'all', site: 'all', status: 'all',
+          severity: alerts.severity || 'all',
+          state: alerts.state || 'firing',
+          ack: 'all', silenced: 'all',
+          assetId: alerts.assetId || 'all'
+        },
         deviceFilters: { query: '', category: 'all', site: 'all', status: 'all' },
         dialogs: { silence: false, convert: false },
         activeAlert: null,
-        sweep: { running: false, progress: 0, checked: 0, created: 0 },
-        now: Date.now()
+        alertLoading: false
       };
-    },
-    beforeUnmount() {
-      // A sweep left running after navigation would keep creating alerts in the background.
-      if (this.sweepTimer) clearInterval(this.sweepTimer);
-      this.sweepTimer = null;
     },
     computed: {
       monitoring() { return this.app.monitoring; },
-      assets() { return this.app.assets || []; },
-      alerts() { return (this.app.maintenance && this.app.maintenance.alerts) || []; },
-      rows() { return M.deviceRows(this.monitoring, this.assets, this.alerts, this.now); },
-      stats() { return M.stats(this.monitoring, this.assets, this.alerts, this.now); },
+      rows() { return this.app.monitoringDevices; },
+      stats() { return this.app.monitoringStats; },
       statusCards() {
         const stats = this.stats;
         return [
-          { id: 'up', label: 'Disponibles', value: stats.up, hint: 'Responden a todas las comprobaciones', tone: 'ok', icon: 'check' },
-          { id: 'down', label: 'No disponibles', value: stats.down, hint: 'Sin respuesta a la disponibilidad', tone: 'down', icon: 'x-circle' },
-          { id: 'degraded', label: 'Degradados', value: stats.degraded, hint: 'Alguna métrica fuera de rango', tone: 'warn', icon: 'alert' },
-          { id: 'unmonitored', label: 'Sin supervisión', value: stats.unmonitored, hint: 'Fuera de las comprobaciones', tone: 'neutral', icon: 'minus' }
+          { id: 'up', label: 'Disponibles', value: stats.up, hint: 'Responden a la comprobación', tone: 'ok', icon: 'check' },
+          { id: 'down', label: 'No disponibles', value: stats.down, hint: 'El sondeo no obtiene respuesta', tone: 'down', icon: 'x-circle' },
+          { id: 'degraded', label: 'Degradados', value: stats.degraded, hint: 'Métrica fuera de umbral', tone: 'warn', icon: 'alert' },
+          { id: 'unmonitored', label: 'Sin supervisión', value: stats.unmonitored, hint: stats.noData + ' sin datos · ' + stats.unavailable + ' sin lectura', tone: 'neutral', icon: 'minus' }
         ];
       },
-      availabilitySeries() { return M.aggregateAvailability(this.monitoring, this.assets, this.range, this.now); },
-      latencySeries() { return M.aggregateLatency(this.monitoring, this.assets, this.range, this.now); },
+      availabilityPoints() { return this.app.monitoringAvailabilityPoints; },
+      latencyPoints() { return this.app.monitoringLatencyPoints; },
+      loading() { return this.app.monitoringDevicesLoading; },
+      alertsLoading() { return this.app.monitoringAlertsLoading || this.alertLoading; },
+      error() { return this.app.monitoringDevicesError; },
+      alertsError() { return this.app.monitoringAlertsError; },
+      truncated() { return this.app.monitoringDevicesTruncated; },
+      alertsTruncated() { return this.app.monitoringApi.alerts.total > this.monitoringAlerts.length; },
+      monitoringAlerts() { return this.app.monitoringAlerts; },
       deviceRows() {
         const filters = this.deviceFilters;
         return this.rows
-          .filter((row) => this.monitoring.prefs.showUnmonitored || row.monitored)
           .filter((row) => filters.status === 'all' ? true : row.status === filters.status)
           .filter((row) => filters.category === 'all' ? true : row.asset.category === filters.category)
           .filter((row) => filters.site === 'all' ? true : row.asset.site === filters.site)
           .filter((row) => {
             const term = filters.query.trim().toLocaleLowerCase('es');
             if (!term) return true;
-            return (row.asset.name + ' ' + row.asset.id + ' ' + row.asset.type + ' ' + (row.asset.ip || ''))
+            return (row.asset.name + ' ' + row.asset.id + ' ' + row.asset.quickCode + ' ' + (row.checkType || '') + ' ' + (row.target || ''))
               .toLocaleLowerCase('es').indexOf(term) !== -1;
           })
           .sort((a, b) => {
-            const order = { down: 0, degraded: 1, up: 2, unmonitored: 3 };
+            const order = { down: 0, degraded: 1, unavailable: 2, no_data: 3, up: 4, unmonitored: 5 };
             const diff = order[a.status] - order[b.status];
             return diff || a.asset.name.localeCompare(b.asset.name, 'es');
           });
@@ -481,32 +517,67 @@
           .sort((a, b) => (a.status === b.status ? 0 : a.status === 'down' ? -1 : 1));
       },
       unmonitoredRows() {
-        return this.rows.filter((row) => row.status === 'unmonitored');
+        return this.rows.filter((row) => row.status === 'unmonitored' || row.status === 'no_data' || row.status === 'unavailable');
       },
       alertRows() {
-        return M.filteredAlerts(this.monitoring, this.alerts, this.assets, this.filters, this.now).map((alert) => M.alertRow(this.monitoring, alert, this.assets, this.now));
+        const filters = this.filters;
+        const term = filters.query.trim().toLocaleLowerCase('es');
+        return this.monitoringAlerts
+          .filter((alert) => filters.ack === 'ack' ? alert.acknowledged : (filters.ack === 'unack' ? !alert.acknowledged : true))
+          .filter((alert) => filters.silenced === 'silenced' ? alert.silenced : (filters.silenced === 'active' ? !alert.silenced : true))
+          .filter((alert) => filters.assetId === 'all' ? true : alert.assetId === filters.assetId)
+          .filter((alert) => {
+            if (!term) return true;
+            return (alert.alertName + ' ' + alert.assetName + ' ' + alert.quickCode + ' ' + alert.summary)
+              .toLocaleLowerCase('es').indexOf(term) !== -1;
+          });
       },
       activeAlertRows() {
-        return M.sortAlerts(this.alerts.filter((alert) => alert.state === 'open')).slice(0, 4)
-          .map((alert) => M.alertRow(this.monitoring, alert, this.assets, this.now));
+        return this.alertRows.filter((alert) => alert.state === 'firing' || alert.state === 'pending').slice(0, 4);
       },
       categories() { return this.app.categories || []; },
       sites() { return this.app.sites || []; },
-      ranges() { return Data.RANGES; },
-      canEdit() { return this.app.can('assets.edit'); },
-      canIncident() { return this.app.can('assets.edit'); },
-      rangeLabel() { return M.rangeMeta(this.range).label; },
-      filteredAlertCount() { return this.alertRows.length; }
+      assetOptions() { return this.rows.map((row) => row.asset); },
+      ranges() {
+        const presets = this.app.monitoringPresets.periods;
+        return presets && presets.length ? presets : ['24h', '7d', '30d'];
+      },
+      range() { return this.app.monitoringApi.overview.period || '24h'; },
+      rangeLabel() { return periodLabel(this.range); },
+      canEdit() { return this.app.monitoringEditable; },
+      canIncident() { return this.app.monitoringEditable; },
+      provenance() { return this.app.monitoringProvenance; },
+      provenanceNote() {
+        const configured = this.provenance.prometheusConfigured;
+        const base = 'Origen Prometheus · período ' + this.rangeLabel + ' · ' + this.stats.total + ' activos';
+        if (configured === false) return base + ' · Prometheus no está configurado; no se inventan lecturas.';
+        return base;
+      },
+      alertStateOptions() {
+        return [
+          { id: 'firing', label: 'Activas' },
+          { id: 'pending', label: 'Pendientes' },
+          { id: 'resolved', label: 'Recuperadas' },
+          { id: 'all', label: 'Todas' }
+        ];
+      },
+      severityOptions() {
+        return [{ id: 'critical', label: 'Crítica' }, { id: 'warning', label: 'Alta' }, { id: 'info', label: 'Media' }];
+      }
     },
     methods: {
-      fmtNumber: fmtNumber,
-      fmtValue: fmtValue,
-      fmtDateTime: fmtDateTime,
-      fmtDay: fmtDay,
-      fmtClock: fmtClock,
-      rel: rel,
-      duration: duration,
-      toLocale(value, unit) { return fmtNumber(value, unit); },
+      fmtNumber,
+      fmtDateTime,
+      fmtDay,
+      fmtClock,
+      rel,
+      duration,
+      periodLabel,
+      statusMeta: Mapping.statusMeta,
+      severityMeta: Mapping.severityMeta,
+      alertStateMeta: Mapping.alertStateMeta,
+      checkMeta: Mapping.checkMeta,
+      reasonLabel: Mapping.reasonLabel,
       setTab(tab) {
         this.tab = tab;
         if (this.app.setHash) this.app.setHash({ name: 'monitoring', section: tab });
@@ -515,6 +586,24 @@
         this.deviceFilters.status = this.deviceFilters.status === status ? 'all' : status;
         this.setTab('dispositivos');
       },
+      setRange(period) {
+        if (period === this.range) return;
+        this.app.monitoringApi.overview.period = period;
+        this.refresh();
+      },
+      async refresh() {
+        const results = await Promise.all([
+          this.app.loadMonitoringDevices({ period: this.range }),
+          this.app.loadMonitoringAlerts({ state: this.filters.state }),
+          this.app.loadMonitoringConfig()
+        ]);
+        if (results.some(Boolean)) this.app.showToast('Supervisión actualizada.');
+      },
+      async applyAlertFilters() {
+        this.alertLoading = true;
+        await this.app.loadMonitoringAlerts({ state: this.filters.state, severity: this.filters.severity, assetId: this.filters.assetId });
+        this.alertLoading = false;
+      },
       openDevice(id) {
         if (this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: id });
       },
@@ -522,62 +611,15 @@
         if (this.app.setHash) this.app.setHash({ name: 'monitorAlert', alertId: id });
       },
       openAsset(id) {
-        if (this.app.setHash) this.app.setHash({ name: 'detail', assetId: id });
+        this.openDevice(id);
       },
-      statusTone(row) { return toneOfStatus(row.status); },
-      checkTone(row) {
-        if (row.status === 'crit') return 'down';
-        if (row.status === 'warn') return 'warn';
-        if (row.status === 'unknown') return 'neutral';
-        return 'ok';
+      openConfig(anchor) {
+        if (this.app.setHash) this.app.setHash('#/configuracion/' + (anchor || 'supervision'));
       },
-      deviceTone(row) { return row.status === 'unmonitored' ? 'neutral' : toneOfStatus(row.status); },
-      rowStatus(row) { return M.statusMeta(row.status).label; },
-      seriesFor(assetId, kind) {
-        const asset = this.assets.find((item) => item.id === assetId);
-        if (!asset) return [];
-        return kind === 'latency'
-          ? M.latencySeries(this.monitoring, asset, this.range, this.now)
-          : M.availabilitySeries(this.monitoring, asset, this.range, this.now);
-      },
-      setRange(id) {
-        this.range = id;
-        M.savePrefs(this.monitoring, { range: id });
-        this.now = Date.now();
-      },
-      refresh() {
-        this.now = Date.now();
-        this.app.showToast('Indicadores actualizados con las últimas lecturas.');
-      },
-      runSweep() {
-        if (this.sweep.running) return;
-        this.sweep = { running: true, progress: 0, checked: 0, created: 0 };
-        const total = this.stats.monitored;
-        const timer = this.sweepTimer = setInterval(() => {
-          if (this.sweep.progress < 92) {
-            this.sweep.progress = Math.min(92, this.sweep.progress + 9);
-            this.sweep.checked = Math.round((this.sweep.progress / 100) * total);
-            return;
-          }
-          clearInterval(timer);
-          this.sweepTimer = null;
-          const result = M.sweep(this.monitoring, this.app.maintenance, this.assets, {
-            actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-          });
-          this.now = Date.now();
-          this.sweep = { running: false, progress: 100, checked: result.checked, created: result.created };
-          const detail = result.created
-            ? result.checked + ' dispositivos comprobados · ' + result.created + ' alerta nueva'
-            : result.checked + ' dispositivos comprobados · sin alertas nuevas';
-          this.app.showToast('Comprobación completada: ' + detail + '.');
-          setTimeout(() => { this.sweep.progress = 0; }, 1800);
-        }, 90);
-      },
-      ack(alert) {
-        const result = M.acknowledge(this.monitoring, this.app.maintenance, alert.id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok ? alert.id + ' reconocida. Sigue visible mientras el problema continúe.' : result.errors[0]);
+      async acknowledge(alert) {
+        if (!alert || !this.canEdit) return;
+        const result = await this.app.acknowledgeMonitoringAlert(alert.id, '');
+        if (result.ok) this.app.showToast('Alerta reconocida; sigue activa hasta que se recupere.');
       },
       askSilence(alert) {
         this.activeAlert = alert;
@@ -587,40 +629,15 @@
         this.activeAlert = alert;
         this.dialogs.convert = true;
       },
-      recover(assetId) {
-        const result = M.recoverDevice(this.monitoring, this.app.maintenance, this.assets, assetId, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok
-          ? 'Recuperación simulada: ' + result.recovered + ' alerta(s) quedan pendientes de resolución.'
-          : result.errors[0]);
+      openIncident(alert) {
+        if (!alert || !alert.incident || !alert.incident.id) {
+          this.askConvert(alert);
+          return;
+        }
+        if (this.app.setHash) this.app.setHash({ name: 'incident', incidentId: alert.incident.id });
       },
-      resolve(alert) {
-        const result = M.resolveAlert(this.monitoring, this.app.maintenance, this.assets, alert.id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok ? alert.id + ' resuelta y registrada en el historial del activo.' : result.errors[0]);
-      },
-      dismiss(alert) {
-        if (!alert.silenced) return;
-        const result = M.clearSilence(this.monitoring, this.app.maintenance, alert.id);
-        this.app.showToast(result.ok ? 'Silenciamiento cancelado.' : result.errors[0]);
-      },
-      silenceSaved() { this.now = Date.now(); },
-      convertSaved() { this.now = Date.now(); },
-      alertStateTone(alert) { return M.alertStateMeta(alert.state).tone; },
-      severityTone(alert) { return M.severityMeta(alert.severity).tone; },
-      openIncident(id) {
-        if (this.app.setHash) this.app.setHash({ name: 'incident', incidentId: id });
-      },
-      enabledChannels() {
-        return ['smtp', 'telegram'].filter((id) => M.channelState(this.monitoring, id).enabled).length;
-      },
-      chunks(list, size) {
-        const result = [];
-        for (let index = 0; index < list.length; index += size) result.push(list.slice(index, index + size));
-        return result;
-      }
+      openMoreDevices() { this.app.loadMoreMonitoringDevices(); },
+      openMoreAlerts() { this.app.loadMoreMonitoringAlerts(); }
     },
     template: `
       <section class="page mon-page" aria-labelledby="mon-title">
@@ -628,827 +645,753 @@
           <div class="mon-head__copy">
             <p class="eyebrow"><span class="eyebrow__line"></span> Operación técnica</p>
             <h1 id="mon-title">Supervisión de infraestructura</h1>
-            <p class="page-sub">Disponibilidad, latencia y métricas. Datos simulados.</p>
+            <p class="page-sub">Disponibilidad, latencia y alertas desde Prometheus.{{ provenanceNote }}</p>
           </div>
           <div class="mon-head__actions">
-            <div class="mon-range" role="group" aria-label="Período de las gráficas">
-              <button v-for="option in ranges" :key="option.id" type="button" class="mon-range__button"
-                      :class="{ 'is-active': option.id === range }" :aria-pressed="option.id === range"
-                      @click="setRange(option.id)">{{ option.label }}</button>
+            <div class="mon-range" role="group" aria-label="Período de supervisión">
+              <button v-for="period in ranges" :key="period" type="button" class="mon-range__button"
+                      :class="{ 'is-active': range === period }" :aria-pressed="range === period"
+                      :disabled="loading" @click="setRange(period)">{{ periodLabel(period) }}</button>
             </div>
-            <button v-if="canEdit" type="button" class="btn btn--secondary" data-od-id="mon-sweep" :disabled="sweep.running" @click="runSweep">
-              <app-icon name="refresh"></app-icon> {{ sweep.running ? 'Comprobando…' : 'Comprobar ahora' }}
+            <button type="button" class="btn btn--secondary" :disabled="loading" @click="refresh">
+              <app-icon name="refresh"></app-icon> {{ loading ? 'Actualizando…' : 'Actualizar' }}
             </button>
           </div>
         </header>
 
-        <div v-if="sweep.running || sweep.progress" class="mon-progress" role="status" aria-live="polite">
-          <div class="mon-progress__bar"><span :style="{ width: sweep.progress + '%' }"></span></div>
-          <p class="mon-progress__text">{{ sweep.running ? 'Comprobando ' + sweep.checked + ' de ' + stats.monitored + ' dispositivos' : sweep.checked + ' dispositivos comprobados · ' + sweep.created + ' alertas nuevas' }}</p>
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando la supervisión del servidor…</p>
+        <div v-if="error" class="mon-notice" role="alert">
+          <strong class="mon-notice__title">No se pudo leer la supervisión</strong>
+          <span class="mon-notice__text">{{ error }}</span>
         </div>
 
-        <div class="mon-kpis" data-od-id="mon-kpis">
-          <button v-for="card in statusCards" :key="card.id" type="button" class="mon-kpi"
-                  :class="['mon-kpi--' + card.tone, { 'is-active': deviceFilters.status === card.id }]"
+        <div class="mon-kpis">
+          <button v-for="card in statusCards" :key="card.id" type="button" class="mon-kpi" :class="'mon-kpi--' + card.tone"
                   @click="filterStatus(card.id)">
             <span class="mon-kpi__icon"><app-icon :name="card.icon"></app-icon></span>
             <span class="mon-kpi__label">{{ card.label }}</span>
-            <span class="mon-kpi__value mono">{{ String(card.value).padStart(2, '0') }}</span>
+            <span class="mon-kpi__value mono">{{ card.value }}</span>
             <span class="mon-kpi__hint">{{ card.hint }}</span>
           </button>
         </div>
 
         <div class="mon-tabs" role="tablist" aria-label="Vistas de supervisión">
-          <button type="button" role="tab" class="mon-tab" :class="{ 'is-active': tab === 'estado' }" :aria-selected="tab === 'estado'"
-                  data-od-id="mon-tab-estado" @click="setTab('estado')">Estado</button>
-          <button type="button" role="tab" class="mon-tab" :class="{ 'is-active': tab === 'dispositivos' }" :aria-selected="tab === 'dispositivos'"
-                  data-od-id="mon-tab-dispositivos" @click="setTab('dispositivos')">
-            Dispositivos <span class="mon-tab__count mono">{{ stats.monitored }}</span>
+          <button type="button" class="mon-tab" role="tab" :aria-selected="tab === 'estado'" :class="{ 'is-active': tab === 'estado' }" @click="setTab('estado')">Estado</button>
+          <button type="button" class="mon-tab" role="tab" :aria-selected="tab === 'dispositivos'" :class="{ 'is-active': tab === 'dispositivos' }" @click="setTab('dispositivos')">
+            Dispositivos <span class="mon-tab__count mono">{{ stats.total }}</span>
           </button>
-          <button type="button" role="tab" class="mon-tab" :class="{ 'is-active': tab === 'alertas' }" :aria-selected="tab === 'alertas'"
-                  data-od-id="mon-tab-alertas" @click="setTab('alertas')">
-            Alertas <span class="mon-tab__count mono">{{ stats.activeAlerts }}</span>
+          <button type="button" class="mon-tab" role="tab" :aria-selected="tab === 'alertas'" :class="{ 'is-active': tab === 'alertas' }" @click="setTab('alertas')">
+            Alertas <span class="mon-tab__count mono">{{ app.monitoringActiveAlertCount }}</span>
           </button>
         </div>
 
-        <!-- ------------------------------------------------ estado -->
-        <div v-show="tab === 'estado'" class="mon-view" id="mon-view-estado" role="tabpanel" aria-labelledby="mon-tab-estado">
+        <div v-if="tab === 'estado'" role="tabpanel" class="mon-stack">
           <div class="mon-grid mon-grid--charts">
-            <mon-chart :points="availabilitySeries" tone="teal" unit="%" :min="80" :max="100" :height="180"
-                       :label="'Disponibilidad media · ' + rangeLabel"></mon-chart>
-            <mon-chart :points="latencySeries" tone="hold" unit="ms" :height="180" :label="'Latencia media · ' + rangeLabel"></mon-chart>
+            <mon-chart label="Disponibilidad del período por dispositivo" :points="availabilityPoints" unit="%" :min="0" :max="100" tone="teal"></mon-chart>
+            <mon-chart label="Latencia actual por dispositivo" :points="latencyPoints" unit="ms" :zero-base="true" tone="warn"></mon-chart>
           </div>
+          <p class="mon-panel__sub">La disponibilidad usa las muestras del período y la latencia es la última lectura de cada activo. Abre un dispositivo para ver su serie temporal completa.</p>
 
-          <div class="mon-grid mon-grid--split">
-            <section class="mon-panel" aria-labelledby="mon-attention-title">
-              <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-attention-title" class="mon-panel__title">Requieren atención</h2>
-                  <p class="mon-panel__sub">{{ attention.length }} equipos no disponibles o degradados</p>
-                </div>
-                <span class="chip" :class="{ 'chip--warn': attention.length }">{{ attention.length }}</span>
-              </header>
-              <ul v-if="attention.length" class="mon-attention">
-                <li v-for="row in attention" :key="row.asset.id" class="mon-attention__item">
-                  <button type="button" class="mon-attention__main" @click="openDevice(row.asset.id)">
-                    <span class="mon-attention__name">{{ row.asset.name }}</span>
-                    <span class="mon-attention__meta">{{ row.asset.id }} · {{ row.asset.ip }} · {{ rel(row.lastCheckAt) }}</span>
-                  </button>
-                  <mon-spark :points="seriesFor(row.asset.id, 'availability')" :tone="row.status === 'down' ? 'down' : 'warn'"></mon-spark>
-                  <mon-status-pill :status="row.status"></mon-status-pill>
-                  <div class="mon-attention__actions">
-                    <button v-if="canEdit && row.status === 'down'" type="button" class="text-button" @click="recover(row.asset.id)">Simular recuperación</button>
-                    <button type="button" class="text-button text-button--quiet" @click="openDevice(row.asset.id)">Ver ficha</button>
-                  </div>
-                </li>
-              </ul>
-              <p v-else class="empty-state">Sin equipos fuera de umbral.</p>
-            </section>
-
-            <section class="mon-panel" aria-labelledby="mon-alerts-title">
-              <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-alerts-title" class="mon-panel__title">Alertas activas</h2>
-                  <p class="mon-panel__sub">{{ stats.unacknowledged }} sin reconocer · {{ stats.silenced }} {{ stats.silenced === 1 ? 'silenciada' : 'silenciadas' }}</p>
-                </div>
-                <button type="button" class="text-button" @click="setTab('alertas')">Ver todas</button>
-              </header>
-              <ul v-if="activeAlertRows.length" class="mon-alert-list mon-alert-list--compact">
-                <li v-for="row in activeAlertRows" :key="row.alert.id" class="mon-alert" :class="'mon-alert--' + severityTone(row)">
-                  <div class="mon-alert__body">
-                    <button type="button" class="mon-alert__title" @click="openAlert(row.alert.id)">{{ row.asset ? row.asset.name : row.alert.assetId }}</button>
-                    <p class="mon-alert__message">{{ row.alert.message }}</p>
-                    <div class="mon-alert__meta">
-                      <span class="mon-tag" :class="'mon-tag--' + severityTone(row)">{{ row.severity.label }}</span>
-                      <span class="mon-tag">{{ row.kind.label }}</span>
-                      <span class="mon-tag">{{ rel(row.alert.detectedAt) }}</span>
-                      <span v-if="row.groupCount > 1" class="mon-tag mon-tag--hold">{{ row.groupCount }} eventos</span>
-                      <span v-if="row.acknowledged" class="mon-tag mon-tag--ok">Reconocida</span>
-                      <span v-if="row.silenced" class="mon-tag">Silenciada</span>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-              <p v-else class="empty-state">No hay alertas activas.</p>
-            </section>
-          </div>
-
-          <section class="mon-panel" aria-labelledby="mon-unmonitored-title">
+          <div v-if="attention.length" class="mon-panel mon-attention">
             <header class="mon-panel__head">
-              <div>
-                <h2 id="mon-unmonitored-title" class="mon-panel__title">Fuera de supervisión</h2>
-                <p class="mon-panel__sub">{{ unmonitoredRows.length }} activos sin comprobaciones configuradas</p>
-              </div>
-              <app-icon name="info"></app-icon>
+              <h2 class="mon-panel__title">Requieren atención</h2>
+              <span class="mon-panel__sub">Alertas activas o degradación sostenida</span>
             </header>
-            <ul class="mon-unmonitored">
-              <li v-for="row in unmonitoredRows" :key="row.asset.id" class="mon-unmonitored__item">
-                <span class="mon-unmonitored__name">{{ row.asset.name }}</span>
-                <span class="mon-unmonitored__meta">{{ row.asset.id }} · {{ row.asset.category }}</span>
-                <span class="mon-unmonitored__state">Sin porcentajes de disponibilidad</span>
-                <button type="button" class="text-button" @click="openDevice(row.asset.id)">Ver equipo</button>
+            <ul class="mon-attention__list">
+              <li v-for="row in attention" :key="row.assetId" class="mon-attention__item">
+                <div class="mon-attention__main">
+                  <span class="mon-attention__name">{{ row.asset.name }}</span>
+                  <span class="mon-attention__meta mono">{{ row.asset.quickCode }} · {{ row.reasonLabel || row.statusLabel }}</span>
+                </div>
+                <span class="mon-attention__meta">{{ rel(row.lastCheckAt) }}</span>
+                <div class="mon-attention__actions">
+                  <button type="button" class="text-button" @click="openDevice(row.assetId)">Ver activo</button>
+                </div>
               </li>
             </ul>
-          </section>
-        </div>
-
-        <!-- ------------------------------------------------ dispositivos -->
-        <div v-show="tab === 'dispositivos'" class="mon-view" id="mon-view-dispositivos" role="tabpanel" aria-labelledby="mon-tab-dispositivos">
-          <div class="mon-toolbar">
-            <label class="search-field mon-search">
-              <app-icon name="search"></app-icon>
-              <span class="sr-only">Buscar dispositivo</span>
-              <input v-model="deviceFilters.query" type="search" placeholder="Buscar por nombre, código o IP">
-            </label>
-            <label class="mon-filter">
-              <span class="sr-only">Categoría</span>
-              <span class="select-field">
-                <select v-model="deviceFilters.category">
-                  <option value="all">Todas las categorías</option>
-                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="mon-filter">
-              <span class="sr-only">Sede</span>
-              <span class="select-field">
-                <select v-model="deviceFilters.site">
-                  <option value="all">Todas las sedes</option>
-                  <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="mon-filter">
-              <span class="sr-only">Estado</span>
-              <span class="select-field">
-                <select v-model="deviceFilters.status">
-                  <option value="all">Todos los estados</option>
-                  <option value="up">Disponibles</option>
-                  <option value="degraded">Degradados</option>
-                  <option value="down">No disponibles</option>
-                  <option value="unmonitored">Sin supervisión</option>
-                </select>
-              </span>
-            </label>
-            <span class="filter-count mono">{{ deviceRows.length }}</span>
           </div>
 
-          <div class="mon-table-wrap">
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Alertas activas</h2>
+              <button type="button" class="text-button" @click="setTab('alertas')">Ver todas</button>
+            </header>
+            <p v-if="alertsLoading" class="mon-panel__sub" role="status">Cargando alertas…</p>
+            <p v-else-if="alertsError" class="form-error" role="alert">{{ alertsError }}</p>
+            <ul v-else-if="activeAlertRows.length" class="mon-alert-list mon-alert-list--compact">
+              <li v-for="alert in activeAlertRows" :key="alert.id" class="mon-alert" :class="'mon-alert--' + alert.severityTone">
+                <div class="mon-alert__rail"></div>
+                <div class="mon-alert__body">
+                  <div class="mon-alert__head">
+                    <button type="button" class="mon-alert__title" @click="openAlert(alert.id)">{{ alert.alertName }}</button>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                    <span v-if="alert.acknowledged" class="mon-tag">Reconocida</span>
+                    <span v-if="alert.silenced" class="mon-tag">Silenciada</span>
+                  </div>
+                  <p class="mon-alert__message">{{ alert.message }}</p>
+                  <p class="mon-alert__meta mono">{{ alert.quickCode }} · {{ rel(alert.lastSeenAt) }}</p>
+                  <div class="mon-alert__actions">
+                    <button v-if="canEdit && !alert.acknowledged" type="button" class="text-button" @click="acknowledge(alert)">Reconocer</button>
+                    <button v-if="canEdit && !alert.silenced" type="button" class="text-button text-button--quiet" @click="askSilence(alert)">Silenciar</button>
+                    <button v-if="canIncident" type="button" class="text-button" @click="openIncident(alert)">
+                      {{ alert.incident ? 'Ver incidente' : 'Vincular incidencia' }}
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+            <p v-else class="empty-state">No hay alertas activas en este momento. Las recuperadas se conservan en el historial.</p>
+          </div>
+
+          <div v-if="unmonitoredRows.length" class="mon-panel mon-unmonitored">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Sin datos de supervisión</h2>
+              <button type="button" class="text-button" @click="openConfig('supervision')">Configurar comprobaciones</button>
+            </header>
+            <ul class="mon-unmonitored__list">
+              <li v-for="row in unmonitoredRows" :key="row.assetId" class="mon-unmonitored__item">
+                <div>
+                  <span class="mon-unmonitored__name">{{ row.asset.name }}</span>
+                  <span class="mon-unmonitored__meta mono">{{ row.asset.quickCode }}</span>
+                </div>
+                <span class="mon-unmonitored__state">{{ row.reasonLabel || row.statusLabel }}</span>
+              </li>
+            </ul>
+            <p class="mon-panel__sub">Sin supervisión, sin datos y sin lectura son estados distintos: ninguno se cuenta como caída ni inventa disponibilidad.</p>
+          </div>
+        </div>
+
+        <div v-if="tab === 'dispositivos'" role="tabpanel" class="mon-stack">
+          <div class="mon-toolbar mon-toolbar--wrap">
+            <label class="field mon-search">
+              <span class="field__label">Buscar</span>
+              <span class="search-field">
+                <app-icon name="search"></app-icon>
+                <input v-model="deviceFilters.query" type="search" placeholder="Nombre, código o destino">
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Estado</span>
+              <span class="select-field">
+                <select v-model="deviceFilters.status">
+                  <option value="all">Todos</option>
+                  <option value="up">Disponible</option>
+                  <option value="degraded">Degradado</option>
+                  <option value="down">No disponible</option>
+                  <option value="unmonitored">Sin supervisión</option>
+                  <option value="no_data">Sin datos</option>
+                  <option value="unavailable">Sin lectura</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Categoría</span>
+              <span class="select-field">
+                <select v-model="deviceFilters.category">
+                  <option value="all">Todas</option>
+                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option>
+                </select>
+              </span>
+            </label>
+            <label class="field">
+              <span class="field__label">Sede</span>
+              <span class="select-field">
+                <select v-model="deviceFilters.site">
+                  <option value="all">Todas</option>
+                  <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.name }}</option>
+                </select>
+              </span>
+            </label>
+          </div>
+
+          <p v-if="loading" class="mon-panel__sub" role="status">Cargando dispositivos…</p>
+          <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
+          <div v-else class="mon-table-wrap">
             <table class="mon-table">
-              <caption class="sr-only">Dispositivos supervisados con su estado actual y sus métricas</caption>
+              <caption class="sr-only">Dispositivos supervisados con su estado, comprobación, latencia y disponibilidad</caption>
               <thead>
                 <tr>
-                  <th scope="col">Dispositivo</th>
+                  <th scope="col">Activo</th>
                   <th scope="col">Estado</th>
+                  <th scope="col">Comprobación</th>
                   <th scope="col">Latencia</th>
-                  <th scope="col">Uptime</th>
-                  <th scope="col">Última comprobación</th>
-                  <th scope="col">Comprobaciones</th>
+                  <th scope="col">Disponibilidad</th>
+                  <th scope="col">Última lectura</th>
+                  <th scope="col">Alertas</th>
                   <th scope="col"><span class="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in deviceRows" :key="row.asset.id" class="mon-table__row" @click="openDevice(row.asset.id)">
-                  <th scope="row" class="mon-table__name">
-                    <button type="button" class="mon-table__device" @click.stop="openDevice(row.asset.id)">
-                      <span class="mon-table__title">{{ row.asset.name }}</span>
-                      <span class="mon-table__meta mono">{{ row.asset.id }} · {{ row.asset.ip }}</span>
+                <tr v-for="row in deviceRows" :key="row.assetId" class="mon-table__row">
+                  <td>
+                    <button type="button" class="mon-table__device" @click="openDevice(row.assetId)">
+                      <span class="mon-table__name">{{ row.asset.name }}</span>
+                      <span class="mon-table__meta mono">{{ row.asset.quickCode }} · {{ row.asset.site || 'Sin sede' }}</span>
                     </button>
-                  </th>
-                  <td><mon-status-pill :status="row.status"></mon-status-pill></td>
-                  <td class="mono">{{ row.latencyMs === null ? '—' : fmtNumber(row.latencyMs, 'ms') }}</td>
+                  </td>
+                  <td>
+                    <mon-status-pill :status="row.status"></mon-status-pill>
+                    <span v-if="row.reasonLabel" class="mon-table__meta">{{ row.reasonLabel }}</span>
+                  </td>
+                  <td>
+                    <span>{{ checkMeta(row.checkType).label || '—' }}</span>
+                    <span class="mon-table__meta mono">{{ row.target || 'Sin destino' }}</span>
+                  </td>
+                  <td class="mono">{{ fmtNumber(row.latencyMs, 'ms') }}</td>
                   <td class="mono">{{ row.uptimePct === null ? '—' : fmtNumber(row.uptimePct, '%') }}</td>
-                  <td>
-                    <span class="mon-table__time">{{ rel(row.lastCheckAt) }}</span>
-                    <span class="mon-table__meta">cada {{ row.intervalMinutes }} min</span>
-                  </td>
-                  <td>
-                    <span v-if="!row.monitored" class="mon-table__meta">Sin supervisión</span>
-                    <span v-else class="mon-checks">
-                      <span v-for="check in row.checks" :key="check.check.id" class="mon-check-dot"
-                            :class="'mon-check-dot--' + checkTone(check)"
-                            :title="check.check.label + ': ' + fmtValue(check)"></span>
-                    </span>
-                  </td>
+                  <td class="mon-table__time">{{ row.lastCheckAt ? fmtDateTime(row.lastCheckAt) : 'Sin lectura' }}</td>
+                  <td class="mono">{{ row.activeAlerts }}</td>
                   <td class="mon-table__actions">
-                    <app-icon name="chevron-right"></app-icon>
+                    <button type="button" class="text-button" @click="openDevice(row.assetId)">Ver</button>
                   </td>
                 </tr>
               </tbody>
             </table>
-            <p v-if="!deviceRows.length" class="empty-state">Ningún dispositivo coincide con los filtros.</p>
+            <p v-if="!deviceRows.length" class="empty-state">No hay dispositivos con estos filtros.</p>
+          </div>
+          <div v-if="truncated" class="mon-settings__actions">
+            <button type="button" class="btn btn--secondary" :disabled="loading" @click="openMoreDevices">Cargar más dispositivos</button>
+            <span class="mon-panel__sub">{{ rows.length }} de {{ stats.total }}</span>
           </div>
         </div>
 
-        <!-- ------------------------------------------------ alertas -->
-        <div v-show="tab === 'alertas'" class="mon-view" id="mon-view-alertas" role="tabpanel" aria-labelledby="mon-tab-alertas">
+        <div v-if="tab === 'alertas'" role="tabpanel" class="mon-stack">
           <div class="mon-toolbar mon-toolbar--wrap">
-            <label class="search-field mon-search">
-              <app-icon name="search"></app-icon>
-              <span class="sr-only">Buscar alerta</span>
-              <input v-model="filters.query" type="search" placeholder="Buscar alerta, dispositivo o incidente">
+            <label class="field mon-search">
+              <span class="field__label">Buscar</span>
+              <span class="search-field">
+                <app-icon name="search"></app-icon>
+                <input v-model="filters.query" type="search" placeholder="Alerta, activo o resumen">
+              </span>
             </label>
-            <label class="mon-filter">
-              <span class="sr-only">Severidad</span>
+            <label class="field">
+              <span class="field__label">Estado</span>
               <span class="select-field">
-                <select v-model="filters.severity">
-                  <option value="all">Toda severidad</option>
-                  <option value="critica">Crítica</option>
-                  <option value="alta">Alta</option>
-                  <option value="media">Media</option>
-                  <option value="baja">Baja</option>
+                <select v-model="filters.state" @change="applyAlertFilters">
+                  <option v-for="option in alertStateOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
                 </select>
               </span>
             </label>
-            <label class="mon-filter">
-              <span class="sr-only">Estado</span>
+            <label class="field">
+              <span class="field__label">Severidad</span>
               <span class="select-field">
-                <select v-model="filters.state">
-                  <option value="active">Activas</option>
-                  <option value="history">Históricas</option>
+                <select v-model="filters.severity" @change="applyAlertFilters">
                   <option value="all">Todas</option>
-                  <option value="recovered">Recuperadas</option>
-                  <option value="resolved">Resueltas</option>
-                  <option value="converted">Convertidas</option>
-                  <option value="linked">Vinculadas</option>
+                  <option v-for="option in severityOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
                 </select>
               </span>
             </label>
-            <label class="mon-filter">
-              <span class="sr-only">Categoría</span>
+            <label class="field">
+              <span class="field__label">Activo</span>
               <span class="select-field">
-                <select v-model="filters.category">
-                  <option value="all">Toda categoría</option>
-                  <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.label }}</option>
+                <select v-model="filters.assetId" @change="applyAlertFilters">
+                  <option value="all">Todos</option>
+                  <option v-for="asset in assetOptions" :key="asset.id" :value="asset.id">{{ asset.name }}</option>
                 </select>
               </span>
             </label>
-            <label class="mon-filter">
-              <span class="sr-only">Sede</span>
-              <span class="select-field">
-                <select v-model="filters.site">
-                  <option value="all">Toda sede</option>
-                  <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
-                </select>
-              </span>
-            </label>
-            <label class="mon-filter">
-              <span class="sr-only">Reconocimiento</span>
+            <label class="field">
+              <span class="field__label">Reconocimiento</span>
               <span class="select-field">
                 <select v-model="filters.ack">
-                  <option value="all">Reconocidas y no</option>
-                  <option value="no">Sin reconocer</option>
-                  <option value="yes">Reconocidas</option>
+                  <option value="all">Todas</option>
+                  <option value="ack">Reconocidas</option>
+                  <option value="unack">Sin reconocer</option>
                 </select>
               </span>
             </label>
-            <span class="filter-count mono">{{ filteredAlertCount }}</span>
+            <label class="field">
+              <span class="field__label">Silencio</span>
+              <span class="select-field">
+                <select v-model="filters.silenced">
+                  <option value="all">Todos</option>
+                  <option value="silenced">Silenciadas</option>
+                  <option value="active">Sin silencio</option>
+                </select>
+              </span>
+            </label>
           </div>
 
-          <ul v-if="alertRows.length" class="mon-alert-list">
-            <li v-for="row in alertRows" :key="row.alert.id" class="mon-alert" :class="['mon-alert--' + severityTone(row), { 'is-silenced': row.silenced }]">
+          <p v-if="alertsLoading" class="mon-panel__sub" role="status">Cargando alertas…</p>
+          <div v-else-if="alertsError" class="mon-notice" role="alert"><span class="mon-notice__text">{{ alertsError }}</span></div>
+          <ul v-else-if="alertRows.length" class="mon-alert-list">
+            <li v-for="alert in alertRows" :key="alert.id" class="mon-alert" :class="'mon-alert--' + alert.severityTone">
               <div class="mon-alert__rail"></div>
               <div class="mon-alert__body">
                 <div class="mon-alert__head">
-                  <button type="button" class="mon-alert__title" @click="openAlert(row.alert.id)">
-                    {{ row.asset ? row.asset.name : row.alert.assetId }}
-                  </button>
-                  <span class="mon-tag mono">{{ row.alert.id }}</span>
-                  <span class="mon-tag" :class="'mon-tag--' + severityTone(row)">{{ row.severity.label }}</span>
-                  <span class="mon-tag" :class="'mon-tag--' + alertStateTone(row)">{{ row.state.label }}</span>
-                  <span v-if="row.alert.intermittent" class="mon-tag mon-tag--hold">Intermitente</span>
+                  <button type="button" class="mon-alert__title" @click="openAlert(alert.id)">{{ alert.alertName }}</button>
+                  <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
+                  <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                  <span v-if="alert.acknowledged" class="mon-tag mon-tag--ok">Reconocida</span>
+                  <span v-if="alert.silenced" class="mon-tag">Silenciada</span>
+                  <span v-if="alert.incident" class="mon-tag">Incidente</span>
                 </div>
-                <p class="mon-alert__message">{{ row.alert.message }}</p>
-                <div class="mon-alert__meta">
-                  <span>{{ row.kind.label }}</span>
-                  <span>Detectada {{ fmtDateTime(row.alert.detectedAt) }}</span>
-                  <span v-if="row.groupCount > 1">{{ row.groupCount }} eventos agrupados</span>
-                  <span v-if="row.acknowledged">Reconocida por {{ row.alert.acknowledgedBy }}</span>
-                  <span v-if="row.silenced">Silenciada hasta {{ fmtDateTime(row.silence.until) }}</span>
-                  <span v-if="row.incidentId" class="mon-alert__incident">{{ row.incidentId }}</span>
-                </div>
-                <div v-if="canEdit" class="mon-alert__actions">
-                  <button v-if="row.active && !row.acknowledged" type="button" class="text-button" @click="ack(row.alert)">Reconocer</button>
-                  <button v-if="row.active && !row.silenced" type="button" class="text-button text-button--quiet" @click="askSilence(row.alert)">Silenciar</button>
-                  <button v-if="row.silenced" type="button" class="text-button text-button--quiet" @click="dismiss(row.alert)">Cancelar silencio</button>
-                  <button v-if="row.active && row.incidentId" type="button" class="text-button" @click="openIncident(row.incidentId)">Ver incidente</button>
-                  <button v-else-if="row.active && canIncident" type="button" class="text-button" @click="askConvert(row.alert)">Crear incidente</button>
-                  <button v-if="row.alert.state === 'open'" type="button" class="text-button text-button--quiet" @click="recover(row.alert.assetId)">Simular recuperación</button>
-                  <button v-else-if="row.alert.state === 'recovered'" type="button" class="text-button" @click="resolve(row.alert)">Resolver</button>
-                  <button type="button" class="text-button text-button--quiet" @click="openAlert(row.alert.id)">Detalles</button>
+                <p class="mon-alert__message">{{ alert.message }}</p>
+                <p class="mon-alert__meta mono">{{ alert.quickCode || alert.assetName }} · {{ fmtDateTime(alert.lastSeenAt || alert.startsAt) }}</p>
+                <div class="mon-alert__actions">
+                  <button v-if="canEdit && alert.state !== 'resolved' && !alert.acknowledged" type="button" class="text-button" @click="acknowledge(alert)">Reconocer</button>
+                  <button v-if="canEdit && alert.state !== 'resolved' && !alert.silenced" type="button" class="text-button text-button--quiet" @click="askSilence(alert)">Silenciar</button>
+                  <button type="button" class="text-button text-button--quiet" @click="openAlert(alert.id)">Detalle</button>
                 </div>
               </div>
             </li>
           </ul>
-          <p v-else class="empty-state">Ninguna alerta coincide con los filtros seleccionados.</p>
+          <p v-else class="empty-state">No hay alertas con estos filtros.</p>
+          <div v-if="alertsTruncated" class="mon-settings__actions">
+            <button type="button" class="btn btn--secondary" :disabled="alertsLoading" @click="openMoreAlerts">Cargar más alertas</button>
+            <span class="mon-panel__sub">{{ monitoringAlerts.length }} de {{ app.monitoringApi.alerts.total }}</span>
+          </div>
         </div>
 
-        <mon-silence-dialog :open="dialogs.silence" :alert="activeAlert" :app="app" @close="dialogs.silence = false" @saved="silenceSaved"></mon-silence-dialog>
-        <mon-convert-dialog :open="dialogs.convert" :alert="activeAlert" :app="app" @close="dialogs.convert = false" @saved="convertSaved"></mon-convert-dialog>
+        <mon-silence-dialog :open="dialogs.silence" :alert="activeAlert" :asset-id="activeAlert ? activeAlert.assetId : ''"
+                            :app="app" @close="dialogs.silence = false" @saved="refresh"></mon-silence-dialog>
+        <mon-convert-dialog :open="dialogs.convert" :alert="activeAlert" :app="app"
+                            @close="dialogs.convert = false" @saved="refresh"></mon-convert-dialog>
       </section>
     `
   };
 
   // ---------------------------------------------------------------- device
   Views.MonitorDevice = {
-    components: {
-      AppIcon: window.AppIcon,
-      MonChart: Views.MonChart,
-      MonStatusPill: Views.MonStatusPill,
-      MonMetric: Views.MonMetric,
-      MonSilenceDialog: Views.MonSilenceDialog
-    },
+    components: { AppIcon: window.AppIcon, MonChart: Views.MonChart, MonSpark: Views.MonSpark, MonStatusPill: Views.MonStatusPill, MonMetric: Views.MonMetric, MonSilenceDialog: Views.MonSilenceDialog, MonConvertDialog: Views.MonConvertDialog },
     props: { app: { type: Object, required: true } },
     data() {
-      return {
-        range: this.app.monitoring.prefs.range,
-        now: Date.now(),
-        dialogs: { silence: false },
-        activeAlert: null
-      };
+      return { metric: 'latency', dialogs: { silence: false, convert: false }, activeAlert: null };
     },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      assetId() { return this.app.route ? this.app.route.assetId : ''; },
-      asset() { return (this.app.assets || []).find((item) => item.id === this.assetId) || null; },
-      alerts() { return (this.app.maintenance && this.app.maintenance.alerts) || []; },
-      row() { return this.asset ? M.deviceRow(this.monitoring, this.asset, this.alerts, this.now) : null; },
-      deviceAlerts() {
-        return this.alerts
-          .filter((alert) => alert.assetId === this.assetId)
-          .sort((a, b) => Date.parse(b.detectedAt) - Date.parse(a.detectedAt))
-          .map((alert) => M.alertRow(this.monitoring, alert, this.app.assets, this.now));
+      record() { return this.app.monitoringDeviceRecord; },
+      asset() {
+        if (this.record && this.record.asset) return this.record.asset;
+        return this.app.currentAsset || { id: this.app.route.assetId, name: this.app.route.assetId, quickCode: '', category: '', image: '' };
       },
-      availability() { return this.asset ? M.availabilitySeries(this.monitoring, this.asset, this.range, this.now) : []; },
-      latency() { return this.asset ? M.latencySeries(this.monitoring, this.asset, this.range, this.now) : []; },
-      ranges() { return Data.RANGES; },
-      canEdit() { return this.app.can('assets.edit'); },
-      exception() { return M.exceptionFor(this.monitoring, this.assetId); },
-      policy() { return this.asset ? M.policyFor(this.monitoring, this.asset.category) : null; },
-      monitoringLabel() {
-        if (this.row && this.row.monitored) return 'Supervisado cada ' + this.row.intervalMinutes + ' min';
-        return 'Sin comprobaciones configuradas';
+      loading() { return this.app.monitoringDeviceLoading; },
+      error() { return this.app.monitoringDeviceError; },
+      missing() { return this.app.monitoringDeviceMissing; },
+      period() { return this.app.monitoringDevicePeriod; },
+      ranges() {
+        const presets = this.app.monitoringPresets.periods;
+        return presets && presets.length ? presets : ['24h', '7d', '30d'];
       },
-      statusPill() { return this.row ? this.row.status : 'unmonitored'; }
+      status() { return this.record ? this.record.status : 'no_data'; },
+      provenance() { return this.record ? this.record.provenance : { source: 'prometheus', period: { preset: this.period } }; },
+      uptimePercent() { return this.record && this.record.uptime ? this.record.uptime.percent : null; },
+      uptimeSamples() { return this.record && this.record.uptime ? this.record.uptime.samples : null; },
+      alertList() { return this.record && this.record.alerts ? this.record.alerts.recent || [] : []; },
+      activeAlerts() { return this.alertList.filter((alert) => alert.state === 'firing' || alert.state === 'pending'); },
+      checks() { return this.record ? this.record.checks || [] : []; },
+      series() { return this.record ? this.record.series || [] : []; },
+      metricOptions() {
+        return this.series.map((item) => ({ id: item.metric, label: this.metricLabel(item.metric), unit: item.unit, points: item.points }))
+          .filter((item) => item.points.length);
+      },
+      activeSeries() {
+        return this.series.find((item) => item.metric === this.metric) || this.series[0] || { metric: 'latency', unit: 'seconds', points: [] };
+      },
+      chartPoints() {
+        return this.activeSeries.points.map((point) => ({
+          at: point.at,
+          label: point.label,
+          value: this.activeSeries.metric === 'latency' ? Math.round(point.value * 1000 * 10) / 10 : point.value
+        }));
+      },
+      chartUnit() { return this.activeSeries.metric === 'latency' ? 'ms' : (this.activeSeries.unit === 'percent' ? '%' : (this.activeSeries.unit === 'celsius' ? '°C' : '')); },
+      chartLabel() { return this.metricLabel(this.activeSeries.metric) + ' en el período'; },
+      config() { return this.record ? this.record.config : null; },
+      configRows() {
+        const config = this.config;
+        if (!config) return [];
+        return [
+          { label: 'Habilitada', value: config.enabled ? 'Sí' : 'No' },
+          { label: 'Comprobación', value: Mapping.checkMeta(config.checkType).label || '—' },
+          { label: 'Destino', value: config.target || 'Sin destino' },
+          { label: 'Intervalo', value: config.intervalSeconds ? config.intervalSeconds + ' s' : '—' },
+          { label: 'Duración mínima', value: config.minimumDurationSeconds === null ? '—' : config.minimumDurationSeconds + ' s' },
+          { label: 'Exportador', value: config.exporterId || '—' },
+          { label: 'Módulo SNMP', value: config.snmpModule || '—' },
+          { label: 'Credencial SNMP', value: config.snmpAuthRef ? 'Referencia configurada' : '—' }
+        ];
+      },
+      overriddenLabel() {
+        return this.config && this.config.overridden && this.config.overridden.length
+          ? this.config.overridden.join(', ')
+          : 'Ningún valor sobrescribe el perfil de categoría';
+      },
+      metrics() {
+        return [
+          { label: 'Disponibilidad', value: this.uptimePercent === null ? '—' : fmtNumber(this.uptimePercent, '%'), hint: this.uptimeSamples === null ? 'Sin muestras' : this.uptimeSamples + ' muestras', icon: 'activity', tone: this.uptimePercent === null ? 'neutral' : 'ok' },
+          { label: 'Latencia actual', value: this.record && this.record.latency ? fmtNumber(this.record.latency.currentMs, 'ms') : '—', hint: this.record && this.record.latency ? 'P95 ' + fmtNumber(this.record.latency.p95Ms, 'ms') : 'Sin resumen', icon: 'clock', tone: 'neutral' },
+          { label: 'Última comprobación', value: this.checks.length ? fmtDateTime(this.checks[0].lastCheckAt) : 'Sin lectura', hint: !this.checks.length ? 'Sin muestra' : (this.checks[0].latencyMs === null || this.checks[0].latencyMs === undefined ? rel(this.checks[0].lastCheckAt) : fmtNumber(this.checks[0].latencyMs, 'ms')), icon: 'check', tone: 'neutral' },
+          { label: 'Alertas activas', value: String(this.activeAlerts.length), hint: this.alertList.length + ' recientes', icon: 'alert', tone: this.activeAlerts.length ? 'warn' : 'ok' }
+        ];
+      }
+    },
+    watch: {
+      'app.route.assetId'(id) {
+        if (id) this.app.loadMonitoringDevice(id, this.period);
+      },
+      metric(value) {
+        if (value && !this.series.some((item) => item.metric === value)) this.metric = this.activeSeries.metric;
+      }
     },
     methods: {
-      fmtNumber: fmtNumber,
-      fmtValue: fmtValue,
-      fmtDateTime: fmtDateTime,
-      fmtClock: fmtClock,
-      rel: rel,
-      duration: duration,
-      setRange(id) { this.range = id; this.now = Date.now(); },
+      fmtNumber,
+      fmtDateTime,
+      fmtDay,
+      fmtClock,
+      rel,
+      duration,
+      periodLabel,
+      statusMeta: Mapping.statusMeta,
+      checkMeta: Mapping.checkMeta,
+      severityMeta: Mapping.severityMeta,
+      alertStateMeta: Mapping.alertStateMeta,
+      metricLabel(metric) {
+        return { latency: 'Latencia', cpu: 'CPU', memory: 'Memoria', disk: 'Disco', temperature: 'Temperatura' }[metric] || metric;
+      },
+      setRange(period) {
+        if (this.app.route.assetId) this.app.loadMonitoringDevice(this.app.route.assetId, period);
+      },
+      refresh() {
+        if (this.app.route.assetId) this.app.loadMonitoringDevice(this.app.route.assetId, this.period);
+      },
       back() { if (this.app.setHash) this.app.setHash({ name: 'monitoring', section: 'dispositivos' }); },
-      openAsset() { if (this.app.setHash) this.app.setHash({ name: 'detail', assetId: this.assetId }); },
-      openAlert(id) { if (this.app.setHash) this.app.setHash({ name: 'monitorAlert', alertId: id }); },
-      checkNow() {
-        const probe = M.ensureProbe(this.monitoring, this.asset);
-        if (!probe) {
-          this.app.showToast('El equipo no está incluido en la supervisión.');
-          return;
-        }
-        probe.checks = (probe.checks || 0) + 1;
-        probe.lastCheckAt = M.nowIso();
-        M.evaluateAlert(this.monitoring, this.app.maintenance, this.app.assets, this.assetId, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.now = Date.now();
-        this.app.showToast('Comprobación ejecutada sobre ' + this.asset.name + '.');
+      openAsset() { if (this.app.setHash) this.app.setHash({ name: 'detail', assetId: this.asset.id }); },
+      openAlert(alert) {
+        if (alert && alert.id && this.app.setHash) this.app.setHash({ name: 'monitorAlert', alertId: alert.id });
       },
-      recover() {
-        const result = M.recoverDevice(this.monitoring, this.app.maintenance, this.app.assets, this.assetId, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Recuperación simulada registrada.' : result.errors[0]);
+      openIncident(alert) {
+        if (this.app.setHash && alert.incident) this.app.setHash({ name: 'incident', incidentId: alert.incident.id });
       },
-      ack(alert) {
-        const result = M.acknowledge(this.monitoring, this.app.maintenance, alert.id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok ? alert.id + ' reconocida.' : result.errors[0]);
+      configure() { if (this.app.setHash) this.app.setHash('#/configuracion/supervision'); },
+      async acknowledge(alert) {
+        const result = await this.app.acknowledgeMonitoringAlert(alert.id, '');
+        if (result.ok) this.refresh();
       },
       askSilence(alert) { this.activeAlert = alert; this.dialogs.silence = true; },
-      silenceSaved() { this.now = Date.now(); },
-      includeInMonitoring() {
-        const result = M.saveException(this.monitoring, this.assetId, {
-          enabled: true,
-          intervalMinutes: 15,
-          checkIds: ['availability'],
-          asset: this.asset
-        });
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Equipo incorporado a la supervisión con la comprobación básica.' : result.errors[0]);
-      },
-      removeFromMonitoring() {
-        const result = M.removeException(this.monitoring, this.assetId);
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Equipo devuelto a la política de su categoría.' : result.errors[0]);
-      },
-      checkTone(check) {
-        if (check.status === 'crit') return 'down';
-        if (check.status === 'warn') return 'warn';
-        if (check.status === 'unknown') return 'neutral';
-        return 'ok';
-      },
-      severityTone(alert) { return M.severityMeta(alert.severity).tone; },
-      stateTone(alert) { return M.alertStateMeta(alert.state).tone; }
+      askConvert(alert) { this.activeAlert = alert; this.dialogs.convert = true; },
+      checkTone(state) { return state === 'up' ? 'ok' : (state === 'down' ? 'down' : 'neutral'); }
     },
     template: `
-      <section v-if="asset && row" class="page mon-page mon-device" aria-labelledby="mon-device-title">
+      <section class="page mon-page mon-device" aria-labelledby="mon-device-title">
         <nav class="breadcrumbs" aria-label="Migas de pan">
-          <button type="button" class="back-link" @click="back"><app-icon name="arrow-left"></app-icon> Supervisión</button>
-          <span class="crumb">{{ asset.name }}</span>
+          <button type="button" class="text-button" @click="back">Supervisión</button>
+          <span aria-hidden="true">/</span>
+          <span>{{ asset.name }}</span>
         </nav>
 
         <header class="mon-device__head">
           <div class="mon-device__identity">
-            <span class="mon-device__thumb"><img :src="asset.image" :alt="''" loading="lazy"></span>
+            <img v-if="asset.image" class="mon-device__thumb" :src="asset.image" alt="" aria-hidden="true">
             <div>
-              <p class="eyebrow"><span class="eyebrow__line"></span> {{ asset.type }} · {{ asset.id }}</p>
+              <p class="eyebrow"><span class="eyebrow__line"></span> Dispositivo supervisado</p>
               <h1 id="mon-device-title">{{ asset.name }}</h1>
-              <p class="page-sub">{{ asset.ip }} · {{ asset.location }} · {{ monitoringLabel }}</p>
+              <p class="page-sub mono">{{ asset.quickCode || asset.id }} · {{ asset.category || 'Sin categoría' }} · {{ asset.site || 'Sin sede' }}</p>
             </div>
           </div>
-          <div class="mon-device__actions">
-            <mon-status-pill :status="statusPill"></mon-status-pill>
-            <div class="mon-range" role="group" aria-label="Período de las gráficas">
-              <button v-for="option in ranges" :key="option.id" type="button" class="mon-range__button"
-                      :class="{ 'is-active': option.id === range }" :aria-pressed="option.id === range"
-                      @click="setRange(option.id)">{{ option.label }}</button>
+          <div class="mon-head__actions">
+            <mon-status-pill :status="status"></mon-status-pill>
+            <div class="mon-range" role="group" aria-label="Período del dispositivo">
+              <button v-for="period in ranges" :key="period" type="button" class="mon-range__button"
+                      :class="{ 'is-active': app.monitoringDevicePeriod === period }" :aria-pressed="app.monitoringDevicePeriod === period" @click="setRange(period)">{{ periodLabel(period) }}</button>
             </div>
-            <button v-if="canEdit" type="button" class="btn btn--secondary" @click="checkNow">
-              <app-icon name="refresh"></app-icon> Comprobar
+            <button type="button" class="btn btn--secondary" :disabled="loading" @click="refresh">
+              <app-icon name="refresh"></app-icon> {{ loading ? 'Actualizando…' : 'Actualizar' }}
             </button>
-            <button type="button" class="btn btn--ghost" @click="openAsset">
-              <app-icon name="arrow-up-right"></app-icon> Ficha del activo
-            </button>
+            <button type="button" class="btn btn--ghost" @click="openAsset">Ficha del activo</button>
           </div>
         </header>
 
-        <div class="mon-metrics">
-          <mon-metric label="Disponibilidad" :value="row.uptimePct === null ? '—' : fmtNumber(row.uptimePct, '%')" :hint="row.monitored ? 'Período ' + range : 'Sin supervisión'" icon="activity" :tone="row.status === 'down' ? 'down' : 'ok'"></mon-metric>
-          <mon-metric label="Latencia" :value="row.latencyMs === null ? '—' : fmtNumber(row.latencyMs, 'ms')" hint="Última comprobación" icon="wifi" :tone="row.latencyMs === null ? 'neutral' : 'hold'"></mon-metric>
-          <mon-metric label="Uptime" :value="row.uptimeDays === null ? '—' : duration(row.uptimeDays * 1440)" hint="Desde el último reinicio" icon="clock"></mon-metric>
-          <mon-metric label="Última comprobación" :value="row.monitored ? rel(row.lastCheckAt) : '—'" :hint="row.monitored ? 'Cada ' + row.intervalMinutes + ' min' : 'Sin comprobaciones'" icon="refresh"></mon-metric>
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando el dispositivo desde el servidor…</p>
+        <div v-else-if="missing" class="mon-notice" role="alert">
+          <strong class="mon-notice__title">Dispositivo no disponible</strong>
+          <span class="mon-notice__text">{{ error }}</span>
         </div>
+        <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
 
-        <div v-if="!row.monitored" class="mon-notice">
-          <app-icon name="info"></app-icon>
-          <div>
-            <p class="mon-notice__title">Este equipo no tiene datos de supervisión</p>
-            <p class="mon-notice__text">No se muestran porcentajes de disponibilidad porque no existe ninguna comprobación ejecutándose. Puedes incorporarlo con la comprobación básica.</p>
+        <template v-if="record">
+          <p v-if="record.reasonLabel" class="mon-panel__sub">{{ record.reasonLabel }}</p>
+          <div class="mon-metrics">
+            <mon-metric v-for="metric in metrics" :key="metric.label" :label="metric.label" :value="metric.value"
+                        :hint="metric.hint" :icon="metric.icon" :tone="metric.tone"></mon-metric>
           </div>
-          <button v-if="canEdit" type="button" class="btn btn--primary" @click="includeInMonitoring">Incorporar a supervisión</button>
-        </div>
 
-        <template v-if="row.monitored">
-          <div class="mon-grid mon-grid--charts">
-            <mon-chart :points="availability" tone="teal" unit="%" :min="80" :max="100" :height="180" :label="'Disponibilidad · ' + range"></mon-chart>
-            <mon-chart :points="latency" tone="hold" unit="ms" :height="180" :label="'Evolución de latencia · ' + range"></mon-chart>
+          <p class="mon-panel__sub">
+            Origen {{ provenance.source }} · período {{ periodLabel(provenance.period.preset) }} ·
+            ventana {{ provenance.period.from ? fmtDateTime(provenance.period.from) : 'sin fecha' }} a {{ provenance.period.to ? fmtDateTime(provenance.period.to) : 'sin fecha' }}.
+          </p>
+
+          <div v-if="status === 'unmonitored'" class="mon-notice">
+            <strong class="mon-notice__title">Este activo no está incluido en la supervisión</strong>
+            <span class="mon-notice__text">No se muestran porcentajes ni series inventadas. Configura una comprobación real para empezar a recibir datos.</span>
+            <div class="mon-notice__actions">
+              <button type="button" class="btn btn--secondary" @click="configure">Configurar supervisión</button>
+            </div>
           </div>
 
           <div class="mon-grid mon-grid--split">
-            <section class="mon-panel" aria-labelledby="mon-checks-title">
+            <div class="mon-panel">
               <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-checks-title" class="mon-panel__title">Comprobaciones</h2>
-                  <p class="mon-panel__sub">Umbrales de aviso y crítico por métrica</p>
-                </div>
+                <h2 class="mon-panel__title">Comprobaciones</h2>
+                <span class="mon-panel__sub">{{ checks.length }} tipos</span>
               </header>
-              <ul class="mon-checks-list">
-                <li v-for="check in row.checks" :key="check.check.id" class="mon-checks-list__item">
-                  <span class="mon-checks-list__icon" :class="'mon-checks-list__icon--' + checkTone(check)">
-                    <app-icon :name="check.check.icon"></app-icon>
-                  </span>
-                  <span class="mon-checks-list__label">{{ check.check.label }}</span>
-                  <span class="mon-checks-list__value mono">{{ fmtValue(check) }}</span>
-                  <span class="mon-checks-list__limit mono">aviso {{ fmtNumber(check.check.warn, check.check.unit) }} · crítico {{ fmtNumber(check.check.crit, check.check.unit) }}</span>
+              <ul v-if="checks.length" class="mon-checks-list">
+                <li v-for="check in checks" :key="check.checkType + ':' + check.module" class="mon-checks-list__item">
+                  <span class="mon-checks-list__icon" :class="'mon-check-dot--' + checkTone(check.state)"></span>
+                  <span class="mon-checks-list__label">{{ checkMeta(check.checkType).label }} <span class="mono">{{ check.module }}</span></span>
+                  <span class="mon-checks-list__value">{{ check.latencyMs === null ? 'Sin latencia' : fmtNumber(check.latencyMs, 'ms') }}</span>
+                  <span class="mon-checks-list__limit">{{ check.lastCheckAt ? fmtDateTime(check.lastCheckAt) : 'Sin muestra' }}</span>
                 </li>
               </ul>
-              <p v-if="!row.checks.length" class="empty-state">La categoría no tiene comprobaciones activas.</p>
-            </section>
+              <p v-else class="empty-state">Sin comprobaciones registradas para este activo.</p>
+            </div>
 
-            <section class="mon-panel" aria-labelledby="mon-device-alerts-title">
+            <div class="mon-panel">
               <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-device-alerts-title" class="mon-panel__title">Alertas del equipo</h2>
-                  <p class="mon-panel__sub">{{ deviceAlerts.length }} registros entre activas e históricas</p>
-                </div>
+                <h2 class="mon-panel__title">Configuración efectiva</h2>
+                <span class="mon-panel__sub">Perfil {{ config.profileCategory || '—' }}</span>
               </header>
-              <ul v-if="deviceAlerts.length" class="mon-alert-list mon-alert-list--compact">
-                <li v-for="alert in deviceAlerts" :key="alert.alert.id" class="mon-alert" :class="'mon-alert--' + severityTone(alert)">
-                  <div class="mon-alert__body">
-                    <button type="button" class="mon-alert__title" @click="openAlert(alert.alert.id)">{{ alert.alert.id }} · {{ alert.kind.label }}</button>
-                    <p class="mon-alert__message">{{ alert.alert.message }}</p>
-                    <div class="mon-alert__meta">
-                      <span class="mon-tag" :class="'mon-tag--' + severityTone(alert)">{{ alert.severity.label }}</span>
-                      <span class="mon-tag" :class="'mon-tag--' + stateTone(alert)">{{ alert.state.label }}</span>
-                      <span class="mon-tag">{{ rel(alert.alert.detectedAt) }}</span>
-                      <span v-if="alert.silenced" class="mon-tag">Silenciada</span>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-              <p v-else class="empty-state">El equipo no tiene alertas registradas.</p>
-            </section>
+              <dl class="mon-facts">
+                <div v-for="row in configRows" :key="row.label" class="mon-facts__row">
+                  <dt>{{ row.label }}</dt><dd class="mono">{{ row.value }}</dd>
+                </div>
+              </dl>
+              <p class="mon-panel__sub">Sobrescrituras: {{ overriddenLabel }}.</p>
+            </div>
           </div>
 
-          <div v-if="canEdit" class="mon-actions">
-            <button v-if="row.status !== 'up'" type="button" class="btn btn--secondary" @click="recover">
-              <app-icon name="restore"></app-icon> Simular recuperación
-            </button>
-            <button v-if="exception" type="button" class="btn btn--ghost" @click="removeFromMonitoring">
-              <app-icon name="slash"></app-icon> Quitar excepción de supervisión
-            </button>
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Series del período</h2>
+              <label class="field mon-input">
+                <span class="sr-only">Métrica</span>
+                <span class="select-field">
+                  <select v-model="metric">
+                    <option v-for="option in metricOptions" :key="option.id" :value="option.id">{{ option.label }}</option>
+                  </select>
+                </span>
+              </label>
+            </header>
+            <mon-chart :label="chartLabel" :points="chartPoints" :unit="chartUnit" :zero-base="activeSeries.metric !== 'latency'" :tone="activeSeries.metric === 'latency' ? 'teal' : 'warn'"></mon-chart>
+            <p v-if="!metricOptions.length" class="mon-panel__sub">No hay series disponibles para este período.</p>
+          </div>
+
+          <div class="mon-panel">
+            <header class="mon-panel__head">
+              <h2 class="mon-panel__title">Alertas del dispositivo</h2>
+              <span class="mon-panel__sub">{{ activeAlerts.length }} activas</span>
+            </header>
+            <ul v-if="alertList.length" class="mon-alert-list mon-alert-list--compact">
+              <li v-for="alert in alertList" :key="alert.id" class="mon-alert" :class="'mon-alert--' + alert.severityTone">
+                <div class="mon-alert__rail"></div>
+                <div class="mon-alert__body">
+                  <div class="mon-alert__head">
+                    <button type="button" class="mon-alert__title" @click="openAlert(alert)">{{ alert.alertName }}</button>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                    <span v-if="alert.acknowledged" class="mon-tag">Reconocida</span>
+                  </div>
+                  <p class="mon-alert__message">{{ alert.message }}</p>
+                  <div class="mon-alert__actions">
+                    <button v-if="app.monitoringEditable && alert.state !== 'resolved' && !alert.acknowledged" type="button" class="text-button" @click="acknowledge(alert)">Reconocer</button>
+                    <button v-if="app.monitoringEditable && alert.state !== 'resolved' && !alert.silenced" type="button" class="text-button text-button--quiet" @click="askSilence(alert)">Silenciar</button>
+                    <button v-if="app.monitoringEditable" type="button" class="text-button" @click="askConvert(alert)">{{ alert.incident ? 'Ver incidente' : 'Vincular incidencia' }}</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+            <p v-else class="empty-state">Sin alertas registradas para este dispositivo.</p>
           </div>
         </template>
 
-        <mon-silence-dialog :open="dialogs.silence" :alert="activeAlert" :app="app" @close="dialogs.silence = false" @saved="silenceSaved"></mon-silence-dialog>
-      </section>
-      <section v-else class="page">
-        <p class="empty-state">El dispositivo solicitado no está disponible.</p>
+        <mon-silence-dialog :open="dialogs.silence" :alert="activeAlert" :app="app" @close="dialogs.silence = false" @saved="refresh"></mon-silence-dialog>
+        <mon-convert-dialog :open="dialogs.convert" :alert="activeAlert" :app="app" @close="dialogs.convert = false" @saved="refresh"></mon-convert-dialog>
       </section>
     `
   };
 
   // ---------------------------------------------------------------- alert
   Views.MonitorAlert = {
-    components: {
-      AppIcon: window.AppIcon,
-      MonStatusPill: Views.MonStatusPill,
-      MonSilenceDialog: Views.MonSilenceDialog,
-      MonConvertDialog: Views.MonConvertDialog
-    },
+    components: { AppIcon: window.AppIcon, MonStatusPill: Views.MonStatusPill, MonMetric: Views.MonMetric, MonSilenceDialog: Views.MonSilenceDialog, MonConvertDialog: Views.MonConvertDialog },
     props: { app: { type: Object, required: true } },
-    data() {
-      return { now: Date.now(), dialogs: { silence: false, convert: false }, tab: 'acontecimientos' };
-    },
+    data() { return { dialogs: { silence: false, convert: false }, busy: false }; },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      alert() {
-        const id = this.app.route ? this.app.route.alertId : '';
-        return ((this.app.maintenance && this.app.maintenance.alerts) || []).find((item) => item.id === id) || null;
-      },
-      row() { return this.alert ? M.alertRow(this.monitoring, this.alert, this.app.assets, this.now) : null; },
-      asset() { return this.row ? this.row.asset : null; },
-      device() { return this.asset ? M.deviceRow(this.monitoring, this.asset, this.app.assets ? ((this.app.maintenance && this.app.maintenance.alerts) || []) : [], this.now) : null; },
-      plan() { return this.alert ? M.escalationPlan(this.monitoring, this.alert, this.app.assets, this.now) : null; },
+      alert() { return this.app.monitoringAlertRecord; },
+      row() { return this.app.monitoringAlertRow; },
+      loading() { return this.app.monitoringAlertLoading; },
+      error() { return this.app.monitoringAlertError; },
+      missing() { return this.app.monitoringAlertMissing; },
+      canEdit() { return this.app.monitoringEditable; },
       events() {
-        if (!this.alert) return [];
-        return (this.alert.events || []).slice().sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+        return this.app.monitoringAlertEvents
+          .slice()
+          .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0));
       },
-      smtpPreview() { return this.alert ? M.preview(this.monitoring, 'smtp', this.alert, this.app.assets) : null; },
-      telegramPreview() { return this.alert ? M.preview(this.monitoring, 'telegram', this.alert, this.app.assets) : null; },
-      canEdit() { return this.app.can('assets.edit'); },
-      threshold() { return this.alert ? M.thresholdText(this.alert) : ''; },
-      silenceState() { return this.alert ? M.activeSilence(this.monitoring, this.alert, this.now) : { silenced: false }; }
+      metrics() {
+        const alert = this.alert;
+        if (!alert) return [];
+        return [
+          { label: 'Inicio', value: fmtDateTime(alert.startsAt), hint: rel(alert.startsAt), icon: 'clock', tone: 'neutral' },
+          { label: 'Última señal', value: fmtDateTime(alert.lastSeenAt), hint: rel(alert.lastSeenAt), icon: 'activity', tone: 'neutral' },
+          { label: 'Fuente', value: alert.source || '—', hint: alert.groupKey ? 'Grupo ' + alert.groupKey.slice(0, 28) : '', icon: 'server', tone: 'neutral' },
+          { label: 'Incidente', value: alert.incident ? alert.incident.id : 'Sin vincular', hint: alert.incident ? alert.incident.status : 'Se puede vincular sin cerrar la alerta', icon: 'link', tone: 'neutral' }
+        ];
+      },
+      silence() { return this.alert ? this.alert.silences.find((item) => item.active) || null : null; },
+      stateLabel() {
+        if (!this.alert) return '—';
+        return this.alert.state === 'resolved' ? 'Recuperada' : this.alert.stateLabel;
+      },
+      suggestedClose() { return !!(this.alert && this.alert.incident && this.alert.incident.suggestedClose); }
     },
     methods: {
-      fmtDateTime: fmtDateTime,
-      fmtDay: fmtDay,
-      fmtClock: fmtClock,
-      rel: rel,
+      fmtDateTime,
+      rel,
+      severityMeta: Mapping.severityMeta,
+      alertStateMeta: Mapping.alertStateMeta,
       back() { if (this.app.setHash) this.app.setHash({ name: 'monitoring', section: 'alertas' }); },
-      openDevice() { if (this.asset && this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: this.asset.id }); },
-      openIncident(id) { if (this.app.setHash) this.app.setHash({ name: 'incident', incidentId: id }); },
-      ack() {
-        const result = M.acknowledge(this.monitoring, this.app.maintenance, this.alert.id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.app.showToast(result.ok ? 'Alerta reconocida. Sigue visible mientras el problema continúe.' : result.errors[0]);
+      openDevice() { if (this.alert && this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: this.alert.assetId }); },
+      openIncident() {
+        if (this.alert && this.alert.incident && this.app.setHash) this.app.setHash({ name: 'incident', incidentId: this.alert.incident.id });
       },
-      recover() {
-        const result = M.recoverDevice(this.monitoring, this.app.maintenance, this.app.assets, this.alert.assetId, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Recuperación simulada registrada.' : result.errors[0]);
-      },
-      resolve() {
-        const result = M.resolveAlert(this.monitoring, this.app.maintenance, this.app.assets, this.alert.id, {
-          actor: this.app.currentUser ? this.app.currentUser.name : 'Administrador'
-        });
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Alerta resuelta y registrada en el historial.' : result.errors[0]);
+      async acknowledge() {
+        if (!this.alert || this.busy) return;
+        this.busy = true;
+        const result = await this.app.acknowledgeMonitoringAlert(this.alert.id, '');
+        this.busy = false;
+        if (result.ok) this.app.showToast('Alerta reconocida; sigue activa hasta que se recupere.');
       },
       askSilence() { this.dialogs.silence = true; },
       askConvert() { this.dialogs.convert = true; },
-      cancelSilence() {
-        const result = M.clearSilence(this.monitoring, this.app.maintenance, this.alert.id);
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Silenciamiento cancelado.' : result.errors[0]);
+      async prepareMaintenance() {
+        if (!this.alert) return;
+        const result = await this.app.prepareMonitoringMaintenance(this.alert.id);
+        if (!result.ok) return;
+        this.app.showToast(result.existingWindow ? 'Ya existe una ventana relacionada; revísala antes de guardar otra.' : 'Propuesta de ventana preparada. Revísala antes de guardarla.');
+        if (this.app.setHash) this.app.setHash('#/configuracion/alertas');
       },
-      saved() { this.now = Date.now(); },
-      severityTone() { return M.severityMeta(this.alert.severity).tone; },
-      stateTone() { return M.alertStateMeta(this.alert.state).tone; },
-      kindMeta() { return M.alertKindMeta(this.alert.kind); },
-      planTone(item) {
-        if (item.status === 'sent') return 'ok';
-        if (item.status === 'scheduled') return 'hold';
-        if (item.status === 'window' || item.status === 'silenced') return 'warn';
+      eventTone(event) {
+        if (event.action === 'resolved') return 'ok';
+        if (event.action === 'acknowledged') return 'hold';
+        if (event.action === 'opened' || event.action === 'fired') return 'down';
         return 'neutral';
       },
-      planLabel(item) {
-        const labels = {
-          sent: 'Enviada',
-          scheduled: 'Programada',
-          window: 'Bloqueada por ventana',
-          silenced: 'Bloqueada por silencio',
-          channel: 'Canal sin configurar',
-          disabled: 'Canal desactivado',
-          acknowledged: 'Omitida: ya reconocida',
-          skipped: 'No aplica',
-          closed: 'Alerta cerrada'
-        };
-        return labels[item.status] || item.status;
-      },
-      channelLabel(id) { return M.channelMeta(id).label; },
-      eventIcon(type) {
-        const icons = {
-          detected: 'alert', repeated: 'layers', acknowledged: 'check', silenced: 'slash',
-          unsilenced: 'activity', recovered: 'restore', resolved: 'check', converted: 'shield', notified: 'send'
-        };
-        return icons[type] || 'info';
-      }
+      refresh() { if (this.app.route.alertId) this.app.loadMonitoringAlert(this.app.route.alertId); }
     },
     template: `
-      <section v-if="alert && row" class="page mon-page mon-alert-page" aria-labelledby="mon-alert-title">
+      <section class="page mon-page mon-alert-page" aria-labelledby="mon-alert-title">
         <nav class="breadcrumbs" aria-label="Migas de pan">
-          <button type="button" class="back-link" @click="back"><app-icon name="arrow-left"></app-icon> Alertas</button>
-          <span class="crumb mono">{{ alert.id }}</span>
+          <button type="button" class="text-button" @click="back">Supervisión</button>
+          <span aria-hidden="true">/</span>
+          <span>Alerta</span>
         </nav>
 
-        <header class="mon-alert-head" :class="'mon-alert-head--' + severityTone()">
-          <div class="mon-alert-head__copy">
-            <p class="eyebrow"><span class="eyebrow__line"></span> Alerta de supervisión · {{ alert.id }}</p>
-            <h1 id="mon-alert-title">{{ asset ? asset.name : alert.assetId }}</h1>
-            <p class="page-sub">{{ alert.message }}</p>
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando la alerta desde el servidor…</p>
+        <div v-else-if="missing" class="mon-notice" role="alert">
+          <strong class="mon-notice__title">Alerta no disponible</strong>
+          <span class="mon-notice__text">{{ error }}</span>
+        </div>
+        <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
+
+        <template v-if="alert">
+          <header class="mon-alert-head" :class="'mon-alert-head--' + alert.severityTone">
+            <div class="mon-alert-head__copy">
+              <p class="eyebrow"><span class="eyebrow__line"></span> Alerta de supervisión</p>
+              <h1 id="mon-alert-title">{{ alert.alertName }}</h1>
+              <p class="page-sub">{{ alert.assetName }} · {{ alert.quickCode }} · {{ alert.message }}</p>
+            </div>
             <div class="mon-alert-head__tags">
-              <span class="mon-tag" :class="'mon-tag--' + severityTone()">Severidad {{ row.severity.label }}</span>
-              <span class="mon-tag" :class="'mon-tag--' + stateTone()">{{ row.state.label }}</span>
-              <span class="mon-tag">{{ kindMeta().label }}</span>
-              <span v-if="row.acknowledged" class="mon-tag mon-tag--ok">Reconocida</span>
-              <span v-if="silenceState.silenced" class="mon-tag mon-tag--warn">Silenciada</span>
-              <span v-if="alert.intermittent" class="mon-tag mon-tag--hold">Fallo intermitente</span>
-              <span v-if="alert.groupCount > 1" class="mon-tag">{{ alert.groupCount }} eventos agrupados</span>
+              <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
+              <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ stateLabel }}</span>
+              <span v-if="alert.acknowledged" class="mon-tag mon-tag--ok">Reconocida</span>
+              <span v-if="alert.silenced" class="mon-tag">Silenciada</span>
+              <span v-if="alert.incident" class="mon-tag">Incidente {{ alert.incident.id }}</span>
+            </div>
+            <div class="mon-alert-head__actions">
+              <button v-if="canEdit && alert.state !== 'resolved' && !alert.acknowledged" type="button" class="btn btn--secondary" :disabled="busy" @click="acknowledge">Reconocer</button>
+              <button v-if="canEdit && alert.state !== 'resolved' && !alert.silenced" type="button" class="btn btn--ghost" @click="askSilence">Silenciar</button>
+              <button v-if="canEdit && !alert.incident" type="button" class="btn btn--ghost" @click="askConvert">Vincular incidencia</button>
+              <button v-if="alert.incident" type="button" class="btn btn--ghost" @click="openIncident">Ver incidente</button>
+            </div>
+          </header>
+
+          <div class="mon-metrics">
+            <mon-metric v-for="metric in metrics" :key="metric.label" :label="metric.label" :value="metric.value"
+                        :hint="metric.hint" :icon="metric.icon" :tone="metric.tone"></mon-metric>
+          </div>
+
+          <div v-if="suggestedClose" class="mon-notice mon-notice--warn">
+            <strong class="mon-notice__title">El incidente vinculado admite cierre asistido</strong>
+            <span class="mon-notice__text">La alerta se ha recuperado, pero el incidente no se cierra solo. Revisa y confirma la resolución en el incidente canónico.</span>
+            <div class="mon-notice__actions">
+              <button type="button" class="btn btn--secondary" @click="openIncident">Revisar cierre asistido</button>
             </div>
           </div>
-          <div class="mon-alert-head__actions">
-            <button v-if="canEdit && alert.state === 'open' && !row.acknowledged" type="button" class="btn btn--primary" @click="ack">
-              <app-icon name="check"></app-icon> Reconocer
-            </button>
-            <button v-if="canEdit && alert.state === 'open'" type="button" class="btn btn--secondary" @click="recover">
-              <app-icon name="restore"></app-icon> Simular recuperación
-            </button>
-            <button v-if="canEdit && alert.state === 'recovered'" type="button" class="btn btn--primary" @click="resolve">
-              <app-icon name="check"></app-icon> Resolver
-            </button>
-            <button v-if="canEdit && !silenceState.silenced" type="button" class="btn btn--ghost" @click="askSilence">
-              <app-icon name="slash"></app-icon> Silenciar
-            </button>
-            <button v-if="canEdit && silenceState.silenced" type="button" class="btn btn--ghost" @click="cancelSilence">
-              <app-icon name="activity"></app-icon> Cancelar silencio
-            </button>
-            <button v-if="canEdit && alert.incidentId" type="button" class="btn btn--secondary" @click="openIncident(alert.incidentId)">
-              <app-icon name="shield"></app-icon> {{ alert.incidentId }}
-            </button>
-            <button v-else-if="canEdit" type="button" class="btn btn--secondary" @click="askConvert">
-              <app-icon name="shield"></app-icon> Crear incidente
-            </button>
-          </div>
-        </header>
 
-        <div class="mon-metrics">
-          <mon-metric label="Detectada" :value="fmtDateTime(alert.detectedAt)" :hint="rel(alert.detectedAt)" icon="clock"></mon-metric>
-          <mon-metric label="Último acontecimiento" :value="fmtDateTime(alert.lastEventAt || alert.detectedAt)" :hint="rel(alert.lastEventAt || alert.detectedAt)" icon="activity"></mon-metric>
-          <mon-metric v-if="alert.recoveredAt" label="Recuperada" :value="fmtDateTime(alert.recoveredAt)" :hint="'Sin resolver'" icon="restore" tone="ok"></mon-metric>
-          <mon-metric v-if="alert.resolvedAt" label="Resuelta" :value="fmtDateTime(alert.resolvedAt)" :hint="alert.resolvedBy" icon="check" tone="ok"></mon-metric>
-          <mon-metric v-if="threshold" label="Umbral" :value="threshold.split(' · ')[0]" :hint="'Límite ' + threshold.split(' · ')[1]" icon="gauge"></mon-metric>
-        </div>
-
-        <div class="mon-grid mon-grid--split">
-          <section class="mon-panel" aria-labelledby="mon-events-title">
-            <header class="mon-panel__head">
-              <div>
-                <h2 id="mon-events-title" class="mon-panel__title">Acontecimientos</h2>
-                <p class="mon-panel__sub">Detección, reconocimiento, silencios y recuperación</p>
-              </div>
-              <span class="chip">{{ events.length }}</span>
-            </header>
-            <ol class="mon-timeline">
-              <li v-for="event in events" :key="event.id" class="mon-timeline__item">
-                <span class="mon-timeline__icon"><app-icon :name="eventIcon(event.type)"></app-icon></span>
-                <div class="mon-timeline__body">
-                  <p class="mon-timeline__text">{{ event.text }}</p>
-                  <p class="mon-timeline__time mono">{{ fmtDateTime(event.at) }} · {{ rel(event.at) }}</p>
-                </div>
-              </li>
-            </ol>
-            <p v-if="!events.length" class="empty-state">La alerta no tiene acontecimientos registrados.</p>
-          </section>
-
-          <div class="mon-stack">
-            <section v-if="asset" class="mon-panel" aria-labelledby="mon-alert-device-title">
-              <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-alert-device-title" class="mon-panel__title">Dispositivo</h2>
-                  <p class="mon-panel__sub">{{ asset.id }} · {{ asset.ip }}</p>
-                </div>
-                <button type="button" class="text-button" @click="openDevice">Abrir supervisión</button>
-              </header>
-              <div class="mon-device-mini">
-                <span class="mon-device-mini__thumb"><img :src="asset.image" alt="" loading="lazy"></span>
-                <div class="mon-device-mini__text">
-                  <p class="mon-device-mini__name">{{ asset.name }}</p>
-                  <p class="mon-device-mini__meta">{{ asset.type }} · {{ asset.location }}</p>
-                </div>
-                <mon-status-pill :status="device.status"></mon-status-pill>
-              </div>
-              <dl class="mon-facts">
-                <div class="mon-facts__row"><dt>Latencia</dt><dd class="mono">{{ device.latencyMs === null ? '—' : device.latencyMs + ' ms' }}</dd></div>
-                <div class="mon-facts__row"><dt>Uptime</dt><dd class="mono">{{ device.uptimePct === null ? '—' : device.uptimePct + ' %' }}</dd></div>
-                <div class="mon-facts__row"><dt>Última comprobación</dt><dd>{{ rel(device.lastCheckAt) }}</dd></div>
-                <div class="mon-facts__row"><dt>Categoría</dt><dd>{{ asset.category }}</dd></div>
-                <div class="mon-facts__row"><dt>Sede</dt><dd>{{ asset.site }}</dd></div>
-              </dl>
-            </section>
-
-            <section class="mon-panel" aria-labelledby="mon-escalation-title">
-              <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-escalation-title" class="mon-panel__title">Escalamiento</h2>
-                  <p class="mon-panel__sub">Qué se enviaría y cuándo, según las reglas activas</p>
-                </div>
-                <app-icon name="send"></app-icon>
-              </header>
-              <ul v-if="plan" class="mon-plan">
-                <li v-for="item in plan.items" :key="item.rule.id" class="mon-plan__item" :class="'mon-plan__item--' + planTone(item)">
-                  <div class="mon-plan__head">
-                    <span class="mon-plan__label">{{ item.rule.label }}</span>
-                    <span class="mon-tag" :class="'mon-tag--' + planTone(item)">{{ planLabel(item) }}</span>
+          <div class="mon-grid mon-grid--split">
+            <div class="mon-panel">
+              <header class="mon-panel__head"><h2 class="mon-panel__title">Historial</h2></header>
+              <ol v-if="events.length" class="mon-timeline">
+                <li v-for="event in events" :key="event.id" class="mon-timeline__item">
+                  <span class="mon-timeline__icon" :class="'mon-check-dot--' + eventTone(event)"></span>
+                  <div class="mon-timeline__body">
+                    <p class="mon-timeline__text">{{ event.text }}</p>
+                    <p class="mon-timeline__time mono">{{ fmtDateTime(event.at) }} · {{ event.source || 'servidor' }}</p>
                   </div>
-                  <p class="mon-plan__meta">
-                    {{ item.rule.afterMinutes === 0 ? 'Inmediato' : 'A los ' + item.rule.afterMinutes + ' min' }} ·
-                    {{ item.channels.map(channel => channel.label).join(' + ') }} ·
-                    {{ fmtClock(item.at) }}
-                  </p>
                 </li>
-              </ul>
-              <p v-if="plan && plan.silence.silenced" class="mon-plan__note">Silencio activo hasta {{ fmtDateTime(plan.silence.until) }}: {{ plan.silence.reason || 'sin motivo indicado' }}.</p>
-              <p v-if="plan && plan.window" class="mon-plan__note">Ventana de mantenimiento activa: {{ plan.window.label }}. Las alertas quedan visibles y solo se detienen los avisos externos.</p>
-              <p v-if="plan && plan.next" class="mon-plan__note">Siguiente envío: {{ plan.next.rule.label }} a las {{ fmtClock(plan.next.at) }} por {{ plan.next.channels.map(channel => channel.label).join(' y ') }}.</p>
-              <p v-else-if="plan" class="mon-plan__note">No queda ningún envío programado con las reglas actuales.</p>
-            </section>
+              </ol>
+              <p v-else class="empty-state">Sin acontecimientos registrados.</p>
+            </div>
 
-            <section class="mon-panel" aria-labelledby="mon-preview-title">
-              <header class="mon-panel__head">
-                <div>
-                  <h2 id="mon-preview-title" class="mon-panel__title">Mensajes preparados</h2>
-                  <p class="mon-panel__sub">Vista previa de los canales configurados</p>
+            <div class="mon-stack">
+              <div class="mon-panel mon-device-mini">
+                <header class="mon-panel__head"><h2 class="mon-panel__title">Activo</h2></header>
+                <div class="mon-device-mini__text">
+                  <span class="mon-device-mini__name">{{ alert.assetName }}</span>
+                  <span class="mon-device-mini__meta mono">{{ alert.quickCode }} · {{ alert.assetId }}</span>
                 </div>
-              </header>
-              <div v-if="smtpPreview" class="mon-preview">
-                <p class="mon-preview__head"><app-icon name="mail"></app-icon> Correo SMTP</p>
-                <p class="mon-preview__line"><span>Para</span> {{ smtpPreview.to }}</p>
-                <p class="mon-preview__line"><span>Asunto</span> {{ smtpPreview.subject }}</p>
-                <pre class="mon-preview__body">{{ smtpPreview.body }}</pre>
+                <div class="mon-device-mini__actions">
+                  <button type="button" class="btn btn--ghost" @click="openDevice">Ver supervisión del activo</button>
+                </div>
               </div>
-              <div v-if="telegramPreview" class="mon-preview mon-preview--chat">
-                <p class="mon-preview__head"><app-icon name="send"></app-icon> Telegram · {{ telegramPreview.bot }}</p>
-                <pre class="mon-preview__body mon-preview__body--chat">{{ telegramPreview.body }}</pre>
-              </div>
-            </section>
-          </div>
-        </div>
 
-        <mon-silence-dialog :open="dialogs.silence" :alert="alert" :app="app" @close="dialogs.silence = false" @saved="saved"></mon-silence-dialog>
-        <mon-convert-dialog :open="dialogs.convert" :alert="alert" :app="app" @close="dialogs.convert = false" @saved="saved"></mon-convert-dialog>
-      </section>
-      <section v-else class="page">
-        <p class="empty-state">La alerta solicitada no está disponible.</p>
+              <div class="mon-panel">
+                <header class="mon-panel__head"><h2 class="mon-panel__title">Silencios</h2></header>
+                <p v-if="silence" class="mon-panel__sub">Silenciada hasta {{ fmtDateTime(silence.endsAt) }} · {{ silence.source }}</p>
+                <p v-else class="mon-panel__sub">Sin silencio activo.</p>
+                <button v-if="canEdit && alert.state !== 'resolved'" type="button" class="btn btn--ghost" @click="askSilence">Crear silencio</button>
+              </div>
+
+              <div class="mon-panel">
+                <header class="mon-panel__head"><h2 class="mon-panel__title">Mantenimiento</h2></header>
+                <p class="mon-panel__sub">La ventana propuesta no se guarda hasta que la revises y confirmes.</p>
+                <button v-if="canEdit" type="button" class="btn btn--ghost" @click="prepareMaintenance">Preparar ventana de mantenimiento</button>
+              </div>
+            </div>
+          </div>
+
+          <mon-silence-dialog :open="dialogs.silence" :alert="alert" :app="app" @close="dialogs.silence = false" @saved="refresh"></mon-silence-dialog>
+          <mon-convert-dialog :open="dialogs.convert" :alert="alert" :app="app" @close="dialogs.convert = false" @saved="refresh"></mon-convert-dialog>
+        </template>
       </section>
     `
   };
 
-  // ---------------------------------------------------------------- inbox
+  // ---------------------------------------------------------------- notifications
   Views.NotificationBell = {
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
-    data() {
-      return { open: false };
-    },
+    data() { return { open: false }; },
     computed: {
-      notifications() { return this.app.monitoring ? this.app.monitoring.notifications || [] : []; },
-      unread() { return this.notifications.filter((item) => !item.readAt); },
-      pending() { return this.unread.filter((item) => item.severity === 'alta' || item.severity === 'critica'); },
+      notifications() { return this.app.monitoringInbox || []; },
+      unread() { return this.app.monitoringUnreadCount || 0; },
       latest() { return this.notifications.slice(0, 5); }
     },
     watch: {
       'app.route.name'() { this.open = false; }
     },
     mounted() {
+      if (this.app.monitoringAvailable) this.app.loadMonitoringUnreadCount();
       this.onPointer = (event) => {
         if (!this.$el || this.$el.contains(event.target)) return;
         this.open = false;
@@ -1459,10 +1402,15 @@
       document.removeEventListener('pointerdown', this.onPointer, true);
     },
     methods: {
-      rel: rel,
+      rel,
+      fmtDateTime,
+      tone(item) { return Mapping.severityMeta(item.severity).tone; },
+      icon(item) { return item.eventType === 'resolved' ? 'check' : (item.severity === 'critical' ? 'alert' : 'bell'); },
+      kindLabel(item) { return item.eventType === 'resolved' ? 'Recuperación' : (item.eventType === 'firing' ? 'Alerta activa' : 'Aviso'); },
       toggle() {
         if (this.open) { this.open = false; return; }
         this.open = true;
+        if (this.app.monitoringAvailable && !this.app.monitoringApi.inbox.loaded) this.app.loadMonitoringInbox();
         this.$nextTick(() => this.$refs.panel?.focus());
       },
       close() { this.open = false; },
@@ -1472,59 +1420,51 @@
         this.open = false;
         this.$nextTick(() => this.$refs.trigger?.focus());
       },
-      tone(item) { return M.notificationKindMeta(item.kind).tone; },
-      icon(item) { return M.notificationKindMeta(item.kind).icon; },
-      providerLabel(item) { return M.notificationKindMeta(item.kind).label; },
-      openNotification(item) {
-        M.markNotificationRead(this.app.monitoring, item.id);
+      async openNotification(item) {
+        await this.app.markMonitoringNotificationRead(item.id);
         this.open = false;
-        if (!this.app.setHash) return;
-        if (item.alertId) this.app.setHash({ name: 'monitorAlert', alertId: item.alertId });
-        else if (item.incidentId) this.app.setHash({ name: 'incident', incidentId: item.incidentId });
-        else if (item.assetId) this.app.setHash({ name: 'monitorDevice', assetId: item.assetId });
-        else this.app.setHash({ name: 'notifications' });
+        const hash = hashFromUrl(item.url);
+        if (hash && this.app.setHash) this.app.setHash(hash);
+        else if (item.alertId && this.app.setHash) this.app.setHash({ name: 'monitorAlert', alertId: item.alertId });
+        else if (item.assetId && this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: item.assetId });
       },
       openCenter() {
         this.open = false;
         if (this.app.setHash) this.app.setHash({ name: 'notifications' });
-      },
-      markAll() {
-        M.markAllNotificationsRead(this.app.monitoring);
-        this.app.showToast('Todas las notificaciones quedan como consultadas.');
       }
     },
     template: `
       <div class="notif" ref="bell" @keydown="onKeydown">
         <button type="button" class="icon-button notif__trigger" ref="trigger" data-od-id="topbar-notifications"
                 :aria-expanded="open" aria-haspopup="dialog" aria-controls="notif-panel"
-                :aria-label="'Notificaciones: ' + unread.length + ' sin consultar'" @click="toggle">
+                :aria-label="'Avisos: ' + unread + ' sin consultar'" @click="toggle">
           <app-icon name="bell"></app-icon>
-          <span v-if="unread.length" class="notif__badge mono">{{ unread.length > 9 ? '9+' : unread.length }}</span>
+          <span v-if="unread" class="notif__badge mono">{{ unread > 9 ? '9+' : unread }}</span>
         </button>
         <transition name="dropdown">
           <div v-if="open" id="notif-panel" ref="panel" class="notif__panel" role="dialog" tabindex="-1" aria-labelledby="notif-title">
             <header class="notif__head">
               <div>
-                <p class="notif__title" id="notif-title">Notificaciones</p>
-                <p class="notif__sub">{{ unread.length }} sin consultar · {{ pending.length }} pendientes de atención</p>
+                <p class="notif__title" id="notif-title">Avisos</p>
+                <p class="notif__sub">{{ unread }} sin consultar</p>
               </div>
-              <button type="button" class="text-button text-button--quiet" @click="markAll">Marcar todas</button>
+              <button type="button" class="text-button text-button--quiet" @click="openCenter">Ver bandeja</button>
             </header>
             <ul v-if="latest.length" class="notif__list">
-              <li v-for="item in latest" :key="item.id" class="notif__item" :class="{ 'is-unread': !item.readAt }">
+              <li v-for="item in latest" :key="item.id" class="notif__item" :class="{ 'is-unread': item.unread }">
                 <button type="button" class="notif__button" @click="openNotification(item)">
                   <span class="notif__icon" :class="'notif__icon--' + tone(item)"><app-icon :name="icon(item)"></app-icon></span>
                   <span class="notif__text">
                     <span class="notif__item-title">{{ item.title }}</span>
                     <span class="notif__item-body">{{ item.body }}</span>
-                    <span class="notif__item-meta mono">{{ providerLabel(item) }} · {{ rel(item.at) }}</span>
+                    <span class="notif__item-meta mono">{{ kindLabel(item) }} · {{ rel(item.createdAt) }}</span>
                   </span>
                 </button>
               </li>
             </ul>
-            <p v-else class="notif__empty">Sin notificaciones por ahora.</p>
+            <p v-else class="notif__empty">No hay avisos en la bandeja.</p>
             <footer class="notif__foot">
-              <button type="button" class="text-button" @click="openCenter">Ver todas las notificaciones</button>
+              <button type="button" class="text-button" @click="openCenter">Abrir todas las notificaciones</button>
             </footer>
           </div>
         </transition>
@@ -1535,50 +1475,39 @@
   Views.NotificationCenter = {
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
-    data() {
-      return { filter: 'all', now: Date.now() };
-    },
+    data() { return { filter: 'all' }; },
     computed: {
-      notifications() { return this.app.monitoring ? this.app.monitoring.notifications || [] : []; },
-      unread() { return this.notifications.filter((item) => !item.readAt); },
-      pending() { return this.unread.filter((item) => item.severity === 'alta' || item.severity === 'critica'); },
-      read() { return this.notifications.filter((item) => !!item.readAt); },
+      notifications() { return this.app.monitoringInbox || []; },
+      unread() { return this.notifications.filter((item) => item.unread); },
+      loading() { return this.app.monitoringInboxLoading; },
+      error() { return this.app.monitoringInboxError; },
+      truncated() { return this.app.monitoringInboxTotal > this.notifications.length; },
       filters() {
         return [
-          { id: 'all', label: 'Todas', count: this.notifications.length },
-          { id: 'new', label: 'Nuevas', count: this.unread.length },
-          { id: 'pending', label: 'Pendientes de atención', count: this.pending.length },
-          { id: 'read', label: 'Consultadas', count: this.read.length },
-          { id: 'alert', label: 'Alertas', count: this.notifications.filter((item) => item.kind === 'alert').length },
-          { id: 'incident', label: 'Incidentes', count: this.notifications.filter((item) => item.kind === 'incident').length }
+          { id: 'all', label: 'Todas', count: this.app.monitoringInboxTotal },
+          { id: 'unread', label: 'Sin consultar', count: this.app.monitoringUnreadCount }
         ];
       },
       list() {
-        return this.notifications.filter((item) => M.notificationMatches(item, this.filter));
+        return this.notifications.filter((item) => this.filter === 'unread' ? item.unread : true);
       }
     },
     methods: {
-      rel: rel,
-      fmtDateTime: fmtDateTime,
-      tone(item) { return M.notificationKindMeta(item.kind).tone; },
-      icon(item) { return M.notificationKindMeta(item.kind).icon; },
-      kindLabel(item) { return M.notificationKindMeta(item.kind).label; },
-      severityLabel(item) { return M.severityMeta(item.severity).label; },
-      open(item) {
-        M.markNotificationRead(this.app.monitoring, item.id);
-        if (!this.app.setHash) return;
-        if (item.alertId) this.app.setHash({ name: 'monitorAlert', alertId: item.alertId });
-        else if (item.incidentId) this.app.setHash({ name: 'incident', incidentId: item.incidentId });
-        else if (item.assetId) this.app.setHash({ name: 'monitorDevice', assetId: item.assetId });
+      rel,
+      fmtDateTime,
+      tone(item) { return Mapping.severityMeta(item.severity).tone; },
+      icon(item) { return item.eventType === 'resolved' ? 'check' : (item.severity === 'critical' ? 'alert' : 'bell'); },
+      kindLabel(item) { return item.eventType === 'resolved' ? 'Recuperación' : (item.eventType === 'firing' ? 'Alerta activa' : 'Aviso'); },
+      severityLabel(item) { return Mapping.severityMeta(item.severity).label; },
+      async open(item) {
+        await this.app.markMonitoringNotificationRead(item.id);
+        const hash = hashFromUrl(item.url);
+        if (hash && this.app.setHash) this.app.setHash(hash);
+        else if (item.alertId && this.app.setHash) this.app.setHash({ name: 'monitorAlert', alertId: item.alertId });
+        else if (item.assetId && this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: item.assetId });
       },
-      channelsLabel(item) {
-        return (item.channels || []).map((id) => M.channelMeta(id).label).join(' · ');
-      },
-      markAll() {
-        M.markAllNotificationsRead(this.app.monitoring);
-        this.now = Date.now();
-        this.app.showToast('Todas las notificaciones quedan como consultadas.');
-      }
+      refresh() { this.app.loadMonitoringInbox(); this.app.loadMonitoringUnreadCount(); },
+      loadMore() { this.app.loadMonitoringInbox({ append: true }); }
     },
     template: `
       <section class="page mon-page mon-inbox" aria-labelledby="inbox-title">
@@ -1586,11 +1515,11 @@
           <div class="mon-head__copy">
             <p class="eyebrow"><span class="eyebrow__line"></span> Actividad</p>
             <h1 id="inbox-title">Notificaciones</h1>
-            <p class="page-sub">Alertas, incidentes y avisos del sistema.</p>
+            <p class="page-sub">Avisos operativos entregados o puestos en cola por el servidor.</p>
           </div>
           <div class="mon-head__actions">
-            <button type="button" class="btn btn--secondary" :disabled="!unread.length" @click="markAll">
-              <app-icon name="check"></app-icon> Marcar todas como consultadas
+            <button type="button" class="btn btn--secondary" :disabled="loading" @click="refresh">
+              <app-icon name="refresh"></app-icon> {{ loading ? 'Actualizando…' : 'Actualizar' }}
             </button>
           </div>
         </header>
@@ -1602,27 +1531,32 @@
           </button>
         </div>
 
-        <ul v-if="list.length" class="mon-inbox__list">
-          <li v-for="item in list" :key="item.id" class="mon-inbox__item" :class="{ 'is-unread': !item.readAt }">
+        <p v-if="loading" class="mon-progress__text" role="status">Cargando la bandeja…</p>
+        <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
+        <ul v-else-if="list.length" class="mon-inbox__list">
+          <li v-for="item in list" :key="item.id" class="mon-inbox__item" :class="{ 'is-unread': item.unread }">
             <span class="mon-inbox__icon" :class="'mon-inbox__icon--' + tone(item)"><app-icon :name="icon(item)"></app-icon></span>
             <div class="mon-inbox__body">
               <div class="mon-inbox__head">
                 <button type="button" class="mon-inbox__title" @click="open(item)">{{ item.title }}</button>
                 <span class="mon-tag">{{ kindLabel(item) }}</span>
                 <span class="mon-tag" :class="'mon-tag--' + tone(item)">{{ severityLabel(item) }}</span>
-                <span v-if="!item.readAt" class="mon-tag mon-tag--hold">Nueva</span>
+                <span v-if="item.unread" class="mon-tag mon-tag--hold">Nueva</span>
               </div>
               <p class="mon-inbox__text">{{ item.body }}</p>
               <div class="mon-inbox__meta">
-                <span class="mono">{{ fmtDateTime(item.at) }} · {{ rel(item.at) }}</span>
-                <span v-if="item.channels.length">{{ channelsLabel(item) }}</span>
+                <span class="mono">{{ fmtDateTime(item.createdAt) }} · {{ rel(item.createdAt) }}</span>
                 <span v-if="item.readAt">Consultada {{ rel(item.readAt) }}</span>
-                <span v-else-if="item.severity === 'alta' || item.severity === 'critica'" class="mon-inbox__pending">Pendiente de atención</span>
+                <span v-if="item.assetId" class="mono">Activo {{ item.assetId }}</span>
               </div>
             </div>
           </li>
         </ul>
-        <p v-else class="empty-state">No hay notificaciones con este filtro.</p>
+        <p v-else class="empty-state">No hay avisos con este filtro.</p>
+        <div v-if="truncated" class="mon-settings__actions">
+          <button type="button" class="btn btn--secondary" :disabled="loading" @click="loadMore">Cargar más avisos</button>
+          <span class="mon-panel__sub">{{ notifications.length }} de {{ app.monitoringInboxTotal }}</span>
+        </div>
       </section>
     `
   };
@@ -1631,75 +1565,86 @@
   Views.AssetMonitoringPanel = {
     components: { AppIcon: window.AppIcon, MonSpark: Views.MonSpark, MonStatusPill: Views.MonStatusPill },
     props: { app: { type: Object, required: true }, asset: { type: Object, required: true } },
-    data() { return { now: Date.now() }; },
+    data() { return { loading: false, error: '', missing: false }; },
     computed: {
-      monitoring() { return this.app.monitoring; },
-      alerts() { return (this.app.maintenance && this.app.maintenance.alerts) || []; },
-      row() { return M.deviceRow(this.monitoring, this.asset, this.alerts, this.now); },
-      availability() { return M.availabilitySeries(this.monitoring, this.asset, this.app.monitoring.prefs.range, this.now); },
-      deviceAlerts() { return this.row.alerts.filter((alert) => alert.state === 'open'); },
-      canEdit() { return this.app.can('assets.edit'); }
+      available() { return this.app.monitoringAvailable; },
+      record() {
+        const record = this.app.monitoringDeviceRecord;
+        return record && record.assetId === this.asset.id ? record : null;
+      },
+      current() {
+        if (!this.record || !this.record.assetId) return null;
+        return this.record;
+      },
+      status() { return this.current ? this.current.status : 'no_data'; },
+      latencyPoints() { return this.current && this.current.latencySeries ? this.current.latencySeries.points : []; },
+      activeAlerts() { return this.current && this.current.alerts ? this.current.alerts.recent.filter((alert) => alert.state === 'firing' || alert.state === 'pending') : []; },
+      uptime() { return this.current && this.current.uptime ? this.current.uptime.percent : null; },
+      canEdit() { return this.app.monitoringEditable; }
     },
+    watch: {
+      'asset.id'() { this.load(); }
+    },
+    mounted() { this.load(); },
     methods: {
-      rel: rel,
-      fmtNumber: fmtNumber,
-      openDevice() { if (this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: this.asset.id }); },
-      include() {
-        const result = M.saveException(this.monitoring, this.asset.id, {
-          enabled: true, intervalMinutes: 15, checkIds: ['availability'], asset: this.asset
-        });
-        this.now = Date.now();
-        this.app.showToast(result.ok ? 'Equipo incorporado a la supervisión.' : result.errors[0]);
+      fmtNumber,
+      fmtDateTime,
+      rel,
+      async load() {
+        if (!this.available || !this.asset || !this.asset.id) return;
+        this.loading = true;
+        this.error = '';
+        const applied = await this.app.loadMonitoringDevice(this.asset.id, this.app.monitoringApi.overview.period || '24h');
+        const record = this.app.monitoringDeviceRecord;
+        this.missing = !applied && this.app.monitoringDeviceMissing;
+        this.error = applied ? '' : this.app.monitoringDeviceError;
+        this.loading = false;
+        if (record && record.assetId === this.asset.id && !applied) this.error = this.error || '';
+      },
+      openMonitoring() {
+        if (this.app.setHash) this.app.setHash({ name: 'monitorDevice', assetId: this.asset.id });
+      },
+      configure() {
+        if (this.app.setHash) this.app.setHash('#/configuracion/supervision');
       }
     },
     template: `
-      <section class="info-panel asset-monitor" aria-labelledby="asset-monitor-title">
-        <header class="panel-head">
-          <div>
-            <p class="panel-note">Operación</p>
-            <h2 id="asset-monitor-title">Supervisión</h2>
+      <section class="panel mon-panel" aria-labelledby="asset-mon-title">
+        <header class="mon-panel__head">
+          <h2 class="mon-panel__title" id="asset-mon-title">Supervisión</h2>
+          <div class="mon-panel__actions">
+            <mon-status-pill :status="status"></mon-status-pill>
+            <button v-if="current" type="button" class="text-button" @click="openMonitoring">Ver supervisión completa</button>
           </div>
-          <mon-status-pill :status="row.status"></mon-status-pill>
         </header>
-
-        <div v-if="row.monitored" class="asset-monitor__body">
-          <div class="asset-monitor__grid">
-            <div class="asset-monitor__fact">
-              <span class="asset-monitor__label">Disponibilidad</span>
-              <span class="asset-monitor__value mono">{{ fmtNumber(row.uptimePct, '%') }}</span>
+        <p v-if="loading" class="mon-panel__sub" role="status">Cargando la supervisión del servidor…</p>
+        <div v-else-if="error" class="form-error" role="alert">{{ error }}</div>
+        <template v-else-if="current">
+          <div class="mon-grid mon-grid--split">
+            <div class="mon-metrics">
+              <mon-metric label="Disponibilidad" :value="uptime === null ? '—' : fmtNumber(uptime, '%')" hint="Muestras del período" icon="activity" tone="ok"></mon-metric>
+              <mon-metric label="Latencia" :value="current.latency ? fmtNumber(current.latency.currentMs, 'ms') : '—'" hint="Última lectura" icon="clock" tone="neutral"></mon-metric>
+              <mon-metric label="Alertas activas" :value="String(activeAlerts.length)" hint="Incidentes vinculados" icon="alert" :tone="activeAlerts.length ? 'warn' : 'ok'"></mon-metric>
             </div>
-            <div class="asset-monitor__fact">
-              <span class="asset-monitor__label">Latencia</span>
-              <span class="asset-monitor__value mono">{{ row.latencyMs === null ? '—' : fmtNumber(row.latencyMs, 'ms') }}</span>
-            </div>
-            <div class="asset-monitor__fact">
-              <span class="asset-monitor__label">Última comprobación</span>
-              <span class="asset-monitor__value">{{ rel(row.lastCheckAt) }}</span>
-            </div>
-            <div class="asset-monitor__fact">
-              <span class="asset-monitor__label">Alertas activas</span>
-              <span class="asset-monitor__value mono">{{ deviceAlerts.length }}</span>
+            <div>
+              <mon-spark :points="latencyPoints" tone="teal"></mon-spark>
+              <p class="mon-panel__sub mono">{{ current.checks.length }} comprobaciones · {{ fmtDateTime(current.checks.length ? current.checks[0].lastCheckAt : '') }}</p>
             </div>
           </div>
-          <mon-spark :points="availability" :tone="row.status === 'down' ? 'down' : (row.status === 'degraded' ? 'warn' : 'teal')"></mon-spark>
-          <div class="asset-monitor__foot">
-            <button type="button" class="text-button" @click="openDevice">Ver supervisión completa</button>
-            <span class="asset-monitor__hint">{{ row.checks.length }} comprobaciones cada {{ row.intervalMinutes }} min</span>
-          </div>
+          <ul v-if="current.checks.length" class="mon-checks">
+            <li v-for="check in current.checks" :key="check.checkType + ':' + check.module">{{ check.checkType }} · {{ check.module }}</li>
+          </ul>
+        </template>
+        <div v-else-if="missing" class="mon-notice">
+          <strong class="mon-notice__title">Sin datos de supervisión</strong>
+          <span class="mon-notice__text">El servidor no tiene un registro de supervisión para este activo. No se inventan porcentajes.</span>
+          <button v-if="canEdit" type="button" class="btn btn--ghost" @click="configure">Configurar supervisión</button>
         </div>
-        <div v-else class="asset-monitor__empty">
-          <p class="panel-note">Este activo no tiene comprobaciones configuradas. No se muestra disponibilidad para no inventar porcentajes.</p>
-          <button v-if="canEdit" type="button" class="text-button" @click="include">Incorporar a la supervisión</button>
-        </div>
+        <p v-else class="mon-panel__sub">No se pudo leer la supervisión de este activo.</p>
       </section>
     `
   };
 
-  Views.helpers = Object.assign({}, Views.helpers, {
-    monFmtNumber: fmtNumber,
-    monFmtValue: fmtValue,
-    monRel: rel,
-    monDateTime: fmtDateTime,
-    monClock: fmtClock
-  });
+  Views.helpers = Views.helpers || {};
+  Object.assign(Views.helpers, { monFmtNumber: fmtNumber, monRel: rel, monDateTime: fmtDateTime, monClock: fmtClock });
 })();

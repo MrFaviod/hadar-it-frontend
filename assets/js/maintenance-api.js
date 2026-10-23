@@ -11,8 +11,8 @@
    *   or write that finishes after logout, 401, identity rotation or unmount
    *   stays inert instead of resurrecting data or toasts.
    *
-   * Monitoring alerts are intentionally outside this adapter: they remain the
-   * explicitly demo collection owned by the monitoring phase. */
+   * Monitoring alerts have their own server-backed adapter; this adapter owns
+   * the canonical incident choices used when linking an alert to maintenance. */
 
   const Data = window.ASSET_MAINT;
   const Engine = window.AssetMaintEngine;

@@ -14,16 +14,11 @@ test('QA-1 setHash keeps string hashes unchanged and re-dispatches when the hash
 test('QA-2 monitoring "open asset" actions target the asset detail route, not an unknown route name',()=>{
  const src=require('node:fs').readFileSync('assets/js/monitoring-views.js','utf8');assert.equal(/name:\s*'asset'/.test(src),false);
 });
-test('QA-3 leaving Supervisión during a sweep stops its timer and leaves alerts unchanged',()=>{
- const s=setup(),a=s.app,timers=new Map();let seq=0;
- s.c.setInterval=(fn)=>{timers.set(++seq,fn);return seq;};s.c.clearInterval=id=>timers.delete(id);
- const comp=s.c.options.components.MonitoringCenter,vm={app:a,...comp.data.call({app:a})};
- for(const [k,fn] of Object.entries(comp.methods))vm[k]=fn.bind(vm);
- for(const [k,fn] of Object.entries(comp.computed))Object.defineProperty(vm,k,{get:()=>(typeof fn==='function'?fn:fn.get).call(vm)});
- const before=JSON.stringify(a.maintenance.alerts);
- vm.runSweep();assert.equal(timers.size,1);
- comp.beforeUnmount.call(vm);assert.equal(timers.size,0);
- assert.equal(JSON.stringify(a.maintenance.alerts),before);
+test('QA-3 monitoring no longer sweeps or mutates alerts from a client timer',()=>{
+ const src=require('node:fs').readFileSync(require('node:path').join(__dirname,'../assets/js/monitoring-views.js'),'utf8');
+ assert.equal(/\brunSweep\b|\bsetInterval\s*\(/.test(src),false);
+ const s=setup();
+ assert.equal(typeof s.c.options.components.MonitoringCenter.methods.runSweep,'undefined');
 });
 const fsq=require('fs'),pq=require('path');
 const hexL=h=>{const v=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(x=>x<=0.03928?x/12.92:((x+0.055)/1.055)**2.4);return .2126*v[0]+.7152*v[1]+.0722*v[2]};
