@@ -137,6 +137,12 @@
       WarrantyCenter: window.AssetWarrantyViews.WarrantyCenter,
       AssetWarrantyPanel: window.AssetWarrantyViews.AssetWarrantyPanel,
       WarrantySettings: window.AssetWarrantyViews.WarrantySettings,
+      Phase6DataTransfer: window.AssetPhase6Views.Phase6DataTransfer,
+      Phase6BulkEditor: window.AssetPhase6Views.Phase6BulkEditor,
+      Phase6WarrantyCenter: window.AssetPhase6Views.Phase6WarrantyCenter,
+      Phase6WarrantySettings: window.AssetPhase6Views.Phase6WarrantySettings,
+      Phase6AssetWarranty: window.AssetPhase6Views.Phase6AssetWarranty,
+      Phase6Attachments: window.AssetPhase6Views.Phase6Attachments,
       LabelsCenter: window.AssetLabelViews.LabelsCenter,
       AssetQrPanel: window.AssetLabelViews.AssetQrPanel,
       AssetQrCode: window.AssetLabelViews.AssetQrCode,
@@ -159,7 +165,9 @@
         monitoring: initial.monitoring,
         dashboard: window.AssetDashboardPrefs.createState(),
         documents: window.AssetReportEngine.createState(),
-        warrantyPrefs: window.AssetWarrantyEngine.createPreferences(),
+        // Warranty view filters live only in this session; the server stores
+        // the single expiring-day preference (phase 6, warranty settings).
+        warrantyPrefs: { days: 90, includeRetired: false, site: 'all', category: 'all' },
         labelState: window.AssetLabelEngine.createState(),
         documentContext: { ids: [], category: 'all', site: 'all', search: '' },
         explorerFilters: { categories: [], sites: [], states: [], locations: [], search: '' },
@@ -168,6 +176,7 @@
         ...window.AssetInventory.data(),
         ...window.AssetOrganization.data(),
         ...window.AssetRedundancy.data(),
+        ...window.AssetPhase6.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -421,6 +430,7 @@
         return this.assets.filter((asset) => !!this.assigneeLabel(asset)).length;
       },
       ...window.AssetAppPeopleComputed,
+      ...window.AssetPhase6.computed,
       remoteCount() {
         const anydesk = this.settings.anydeskEnabled;
         const rmm = this.settings.rmmEnabled;
@@ -527,7 +537,7 @@
       }
     }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); },
+      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -619,6 +629,7 @@
           this.clearInventoryState();
           this.clearOrganizationState();
           this.clearRedundancyState();
+          this.clearPhase6State();
         }
       },
       mobileNavOpen(value) {
@@ -655,6 +666,7 @@
       this.clearInventoryState();
       this.clearOrganizationState();
       this.clearRedundancyState();
+      this.clearPhase6State();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -664,7 +676,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods))
   });
   app.mount(target || '#app');
   return app;

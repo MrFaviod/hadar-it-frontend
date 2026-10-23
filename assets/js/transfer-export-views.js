@@ -3,64 +3,150 @@
   'use strict';
 
   const Data = window.AssetTransferData;
-  const Engine = window.AssetTransferEngine;
+  const text = (value) => (value === null || value === undefined ? '' : String(value).trim());
 
   window.AssetTransferViews = window.AssetTransferViews || {};
 
-  const SCOPE_OPTIONS = [
-    { id: 'filters', label: 'Vista filtrada', description: 'Aplica la búsqueda, la sede, la categoría y el orden activos.', icon: 'search' },
-    { id: 'all', label: 'Todo el inventario', description: 'Incluye los activos dados de baja y los que no tienen responsable.', icon: 'layers' },
-    { id: 'selection', label: 'Selección manual', description: 'Elige activos concretos de la lista.', icon: 'check' }
+  /*
+   * Contrato real de POST /assets/export (itsm/workflows/service.py -> export()):
+   * filtros de igualdad exacta, CSV separado por comas con fila de encabezados y
+   * BOM UTF-8. Todavía no acepta texto libre, separador, supresión de encabezados
+   * o BOM, columnas vacías ni una opción de inventario completo.
+   */
+  const SERVER_FIELDS = [
+    'id', 'quick_code', 'name', 'category', 'type', 'brand', 'model', 'serial',
+    'ip', 'site', 'location', 'responsible', 'status', 'description', 'cost',
+    'technical', 'site_id', 'location_id', 'responsible_person_id', 'position_x',
+    'position_y'
   ];
+  const SERVER_FILTERS = ['category', 'status', 'site_id', 'location_id', 'responsible_person_id', 'archived'];
+
+  // POST /assets/export recibe el separador por nombre, nunca el delimitador
+  // literal: la vista conserva las etiquetas visibles y traduce en el envío.
+  const SEPARATOR_NAMES = { ',': 'comma', ';': 'semicolon', '\t': 'tab', '|': 'pipe' };
+
+  // Clave del catálogo original -> columna del servidor. Las claves sin
+  // correspondencia se muestran deshabilitadas en lugar de enviarse y perderse.
+  const FIELD_MAP = {
+    id: 'id',
+    code: 'quick_code',
+    name: 'name',
+    category: 'category',
+    type: 'type',
+    brand: 'brand',
+    model: 'model',
+    serial: 'serial',
+    ip: 'ip',
+    site: 'site',
+    location: 'location',
+    assignee: 'responsible',
+    status: 'status',
+    cost: 'cost'
+  };
+
+  const DEFAULT_FIELDS = ['id', 'name', 'category', 'status'];
+
+  const SCOPE_OPTIONS = [
+    {
+      id: 'filters',
+      label: 'Filtros de la vista',
+      description: 'El servidor aplica la categoría, el estado y la ubicación del inventario; no incluye activos archivados.',
+      icon: 'search',
+      enabled: true
+    },
+    {
+      id: 'all',
+      label: 'Todo el inventario',
+      description: 'El servidor exporta el inventario completo, sin los filtros de la vista.',
+      icon: 'layers',
+      enabled: true
+    },
+    {
+      id: 'selection',
+      label: 'Selección manual',
+      description: 'Exporta los activos marcados en la lista cargada de esta vista.',
+      icon: 'check',
+      enabled: true
+    }
+  ];
+
+  function normalizeFields(list) {
+    const keys = [];
+    (Array.isArray(list) ? list : []).forEach((key) => {
+      if (key === 'id' || !FIELD_MAP[key] || keys.indexOf(key) !== -1) return;
+      keys.push(key);
+    });
+    return ['id'].concat(keys);
+  }
+
+  function serverName(key) {
+    return FIELD_MAP[key] || '';
+  }
+
+  function catalogKey(field) {
+    const keys = Object.keys(FIELD_MAP);
+    for (let index = 0; index < keys.length; index += 1) {
+      if (FIELD_MAP[keys[index]] === field) return keys[index];
+    }
+    return '';
+  }
 
   window.AssetTransferViews.TransferExport = {
     name: 'TransferExport',
     components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell, TransferProfileDialog: window.AssetTransferViews.TransferProfileDialog },
     props: { app: { type: Object, required: true } },
     data() {
-      const prefs = Data.getPrefs();
       return {
-        prefs,
         scope: 'filters',
         selectedIds: [],
         assetSearch: '',
-        fields: [],
+        fields: DEFAULT_FIELDS.slice(),
         profileId: '',
-        format: prefs.defaultFormat || 'csv',
+        format: 'csv',
+        // Valores reales del servidor: no son preferencias editables del navegador.
         options: {
-          headerRow: prefs.headerRow !== false,
-          separator: prefs.separator || ';',
-          bom: prefs.bom !== false,
-          includeEmpty: prefs.includeEmpty === true
+          headerRow: true,
+          separator: ',',
+          bom: true,
+          includeEmpty: true
         },
         profilesOpen: false,
+        profilesError: '',
+        exportRun: { epoch: 0, controller: null },
         generating: false,
         progress: 0,
         progressLabel: '',
         result: null,
-        error: '',
-        recent: []
+        error: ''
       };
     },
     created() {
-      const profile = Data.profileById(this.prefs.defaultExportProfile) || Data.EXPORT_PROFILES[0];
-      this.applyProfile(profile);
-      this.recent = Data.exportsLog();
+      // El importador ya carga los perfiles del servidor al montar el módulo;
+      // no se repite la lectura si la página ya tiene resultados o está en curso.
+      const page = this.app.phase6 && this.app.phase6.profiles;
+      if (page && (page.loading || (Array.isArray(page.items) && page.items.length))) return;
+      this.refreshProfiles();
     },
     computed: {
       profileOptions() {
-        return Data.profiles('export');
+        const page = this.app.phase6 && this.app.phase6.profiles;
+        const items = page && Array.isArray(page.items) ? page.items : [];
+        return items
+          .filter((profile) => profile && profile.options && profile.options.kind === 'export')
+          .map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+            description: text(profile.options.description),
+            fields: Array.isArray(profile.options.fields) ? profile.options.fields.slice() : [],
+            format: 'csv'
+          }));
       },
       activeProfile() {
-        return this.profileId ? Data.profileById(this.profileId) : null;
+        return this.profileOptions.find((profile) => profile.id === this.profileId) || null;
       },
       scopes() {
         return SCOPE_OPTIONS.map((option) => Object.assign({}, option, {
-          count: option.id === 'filters'
-            ? this.app.filteredAssets.length
-            : option.id === 'all'
-              ? this.app.assets.length
-              : this.selectedIds.length
+          count: option.id === 'selection' ? this.selectedIds.length : '—'
         }));
       },
       scopeAssets() {
@@ -79,10 +165,12 @@
         return this.selectedIds.length;
       },
       fieldDetails() {
-        return this.fields.map((key) => Data.EXPORT_FIELDS.find((field) => field.key === key)).filter(Boolean);
+        return this.fields.map((key) => this.fieldInfo(key)).filter(Boolean);
       },
       availableFields() {
-        return Data.EXPORT_FIELDS.filter((field) => this.fields.indexOf(field.key) === -1);
+        return Data.EXPORT_FIELDS
+          .filter((field) => this.fields.indexOf(field.key) === -1)
+          .map((field) => Object.assign({}, field, { supported: !!FIELD_MAP[field.key] }));
       },
       previewFields() {
         return this.fields.slice(0, 2);
@@ -91,48 +179,94 @@
         return this.scopeAssets.slice(0, 3);
       },
       previewRows() {
-        return this.previewAssets.map((asset) => this.previewFields.map((key) => Engine.exportValue(this.app, asset, key)));
+        return this.previewAssets.map((asset) => this.previewFields.map((key) => this.previewValue(asset, key)));
       },
-      estimateRows() {
-        return this.scopeAssets.length;
+      exportFields() {
+        const mapped = this.fields.map(serverName).filter(Boolean);
+        return ['id'].concat(mapped.filter((field, index) => field !== 'id' && mapped.indexOf(field) === index));
       },
-      estimateSize() {
-        const cells = this.estimateRows * this.fields.length;
-        return Data.formatBytes(cells * 16 + 64);
+      exportFilters() {
+        const filters = { archived: false };
+        const inventory = this.app.inventoryFilters || {};
+        ['category', 'status'].forEach((key) => {
+          const value = text(inventory[key]);
+          if (value && value !== 'all') filters[key] = value;
+        });
+        const location = this.app.workspaceInventory && text(this.app.workspaceInventory.location);
+        if (location && location !== 'all') filters.location_id = location;
+        return filters;
+      },
+      blockedFilters() {
+        const blocked = [];
+        const inventory = this.app.inventoryFilters || {};
+        const prefs = this.app.prefs || {};
+        if (text(inventory.query)) blocked.push('la búsqueda de texto del inventario');
+        if (text(prefs.search)) blocked.push('la búsqueda de la vista');
+        if (text(prefs.site) && prefs.site !== 'all') blocked.push('el filtro de sede');
+        return blocked.join(' y ');
       },
       scopeLabel() {
         const option = SCOPE_OPTIONS.find((item) => item.id === this.scope);
         return option ? option.label : '';
       },
-      canGenerate() {
-        return this.fields.length > 0 && this.estimateRows > 0 && !this.generating;
+      scopeCountLabel() {
+        if (this.scope === 'selection') return String(this.selectedIds.length);
+        if (this.scope === 'filters') return 'Según filtros';
+        return '—';
       },
-      recentExports() {
-        return this.recent;
+      scopeFootNote() {
+        const columns = this.exportFields.length;
+        if (this.scope === 'selection') {
+          return this.selectedIds.length + ' activos seleccionados · ' + columns + ' columnas · el archivo lo genera el servidor.';
+        }
+        if (this.scope === 'all') return 'Todo el inventario del servidor · ' + columns + ' columnas.';
+        return 'Filtros del servidor · ' + columns + ' columnas · vista previa de los activos cargados.';
+      },
+      canGenerate() {
+        if (this.generating || !this.exportFields.length) return false;
+        if (this.scope === 'selection') return this.selectedIds.length > 0;
+        return true;
       }
     },
     methods: {
-      fieldLabel(key) {
+      fieldInfo(key) {
         const field = Data.EXPORT_FIELDS.find((item) => item.key === key);
-        return field ? field.label : key;
+        if (field) return field;
+        if (key === 'id') return { key: 'id', label: 'ID permanente', group: 'Identificación' };
+        const name = catalogKey(key);
+        return name ? (Data.EXPORT_FIELDS.find((item) => item.key === name) || null) : null;
+      },
+      fieldLabel(key) {
+        const field = this.fieldInfo(key);
+        if (field) return field.label;
+        return catalogKey(key) || key;
       },
       fieldGroup(key) {
-        const field = Data.EXPORT_FIELDS.find((item) => item.key === key);
-        return field ? field.group : '';
+        const field = this.fieldInfo(key);
+        if (field) return field.group;
+        return '';
+      },
+      fieldNote(field) {
+        if (!field || field.supported) return field ? field.group : '';
+        return field.group + ' · No disponible en el servidor';
+      },
+      previewValue(asset, key) {
+        if (!asset) return '';
+        if (key === 'id') return text(asset.id);
+        if (key === 'code') return text(asset.code || asset.quickCode);
+        if (key === 'category') return text(asset.categoryText || asset.category);
+        if (key === 'assignee') return text(asset.responsible || asset.assignee);
+        if (key === 'site') return text(asset.site);
+        if (key === 'location') return text(asset.location);
+        if (key === 'status') return text(asset.status);
+        return text(asset[key]);
       },
       formatSize(value) {
         return Data.formatBytes(value);
       },
-      formatWhen(value) {
-        return Data.formatDateTime(value);
-      },
-      siteLabel(id) {
-        return this.app.siteLabel(id);
-      },
-      categoryLabel(id) {
-        return this.app.categoryLabel(id);
-      },
       setScope(id) {
+        const option = SCOPE_OPTIONS.find((item) => item.id === id);
+        if (!option || option.enabled === false) return;
         this.scope = id;
         this.result = null;
         this.error = '';
@@ -157,6 +291,14 @@
         this.result = null;
       },
       toggleField(key) {
+        if (key === 'id') {
+          this.error = 'El ID permanente siempre forma parte de la exportación.';
+          return;
+        }
+        if (!FIELD_MAP[key]) {
+          this.error = 'Ese campo no lo admite la exportación del servidor.';
+          return;
+        }
         if (this.fields.indexOf(key) !== -1) {
           this.fields = this.fields.filter((item) => item !== key);
         } else {
@@ -166,105 +308,187 @@
         this.error = '';
       },
       moveField(index, delta) {
+        if (index === 0) return;
         const target = index + delta;
-        if (target < 0 || target >= this.fields.length) return;
+        if (target <= 0 || target >= this.fields.length) return;
         const next = this.fields.slice();
         const value = next[index];
         next[index] = next[target];
         next[target] = value;
-        this.fields = next;
+        this.fields = normalizeFields(next);
       },
       resetFields() {
-        const profile = this.activeProfile || Data.EXPORT_PROFILES[0];
-        this.applyProfile(profile);
+        if (this.activeProfile) this.applyProfile(this.activeProfile);
+        else {
+          this.fields = normalizeFields(DEFAULT_FIELDS);
+          this.profileId = '';
+        }
       },
       applyProfile(profile) {
         if (!profile) return;
+        const options = profile.options && typeof profile.options === 'object' ? profile.options : null;
+        if (options && options.kind !== 'export') {
+          this.error = 'Ese perfil no es de exportación.';
+          return;
+        }
+        const fields = options ? options.fields : profile.fields;
+        const keys = (Array.isArray(fields) ? fields : []).map((field) => catalogKey(field) || field);
         this.profileId = profile.id;
-        this.fields = Array.isArray(profile.fields) ? profile.fields.slice() : this.fields;
-        this.format = profile.format === 'xlsx' ? 'xlsx' : this.format;
+        this.fields = normalizeFields(keys);
+        this.format = 'csv';
         this.result = null;
+        this.error = '';
+        this.profilesOpen = false;
       },
       applyProfileById(event) {
-        const profile = Data.profileById(event.target.value);
-        this.applyProfile(profile);
-        event.target.value = this.profileId;
+        const id = event && event.target ? text(event.target.value) : '';
+        const profile = this.profileOptions.find((item) => item.id === id) || null;
+        if (profile) this.applyProfile(profile);
+        else this.profileId = '';
+        if (event && event.target) event.target.value = this.profileId;
       },
-      saveProfile(name) {
-        const saved = Data.saveProfile({
+      async refreshProfiles() {
+        if (!this.app || typeof this.app.loadImportProfiles !== 'function') return false;
+        this.profilesError = '';
+        try {
+          const loaded = await this.app.loadImportProfiles();
+          if (loaded === false) this.profilesError = 'No se pudieron cargar los perfiles del servidor.';
+          return loaded !== false;
+        } catch (error) {
+          this.profilesError = 'No se pudieron cargar los perfiles del servidor.';
+          return false;
+        }
+      },
+      async saveProfile(name) {
+        const label = text(name);
+        if (!label) return;
+        if (!this.app || typeof this.app.saveImportProfile !== 'function') {
+          this.error = 'El servidor no permite guardar perfiles.';
+          return;
+        }
+        const result = await this.app.saveImportProfile(label, {
           kind: 'export',
-          name,
-          description: 'Exportación de ' + this.fields.length + ' campos desde el inventario actual.',
-          fields: this.fields.slice(),
-          format: this.format
+          fields: this.exportFields.slice(),
+          format: 'csv'
         });
-        if (!saved) return;
-        this.profileId = saved.id;
+        if (!result || !result.ok) {
+          this.error = (result && result.error) || 'No se pudo guardar el perfil.';
+          return;
+        }
         this.profilesOpen = false;
-        this.app.showToast('Perfil «' + saved.name + '» guardado.');
+        this.error = '';
+        this.app.showToast('Perfil «' + label + '» guardado.');
+      },
+      sessionToken() {
+        const state = this.app.phase6;
+        return {
+          session: state ? state.sessionEpoch : 0,
+          identity: this.app.activeUserId || '',
+          authenticated: this.app.authenticated === true
+        };
+      },
+      sessionOpen(token) {
+        return !!this.app.phase6
+          && this.app.authenticated === true
+          && token.authenticated === true
+          && this.app.phase6.sessionEpoch === token.session
+          && (this.app.activeUserId || '') === token.identity;
+      },
+      // El adaptador de fase 6 no reenvía `options`; se llama al mismo endpoint
+      // con su guarda de sesión y de ejecución viva en lugar de tocarlo.
+      async requestExport(body) {
+        if (!this.app.phase6CanView) return { ok: false, error: 'No hay permiso para exportar activos.' };
+        const token = this.sessionToken();
+        const run = this.exportRun;
+        if (run.controller) run.controller.abort();
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        run.epoch += 1;
+        const epoch = run.epoch;
+        run.controller = controller;
+        try {
+          const blob = await window.AssetAccess.request(this.app, '/assets/export', {
+            method: 'POST',
+            body,
+            responseType: 'blob',
+            signal: controller ? controller.signal : undefined
+          });
+          if (epoch !== run.epoch || !this.sessionOpen(token)) return { ok: false, cancelled: true };
+          return { ok: true, blob };
+        } catch (error) {
+          if (epoch !== run.epoch || !this.sessionOpen(token)) return { ok: false, cancelled: true };
+          if (error && error.name === 'AbortError') return { ok: false, cancelled: true };
+          return { ok: false, error: text(error && error.message) || 'No se pudo exportar.' };
+        } finally {
+          if (epoch === run.epoch) run.controller = null;
+        }
       },
       async generate() {
         this.error = '';
-        if (!this.fields.length) {
-          this.error = 'Elige al menos un campo para exportar.';
+        if (!this.exportFields.length) {
+          this.error = 'Elige al menos un campo disponible para exportar.';
           return;
         }
-        if (!this.estimateRows) {
-          this.error = this.scope === 'selection'
-            ? 'Selecciona al menos un activo para exportar.'
-            : 'No hay activos que coincidan con los filtros actuales.';
+        if (this.scope === 'selection' && !this.selectedIds.length) {
+          this.error = 'Selecciona al menos un activo para exportar.';
           return;
         }
+        if (this.scope === 'filters' && this.blockedFilters) {
+          this.error = 'La exportación por filtros no puede aplicar ' + this.blockedFilters + '. Quita ese filtro o exporta una selección manual.';
+          return;
+        }
+        const input = {
+          fields: this.exportFields.slice(),
+          options: {
+            separator: SEPARATOR_NAMES[this.options.separator] || 'comma',
+            headerRow: !!this.options.headerRow,
+            bom: !!this.options.bom,
+            includeEmpty: !!this.options.includeEmpty
+          }
+        };
+        if (this.scope === 'selection') input.assetIds = this.selectedIds.slice();
+        else if (this.scope === 'all') input.filters = { all: true };
+        else input.filters = this.exportFilters;
         this.generating = true;
-        this.progress = 8;
-        this.progressLabel = 'Preparando ' + this.scopeAssets.length + ' activos…';
+        this.progress = 0;
+        this.progressLabel = 'Esperando el archivo del servidor…';
         this.result = null;
-        await this.sleep(180);
-        this.progress = 42;
-        this.progressLabel = 'Aplicando ' + this.fields.length + ' campos…';
-        await this.sleep(240);
-        this.progress = 76;
-        this.progressLabel = 'Generando el archivo…';
-        await this.sleep(220);
-        const built = Engine.buildExport(this.app, {
-          assets: this.scopeAssets,
-          fields: this.fields,
-          profileId: this.profileId,
-          format: this.format,
-          separator: this.options.separator,
-          headerRow: this.options.headerRow,
-          bom: this.options.bom,
-          includeEmpty: this.options.includeEmpty
-        });
-        this.progress = 100;
-        this.progressLabel = 'Archivo listo.';
-        await this.sleep(160);
-        this.result = built;
-        this.generating = false;
-        Data.addExport({
-          at: new Date().toISOString(),
-          fileName: built.fileName,
-          rows: built.rows.length,
-          size: built.size,
-          format: built.format,
-          profile: this.activeProfile ? this.activeProfile.name : 'Personalizado',
-          scope: this.scopeLabel
-        });
-        this.recent = Data.exportsLog();
-        this.app.showToast('Exportación generada: ' + built.rows.length + ' filas y ' + built.fields.length + ' columnas.');
-      },
-      sleep(ms) {
-        return new Promise((resolve) => window.setTimeout(resolve, ms));
+        try {
+          const response = await this.requestExport(input);
+          if (!response || !response.ok) {
+            this.error = response && response.cancelled
+              ? 'La exportación se canceló.'
+              : (response && response.error) || 'No se pudo exportar.';
+            return;
+          }
+          if (!response.blob) {
+            this.error = 'El servidor no devolvió el archivo.';
+            return;
+          }
+          this.progress = 100;
+          this.progressLabel = 'Archivo recibido.';
+          this.result = {
+            fileName: text(response.filename) || 'assets.csv',
+            blob: response.blob,
+            size: response.blob.size,
+            fields: this.exportFields.slice(),
+            format: 'csv',
+            rows: null
+          };
+          this.app.showToast('Exportación lista: ' + this.exportFields.length + ' columnas.');
+        } catch (error) {
+          this.error = (error && error.message) || 'No se pudo exportar.';
+        } finally {
+          this.generating = false;
+        }
       },
       download() {
-        if (!this.result) return;
+        if (!this.result || !this.result.blob) return;
         try {
-          const content = this.result.csv.indexOf('\ufeff') === 0 ? this.result.csv : '\ufeff' + this.result.csv;
-          const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-          const url = URL.createObjectURL(blob);
+          // Se descarga el blob del servidor sin volver a codificarlo.
+          const url = URL.createObjectURL(this.result.blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = this.result.fileName.replace(/\.xlsx$/, '.csv');
+          link.download = this.result.fileName;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -286,13 +510,15 @@
               <div>
                 <p class="eyebrow"><span class="eyebrow__line"></span> Paso 1 · Alcance</p>
                 <h2 id="tx-export-scope">Qué activos entran en el archivo</h2>
-                <p>La exportación respeta los filtros de la vista de inventario y nunca incluye el histórico de cambios.</p>
+                <p>El servidor genera la exportación con los filtros del inventario y nunca incluye el histórico de cambios.</p>
               </div>
             </header>
 
             <div class="tx-scope">
               <button v-for="option in scopes" :key="option.id" type="button" class="tx-scope__card"
-                      :class="{ 'is-active': scope === option.id }" :aria-pressed="scope === option.id" @click="setScope(option.id)">
+                      :class="{ 'is-active': scope === option.id }" :aria-pressed="scope === option.id"
+                      :disabled="option.enabled === false" :aria-disabled="option.enabled === false ? 'true' : 'false'"
+                      @click="setScope(option.id)">
                 <span class="tx-scope__icon"><app-icon :name="option.icon"></app-icon></span>
                 <span class="tx-scope__body">
                   <strong>{{ option.label }}</strong>
@@ -317,7 +543,7 @@
                     <input type="checkbox" :checked="selectedIds.indexOf(asset.id) !== -1" @change="toggleAsset(asset.id)">
                     <span class="tx-picker__body">
                       <strong>{{ asset.name }}</strong>
-                      <small class="mono">{{ asset.id }} · {{ siteLabel(asset.site) }}</small>
+                      <small class="mono">{{ asset.id }} · {{ asset.site || 'Sin sede' }}</small>
                     </span>
                     <span class="tx-state" :class="'tx-state--' + (asset.retired ? 'down' : 'ok')"><span class="tx-dot"></span>{{ asset.status }}</span>
                   </label>
@@ -332,7 +558,7 @@
               <div>
                 <p class="eyebrow"><span class="eyebrow__line"></span> Paso 2 · Contenido</p>
                 <h2 id="tx-export-fields">Campos y perfil</h2>
-                <p>El orden de los campos se traduce en el orden de las columnas del archivo.</p>
+                <p>El orden de los campos se traduce en el orden de las columnas del archivo. El ID permanente siempre se exporta.</p>
               </div>
               <button type="button" class="btn btn--ghost btn--small" @click="profilesOpen = true">
                 <app-icon name="sliders"></app-icon> Perfiles
@@ -345,12 +571,14 @@
                 <div class="input-shell">
                   <app-icon name="file-text"></app-icon>
                   <select id="tx-export-profile" :value="profileId" @change="applyProfileById">
+                    <option value="">Sin perfil</option>
                     <option v-for="profile in profileOptions" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
                   </select>
                   <app-icon name="chevron-down"></app-icon>
                 </div>
               </div>
               <p v-if="activeProfile" class="tx-profile-row__note">{{ activeProfile.description }}</p>
+              <p v-else-if="profilesError" class="tx-profile-row__note">{{ profilesError }}</p>
             </div>
 
             <div class="tx-field-builder">
@@ -366,10 +594,10 @@
                     <button type="button" class="icon-button" :disabled="index === 0" aria-label="Subir campo" @click="moveField(index, -1)">
                       <app-icon name="chevron-up"></app-icon>
                     </button>
-                    <button type="button" class="icon-button" :disabled="index === fields.length - 1" aria-label="Bajar campo" @click="moveField(index, 1)">
+                    <button type="button" class="icon-button" :disabled="index === 0 || index === fields.length - 1" aria-label="Bajar campo" @click="moveField(index, 1)">
                       <app-icon name="chevron-down"></app-icon>
                     </button>
-                    <button type="button" class="icon-button" aria-label="Quitar campo" @click="toggleField(key)">
+                    <button type="button" class="icon-button" :disabled="key === 'id'" aria-label="Quitar campo" @click="toggleField(key)">
                       <app-icon name="minus"></app-icon>
                     </button>
                   </li>
@@ -381,10 +609,12 @@
               <div class="tx-field-col">
                 <p class="tx-label">Campos disponibles</p>
                 <div class="tx-available">
-                  <button v-for="field in availableFields" :key="field.key" type="button" class="tx-available__item" @click="toggleField(field.key)">
+                  <button v-for="field in availableFields" :key="field.key" type="button" class="tx-available__item"
+                          :disabled="!field.supported" :aria-disabled="!field.supported ? 'true' : 'false'"
+                          @click="toggleField(field.key)">
                     <app-icon name="plus"></app-icon>
                     <span>{{ field.label }}</span>
-                    <small>{{ field.group }}</small>
+                    <small>{{ fieldNote(field) }}</small>
                   </button>
                   <p v-if="!availableFields.length" class="tx-muted">Todos los campos están incluidos.</p>
                 </div>
@@ -397,7 +627,7 @@
               <div>
                 <p class="eyebrow"><span class="eyebrow__line"></span> Paso 3 · Formato</p>
                 <h2 id="tx-export-format">Cómo se entrega el archivo</h2>
-                <p>CSV es la opción más compatible; Excel está pensado para entregas a terceros.</p>
+                <p>El servidor entrega un CSV separado por comas; no hay otro formato disponible.</p>
               </div>
             </header>
 
@@ -409,18 +639,19 @@
                   <small>Texto ligero que abre cualquier hoja de cálculo o sistema.</small>
                 </span>
               </button>
-              <button type="button" class="tx-scope__card" :class="{ 'is-active': format === 'xlsx' }" :aria-pressed="format === 'xlsx'" @click="format = 'xlsx'">
+              <button type="button" class="tx-scope__card" :class="{ 'is-active': false }" :aria-pressed="false"
+                      :disabled="true" aria-disabled="true">
                 <span class="tx-scope__icon"><app-icon name="table"></app-icon></span>
                 <span class="tx-scope__body">
                   <strong>Libro Excel</strong>
-                  <small>Encabezados fijos y columnas con formato de número.</small>
+                  <small>No disponible: el servidor solo entrega CSV.</small>
                 </span>
               </button>
             </div>
 
-            <p v-if="format === 'xlsx'" class="form-note">
+            <p class="form-note">
               <app-icon name="info"></app-icon>
-              En este prototipo el libro .xlsx se representa de forma simulada; la descarga disponible es el CSV equivalente.
+              El servidor aplica el separador, los encabezados, el BOM y las columnas vacías al archivo CSV. El ID permanente nunca se omite.
             </p>
 
             <div class="tx-options">
@@ -430,7 +661,7 @@
               </label>
               <label class="check-row">
                 <input v-model="options.includeEmpty" type="checkbox">
-                <span><strong>Incluir columnas sin datos</strong><small>Si se desactiva, se omiten las columnas vacías en todos los registros.</small></span>
+                <span><strong>Incluir columnas sin datos</strong><small>Si se desactiva, el servidor omite las columnas vacías en todos los registros; el ID permanente se conserva.</small></span>
               </label>
               <label class="check-row">
                 <input v-model="options.bom" type="checkbox">
@@ -445,6 +676,7 @@
                   </select>
                   <app-icon name="chevron-down"></app-icon>
                 </div>
+                <p class="field__hint">El servidor aplica el separador elegido.</p>
               </div>
             </div>
 
@@ -452,9 +684,7 @@
           </section>
 
           <footer class="tx-foot">
-            <p class="tx-foot__note">
-              {{ estimateRows }} filas · {{ fields.length }} columnas · vista previa de {{ Math.min(3, estimateRows) }} registros.
-            </p>
+            <p class="tx-foot__note">{{ scopeFootNote }}</p>
             <div class="tx-foot__actions">
               <button type="button" class="btn btn--primary" data-od-id="export-generate" :disabled="!canGenerate" @click="generate">
                 <app-icon name="download"></app-icon> {{ generating ? 'Generando…' : 'Generar exportación' }}
@@ -467,19 +697,20 @@
           <div class="tx-rail__card">
             <header class="tx-rail__head">
               <h3>Resumen</h3>
-              <span class="tx-tag">{{ format === 'xlsx' ? 'Excel' : 'CSV' }}</span>
+              <span class="tx-tag">CSV</span>
             </header>
             <dl class="tx-summary-list">
               <div><dt>Alcance</dt><dd>{{ scopeLabel }}</dd></div>
-              <div><dt>Activos</dt><dd class="mono">{{ estimateRows }}</dd></div>
-              <div><dt>Columnas</dt><dd class="mono">{{ fields.length }}</dd></div>
-              <div><dt>Tamaño estimado</dt><dd class="mono">{{ estimateSize }}</dd></div>
+              <div><dt>Activos</dt><dd class="mono">{{ scopeCountLabel }}</dd></div>
+              <div><dt>Columnas</dt><dd class="mono">{{ exportFields.length }}</dd></div>
+              <div><dt>Tamaño</dt><dd class="mono">{{ result ? formatSize(result.size) : '—' }}</dd></div>
               <div><dt>Perfil</dt><dd>{{ activeProfile ? activeProfile.name : 'Personalizado' }}</dd></div>
             </dl>
           </div>
 
           <div class="tx-rail__card">
             <header class="tx-rail__head"><h3>Vista previa</h3></header>
+            <p class="tx-muted">Datos cargados en esta vista; el archivo lo genera el servidor.</p>
             <div v-if="previewRows.length" class="tx-mini-table-wrap">
               <table class="tx-mini-table">
                 <thead>
@@ -505,33 +736,25 @@
             <header class="tx-rail__head"><h3>Archivo generado</h3><app-icon name="check"></app-icon></header>
             <p class="tx-result-file mono">{{ result.fileName }}</p>
             <dl class="tx-summary-list">
-              <div><dt>Filas</dt><dd class="mono">{{ result.rows.length }}</dd></div>
+              <div><dt>Filas</dt><dd class="mono">—</dd></div>
               <div><dt>Columnas</dt><dd class="mono">{{ result.fields.length }}</dd></div>
               <div><dt>Tamaño</dt><dd class="mono">{{ formatSize(result.size) }}</dd></div>
             </dl>
             <div class="tx-rail__actions">
               <button type="button" class="btn btn--primary btn--small" data-od-id="export-download" @click="download">
-                <app-icon name="download"></app-icon> Descargar{{ result.format === 'xlsx' ? ' CSV' : ' CSV' }}
+                <app-icon name="download"></app-icon> Descargar CSV
               </button>
               <button type="button" class="text-button" @click="clearResult">Descartar</button>
             </div>
-            <p v-if="result.format === 'xlsx'" class="tx-hint"><app-icon name="info"></app-icon> El libro de Excel se entrega como CSV equivalente.</p>
           </div>
 
           <div class="tx-rail__card">
             <header class="tx-rail__head"><h3>Exportaciones recientes</h3></header>
-            <ul v-if="recentExports.length" class="tx-rail-list">
-              <li v-for="entry in recentExports" :key="entry.id">
-                <strong class="mono">{{ entry.fileName }}</strong>
-                <span>{{ entry.rows }} filas · {{ formatSize(entry.size) }}</span>
-                <small>{{ entry.profile }} · {{ formatWhen(entry.at) }}</small>
-              </li>
-            </ul>
-            <p v-else class="tx-muted">Todavía no has generado exportaciones.</p>
+            <p class="tx-muted">El servidor no guarda un historial de exportaciones.</p>
           </div>
         </aside>
 
-        <transfer-profile-dialog :open="profilesOpen" kind="export" @close="profilesOpen = false"
+        <transfer-profile-dialog :app="app" :open="profilesOpen" kind="export" @close="profilesOpen = false"
                                 @apply="applyProfile" @save="saveProfile"></transfer-profile-dialog>
       </div>
     `
@@ -539,48 +762,97 @@
 
   /* Preferencias en Configuración ----------------------------------------- */
 
+  const BUILTIN_PROFILE_IDS = ['csv-standard', 'csv-spanish', 'xlsx-sites'];
+
   window.AssetTransferViews.DataTransferSettings = {
     name: 'DataTransferSettings',
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
     data() {
-      return {
-        draft: Data.getPrefs(),
-        savedAt: ''
-      };
+      return { busy: false, error: '' };
+    },
+    created() {
+      // El importador ya carga los perfiles al abrir el módulo; no se repite la
+      // lectura si la página ya tiene resultados o está en curso.
+      const page = this.app.phase6 && this.app.phase6.profiles;
+      if (page && (page.loading || (Array.isArray(page.items) && page.items.length))) return;
+      this.refresh();
     },
     computed: {
+      serverProfiles() {
+        const page = this.app.phase6 && this.app.phase6.profiles;
+        return page && Array.isArray(page.items) ? page.items : [];
+      },
       importProfiles() {
-        return Data.profiles('import');
+        return this.serverProfiles.filter((profile) => this.profileKind(profile) === 'import');
       },
       exportProfiles() {
-        return Data.profiles('export');
+        return this.serverProfiles.filter((profile) => this.profileKind(profile) === 'export');
       },
       customCount() {
-        return this.importProfiles.concat(this.exportProfiles).filter((profile) => !profile.builtin).length;
+        return this.serverProfiles.filter((profile) => !this.isBuiltin(profile)).length;
       },
       savedNote() {
-        return this.savedAt
-          ? 'Preferencias guardadas ' + Data.formatDateTime(this.savedAt) + ' en este navegador.'
-          : 'Se aplican a las próximas importaciones y exportaciones de este navegador.';
+        return 'Los perfiles se guardan en el servidor. Este formulario no guarda preferencias en el navegador.';
       }
     },
     methods: {
-      save() {
-        this.draft = Data.savePrefs({
-          defaultImportProfile: this.draft.defaultImportProfile,
-          defaultExportProfile: this.draft.defaultExportProfile,
-          defaultFormat: this.draft.defaultFormat,
-          duplicatePolicy: this.draft.duplicatePolicy,
-          headerRow: this.draft.headerRow,
-          separator: this.draft.separator,
-          bom: this.draft.bom,
-          includeEmpty: this.draft.includeEmpty,
-          confirmUpdates: this.draft.confirmUpdates,
-          keepHistory: this.draft.keepHistory
-        });
-        this.savedAt = new Date().toISOString();
-        this.app.showToast('Preferencias de datos guardadas.');
+      profileKind(profile) {
+        return profile && profile.options && profile.options.kind === 'export' ? 'export' : 'import';
+      },
+      isBuiltin(profile) {
+        return !!profile && BUILTIN_PROFILE_IDS.indexOf(profile.id) !== -1;
+      },
+      profileMeta(profile) {
+        const options = profile && profile.options && typeof profile.options === 'object' ? profile.options : {};
+        if (this.profileKind(profile) === 'export') {
+          const fields = Array.isArray(options.fields) ? options.fields : [];
+          return fields.length + (fields.length === 1 ? ' campo' : ' campos') + ' · CSV';
+        }
+        const mappings = options.sheetMappings && typeof options.sheetMappings === 'object' ? options.sheetMappings : null;
+        let columns = 0;
+        if (mappings) {
+          columns = Object.keys(mappings).reduce((total, sheet) => {
+            return total + Object.keys(mappings[sheet] || {}).filter((column) => mappings[sheet][column]).length;
+          }, 0);
+        } else if (options.mapping && typeof options.mapping === 'object') {
+          columns = Object.keys(options.mapping).filter((column) => options.mapping[column]).length;
+        }
+        const match = Array.isArray(options.matchFields) ? options.matchFields.length : 0;
+        return columns + (columns === 1 ? ' columna · ' : ' columnas · ') + (match ? match + (match === 1 ? ' criterio de identificación' : ' criterios de identificación') : 'sin criterios de identificación');
+      },
+      async refresh() {
+        if (typeof this.app.loadImportProfiles !== 'function') {
+          this.error = 'El servidor no permite cargar perfiles.';
+          return false;
+        }
+        this.busy = true;
+        this.error = '';
+        try {
+          const loaded = await this.app.loadImportProfiles();
+          if (loaded === false) this.error = 'No se pudieron cargar los perfiles del servidor.';
+          return loaded !== false;
+        } catch (error) {
+          this.error = 'No se pudieron cargar los perfiles del servidor.';
+          return false;
+        } finally {
+          this.busy = false;
+        }
+      },
+      async remove(profile) {
+        if (!profile || this.isBuiltin(profile)) return false;
+        if (typeof this.app.deleteImportProfile !== 'function') {
+          this.error = 'El servidor no permite eliminar perfiles.';
+          return false;
+        }
+        this.error = '';
+        const result = await this.app.deleteImportProfile(profile.id);
+        if (!result || result.ok !== true) {
+          this.error = (result && result.error) || 'No se pudo eliminar el perfil.';
+          return false;
+        }
+        this.app.showToast('Perfil «' + profile.name + '» eliminado del servidor.');
+        return true;
       },
       openImport() {
         this.app.setHash('#/datos/importar');
@@ -595,104 +867,68 @@
           <div>
             <p class="eyebrow">Entrada y salida</p>
             <h2 id="config-data-title">Datos e importación</h2>
-            <p>Define el perfil que se aplica por defecto y cómo se tratan los archivos antes de confirmar los cambios.</p>
+            <p>Los perfiles reutilizables se guardan en el servidor. Cada importación y cada exportación se revisan antes de confirmar los cambios.</p>
           </div>
-          <span class="config-badge"><app-icon name="upload"></app-icon> Local</span>
+          <span class="config-badge"><app-icon name="lock"></app-icon> Servidor</span>
         </header>
 
-        <form class="form-stack" novalidate @submit.prevent="save">
+        <div class="form-stack">
           <div class="form-grid">
             <div class="field">
-              <label for="cfg-import-profile">Perfil de importación por defecto</label>
-              <div class="input-shell">
-                <app-icon name="upload"></app-icon>
-                <select id="cfg-import-profile" v-model="draft.defaultImportProfile">
-                  <option v-for="profile in importProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
-                </select>
-                <app-icon name="chevron-down"></app-icon>
-              </div>
-              <p class="field__hint">Se preselecciona al abrir el asistente.</p>
-            </div>
-
-            <div class="field">
-              <label for="cfg-export-profile">Perfil de exportación por defecto</label>
-              <div class="input-shell">
-                <app-icon name="download"></app-icon>
-                <select id="cfg-export-profile" v-model="draft.defaultExportProfile">
-                  <option v-for="profile in exportProfiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
-                </select>
-                <app-icon name="chevron-down"></app-icon>
-              </div>
-              <p class="field__hint">Los perfiles propios aparecen al final de la lista.</p>
-            </div>
-
-            <div class="field">
-              <label for="cfg-data-format">Formato de salida</label>
+              <label for="cfg-data-format">Formato de las exportaciones</label>
               <div class="input-shell">
                 <app-icon name="file-text"></app-icon>
-                <select id="cfg-data-format" v-model="draft.defaultFormat">
+                <select id="cfg-data-format" disabled>
                   <option value="csv">CSV delimitado</option>
-                  <option value="xlsx">Libro Excel</option>
                 </select>
                 <app-icon name="chevron-down"></app-icon>
               </div>
+              <p class="field__hint">El servidor genera CSV; las columnas, el separador y la cabecera se eligen en cada exportación.</p>
             </div>
 
             <div class="field">
-              <label for="cfg-data-duplicates">Duplicados en el archivo</label>
+              <label for="cfg-data-duplicates">Duplicados en la importación</label>
               <div class="input-shell">
                 <app-icon name="layers"></app-icon>
-                <select id="cfg-data-duplicates" v-model="draft.duplicatePolicy">
-                  <option value="ask">Preguntar en cada importación</option>
-                  <option value="skip">Omitir el segundo registro</option>
-                  <option value="create">Crear un activo distinto</option>
+                <select id="cfg-data-duplicates" disabled>
+                  <option value="ask">Revisión antes de aplicar</option>
                 </select>
                 <app-icon name="chevron-down"></app-icon>
               </div>
-              <p class="field__hint">El asistente siempre muestra los duplicados detectados.</p>
+              <p class="field__hint">El servidor clasifica cada fila como coincidencia segura, posible duplicado o error, y la muestra antes de confirmar.</p>
             </div>
-          </div>
-
-          <div class="tx-setting-list">
-            <label class="tx-rule tx-rule--toggle">
-              <span class="switch">
-                <input v-model="draft.confirmUpdates" type="checkbox">
-                <span class="switch__track"><span class="switch__thumb"></span></span>
-              </span>
-              <div><strong>Pedir confirmación antes de aplicar</strong><span>Muestra el detalle de las actualizaciones y de las altas previstas.</span></div>
-            </label>
-            <label class="tx-rule tx-rule--toggle">
-              <span class="switch">
-                <input v-model="draft.keepHistory" type="checkbox">
-                <span class="switch__track"><span class="switch__thumb"></span></span>
-              </span>
-              <div><strong>Guardar el historial de importaciones</strong><span>Conserva el archivo, el perfil y el resultado de las últimas ocho importaciones en este navegador.</span></div>
-            </label>
-            <label class="tx-rule tx-rule--toggle">
-              <span class="switch">
-                <input v-model="draft.headerRow" type="checkbox">
-                <span class="switch__track"><span class="switch__thumb"></span></span>
-              </span>
-              <div><strong>Exportar con fila de encabezados</strong><span>La primera fila del archivo repite el nombre de cada campo.</span></div>
-            </label>
-            <label class="tx-rule tx-rule--toggle">
-              <span class="switch">
-                <input v-model="draft.includeEmpty" type="checkbox">
-                <span class="switch__track"><span class="switch__thumb"></span></span>
-              </span>
-              <div><strong>Incluir columnas sin datos</strong><span>Si se desactiva, se omiten las columnas vacías en todos los registros.</span></div>
-            </label>
           </div>
 
           <div class="config-note">
             <app-icon name="lock"></app-icon>
-            <p><strong>Reglas fijas del módulo.</strong> El ID permanente nunca se reemplaza en una actualización, los campos vacíos no sobrescriben valores y toda importación queda registrada con el archivo de origen.</p>
+            <p><strong>Reglas fijas del módulo.</strong> El ID permanente nunca se reemplaza en una actualización, los campos vacíos no sobrescriben valores y cada importación, exportación o edición por lote queda registrada como una operación del servidor.</p>
           </div>
+
+          <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+
+          <ul class="tx-profile-list">
+            <li v-for="profile in serverProfiles" :key="profile.id" class="tx-profile">
+              <div class="tx-profile__body">
+                <div class="tx-profile__title">
+                  <strong>{{ profile.name }}</strong>
+                  <span class="tx-tag" :class="{ 'tx-tag--builtin': isBuiltin(profile) }">{{ isBuiltin(profile) ? 'Predeterminado' : 'Personalizado' }}</span>
+                  <span class="tx-tag">{{ profileKind(profile) === 'export' ? 'Exportación' : 'Importación' }}</span>
+                </div>
+                <p class="tx-profile__meta mono">{{ profileMeta(profile) }}</p>
+              </div>
+              <div class="tx-profile__actions">
+                <button v-if="!isBuiltin(profile)" type="button" class="icon-button" :aria-label="'Eliminar el perfil ' + profile.name" @click="remove(profile)">
+                  <app-icon name="trash"></app-icon>
+                </button>
+              </div>
+            </li>
+          </ul>
+          <p v-if="!serverProfiles.length" class="tx-muted">El servidor no tiene perfiles guardados.</p>
 
           <div class="tx-profile-summary">
             <div>
               <span class="tx-kpi__label">Perfiles</span>
-              <strong class="mono">{{ importProfiles.length + exportProfiles.length }}</strong>
+              <strong class="mono">{{ serverProfiles.length }}</strong>
             </div>
             <div>
               <span class="tx-kpi__label">Propios</span>
@@ -706,9 +942,9 @@
 
           <div class="config-form-foot">
             <p class="config-form-foot__note">{{ savedNote }}</p>
-            <button type="submit" class="btn btn--primary" data-od-id="export-settings-save">Guardar preferencias</button>
+            <button type="button" class="btn btn--secondary" data-od-id="export-settings-reload" :disabled="busy" @click="refresh">Recargar perfiles</button>
           </div>
-        </form>
+        </div>
       </section>
     `
   };

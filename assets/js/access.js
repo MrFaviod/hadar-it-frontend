@@ -96,7 +96,9 @@
     mapas: 'config.sites',
     datos: 'assets.edit',
     reportes: 'assets.edit',
-    garantias: 'assets.edit',
+    // The only stored warranty preference is the expiring-day threshold, which
+    // the server guards with config.general (phase 6, S7).
+    garantias: 'config.general',
     qr: 'config.general',
     etiquetas: 'assets.edit'
   };
@@ -169,7 +171,9 @@
     const state = vm.__assetAccess;
     const signal = init.signal || (state && state.controller.signal);
     const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal }));
-    const payload = await response.json();
+    const payload = response.ok && init.responseType === 'blob'
+      ? await response.blob()
+      : response.status === 204 ? null : await response.json();
     if (state && state.stopped) throw new Error('Solicitud cancelada.');
     if (!response.ok) {
       if (response.status === 401 && path !== '/auth/login') clearIdentity(vm);

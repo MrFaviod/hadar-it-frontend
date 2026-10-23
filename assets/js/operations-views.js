@@ -678,6 +678,34 @@
     `
   };
 
+  const BULK_CONTROLS = { select: 'select', number: 'number', boolean: 'boolean', date: 'date' };
+  const BULK_FIELDS = [
+    { key: 'statusId', label: 'Estado', control: 'status', group: 'Estado y responsable' },
+    { key: 'assigneeId', label: 'Responsable', control: 'person', group: 'Estado y responsable' },
+    { key: 'site', label: 'Sede', control: 'site', group: 'Ubicación' },
+    { key: 'locationId', label: 'Ubicación', control: 'location', group: 'Ubicación' },
+    { key: 'brand', label: 'Marca', control: 'text', group: 'Datos comunes' },
+    { key: 'model', label: 'Modelo', control: 'text', group: 'Datos comunes' },
+    { key: 'serial', label: 'Número de serie', control: 'text', group: 'Datos comunes' },
+    { key: 'ip', label: 'Dirección IP', control: 'text', group: 'Datos comunes' },
+    { key: 'cost', label: 'Coste', control: 'number', group: 'Datos comunes' }
+  ];
+
+  function bulkText(value) {
+    return value === null || value === undefined ? '' : String(value);
+  }
+
+  function bulkDisplay(value) {
+    if (value === true) return 'Sí';
+    if (value === false) return 'No';
+    const text = bulkText(value).trim();
+    return text === '' ? 'Sin valor' : text;
+  }
+
+  /* La edición masiva conserva los cuatro pasos y los controles de siempre,
+   * pero la vista previa y el resultado son los del servidor: primero se pide
+   * la previsualización fija, después la aprueba una persona autorizada y solo
+   * entonces se ejecuta. Ningún cambio se calcula ni se persiste en el navegador. */
   Views.BulkEditor = {
     name: 'BulkEditor',
     components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
@@ -690,20 +718,27 @@
     data() {
       return {
         step: 1,
-        selection: [],
+        selection: (this.ids || []).slice(),
         query: '',
         fields: {},
         values: {},
         errors: {},
         rows: [],
         result: null,
-        submitted: false
+        submitted: false,
+        busy: false,
+        message: ''
       };
     },
     computed: {
+      // En una sesión autenticada la lista es la página canónica del
+      // inventario: el conjunto de demostración del prototipo nunca se mezcla.
+      serverMode() {
+        return this.app.serverInventory === true;
+      },
       context() {
         return {
-          assets: this.app.assets,
+          assets: this.assets,
           admin: this.app.assetAdmin,
           sites: this.app.sites,
           people: this.app.people,
@@ -711,10 +746,16 @@
         };
       },
       assets() {
+        if (this.serverMode) {
+          return Array.isArray(this.app.inventoryItems) ? this.app.inventoryItems : [];
+        }
         return Array.isArray(this.app.assets) ? this.app.assets : [];
       },
       selectionAssets() {
-        return this.selection.map((id) => this.assets.find((asset) => asset.id === id)).filter(Boolean);
+        return this.selection.map((id) => {
+          const found = this.assets.find((asset) => asset.id === id);
+          return found || { id: id, name: id, code: '', serverAsset: true };
+        });
       },
       visibleAssets() {
         const query = this.query.trim().toLocaleLowerCase('es');
@@ -728,7 +769,17 @@
         });
       },
       catalog() {
-        return Engine.bulkCatalog(this.context, this.selectionAssets);
+        if (!this.serverMode) return Engine.bulkCatalog(this.context, this.selectionAssets);
+        const fields = BULK_FIELDS.slice();
+        const seen = {};
+        this.selectionAssets.forEach((asset) => {
+          this.techFieldsOf(asset).forEach((field) => {
+            if (seen[field.key]) return;
+            seen[field.key] = true;
+            fields.push(field);
+          });
+        });
+        return fields;
       },
       groups() {
         const order = ['Estado y responsable', 'Ubicación', 'Datos comunes', 'Campos técnicos'];
@@ -748,16 +799,23 @@
         ];
       },
       commonSite() {
-        const sites = this.selectionAssets.map((asset) => asset.site);
+        const sites = this.selectionAssets.map((asset) => this.siteIdOf(asset));
         const first = sites[0] || '';
-        return sites.every((site) => site === first) ? first : '';
+        return sites.length && sites.every((site) => site === first) ? first : '';
       },
       locationSourceSite() {
         return this.values.site || this.commonSite;
       },
       locationOptions() {
-        const site = (this.app.sites || []).find((item) => item.id === this.locationSourceSite);
-        return site && Array.isArray(site.locations) ? site.locations : [];
+        const siteId = this.locationSourceSite;
+        const site = (this.app.sites || []).find((item) => item.id === siteId);
+        if (site && Array.isArray(site.locations) && site.locations.length) return site.locations;
+        if (this.serverMode && typeof this.app.assetSiteLocations === 'function') {
+          return this.app
+            .assetSiteLocations(siteId)
+            .map((location) => ({ id: location.id, label: location.label || location.name || location.id }));
+        }
+        return [];
       },
       counts() {
         const applied = this.rows.filter((row) => !row.skipped && row.changes.length);
@@ -766,9 +824,20 @@
         return { applied: applied.length, unchanged: unchanged.length, skipped: skipped.length };
       },
       statusOptions() {
-        return Engine.openStatuses(this.app.assetAdmin);
+        if (!this.serverMode) return Engine.openStatuses(this.app.assetAdmin);
+        const choices = Array.isArray(this.app.inventoryStatusChoices) ? this.app.inventoryStatusChoices : [];
+        return choices
+          .filter((status) => !status.final)
+          .map((status) => ({ id: status.value, label: status.label, final: false }));
       },
       peopleOptions() {
+        if (this.serverMode) {
+          const directory = this.app.organization && this.app.organization.people;
+          const items = directory && Array.isArray(directory.items) ? directory.items : [];
+          return items
+            .filter((person) => person.active !== false)
+            .map((person) => ({ id: person.id, name: person.name || person.label || person.id }));
+        }
         const people = Array.isArray(this.app.people) ? this.app.people : [];
         return people.filter((person) => person.active);
       },
@@ -795,6 +864,8 @@
         this.rows = [];
         this.result = null;
         this.submitted = false;
+        this.busy = false;
+        this.message = '';
       },
       isSelected(id) {
         return this.selection.indexOf(id) !== -1;
@@ -818,8 +889,35 @@
       allVisibleSelected() {
         return this.visibleAssets.length > 0 && this.visibleAssets.every((asset) => this.selection.indexOf(asset.id) !== -1);
       },
-      siteLabel(id) {
-        return Engine.siteLabel(this.app.sites, id) || 'Sin sede';
+      siteIdOf(asset) {
+        if (!asset) return '';
+        return this.serverMode ? (asset.siteId || '') : (asset.site || '');
+      },
+      siteLabel(value) {
+        const id = bulkText(value);
+        const sites = Array.isArray(this.app.sites) ? this.app.sites : [];
+        const found = sites.find((site) => site.id === id);
+        if (found) return found.label || found.name || '';
+        return id || 'Sin sede';
+      },
+      techFieldsOf(asset) {
+        if (!this.serverMode) {
+          return Schema.techFields(this.app.assetAdmin, asset ? asset.category : '').map((field) => ({
+            key: 'tech.' + field.key,
+            label: field.label,
+            control: BULK_CONTROLS[field.type] || 'text',
+            group: 'Campos técnicos',
+            options: Array.isArray(field.options) ? field.options : []
+          }));
+        }
+        if (!asset || typeof this.app.inventoryTechnicalFields !== 'function') return [];
+        return this.app.inventoryTechnicalFields(asset.category).map((field) => ({
+          key: 'tech.' + field.key,
+          label: field.label || field.key,
+          control: BULK_CONTROLS[field.type] || 'text',
+          group: 'Campos técnicos',
+          options: Array.isArray(field.options) ? field.options : []
+        }));
       },
       imageOf(asset) {
         if (asset && this.app.assetImage) return this.app.assetImage(asset);
@@ -840,12 +938,13 @@
       defaultValue(key) {
         const field = this.catalog.find((item) => item.key === key);
         if (!field) return '';
+        const first = this.selectionAssets[0] || {};
         if (field.control === 'status') {
-          const status = Engine.openStatuses(this.app.assetAdmin).find((item) => item.id !== (this.selectionAssets[0] || {}).statusId);
+          const status = this.statusOptions.find((item) => item.id !== first.statusId);
           return status ? status.id : '';
         }
         if (field.control === 'person') return '';
-        if (field.control === 'site') return this.commonSite || (this.app.sites[0] ? this.app.sites[0].id : '');
+        if (field.control === 'site') return this.commonSite || (this.siteOptionsData[0] ? this.siteOptionsData[0].id : '');
         if (field.control === 'location') return '';
         if (field.control === 'boolean') return 'true';
         if (field.control === 'select') return field.options && field.options.length ? field.options[0] : '';
@@ -854,9 +953,11 @@
       setValue(key, value) {
         this.values = Object.assign({}, this.values, { [key]: value });
         if (key === 'site' && this.fields.locationId) {
-          const first = this.app.sites.find((item) => item.id === value);
-          const location = first && first.locations && first.locations.length ? first.locations[0].id : '';
-          this.values = Object.assign({}, this.values, { locationId: location });
+          const site = (this.app.sites || []).find((item) => item.id === value);
+          const locations = this.app.assetSiteLocations && this.serverMode
+            ? this.app.assetSiteLocations(value)
+            : (site && site.locations) || [];
+          this.values = Object.assign({}, this.values, { locationId: locations.length ? locations[0].id : '' });
         }
       },
       validate() {
@@ -874,45 +975,253 @@
         this.errors = errors;
         return Object.keys(errors).length === 0;
       },
-      previewValues() {
-        const values = {};
-        this.selectedKeys.forEach((key) => {
-          values[key] = this.values[key];
-        });
-        return values;
+      technicalValue(field, value) {
+        if (!field) return value;
+        if (field.control === 'boolean') return value === true || value === 'true';
+        if (field.control === 'number') {
+          const number = Number(bulkText(value).trim());
+          return bulkText(value).trim() !== '' && Number.isFinite(number) ? number : value;
+        }
+        return value;
       },
-      toPreview() {
+      // Solo los campos marcados viajan al servidor, con su nombre canónico.
+      canonicalChanges() {
+        const changes = {};
+        const technical = {};
+        this.selectedKeys.forEach((key) => {
+          const field = this.catalog.find((item) => item.key === key);
+          const value = this.values[key];
+          if (key === 'statusId') {
+            if (value) changes.status = value;
+          } else if (key === 'assigneeId') {
+            changes.responsible_person_id = value === '' ? null : value;
+          } else if (key === 'site') {
+            if (value) changes.site_id = value;
+          } else if (key === 'locationId') {
+            changes.location_id = value === '' ? null : value;
+          } else if (key.indexOf('tech.') === 0) {
+            technical[key.slice(5)] = this.technicalValue(field, value);
+          } else if (key === 'cost') {
+            changes.cost = value === '' || value === undefined ? null : value;
+          } else {
+            changes[key] = value;
+          }
+        });
+        if (Object.keys(technical).length) changes.technical = technical;
+        return changes;
+      },
+      async toPreview() {
+        if (this.busy) return;
         if (!this.selection.length) return;
         if (!this.selectedKeys.length) {
           this.errors = { general: 'Marca al menos un campo para modificar.' };
           return;
         }
         if (!this.validate()) return;
+        const changes = this.canonicalChanges();
+        if (!Object.keys(changes).length) {
+          this.errors = { general: 'Marca al menos un campo para modificar.' };
+          return;
+        }
+        if (typeof this.app.bulkPreviewPhase6 !== 'function') {
+          this.errors = { general: 'El servidor no permite la edición masiva en esta sesión.' };
+          return;
+        }
+        const targets = this.selectionAssets
+          .filter((asset) => !asset.retired && this.assets.some((loaded) => loaded.id === asset.id))
+          .map((asset) => asset.id);
+        this.busy = true;
+        this.message = '';
         this.errors = {};
-        this.rows = Engine.computeBulk(this.selectionAssets, this.previewValues(), this.context);
-        this.step = 3;
+        try {
+          if (targets.length) {
+            const response = await this.app.bulkPreviewPhase6({ assetIds: targets, changes: changes, action: 'update' });
+            if (!response || !response.ok) {
+              this.errors = { general: (response && response.error) || 'No se pudo preparar la vista previa.' };
+              return;
+            }
+          }
+          this.rows = this.projectRows(targets, changes);
+          this.step = 3;
+        } finally {
+          this.busy = false;
+        }
+      },
+      projectRows(targets, changes) {
+        const operation = this.app.phase6 && this.app.phase6.operation ? this.app.phase6.operation.rows : [];
+        const receipts = {};
+        (Array.isArray(operation) ? operation : []).forEach((row, index) => {
+          if (!row || !row.assetId) return;
+          receipts[row.assetId] = Object.assign({ index: typeof row.index === 'number' ? row.index : index }, row);
+        });
+        return this.selectionAssets.map((asset) => {
+          if (asset.retired) {
+            return { asset: asset, skipped: true, skipReason: 'Activo dado de baja: conserva su ficha pero no admite ediciones por lote.', changes: [], warnings: [], classification: 'omitted', rowIndex: null };
+          }
+          if (targets.indexOf(asset.id) === -1) {
+            return { asset: asset, skipped: true, skipReason: 'El activo no está en la página cargada del inventario. Vuelve a seleccionarlo desde la lista.', changes: [], warnings: [], classification: 'omitted', rowIndex: null };
+          }
+          const receipt = receipts[asset.id];
+          if (!receipt) {
+            return { asset: asset, skipped: true, skipReason: 'El servidor no devolvió este activo en la vista previa.', changes: [], warnings: [], classification: 'omitted', rowIndex: null };
+          }
+          const errors = Array.isArray(receipt.errors) ? receipt.errors : [];
+          const skipped = receipt.classification === 'error' || receipt.classification === 'omitted' || errors.length > 0;
+          return {
+            asset: asset,
+            skipped: skipped,
+            skipReason: skipped ? (errors.join(' · ') || 'Omitido por el servidor.') : '',
+            changes: skipped ? [] : this.changesFor(asset, changes),
+            warnings: [],
+            classification: receipt.classification,
+            rowIndex: receipt.index
+          };
+        });
+      },
+      changesFor(asset, changes) {
+        const list = [];
+        const add = (field, label, before, after) => {
+          if (bulkText(before) === bulkText(after)) return;
+          list.push({ field: field, label: label, before: bulkDisplay(before), after: bulkDisplay(after) });
+        };
+        Object.keys(changes).forEach((key) => {
+          const value = changes[key];
+          if (key === 'status') {
+            add('status', 'Estado', asset.status, this.statusName(value));
+            return;
+          }
+          if (key === 'responsible_person_id') {
+            add('assigneeId', 'Responsable', asset.responsible || asset.assignee, this.personName(value));
+            return;
+          }
+          if (key === 'site_id') {
+            add('site', 'Sede', asset.site, this.siteLabel(value));
+            return;
+          }
+          if (key === 'location_id') {
+            add('locationId', 'Ubicación', asset.location, this.locationName(changes.site_id || asset.siteId, value));
+            return;
+          }
+          if (key === 'technical') {
+            const technical = asset.tech && typeof asset.tech === 'object' ? asset.tech : {};
+            Object.keys(value).forEach((name) => {
+              add('tech.' + name, this.techLabel(name), technical[name], value[name]);
+            });
+            return;
+          }
+          const field = this.catalog.find((item) => item.key === key);
+          add(key, field ? field.label : key, asset[key], value);
+        });
+        return list;
+      },
+      statusName(id) {
+        const status = this.statusOptions.find((item) => item.id === id);
+        return status ? status.label : id;
+      },
+      personName(id) {
+        if (!bulkText(id)) return '';
+        const person = this.peopleOptions.find((item) => item.id === id);
+        return person ? person.name : id;
+      },
+      locationName(siteId, id) {
+        if (!bulkText(id)) return '';
+        const options = (this.app.sites || []).find((item) => item.id === siteId) && Array.isArray((this.app.sites || []).find((item) => item.id === siteId).locations)
+          ? (this.app.sites || []).find((item) => item.id === siteId).locations
+          : this.serverMode && typeof this.app.assetSiteLocations === 'function' ? this.app.assetSiteLocations(siteId) : [];
+        const found = options.find((location) => location.id === id);
+        return found ? (found.label || found.name || id) : id;
+      },
+      techLabel(key) {
+        const field = this.catalog.find((item) => item.key === 'tech.' + key);
+        return field ? field.label : key;
+      },
+      fail(message) {
+        this.message = message || 'El servidor rechazó la edición masiva.';
+        if (this.app.showToast) this.app.showToast(this.message, 'error');
+      },
+      async apply() {
+        if (this.busy) return;
+        if (!this.counts.applied) return;
+        if (typeof this.app.approvePhase6Operation !== 'function' || typeof this.app.executePhase6Operation !== 'function') {
+          this.fail('El servidor no permite aprobar y ejecutar la edición masiva en esta sesión.');
+          return;
+        }
+        this.busy = true;
+        this.message = '';
+        try {
+          // Las filas que el servidor marcó con error se omiten tal como se
+          // muestran en la vista previa; sin esa resolución el servidor no
+          // permite aprobar el lote.
+          const errors = this.rows.filter((row) => row.classification === 'error' && typeof row.rowIndex === 'number');
+          for (let index = 0; index < errors.length; index += 1) {
+            const resolved = await this.app.resolvePhase6Row(errors[index].rowIndex, 'skip');
+            if (!resolved || !resolved.ok) {
+              this.fail((resolved && resolved.error) || 'No se pudo omitir una fila con error.');
+              return;
+            }
+          }
+          const approved = await this.app.approvePhase6Operation();
+          if (!approved || !approved.ok) {
+            this.fail((approved && approved.error) || 'La aprobación de la vista previa falló.');
+            return;
+          }
+          const executed = await this.app.executePhase6Operation();
+          if (!executed || !executed.ok) {
+            this.fail((executed && executed.error) || 'La ejecución del lote falló.');
+            return;
+          }
+          this.finish();
+        } finally {
+          this.busy = false;
+        }
+      },
+      finish() {
+        const operation = this.app.phase6 && this.app.phase6.operation ? this.app.phase6.operation : { rows: [], summary: {} };
+        const receipts = {};
+        (Array.isArray(operation.rows) ? operation.rows : []).forEach((row) => {
+          if (row && row.assetId) receipts[row.assetId] = row;
+        });
+        const applied = [];
+        const failed = [];
+        this.rows = this.rows.map((row) => {
+          const receipt = receipts[row.asset.id];
+          const state = receipt && receipt.result ? receipt.result : '';
+          const next = Object.assign({}, row, {
+            result: state,
+            failed: state === 'failed',
+            skipped: state === 'omitted' || (!state && row.skipped)
+          });
+          if (state === 'modified') applied.push(row.asset);
+          if (state === 'failed') failed.push({ asset: row.asset, error: (receipt && receipt.error) || '' });
+          return next;
+        });
+        const summary = operation.summary && typeof operation.summary === 'object'
+          ? operation.summary
+          : { created: 0, modified: applied.length, omitted: 0, failed: failed.length };
+        this.result = { applied: applied, failed: failed, rows: this.rows, summary: summary };
+        this.step = 4;
+        if (this.app.showToast) {
+          this.app.showToast(
+            'Edición masiva: ' + (Number(summary.modified) || 0) + ' modificados · ' +
+            (Number(summary.created) || 0) + ' creados · ' +
+            (Number(summary.omitted) || 0) + ' omitidos · ' +
+            (Number(summary.failed) || 0) + ' con error.'
+          );
+        }
+        if (typeof this.app.loadInventory === 'function') this.app.loadInventory({ resetOffset: true });
+        this.$emit('applied', this.result);
       },
       back() {
         if (this.step > 1) this.step -= 1;
-      },
-      apply() {
-        const applied = Engine.applyBulk(this.rows, this.context);
-        this.app.persistAssets();
-        this.app.persistAssignments();
-        this.result = { applied: applied, rows: this.rows };
-        this.step = 4;
-        this.app.showToast('Edición masiva aplicada en ' + applied.length + (applied.length === 1 ? ' activo.' : ' activos.'));
-        this.$emit('applied', this.result);
       },
       close() {
         this.$emit('close');
       },
       changeText(change) {
-        const before = change.before === '' || change.before === undefined ? 'Sin valor' : change.before;
-        const after = change.after === '' || change.after === undefined ? 'Sin valor' : change.after;
-        return before + ' → ' + after;
+        return bulkDisplay(change.before) + ' → ' + bulkDisplay(change.after);
       },
       rowState(row) {
+        if (row.failed) return 'Fallido';
         if (row.skipped) return 'Omitido';
         return row.changes.length ? 'Se actualiza' : 'Sin cambios';
       }
@@ -1036,6 +1345,8 @@
               <div><span class="bulk-summary__value mono">{{ counts.skipped }}</span><span>se omiten</span></div>
             </div>
 
+            <p v-if="message" class="form-error" role="alert">{{ message }}</p>
+
             <div class="bulk-preview">
               <div class="bulk-preview__head">
                 <span>Activo</span>
@@ -1063,13 +1374,14 @@
           <div v-else class="flow-body flow-body--result">
             <span class="flow-result__icon"><app-icon name="check"></app-icon></span>
             <h3>Edición masiva aplicada</h3>
-            <p>{{ result.applied.length }} {{ result.applied.length === 1 ? 'activo actualizado' : 'activos actualizados' }}. Cada cambio quedó registrado en el historial de su ficha con el responsable de la operación.</p>
+            <p>{{ result.applied.length }} {{ result.applied.length === 1 ? 'activo actualizado' : 'activos actualizados' }}. Cada cambio quedó registrado en el historial de su ficha con el responsable de la operación.<span v-if="result.failed.length"> {{ result.failed.length }} {{ result.failed.length === 1 ? 'activo con error' : 'activos con error' }}.</span></p>
 
             <dl class="review-list review-list--result">
               <div v-for="row in result.rows" :key="'res-' + row.asset.id" class="review-row">
                 <dt>{{ row.asset.name }}</dt>
                 <dd>
-                  <span v-if="row.skipped" class="chip chip--muted">Omitido</span>
+                  <span v-if="row.failed" class="chip chip--muted">Fallido</span>
+                  <span v-else-if="row.skipped" class="chip chip--muted">Omitido</span>
                   <span v-else-if="!row.changes.length" class="chip chip--muted">Sin cambios</span>
                   <span v-else class="timeline__new">{{ row.changes.length }} {{ row.changes.length === 1 ? 'campo actualizado' : 'campos actualizados' }}</span>
                 </dd>
@@ -1086,11 +1398,11 @@
           </template>
           <template v-else-if="step === 2">
             <button type="button" class="btn btn--ghost" @click="back">Volver</button>
-            <button type="button" class="btn btn--primary" data-od-id="bulk-preview" @click="toPreview">Ver vista previa</button>
+            <button type="button" class="btn btn--primary" :disabled="busy" data-od-id="bulk-preview" @click="toPreview">Ver vista previa</button>
           </template>
           <template v-else-if="step === 3">
             <button type="button" class="btn btn--ghost" @click="back">Volver</button>
-            <button type="button" class="btn btn--primary" :disabled="!counts.applied" data-od-id="bulk-apply" @click="apply">Confirmar y aplicar</button>
+            <button type="button" class="btn btn--primary" :disabled="busy || !counts.applied" data-od-id="bulk-apply" @click="apply">Confirmar y aplicar</button>
           </template>
           <template v-else>
             <button type="button" class="btn btn--primary" @click="close">Cerrar</button>

@@ -165,6 +165,7 @@
   <link rel="stylesheet" href="assets/css/map-config.css">
   <link rel="stylesheet" href="assets/css/reports.css">
   <link rel="stylesheet" href="assets/css/warranties.css">
+  <link rel="stylesheet" href="assets/css/phase6.css">
   <link rel="stylesheet" href="assets/css/labels.css">
   <link rel="stylesheet" href="assets/css/appearance.css">
   <link rel="stylesheet" href="assets/css/search.css">
@@ -434,6 +435,10 @@
                       <span class="mono">{{ inventoryItems.length }} de {{ inventoryTotal }}</span>
                       <span>activos del servidor</span>
                     </div>
+                    <button v-if="can('assets.edit')" type="button" class="btn btn--secondary" data-od-id="inventory-bulk-open" :disabled="inventory.loading || !inventoryItems.length" @click="bulk.ids = inventoryItems.map(item => item.id); openBulkEditor()">
+                      <app-icon name="edit"></app-icon>
+                      <span>Editar esta página</span>
+                    </button>
                     <button v-if="can('assets.edit')" type="button" class="btn btn--primary" data-od-id="create-asset" @click="openAssetCreate()">
                       <app-icon name="plus"></app-icon>
                       <span>Nuevo activo</span>
@@ -1875,7 +1880,8 @@
                     </div>
                   </section>
 
-                  <asset-warranty-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel>
+                  <asset-warranty-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel>
+                  <phase6-attachments v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></phase6-attachments>
                   <asset-qr-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
 
                   <asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
@@ -2884,6 +2890,9 @@
   <script src="assets/js/label-views.js"></script>
   <script src="assets/js/report-views.js"></script>
   <script src="assets/js/warranty-views.js"></script>
+  <script src="assets/js/phase6-api.js"></script>
+  <script src="assets/js/phase6-views.js"></script>
+  <script src="assets/js/transfer-server.js"></script>
   <script src="assets/js/appearance-engine.js"></script>
   <script src="assets/js/appearance-package.js"></script>
   <script src="assets/js/appearance-runtime.js"></script>
