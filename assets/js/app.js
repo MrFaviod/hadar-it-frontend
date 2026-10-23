@@ -163,11 +163,9 @@
         maps: initial.maps,
         monitoring: initial.monitoring,
         dashboard: window.AssetDashboardPrefs.createState(),
-        documents: window.AssetReportEngine.createState(),
         // Warranty view filters live only in this session; the server stores
         // the single expiring-day preference (phase 6, warranty settings).
         warrantyPrefs: { days: 90, includeRetired: false, site: 'all', category: 'all' },
-        labelState: window.AssetLabelEngine.createState(),
         documentContext: { ids: [], category: 'all', site: 'all', search: '' },
         explorerFilters: { categories: [], sites: [], states: [], locations: [], search: '' },
         explorerSelection: '',
@@ -176,6 +174,7 @@
         ...window.AssetOrganization.data(),
         ...window.AssetRedundancy.data(),
         ...window.AssetPhase6.data(),
+        ...window.AssetPhase9.data(),
         ...window.AssetMaintenanceApi.data(),
         ...window.AssetMonitoringApi.data(),
         bulk: { ids: [], open: false },
@@ -368,6 +367,9 @@
       };
     },
     computed: Object.assign({}, window.AssetWorkspaceRuntime.computed, {
+      isPublicReport() {
+        return !!(this.route && this.route.name === 'reportAsset' && this.route.section === 'publico' && this.route.shareToken);
+      },
       categories() {
         return this.config.categories;
       },
@@ -541,9 +543,9 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
+      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -626,6 +628,7 @@
           this.clearOrganizationState();
           this.clearRedundancyState();
           this.clearPhase6State();
+          this.clearPhase9State();
           this.clearMaintenanceState();
           this.clearMonitoringState();
         } else {
@@ -642,7 +645,11 @@
       this.changeAppearanceUser();
       const parsed = this.parseRoute();
       let next = parsed;
-      if (!this.authenticated) {
+      if (!this.authenticated && parsed.name === 'reportAsset' && parsed.section === 'publico' && parsed.shareToken) {
+        // The tokenized public report is the only screen available before a
+        // session exists; every other route still requires the real login.
+        next = parsed;
+      } else if (!this.authenticated) {
         next = { name: 'login', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'login') {
         next = { name: 'inventory', assetId: null, personId: null, section: null };
@@ -668,6 +675,7 @@
       this.clearOrganizationState();
       this.clearRedundancyState();
       this.clearPhase6State();
+      this.clearPhase9State();
       this.clearMaintenanceState();
       this.clearMonitoringState();
       window.AssetAccess.stop(this);
@@ -679,7 +687,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods))
   });
   app.mount(target || '#app');
   return app;

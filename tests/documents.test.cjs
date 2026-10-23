@@ -14,35 +14,32 @@ function context() {
   return c;
 }
 const assets=[{id:'AM-1',code:'PC-C-001',name:'Puesto uno',category:'pc',site:'central',assigneeId:'ana',statusId:'active',history:[{id:'h1',at:'2026-09-01T12:00:00Z',kind:'assigned',title:'Asignación'}],warranty:{provider:'Proveedor',until:'2026-10-01'}},{id:'AM-2',code:'SW-C-001',name:'Switch',category:'red',site:'central',statusId:'active',history:[],warranty:{until:'2026-08-01'}}];
-test('reports filter scope without modifying inventory or ignoring explicit empty selection',()=>{
-  const c=context(); assert.ok(c.AssetReportEngine,'Public report API exists'); const E=c.AssetReportEngine;
-  const before=JSON.stringify(assets);
-  assert.equal(E.selectAssets(assets,{category:'pc',site:'central',responsible:'ana',status:'active'}).length,1);
-  assert.equal(E.selectAssets(assets,{ids:[]}).length,0);
-  assert.equal(E.selectAssets(assets,{ids:['AM-2']})[0].id,'AM-2');
-  assert.equal(JSON.stringify(assets),before);
+test('report catalog exposes only canonical server fields and composition modes',()=>{
+  const E=context().AssetReportEngine; assert.ok(E,'Public report API exists');
+  assert.deepEqual(Array.from(E.FAMILIES,family=>family.id),['inventory','history','warranty']);
+  assert.deepEqual(Array.from(E.fieldsForFamily('history'),field=>field.key),Array.from(E.HISTORY_FIELDS,field=>field.key));
+  assert.deepEqual(Array.from(E.fieldsForFamily('warranty'),field=>field.key),Array.from(E.WARRANTY_FIELDS,field=>field.key));
+  assert.equal(E.composeRequestMode({mode:'list'}),'consolidated');
+  assert.equal(E.composeRequestMode({mode:'sheet'}),'individual');
 });
-test('reports group by requested field and constrain history dates and kinds',()=>{
-  const E=context().AssetReportEngine; assert.ok(E);
-  assert.equal(E.groupAssets(assets,'site')[0].count,2);
-  assert.equal(E.historyRows(assets,{from:'2026-09-01',to:'2026-09-01',event:'assigned'}).length,1);
-  assert.equal(E.historyRows(assets,{from:'2026-09-02',event:'assigned'}).length,0);
-  assert.equal(E.historyRows(assets,{event:'incident'}).length,0);
+test('report template normalization keeps allowlisted fields and blocks without mutating the source',()=>{
+  const E=context().AssetReportEngine;assert.ok(E);
+  const source={family:'warranty',name:'Garantías',mode:'sheet',format:'Legal',fields:['expiresOn','ip','desconocido'],blocks:[{id:'b1',type:'qr'},{id:'b2',type:'script',text:'x'}]};
+  const before=JSON.stringify(source),template=E.normalizeTemplate(source);
+  assert.equal(template.family,'warranty');
+  assert.equal(template.mode,'sheet');
+  assert.equal(template.format,'A4');
+  assert.deepEqual(Array.from(template.fields),['expiresOn']);
+  assert.deepEqual(Array.from(template.blocks,block=>block.type),['qr','text']);
+  assert.equal(JSON.stringify(source),before);
 });
-test('template customization reorders blocks and persists independently of defaults',()=>{
-  const c=context(), E=c.AssetReportEngine; assert.ok(E); const state=E.createState();
-  const template=JSON.parse(JSON.stringify(state.templates[0])); const original=JSON.stringify(state.templates[0]);
-  template.name='Ficha de soporte';template.blocks.reverse();template.fields=['id','name'];
-  assert.equal(E.saveTemplate(state,template).ok,true);
-  assert.equal(JSON.stringify(state.templates[0]),original);
-  assert.ok(E.createState().templates.some(t=>t.name==='Ficha de soporte'));
-  const before=JSON.stringify(state);assert.equal(E.saveTemplate(state,{...template,name:' '}).ok,false);assert.equal(JSON.stringify(state),before);
-});
-test('generation records correct output scope and rejects empty reports unchanged',()=>{
-  const E=context().AssetReportEngine;assert.ok(E);const s=E.createState();
-  const b=JSON.stringify(s);assert.equal(E.generate(s,[],{name:'Vacío'}).ok,false);assert.equal(JSON.stringify(s),b);
-  const out=E.generate(s,assets,{name:'Fichas',mode:'individual',format:'PDF',family:'inventory'});
-  assert.equal(out.ok,true);assert.equal(out.document.assets.length,2);assert.equal(out.document.pages,2);assert.equal(s.history.length,1);
+test('report drafts are independent and keep the edited block order',()=>{
+  const E=context().AssetReportEngine;assert.ok(E);
+  const first=E.createTemplate('inventory'),second=E.createTemplate('inventory');
+  assert.notEqual(first.blocks[0].id,second.blocks[0].id);
+  first.blocks.reverse();
+  assert.deepEqual(Array.from(first.blocks,block=>block.type),['footer','table','heading']);
+  assert.deepEqual(Array.from(second.blocks,block=>block.type),['heading','table','footer']);
 });
 test('warranties classify today, threshold and expired dates inclusively',()=>{
   const E=context().AssetWarrantyEngine;assert.ok(E,'Public warranty API exists');
@@ -60,20 +57,30 @@ test('warranty duration clamps month ends and rejects invalid data without mutat
   assert.equal(E.save(a,{provider:'Nuevo',purchase:'2026-09-01',until:'2027-09-01',months:12,receipts:[{name:'Factura.pdf',size:2000,type:'application/pdf'}]}).ok,true);
   assert.equal(a.id,'AM-1');assert.equal(a.warranty.provider,'Nuevo');assert.equal(a.warranty.receipts[0].name,'Factura.pdf');
 });
-test('QR destination uses immutable ID only and rejects invalid base settings unchanged',()=>{
-  const c=context(),E=c.AssetLabelEngine;assert.ok(E,'Public QR-label API exists');const s=E.createState();
-  assert.equal(s.access,'private');const a={...assets[0]};const url=E.assetUrl(s,a);
-  a.code='OTRO';a.site='sur';a.category='otro';assert.equal(E.assetUrl(s,a),url);assert.ok(url.includes('AM-1'));
-  const before=JSON.stringify(s);assert.equal(E.saveSettings(s,{baseUrl:'javascript:alert(1)'}).ok,false);assert.equal(JSON.stringify(s),before);
+test('QR destination uses the configured base URL and the immutable asset ID',()=>{
+  const E=context().AssetLabelEngine;assert.ok(E,'Public QR-label API exists');
+  const id='5a1e0c10-0001-4f10-9a10-000000000001';
+  assert.equal(E.assetUrl('https://activos.example/',id),'https://activos.example/#/reporte/'+id);
+  assert.equal(E.assetUrl('  https://activos.example  ',id),'https://activos.example/#/reporte/'+id);
+  assert.equal(E.assetUrl('',id),'');
+  assert.equal(E.assetUrl('https://activos.example/',''),'');
+  const token='share-token-0123456789abcdef';
+  assert.equal(E.publicUrl('https://activos.example',id,token),'https://activos.example/#/reporte/'+id+'/publico?share='+token);
 });
-test('public projection never inherits internal inventory fields',()=>{
-  const E=context().AssetLabelEngine;assert.ok(E);const a={...assets[0],ip:'10.0.0.1',anydeskId:'secret',cost:100,tech:{password:'x'}};
-  const publicRecord=E.publicRecord(a,['name','id','ip','anydeskId','tech','cost']);
-  assert.deepEqual(Object.keys(publicRecord).sort(),['id','name']);assert.equal(publicRecord.name,a.name);
+test('public report vocabulary never includes internal inventory fields',()=>{
+  const E=context().AssetLabelEngine;assert.ok(E);
+  assert.deepEqual(Array.from(E.PUBLIC_FIELDS,field=>field.key),['id','quickCode','name','category','site','location','status']);
+  assert.equal(E.publicFieldOf('ip'),null);
+  assert.equal(E.publicFieldOf('technical'),null);
+  assert.equal(E.publicFieldOf('name').label,'Nombre');
 });
-test('label formats paginate sheets with a starting offset and preserve saved customizations',()=>{
-  const c=context(),E=c.AssetLabelEngine;assert.ok(E);const s=E.createState();
-  const pages=E.paginate(Array.from({length:25},(_,i)=>({id:'A'+i})),{columns:3,rows:8},2);
-  assert.equal(pages.length,2);assert.equal(pages[0][0],null);assert.equal(pages[0][2].id,'A0');assert.equal(pages[1].filter(Boolean).length,3);
-  s.fields=['id','code','qr'];E.persist(s);assert.deepEqual(Array.from(E.createState().fields),['id','code','qr']);
+test('label options serialize canonical geometry and paginate by sheet capacity',()=>{
+  const E=context().AssetLabelEngine;assert.ok(E);
+  const wire=E.wireLabelOptions({formatId:'a4-24',fields:['name','id','ip','qr'],columns:3,rows:8,offset:2});
+  assert.deepEqual(Object.keys(wire).sort(),['columns','fields','formatId','gapXmm','gapYmm','heightMm','logo','marginBottomMm','marginLeftMm','marginRightMm','marginTopMm','offset','pageHeightMm','pageWidthMm','qr','widthMm']);
+  assert.equal(Object.prototype.hasOwnProperty.call(wire,'rows'),false);
+  assert.deepEqual(Array.from(wire.fields),['name','id','qr']);
+  assert.equal(wire.columns,3);assert.equal(wire.offset,2);assert.equal(wire.widthMm,70);assert.equal(wire.heightMm,37);
+  assert.equal(E.estimatedPages(25,{columns:3,rows:8,offset:2}),2);
+  assert.equal(E.estimatedPages(0,{columns:3,rows:8}),0);
 });

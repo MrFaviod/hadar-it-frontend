@@ -23,7 +23,7 @@
       // Plans carry no title of their own: name them after their template and asset.
       const planName=r=>{const t=(m.templates||[]).find(x=>x.id===r.templateId),a=(app.assets||[]).find(x=>x.id===r.assetId);return t&&a?t.label+' · '+a.name:'';};
       [['incidents','incident'],['interventions','intervention'],['plans','plan']].forEach(([list,kind])=>(m[list]||[]).forEach(r=>out.push(record(kind,r.id,r.title||r.name||r.label||(kind==='plan'&&planName(r))||r.id,[r.id,r.assetId,r.state].filter(Boolean).join(' · '),kind==='incident'?'bell':'refresh',[r.description,r.assetId,kind==='plan'&&planName(r)],{kind,id:r.id,assetId:r.assetId}))));
-      (app.documents?.templates||[]).forEach(t=>out.push(record('report',t.id,t.name,'Plantilla · '+({inventory:'Inventario',history:'Historial',warranty:'Garantías'}[t.family]||t.family),'file-text',[t.description,t.family])));
+      (app.phase9?.templates?.items||[]).forEach(t=>out.push(record('report',t.id,t.name,'Plantilla · '+({inventory:'Inventario',history:'Historial',warranty:'Garantías'}[t.family]||t.family),'file-text',[t.description,t.family])));
     }
     if(!app.can||app.can('people.view'))people.forEach(p=>out.push(record('person',p.id,p.name,[p.role,p.email].filter(Boolean).join(' · '),'user',[p.id,p.departmentId,label(sites,p.siteId),p.phone])));
     SECTIONS.forEach(([id,name,icon])=>{if(!app.can||app.can(id==='people'?'people.view':'assets.view'))out.push(record('section',id,name,'Sección de la aplicación',icon,[],{kind:'section',id,route:{name:id}}));});

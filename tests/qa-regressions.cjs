@@ -43,10 +43,15 @@ test('QA-5 canonical maintenance plans appear in universal search with the reada
  assert.ok(rec);assert.equal(rec.label,plan.name);assert.notEqual(rec.label,plan.id);
  assert.ok(s.c.AssetSearch.search(idx,'Preventivo').some(r=>r.key==='plan:'+plan.id));
 });
-test('QA-6 label field reorder buttons are announced with the field name, not its internal id',()=>{
- const v=fsq.readFileSync(pq.join(__dirname,'../assets/js/label-views.js'),'utf8');
- assert.ok(!v.includes(`:aria-label="'Subir '+f"`)&&!v.includes(`:aria-label="'Bajar '+f"`));
- assert.match(v,/:aria-label="'Subir '\+fieldOptions\.find\(o=>o\.id===f\)\.label"/);
+test('QA-6 report block reorder buttons are announced with the block name, not its internal id',async()=>{
+ const s=setup();
+ s.app.phase9LoadTemplates=async()=>false;s.app.phase9LoadSelection=async()=>false;s.app.phase9LoadJobs=async()=>false;
+ const m=s.mount('ReportsCenter');await s.tick();
+ m.instance.editor=true;m.instance.draft=s.c.AssetReportEngine.createTemplate('inventory');await s.tick();
+ const labels=[],walk=node=>{if(!node)return;const label=node.props&&node.props['aria-label'];if(label&&/^(Subir|Bajar) /.test(label))labels.push(label);(node.children||[]).forEach(walk);};walk(m.root);
+ assert.ok(labels.length>=4,'reorder controls render');
+ for(const label of labels){const name=label.replace(/^(Subir|Bajar) /,'');assert.ok(m.instance.draft.blocks.some(block=>block.label===name),`announces "${name}" instead of an internal id`);}
+ m.unmount();
 });
 test('QA-7 an unknown route is normalised to #/panel instead of showing Panel under a foreign hash',()=>{
  const s=setup(),a=s.app,seen=[];a.authenticated=true;a.ensureHash=h=>seen.push(h);a.$nextTick=()=>{};
@@ -54,11 +59,6 @@ test('QA-7 an unknown route is normalised to #/panel instead of showing Panel un
  assert.equal(a.route.name,'panel');assert.deepEqual(seen,['#/panel']);
  seen.length=0;s.c.location.hash='#/inventario';s.c.options.methods.handleHashChange.call(a);
  assert.equal(a.route.name,'inventory');assert.deepEqual(seen,[]);
-});
-test('QA-8 label counters agree in number with a single selected asset',()=>{
- const v=fsq.readFileSync(pq.join(__dirname,'../assets/js/label-views.js'),'utf8');
- assert.ok(!/\{\{selected\.length\}\} (activos seleccionados|etiquetas)/.test(v));
- assert.match(v,/selected\.length===1\?'activo seleccionado':'activos seleccionados'/);
 });
 test('QA-9 interface copy uses one register (tú, es-ES); no voseo imperatives remain',()=>{
  const files=fsq.readdirSync(pq.join(__dirname,'../assets/js')).filter(f=>f.endsWith('.js')).map(f=>'assets/js/'+f).concat('index.html');

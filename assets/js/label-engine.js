@@ -1,25 +1,179 @@
 (function () {
   'use strict';
-  const KEY='asset-manager.label-settings';
-  const PUBLIC_FIELDS=[{id:'name',label:'Nombre'},{id:'id',label:'ID permanente'},{id:'code',label:'Código rápido'},{id:'type',label:'Tipo de equipo'},{id:'brand',label:'Marca'},{id:'model',label:'Modelo'},{id:'status',label:'Estado'}];
-  const LABEL_FIELDS=[{id:'logo',label:'Logotipo'},{id:'name',label:'Identificación del activo'},{id:'id',label:'ID permanente'},{id:'code',label:'Código rápido actual'},{id:'qr',label:'Código QR'},{id:'site',label:'Sede'},{id:'location',label:'Ubicación'},{id:'serial',label:'Número de serie'}];
-  const FORMATS=[{id:'a4-24',name:'A4 · 24 etiquetas',description:'70 × 37 mm · 3 columnas × 8 filas',width:70,height:37,columns:3,rows:8,sheet:'A4'},
-    {id:'a4-21',name:'A4 · 21 etiquetas',description:'63,5 × 38,1 mm · 3 columnas × 7 filas',width:63.5,height:38.1,columns:3,rows:7,sheet:'A4'},
-    {id:'adhesive-50',name:'Adhesiva · 50 × 30 mm',description:'Rollo · una etiqueta por página',width:50,height:30,columns:1,rows:1,sheet:'Rollo'},
-    {id:'adhesive-80',name:'Adhesiva · 80 × 50 mm',description:'Rollo · una etiqueta por página',width:80,height:50,columns:1,rows:1,sheet:'Rollo'}];
-  function createState(){const s=window.AssetStore.readJSON(window.localStorage,KEY,{});return {baseUrl:typeof s.baseUrl==='string'?s.baseUrl:'https://activos.organizacion.local/',access:s.access==='public'?'public':'private',publicFields:Array.isArray(s.publicFields)?s.publicFields.filter(f=>PUBLIC_FIELDS.some(p=>p.id===f)):['name','id','type','model','status'],fields:Array.isArray(s.fields)?s.fields.filter(f=>LABEL_FIELDS.some(p=>p.id===f)):['logo','name','id','code','qr'],format:FORMATS.some(f=>f.id===s.format)?s.format:'a4-24',templates:Array.isArray(s.templates)?s.templates:[],shared:s.shared&&typeof s.shared==='object'?s.shared:{}};}
-  function persist(state){return window.AssetStore.writeJSON(window.localStorage,KEY,state);}
-  function saveSettings(state,draft){
-    let url;try{url=new URL(draft.baseUrl);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||draft.baseUrl.length>400)throw Error();}catch(e){return {ok:false,error:'Introduce una URL base HTTP o HTTPS válida, de hasta 400 caracteres.'};}
-    url.hash='';url.search='';url.pathname=url.pathname.replace(/\/?$/,'/');
-    state.baseUrl=url.href;if(draft.access)state.access=draft.access==='public'?'public':'private';
-    if(Array.isArray(draft.publicFields))state.publicFields=draft.publicFields.filter(id=>PUBLIC_FIELDS.some(f=>f.id===id));persist(state);return {ok:true};
+
+  /* Canonical label vocabulary.
+   *
+   * Physical geometry, pagination, QR output and the PDF are produced by the
+   * report engine. The frontend only edits the allowlisted options and shows
+   * the server preview; no label settings are persisted in the browser. */
+
+  const PUBLIC_FIELDS = [
+    { key: 'id', label: 'ID permanente' },
+    { key: 'quickCode', label: 'Código rápido' },
+    { key: 'name', label: 'Nombre' },
+    { key: 'category', label: 'Categoría' },
+    { key: 'site', label: 'Sede' },
+    { key: 'location', label: 'Ubicación' },
+    { key: 'status', label: 'Estado' }
+  ];
+
+  const LABEL_FIELDS = [
+    { key: 'logo', label: 'Logotipo' },
+    { key: 'name', label: 'Nombre' },
+    { key: 'id', label: 'ID permanente' },
+    { key: 'code', label: 'Código rápido' },
+    { key: 'qr', label: 'Código QR' },
+    { key: 'site', label: 'Sede' },
+    { key: 'location', label: 'Ubicación' },
+    { key: 'serial', label: 'Serie' }
+  ];
+
+  const FORMATS = [
+    {
+      id: 'a4-24', label: 'A4 · 24 etiquetas', detail: '70 × 37 mm · 3 columnas × 8 filas',
+      widthMm: 70, heightMm: 37, pageWidthMm: 210, pageHeightMm: 297,
+      marginTopMm: 13.5, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
+      gapXmm: 0, gapYmm: 0, columns: 3, rows: 8, offset: 0
+    },
+    {
+      id: 'a4-21', label: 'A4 · 21 etiquetas', detail: '63.5 × 38.1 mm · 3 columnas × 7 filas',
+      widthMm: 63.5, heightMm: 38.1, pageWidthMm: 210, pageHeightMm: 297,
+      marginTopMm: 13.5, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
+      gapXmm: 0, gapYmm: 0, columns: 3, rows: 7, offset: 0
+    },
+    {
+      id: 'roll-50x30', label: 'Rollo · 50 × 30 mm', detail: 'Una etiqueta por fila',
+      widthMm: 50, heightMm: 30, pageWidthMm: 50, pageHeightMm: 30,
+      marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
+      gapXmm: 0, gapYmm: 0, columns: 1, rows: 1, offset: 0
+    },
+    {
+      id: 'roll-80x50', label: 'Rollo · 80 × 50 mm', detail: 'Una etiqueta por fila',
+      widthMm: 80, heightMm: 50, pageWidthMm: 80, pageHeightMm: 50,
+      marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
+      gapXmm: 0, gapYmm: 0, columns: 1, rows: 1, offset: 0
+    },
+    {
+      id: 'custom', label: 'Personalizada', detail: 'Define tamaño, márgenes y columnas',
+      widthMm: 70, heightMm: 37, pageWidthMm: 210, pageHeightMm: 297,
+      marginTopMm: 10, marginRightMm: 10, marginBottomMm: 10, marginLeftMm: 10,
+      gapXmm: 2, gapYmm: 2, columns: 3, rows: 8, offset: 0
+    }
+  ];
+
+  const SHARE_EXPIRY_DAYS = [1, 7, 30, 90];
+
+  function text(value) {
+    return typeof value === 'string' ? value.trim() : '';
   }
-  function assetUrl(state,asset){return state.baseUrl.replace(/\/?$/,'/')+'#/reporte/'+encodeURIComponent(asset.id);}
-  function sharedUrl(state,asset){return assetUrl(state,asset)+'/publico';}
-  function publicRecord(asset,fields){return (fields||[]).reduce((out,id)=>{if(PUBLIC_FIELDS.some(f=>f.id===id)&&asset[id]!==undefined)out[id]=asset[id];return out;},{});}
-  function paginate(assets,format,offset){const size=Math.max(1,format.columns*format.rows);const all=Array(Math.max(0,Math.min(size-1,Number(offset)||0))).fill(null).concat(assets);const pages=[];for(let i=0;i<all.length;i+=size)pages.push(all.slice(i,i+size));return pages;}
-  function qrMatrix(text){const qr=window.qrcode(0,'M');qr.addData(text,'Byte');qr.make();return Array.from({length:qr.getModuleCount()},(_,r)=>Array.from({length:qr.getModuleCount()},(_,c)=>qr.isDark(r,c)));}
-  function qrPath(matrix){let path='';matrix.forEach((row,r)=>row.forEach((dark,c)=>{if(dark)path+='M'+(c+4)+' '+(r+4)+'h1v1h-1z';}));return path;}
-  window.AssetLabelEngine={createState,persist,saveSettings,assetUrl,sharedUrl,publicRecord,paginate,qrMatrix,qrPath,PUBLIC_FIELDS,LABEL_FIELDS,FORMATS};
+
+  function number(value, fallback) {
+    if (value == null || value === '') return fallback;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function formatOf(id) {
+    return FORMATS.find(function (format) { return format.id === id; }) || FORMATS[0];
+  }
+
+  function publicFieldOf(key) {
+    return PUBLIC_FIELDS.find(function (field) { return field.key === key; }) || null;
+  }
+
+  function labelFieldOf(key) {
+    return LABEL_FIELDS.find(function (field) { return field.key === key; }) || { key: text(key), label: text(key) };
+  }
+
+  function defaultLabelOptions(source) {
+    const raw = source && typeof source === 'object' ? source : {};
+    const format = formatOf(raw.formatId);
+    return {
+      formatId: format.id,
+      widthMm: number(raw.widthMm, format.widthMm),
+      heightMm: number(raw.heightMm, format.heightMm),
+      pageWidthMm: number(raw.pageWidthMm, format.pageWidthMm),
+      pageHeightMm: number(raw.pageHeightMm, format.pageHeightMm),
+      marginTopMm: number(raw.marginTopMm, format.marginTopMm),
+      marginRightMm: number(raw.marginRightMm, format.marginRightMm),
+      marginBottomMm: number(raw.marginBottomMm, format.marginBottomMm),
+      marginLeftMm: number(raw.marginLeftMm, format.marginLeftMm),
+      gapXmm: number(raw.gapXmm, format.gapXmm),
+      gapYmm: number(raw.gapYmm, format.gapYmm),
+      columns: Math.max(1, Math.trunc(number(raw.columns, format.columns))),
+      rows: Math.max(1, Math.trunc(number(raw.rows, format.rows))),
+      offset: Math.max(0, Math.trunc(number(raw.offset, format.offset))),
+      fields: Array.isArray(raw.fields)
+        ? raw.fields.map(text).filter(function (key) {
+          return LABEL_FIELDS.some(function (field) { return field.key === key; });
+        })
+        : ['logo', 'name', 'code', 'qr'],
+      logo: raw.logo !== false,
+      qr: raw.qr !== false
+    };
+  }
+
+  function normalizeLabelOptions(source) {
+    return defaultLabelOptions(source);
+  }
+
+  function wireLabelOptions(source) {
+    const options = defaultLabelOptions(source);
+    return {
+      formatId: options.formatId,
+      widthMm: options.widthMm,
+      heightMm: options.heightMm,
+      pageWidthMm: options.pageWidthMm,
+      pageHeightMm: options.pageHeightMm,
+      marginTopMm: options.marginTopMm,
+      marginRightMm: options.marginRightMm,
+      marginBottomMm: options.marginBottomMm,
+      marginLeftMm: options.marginLeftMm,
+      gapXmm: options.gapXmm,
+      gapYmm: options.gapYmm,
+      columns: options.columns,
+      offset: options.offset,
+      fields: options.fields.slice(),
+      logo: options.logo,
+      qr: options.qr
+    };
+  }
+
+  function assetUrl(baseUrl, assetId) {
+    const base = text(baseUrl).replace(/\/+$/, '');
+    if (!base || !text(assetId)) return '';
+    return base + '/#/reporte/' + encodeURIComponent(text(assetId));
+  }
+
+  function publicUrl(baseUrl, assetId, token) {
+    const base = text(baseUrl).replace(/\/+$/, '');
+    if (!base || !text(assetId) || !text(token)) return '';
+    return base + '/#/reporte/' + encodeURIComponent(text(assetId)) + '/publico?share=' + encodeURIComponent(text(token));
+  }
+
+  function perPage(options) {
+    const opts = defaultLabelOptions(options);
+    return Math.max(1, opts.columns * opts.rows);
+  }
+
+  function estimatedPages(count, options) {
+    return Math.ceil(Math.max(0, Number(count) || 0) / perPage(options));
+  }
+
+  window.AssetLabelEngine = {
+    PUBLIC_FIELDS: PUBLIC_FIELDS,
+    LABEL_FIELDS: LABEL_FIELDS,
+    FORMATS: FORMATS,
+    SHARE_EXPIRY_DAYS: SHARE_EXPIRY_DAYS,
+    formatOf: formatOf,
+    publicFieldOf: publicFieldOf,
+    labelFieldOf: labelFieldOf,
+    defaultLabelOptions: defaultLabelOptions,
+    normalizeLabelOptions: normalizeLabelOptions,
+    wireLabelOptions: wireLabelOptions,
+    assetUrl: assetUrl,
+    publicUrl: publicUrl,
+    perPage: perPage,
+    estimatedPages: estimatedPages
+  };
 })();

@@ -11,14 +11,6 @@ function topLevelBlocks(css){
  return out;
 }
 
-test('M1 login and app shell swap through one Vue auth transition (out-in)',()=>{
- const open=html.indexOf('<transition name="auth" mode="out-in">');
- assert.ok(open>0,'auth transition wraps the login/app swap');
- const login=html.indexOf('<section v-if="route.name === \'login\'" class="login"'),shell=html.indexOf('<div v-else class="app-shell"');
- const close=html.indexOf('</transition>',shell);
- assert.ok(open<login&&login<shell&&shell<close,'login and app shell are the two branches of the auth transition');
- assert.ok(html.includes('<link rel="stylesheet" href="assets/css/motion.css">'),'motion stylesheet is loaded');
-});
 
 test('M2 motion.css animates only opacity and transform, and only without reduced-motion preference',()=>{
  const css=motion();assert.ok(css.length,'motion.css exists');

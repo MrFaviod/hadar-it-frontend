@@ -1,34 +1,850 @@
 (function () {
   'use strict';
-  const E=window.AssetLabelEngine;
-  const AssetQrCode={props:{text:{type:String,default:''}},computed:{matrix(){try{return this.text?E.qrMatrix(this.text):[];}catch(e){return [];}},path(){return E.qrPath(this.matrix);},size(){return this.matrix.length+8;}},template:`<svg v-if="matrix.length" :viewBox="'0 0 '+size+' '+size" role="img" aria-label="Código QR del activo" class="asset-qr" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="white"></rect><path :d="path" fill="black"></path></svg><span v-else class="doc-error">No se puede codificar esta dirección.</span>`};
-  const PublicAssetReport={
-    props:{app:Object,asset:Object},components:{AssetQrCode},data(){return {mode:'private'};},
-    computed:{record(){return this.asset||this.app.assets.find(a=>a.id===this.app.route.assetId);},publicMode(){return this.app.route.section==='publico'||this.mode==='public';},allowed(){return E.publicRecord(this.record||{},this.app.labelState.publicFields);},shared(){return this.record&&this.app.labelState.shared[this.record.id];},fields(){return this.publicMode?E.PUBLIC_FIELDS.filter(f=>Object.hasOwn(this.allowed,f.id)):window.AssetReportEngine.FIELDS;},url(){return this.record?E.assetUrl(this.app.labelState,this.record):'';}},
-    methods:{value(key){if(this.publicMode)return this.allowed[key]||'—';if(key==='site')return this.app.siteLabel(this.record.site);if(key==='category')return this.app.categoryLabel(this.record.category);if(key==='assignee')return this.app.assigneeLabel(this.record)||'Sin asignar';return this.record[key]||'—';}},
-    template:`<section class="page qr-report-page" data-od-id="qr-asset-report"><template v-if="record"><a class="back-link" :href="'#/activo/'+record.id"><app-icon name="arrow-left"></app-icon>Volver al activo</a><header class="page-head"><div><p class="eyebrow">Reporte del activo · {{record.id}}</p><h1>{{publicMode?'Ficha pública limitada':'Ficha privada'}}</h1><p class="page-head__description">{{publicMode?'Solo se muestran los campos habilitados para compartir.':'Información interna del inventario. El QR conserva la identidad permanente.'}}</p></div><div class="view-switch" role="group" aria-label="Modo de previsualización"><button :class="{'is-active':!publicMode}" @click="mode='private';app.route.section=null;app.ensureHash(app.hashFor(app.route))">Privada</button><button :class="{'is-active':publicMode}" @click="mode='public'">Pública limitada</button></div></header><div v-if="publicMode&&!shared" class="qr-public-empty"><app-icon name="lock"></app-icon><h2>El enlace público no está activo</h2><p>La ficha mantiene su acceso privado. Activa el enlace compartido desde el código QR del activo para previsualizar los campos públicos.</p></div><article v-else class="qr-record"><header><img :src="app.brandLogo" alt="Logotipo de la organización" width="44" height="44"><div><p>{{app.organizationName}}</p><h2>{{publicMode?(allowed.name||allowed.id||'Activo compartido'):record.name}}</h2></div><span class="status-pill">{{publicMode?'Pública limitada':'Uso interno'}}</span></header><dl class="doc-facts"><div v-for="f in fields" :key="f.id"><dt>{{f.label}}</dt><dd>{{value(f.id)}}</dd></div></dl><template v-if="!publicMode"><h3>Información técnica</h3><dl class="doc-facts"><div v-for="(v,k) in record.tech" :key="k"><dt>{{k}}</dt><dd>{{v}}</dd></div></dl><h3>Garantía individual</h3><p>{{record.warranty?.provider||'Sin proveedor'}} · {{record.warranty?.until||'Sin vencimiento registrado'}}</p></template><footer><asset-qr-code :text="publicMode?E.sharedUrl(app.labelState,record):url"></asset-qr-code><p>{{publicMode?'Enlace compartido con información limitada':'Destino vinculado al ID permanente'}}<span class="mono">{{record.id}}</span></p></footer></article></template><div v-else class="doc-empty"><h1>Activo no encontrado</h1><p>El ID permanente no corresponde a un activo del inventario local.</p><a href="#/inventario" class="btn btn--secondary">Volver al inventario</a></div></section>` ,setup(){return {E};}
+
+  const LABEL = window.AssetLabelEngine;
+
+  const JOB_LABELS = {
+    queued: 'En cola',
+    running: 'Generando',
+    completed: 'Completado',
+    failed: 'Con errores'
   };
-  const AssetQrPanel={
-    props:{app:Object,asset:Object},components:{AssetQrCode},data(){return {open:false};},
-    computed:{url(){return E.assetUrl(this.app.labelState,this.asset);},isShared(){return !!this.app.labelState.shared[this.asset.id];},publicUrl(){return E.sharedUrl(this.app.labelState,this.asset);}},
-    methods:{share(){this.app.labelState.shared[this.asset.id]=!this.isShared;E.persist(this.app.labelState);},copy(value){this.app.copyText(value,'Dirección del reporte copiada.');}},
-    template:`<section class="operations-panel qr-asset-panel" data-od-id="asset-qr-panel"><header class="panel-head"><div><p class="eyebrow">Identidad permanente</p><h2>Código QR y documentos</h2></div><span class="status-pill"><app-icon name="lock"></app-icon> Privado por defecto</span></header><div class="qr-asset-body"><asset-qr-code :text="url"></asset-qr-code><div><h3>{{asset.id}}</h3><p>El destino no cambia al modificar el código rápido, el tipo o la ubicación.</p><code>{{url}}</code><div class="doc-inline"><button class="btn btn--secondary btn--small" @click="open=true">Ver QR y compartir</button><button class="text-button" @click="app.openDocuments('reports',[asset.id])">Preparar reporte</button><button class="text-button" @click="app.openDocuments('labels',[asset.id])">Crear etiqueta</button></div></div></div><modal-shell :open="open" title="Código QR del activo" :eyebrow="asset.id" size="wide" @close="open=false"><div class="qr-dialog-preview"><asset-qr-code :text="url"></asset-qr-code><div><h3>{{asset.name}}</h3><p>Ficha privada · {{asset.id}}</p><code>{{url}}</code><button class="btn btn--secondary" @click="copy(url)"><app-icon name="copy"></app-icon>Copiar enlace privado</button></div></div><div class="qr-share-settings"><div><strong>Enlace público limitado</strong><p>Comparte solo los campos configurados para la ficha pública.</p></div><button v-if="app.can('assets.edit')" class="btn btn--secondary" @click="share">{{isShared?'Desactivar enlace':'Activar enlace compartido'}}</button><span v-else class="doc-help">{{isShared?'Activo':'Desactivado'}}</span><div v-if="isShared" class="qr-shared-url"><code>{{publicUrl}}</code><button class="text-button" @click="copy(publicUrl)">Copiar</button><a :href="'#/reporte/'+encodeURIComponent(asset.id)+'/publico'" @click="open=false" class="text-button">Ver versión pública →</a></div></div><template #footer><a class="btn btn--secondary" :href="'#/reporte/'+encodeURIComponent(asset.id)" @click="open=false">Previsualizar ficha privada</a><button class="btn btn--primary" @click="open=false;app.openDocuments('labels',[asset.id])">Preparar etiqueta</button></template></modal-shell></section>`
+
+  function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return String(value);
+    return date.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function formatBytes(value) {
+    const size = Number(value) || 0;
+    if (size < 1024) return size + ' B';
+    if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
+    return (size / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function labelRequest(options) {
+    return {
+      family: 'inventory',
+      templateId: null,
+      template: null,
+      assetIds: [],
+      filters: {},
+      fields: [],
+      mode: 'consolidated',
+      output: 'pdf',
+      name: 'Etiquetas de inventario',
+      labels: LABEL.wireLabelOptions(options)
+    };
+  }
+
+  const AssetQrCode = {
+    name: 'Phase9AssetQrCode',
+    props: {
+      svg: { type: String, default: '' },
+      label: { type: String, default: 'Código QR del activo' }
+    },
+    template: '<div v-if="svg" class="asset-qr" role="img" :aria-label="label" v-html="svg"></div><p v-else class="doc-help">El código QR se carga desde el servidor.</p>'
   };
-  const InventoryLabel={props:{app:Object,asset:Object,fields:Array},components:{AssetQrCode},methods:{url(a){return E.assetUrl(this.app.labelState,a);}},template:`<div class="inventory-label" :class="{'inventory-label--no-qr':!fields.includes('qr')}"><div class="inventory-label__copy"><img v-if="fields.includes('logo')" :src="app.brandLogo" alt="Logotipo" width="24" height="24"><template v-for="f in fields" :key="f"><strong v-if="f==='name'">{{asset.name}}</strong><span v-else-if="f==='id'" class="mono inventory-label__id">{{asset.id}}</span><span v-else-if="f==='code'" class="mono">{{asset.code}}</span><small v-else-if="f==='site'">{{app.siteLabel(asset.site)}}</small><small v-else-if="f==='location'">{{app.locationLabel(asset)}}</small><small v-else-if="f==='serial'">{{asset.serial||'Sin número de serie'}}</small></template></div><asset-qr-code v-if="fields.includes('qr')" :text="url(asset)"></asset-qr-code></div>`};
-  const LabelsCenter={
-    props:{app:Object},components:{InventoryLabel},
-    data(){const ctx=this.app.documentContext||{};return {filters:{category:ctx.category||'all',site:ctx.site||'all',search:ctx.search||'',responsible:'all',status:'all'},ids:ctx.ids?.length?ctx.ids.slice():[],explicit:!!ctx.ids?.length,formatId:this.app.labelState.format,fields:this.app.labelState.fields.slice(),offset:0,page:0,generated:false,templateName:'Mi etiqueta de inventario',saved:false,error:''};},
-    computed:{formats(){return E.FORMATS;},format(){return E.FORMATS.find(f=>f.id===this.formatId)||E.FORMATS[0];},fieldOptions(){return E.LABEL_FIELDS;},matches(){return window.AssetReportEngine.selectAssets(this.app.assets,this.filters);},selected(){return this.explicit?this.matches.filter(a=>this.ids.includes(a.id)):this.matches;},pages(){return E.paginate(this.selected,this.format,this.offset);},sheet(){return this.pages[Math.min(this.page,this.pages.length-1)]||[];},capacity(){return this.format.columns*this.format.rows;}},
-    watch:{formatId(){this.offset=0;this.page=0;},pages(){if(this.page>=this.pages.length)this.page=Math.max(0,this.pages.length-1);}},
-    methods:{toggle(id){if(!this.explicit){this.ids=this.matches.map(a=>a.id);this.explicit=true;}const i=this.ids.indexOf(id);if(i>=0)this.ids.splice(i,1);else this.ids.push(id);},move(i,d){const j=i+d;if(j<0||j>=this.fields.length)return;const f=this.fields.splice(i,1)[0];this.fields.splice(j,0,f);},save(){if(!this.templateName.trim()){this.error='Escribe un nombre de plantilla.';return;}if(!this.fields.length){this.error='Selecciona al menos un elemento para la etiqueta.';return;}const state=this.app.labelState;state.fields=this.fields.slice();state.format=this.formatId;const t={id:'label-'+Date.now(),name:this.templateName.trim(),format:this.formatId,fields:this.fields.slice()};state.templates.push(t);E.persist(state);this.saved=true;this.error='';this.app.showToast('Plantilla de etiquetas guardada.');},load(t){this.fields=t.fields.slice();this.formatId=t.format;this.templateName=t.name;},generate(){if(!this.selected.length||!this.fields.length){this.error='Selecciona activos y al menos un elemento de etiqueta.';return;}this.error='';this.generated=true;this.app.labelState.fields=this.fields.slice();this.app.labelState.format=this.formatId;E.persist(this.app.labelState);}},
-    template:`<section class="page labels-page" data-od-id="labels-center"><header class="page-head"><div><p class="eyebrow">Identificación física</p><h1>Etiquetas de inventario</h1><p class="page-head__description">Selecciona activos y formato de impresión.</p></div><a class="btn btn--secondary" href="#/configuracion/etiquetas"><app-icon name="sliders"></app-icon>Plantillas y formatos</a></header><div class="doc-workspace"><aside class="doc-controls"><div class="doc-control-head"><p class="eyebrow">01 · Composición</p><h2>Prepara las etiquetas</h2></div><label class="doc-field">Formato<select v-model="formatId"><option v-for="f in formats" :key="f.id" :value="f.id">{{f.name}}</option></select></label><p class="doc-help">{{format.description}}</p><label v-if="app.labelState.templates.length" class="doc-field">Plantillas guardadas<select @change="load(app.labelState.templates[$event.target.value])"><option disabled selected>Seleccionar plantilla</option><option v-for="(t,i) in app.labelState.templates" :key="t.id" :value="i">{{t.name}}</option></select></label><hr class="doc-rule"><label class="doc-field">Buscar activos<input type="search" v-model="filters.search" placeholder="Nombre, ID o código"></label><div class="doc-form-grid"><label class="doc-field">Categoría<select v-model="filters.category"><option value="all">Todas</option><option v-for="c in app.categories" :key="c.id" :value="c.id">{{c.label}}</option></select></label><label class="doc-field">Sede<select v-model="filters.site"><option value="all">Todas</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{s.label}}</option></select></label></div><div class="doc-form-grid"><label class="doc-field">Responsable<select v-model="filters.responsible"><option value="all">Todos</option><option v-for="p in app.people" :key="p.id" :value="p.id">{{p.name}}</option></select></label><label class="doc-field">Estado<select v-model="filters.status"><option value="all">Todos</option><option v-for="s in app.assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select></label></div><div class="doc-section-label"><strong>{{selected.length}} {{selected.length===1?'activo seleccionado':'activos seleccionados'}}</strong><button class="text-button" @click="explicit=!explicit;ids=[]">{{explicit?'Usar todos':'Quitar todos'}}</button></div><div class="doc-asset-picker"><label v-for="a in matches" :key="a.id"><input type="checkbox" :checked="!explicit||ids.includes(a.id)" @change="toggle(a.id)"><span><strong>{{a.name}}</strong><small class="mono">{{a.id}} · {{a.code}}</small></span></label></div><hr class="doc-rule"><strong class="doc-section-label">Elementos de la etiqueta</strong><div class="label-field-options"><label v-for="f in fieldOptions" :key="f.id"><input type="checkbox" v-model="fields" :value="f.id">{{f.label}}</label></div><div v-for="(f,i) in fields" :key="f" class="label-field-order"><span>{{fieldOptions.find(o=>o.id===f).label}}</span><button class="icon-button" @click="move(i,-1)" :disabled="i===0" :aria-label="'Subir '+fieldOptions.find(o=>o.id===f).label">↑</button><button class="icon-button" @click="move(i,1)" :disabled="i===fields.length-1" :aria-label="'Bajar '+fieldOptions.find(o=>o.id===f).label">↓</button></div><label class="doc-field">Nombre de plantilla<input v-model="templateName" maxlength="80"></label><button class="btn btn--secondary" @click="save">{{saved?'Plantilla guardada':'Guardar plantilla'}}</button></aside><div class="doc-preview-area"><header class="doc-preview-toolbar"><div><p class="eyebrow">02 · Vista previa de impresión</p><h2>{{format.sheet==='A4'?'Distribución en hoja A4':'Etiqueta adhesiva'}}</h2><p>{{selected.length}} {{selected.length===1?'etiqueta':'etiquetas'}} · {{pages.length}} {{format.sheet==='A4'?'hojas':'páginas'}} · {{format.width}} × {{format.height}} mm</p></div><label class="doc-field label-offset">Posiciones usadas<input type="number" v-model.number="offset" min="0" :max="capacity-1"></label></header><div class="label-preview-stage"><div class="label-sheet" :class="{'label-sheet--roll':format.sheet==='Rollo'}" :style="{'--label-cols':format.columns,'--label-rows':format.rows,'--label-ratio':format.sheet==='A4'?'210/297':format.width+'/'+format.height,'--label-pad-x':format.sheet==='A4'?((210-format.columns*format.width)/2/210*100)+'%':'0%','--label-pad-y':format.sheet==='A4'?((297-format.rows*format.height)/2/210*100)+'%':'0%'}" data-od-id="label-sheet-preview"><div v-for="(a,i) in sheet" :key="i" class="label-cell" :class="{'label-cell--used':!a}"><inventory-label v-if="a" :app="app" :asset="a" :fields="fields"></inventory-label><span v-else>Posición usada</span></div><div v-for="n in Math.max(0,capacity-sheet.length)" :key="'blank-'+n" class="label-cell label-cell--blank"></div></div></div><div class="label-pagination"><button class="btn btn--ghost btn--small" :disabled="page===0" @click="page--">← Anterior</button><span class="mono">{{pages.length?page+1:0}} / {{pages.length}}</span><button class="btn btn--ghost btn--small" :disabled="page>=pages.length-1" @click="page++">Siguiente →</button></div><footer class="doc-output-bar"><div><strong>{{selected.length}} {{selected.length===1?'etiqueta lista':'etiquetas listas'}} para preparar</strong><p>QR vinculado al ID permanente · Acceso privado</p></div><button class="btn btn--primary" :disabled="!selected.length||!fields.length" @click="generate" data-od-id="prepare-labels"><app-icon name="printer"></app-icon>Preparar impresión</button></footer><p v-if="error" class="doc-error" role="alert">{{error}}</p></div></div><modal-shell :open="generated" title="Etiquetas preparadas" eyebrow="Impresión de inventario" @close="generated=false"><div class="doc-generated"><span class="doc-generated__mark"><app-icon name="check"></app-icon></span><h3>{{selected.length}} {{selected.length===1?'etiqueta':'etiquetas'}} · {{pages.length}} {{format.sheet==='A4'?'hojas A4':'páginas'}}</h3><p>{{format.name}} · {{format.width}} × {{format.height}} mm</p><p class="doc-help">Documento de impresión simulado. Se conservan la composición, la selección y las posiciones usadas.</p></div><template #footer><button class="btn btn--primary" @click="generated=false">Volver a la distribución</button></template></modal-shell></section>`
+
+  const AssetQrPanel = {
+    name: 'Phase9AssetQrPanel',
+    components: { AppIcon: window.AppIcon },
+    props: { app: { type: Object, required: true }, asset: { type: Object, required: true } },
+    data() {
+      return {
+        shareFields: ['name', 'quickCode', 'status'],
+        expiresInDays: 7,
+        copied: ''
+      };
+    },
+    computed: {
+      qr() {
+        return this.app.phase9.qr;
+      },
+      share() {
+        return this.qr.assetId === this.asset.id ? this.qr.share : null;
+      },
+      privateUrl() {
+        return this.qr.assetId === this.asset.id ? this.qr.url : '';
+      },
+      publicFields() {
+        return LABEL.PUBLIC_FIELDS;
+      },
+      expiryDays() {
+        return LABEL.SHARE_EXPIRY_DAYS;
+      },
+      canShare() {
+        return this.app.can('reports.share');
+      },
+      loading() {
+        return this.qr.loading;
+      }
+    },
+    created() {
+      this.load();
+    },
+    watch: {
+      'asset.id': function () {
+        this.load();
+      }
+    },
+    template: `
+      <section class="operations-panel qr-asset-panel" data-od-id="asset-qr-panel">
+        <header class="panel-head">
+          <div><p class="eyebrow">Identidad permanente</p><h2>Código QR y enlace público</h2></div>
+          <span class="status-pill"><app-icon name="lock"></app-icon> Privado por defecto</span>
+        </header>
+        <div class="qr-asset-body">
+          <asset-qr-code :svg="qr.svg" :label="'Código QR del activo ' + asset.name"></asset-qr-code>
+          <div>
+            <h3>{{ asset.id }}</h3>
+            <p>El QR usa el identificador permanente del servidor. El enlace privado conserva la identidad aunque cambien el código rápido o la ubicación.</p>
+            <code>{{ privateUrl || 'Cargando dirección del servidor…' }}</code>
+            <div class="doc-inline">
+              <button type="button" class="btn btn--secondary btn--small" :disabled="!privateUrl" @click="copy(privateUrl)">Copiar enlace privado</button>
+              <a class="text-button" :href="privateReportUrl()">Previsualizar ficha privada</a>
+              <button type="button" class="text-button" @click="app.openDocuments('reports', [asset.id])">Preparar reporte</button>
+              <button type="button" class="text-button" @click="app.openDocuments('labels', [asset.id])">Crear etiqueta</button>
+            </div>
+          </div>
+        </div>
+        <p v-if="qr.error" class="doc-error" role="alert">{{ qr.error }}</p>
+        <div class="qr-share-settings">
+          <div>
+            <strong>Enlace público limitado</strong>
+            <p>Solo los campos marcados se publican. Crear o revocar el enlace requiere el permiso específico de reportes, no el de edición de activos.</p>
+          </div>
+          <template v-if="!share">
+            <fieldset class="doc-field-options" :disabled="!canShare">
+              <legend>Campos públicos</legend>
+              <label v-for="field in publicFields" :key="field.key">
+                <input type="checkbox" v-model="shareFields" :value="field.key">{{ field.label }}
+              </label>
+            </fieldset>
+            <label class="doc-field">Caducidad
+              <select v-model.number="expiresInDays" :disabled="!canShare">
+                <option v-for="days in expiryDays" :key="days" :value="days">{{ days }} {{ days === 1 ? 'día' : 'días' }}</option>
+              </select>
+            </label>
+            <button type="button" class="btn btn--secondary" :disabled="!canShare || app.phase9.share.creating" @click="createShare">
+              {{ app.phase9.share.creating ? 'Creando…' : 'Crear enlace público' }}
+            </button>
+            <span v-if="!canShare" class="doc-help">Necesitas el permiso para compartir reportes.</span>
+          </template>
+          <template v-else>
+            <div v-if="share.url" class="qr-shared-url">
+              <code>{{ share.url }}</code>
+              <button type="button" class="text-button" @click="copy(share.url)">Copiar</button>
+              <a class="text-button" :href="share.url" target="_blank" rel="noopener">Abrir</a>
+            </div>
+            <p v-else class="doc-help" role="status">El servidor conserva este enlace, pero la dirección completa solo se muestra al crearlo. Revócalo y crea uno nuevo si necesitas volver a copiarla.</p>
+            <p class="doc-help">Caduca el {{ formatDate(share.expiresAt) }} · {{ share.fields.length }} campos visibles.</p>
+            <button type="button" class="btn btn--ghost btn--small" :disabled="app.phase9.share.revoking" @click="revoke">
+              {{ app.phase9.share.revoking ? 'Revocando…' : 'Revocar enlace' }}
+            </button>
+          </template>
+        </div>
+        <p v-if="app.phase9.share.error" class="doc-error" role="alert">{{ app.phase9.share.error }}</p>
+      </section>
+    `,
+    methods: {
+      formatDate,
+      load() {
+        if (!this.app.authenticated || !this.app.can('assets.view')) return;
+        this.app.phase9LoadQr(this.asset.id);
+      },
+      copy(value) {
+        if (this.app.copyText) this.app.copyText(value, 'Dirección copiada.');
+        this.copied = value;
+      },
+      privateReportUrl() {
+        return '#/reporte/' + encodeURIComponent(this.asset.id);
+      },
+      async createShare() {
+        this.copied = '';
+        const result = await this.app.phase9CreateShare(this.asset.id, this.shareFields, this.expiresInDays);
+        if (!result.ok) return;
+        this.app.showToast('Enlace público creado.');
+      },
+      async revoke() {
+        if (!this.share) return;
+        const result = await this.app.phase9RevokeShare(this.share.id);
+        if (!result.ok) return;
+        this.app.showToast('Enlace público revocado.');
+      }
+    }
   };
-  const QrSettings={
-    props:{app:Object},components:{AssetQrCode},data(){return {draft:JSON.parse(JSON.stringify(this.app.labelState)),error:'',saved:false};},computed:{fields(){return E.PUBLIC_FIELDS;},example(){return this.app.assets[0]?E.assetUrl({...this.app.labelState,baseUrl:this.draft.baseUrl},this.app.assets[0]):'';}},
-    methods:{save(){const r=E.saveSettings(this.app.labelState,this.draft);this.error=r.error||'';if(r.ok){this.saved=true;this.app.showToast('Preferencias de códigos QR guardadas.');}}},
-    template:`<section class="config-section doc-settings" data-od-id="qr-settings"><header class="config-section-head"><p class="eyebrow">Identidad y acceso</p><h2>URL base y códigos QR</h2><p>Un destino estable para cada ID permanente, independiente del código rápido.</p></header><form class="qr-settings-form" @submit.prevent="save"><label class="doc-field">URL base del reporte<input type="url" v-model="draft.baseUrl" required maxlength="400" placeholder="https://activos.organizacion.local/"></label><p class="doc-help">Ruta del reporte: <code>#/reporte/{id-permanente}</code></p><div class="qr-example"><asset-qr-code :text="example"></asset-qr-code><div><strong>Ejemplo del destino privado</strong><code>{{example}}</code></div></div><div class="qr-access-note"><app-icon name="lock"></app-icon><div><strong>Acceso privado por defecto</strong><p>Los enlaces públicos se activan individualmente desde la ficha del activo.</p></div></div><fieldset class="doc-field-options"><legend>Información de la versión pública limitada</legend><label v-for="f in fields" :key="f.id"><input type="checkbox" v-model="draft.publicFields" :value="f.id">{{f.label}}</label></fieldset><p class="doc-help">Las direcciones IP, accesos remotos, costes, responsables y notas internas no forman parte de la ficha pública.</p><p v-if="error" class="doc-error" role="alert">{{error}}</p><button class="btn btn--primary" type="submit">{{saved?'Configuración guardada':'Guardar configuración QR'}}</button></form></section>`
+
+  const PublicAssetReport = {
+    name: 'Phase9PublicAssetReport',
+    components: { AppIcon: window.AppIcon, AssetQrCode: AssetQrCode },
+    props: { app: { type: Object, required: true } },
+    computed: {
+      token() {
+        return this.app.route && this.app.route.shareToken ? this.app.route.shareToken : '';
+      },
+      assetId() {
+        return this.app.route && this.app.route.assetId ? this.app.route.assetId : '';
+      },
+      publicMode() {
+        return !!(this.app.route && this.app.route.section === 'publico');
+      },
+      invalidPublic() {
+        return this.publicMode && !this.token;
+      },
+      publicState() {
+        return this.app.phase9.publicReport;
+      },
+      privateState() {
+        return this.app.phase9.privateReport;
+      },
+      state() {
+        if (this.invalidPublic) {
+          return { loading: false, asset: null, fields: [], error: 'El enlace no incluye un token de acceso válido.' };
+        }
+        return this.publicMode ? this.publicState : this.privateState;
+      },
+      asset() {
+        return this.state ? this.state.asset : null;
+      },
+      loading() {
+        return !this.state || this.state.loading;
+      },
+      error() {
+        return this.state ? this.state.error : '';
+      },
+      fields() {
+        if (this.publicMode) {
+          return (this.publicState.fields || []).map((key) => window.AssetReportEngine.fieldOf(key));
+        }
+        const keys = this.privateState && this.privateState.fields && this.privateState.fields.length
+          ? this.privateState.fields
+          : ['quickCode', 'name', 'category', 'site', 'location', 'status', 'responsible', 'serial', 'brand', 'model'];
+        return keys.map(function (key) {
+          return window.AssetReportEngine.fieldOf(key);
+        });
+      },
+      privateQr() {
+        return this.app.phase9.qr;
+      },
+      orgName() {
+        if (this.publicMode) return 'Activo';
+        const branding = this.app.phase9Settings.branding;
+        return branding && branding.name ? branding.name : 'ITMS · Activos';
+      }
+    },
+    created() {
+      this.load();
+    },
+    watch: {
+      token() {
+        this.load();
+      },
+      assetId() {
+        this.load();
+      }
+    },
+    methods: {
+      async load() {
+        if (this.publicMode) {
+          if (this.token) await this.app.phase9LoadPublicReport(this.token);
+          return;
+        }
+        if (!this.app.authenticated || !this.app.can('assets.view')) return;
+        await this.app.phase9LoadPrivateReport(this.assetId);
+        if (this.asset) this.app.phase9LoadQr(this.assetId);
+      },
+      value(key) {
+        const asset = this.asset;
+        if (!asset) return '—';
+        const value = asset[key];
+        return value === undefined || value === null || value === '' ? '—' : value;
+      },
+      date(value) {
+        return formatDate(value);
+      }
+    },
+    template: `
+      <section class="page qr-report-page" data-od-id="qr-asset-report">
+        <template v-if="asset">
+          <a v-if="!publicMode" class="back-link" :href="'#/activo/' + encodeURIComponent(asset.id)">
+            <app-icon name="arrow-left"></app-icon>Volver al activo
+          </a>
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">{{ publicMode ? 'Reporte público' : 'Reporte del activo · ' + asset.id }}</p>
+              <h1>{{ publicMode ? 'Ficha pública limitada' : 'Ficha privada' }}</h1>
+              <p class="page-head__description">{{ publicMode ? 'Este enlace solo muestra los campos autorizados por la organización y no abre el inventario privado.' : 'Información interna del inventario vinculada al identificador permanente.' }}</p>
+            </div>
+            <span class="status-pill">{{ publicMode ? 'Enlace público' : 'Privado' }}</span>
+          </header>
+          <article class="qr-record">
+            <header>
+              <div><p>{{ orgName }}</p><h2>{{ asset.name || asset.id }}</h2></div>
+              <span class="status-pill">{{ value('status') }}</span>
+            </header>
+            <dl class="doc-facts">
+              <div v-for="field in fields" :key="field.key"><dt>{{ field.label }}</dt><dd>{{ value(field.key) }}</dd></div>
+            </dl>
+            <footer>
+              <template v-if="!publicMode && privateQr.svg">
+                <asset-qr-code :svg="privateQr.svg" :label="'Código QR del activo ' + asset.id"></asset-qr-code>
+                <p>Destino privado vinculado al ID permanente.<span class="mono">{{ privateQr.url }}</span></p>
+              </template>
+              <p v-else-if="publicMode">Enlace público caduca el {{ date(publicState.expiresAt) }}.<span class="mono">{{ publicState.fields.length }} campos visibles</span></p>
+              <p v-else>Ficha interna del activo.<span class="mono">{{ asset.id }}</span></p>
+            </footer>
+          </article>
+        </template>
+        <div v-else-if="loading" class="doc-empty"><app-icon name="file-text"></app-icon><h2>Cargando reporte…</h2></div>
+        <div v-else class="qr-public-empty">
+          <app-icon name="lock"></app-icon>
+          <h2>{{ publicMode ? 'Este enlace no está disponible' : 'No se pudo cargar la ficha' }}</h2>
+          <p>{{ error || 'El enlace puede haber caducado, haber sido revocado o no corresponder a un activo vigente.' }}</p>
+          <a v-if="!publicMode" href="#/inventario" class="btn btn--secondary">Ir al inventario</a>
+        </div>
+      </section>
+    `
   };
-  const LabelSettings={props:{app:Object},computed:{formats(){return E.FORMATS;}},template:`<section class="config-section doc-settings" data-od-id="label-settings"><header class="config-section-head"><p class="eyebrow">Identificación física</p><h2>Plantillas y formatos de etiquetas</h2><p>Formatos de impresión disponibles y composiciones guardadas.</p></header><div class="doc-template-list"><article v-for="f in formats" :key="f.id"><span class="doc-template-icon"><app-icon name="printer"></app-icon></span><div><h3>{{f.name}}</h3><p>{{f.description}}</p><small>{{f.sheet}} · {{f.columns*f.rows}} posiciones por página</small></div><button class="btn btn--secondary" @click="app.labelState.format=f.id;app.openDocuments('labels',[])">Usar formato</button></article><article v-for="t in app.labelState.templates" :key="t.id"><span class="doc-template-icon"><app-icon name="file-text"></app-icon></span><div><h3>{{t.name}}</h3><p>{{t.fields.length}} elementos · Plantilla personalizada</p></div><button class="btn btn--secondary" @click="app.labelState.format=t.format;app.labelState.fields=t.fields.slice();app.openDocuments('labels',[])">Usar plantilla</button></article></div><a href="#/etiquetas" class="text-button">Personalizar una etiqueta →</a></section>`};
-  window.AssetLabelViews={AssetQrCode,AssetQrPanel,PublicAssetReport,InventoryLabel,LabelsCenter,QrSettings,LabelSettings};
-  for(const component of Object.values(window.AssetLabelViews)) component.components=Object.assign({AppIcon:window.AppIcon,ModalShell:window.ModalShell},component.components||{});
+
+  const LabelsCenter = {
+    name: 'Phase9LabelsCenter',
+    components: { AppIcon: window.AppIcon },
+    props: { app: { type: Object, required: true } },
+    data() {
+      const context = this.app.documentContext || {};
+      return {
+        label: LABEL.defaultLabelOptions({}),
+        filters: {
+          search: '',
+          category: '',
+          siteId: '',
+          locationId: '',
+          responsiblePersonId: '',
+          status: '',
+          archived: 'active'
+        },
+        explicit: !!(context.ids && context.ids.length),
+        ids: context.ids ? context.ids.slice() : [],
+        error: '',
+        notice: ''
+      };
+    },
+    computed: {
+      state() {
+        return this.app.phase9;
+      },
+      selection() {
+        return this.state.selection;
+      },
+      previewState() {
+        return this.state.preview;
+      },
+      jobs() {
+        return this.state.jobs.items;
+      },
+      activeJob() {
+        return this.state.activeJob.job;
+      },
+      selectedCount() {
+        return this.explicit ? this.ids.length : this.selection.total;
+      },
+      formats() {
+        return LABEL.FORMATS;
+      },
+      currentFormat() {
+        return LABEL.formatOf(this.label.formatId);
+      },
+      fieldOptions() {
+        return LABEL.LABEL_FIELDS;
+      },
+      pageNumber() {
+        return Math.floor(this.selection.offset / Math.max(1, this.selection.limit)) + 1;
+      },
+      pageCount() {
+        return Math.max(1, Math.ceil(this.selection.total / Math.max(1, this.selection.limit)));
+      },
+      pages() {
+        return LABEL.estimatedPages(this.selectedCount || this.previewState.assets || 0, this.label);
+      },
+      categoryOptions() {
+        return this.app.inventoryCategoryChoices || [];
+      },
+      siteOptions() {
+        return this.app.sites || [];
+      },
+      locationOptions() {
+        return (this.app.organizationLocations || []).filter((item) => item && item.id && item.level !== 'site');
+      },
+      responsibleOptions() {
+        return (this.app.filteredPeople || this.app.people || []).filter((person) => person && person.id);
+      },
+      statusOptions() {
+        return this.app.inventoryStatusChoices || [];
+      },
+      custom() {
+        return this.label.formatId === 'custom';
+      },
+      canGenerate() {
+        return this.app.can('assets.view');
+      },
+      activeJobDocuments() {
+        return this.activeJob ? this.activeJob.documents : [];
+      }
+    },
+    created() {
+      this.initialize();
+    },
+    methods: {
+      async initialize() {
+        await this.app.phase9LoadSettings();
+        this.resetLabel();
+        await this.app.phase9LoadSelection({ filters: this.filters, resetOffset: true });
+        this.app.phase9LoadJobs();
+      },
+      resetLabel() {
+        this.label = LABEL.defaultLabelOptions(this.app.phase9.settings.labelDefaults);
+      },
+      applyFormat() {
+        const format = LABEL.formatOf(this.label.formatId);
+        const preset = this.label.formatId !== 'custom';
+        this.label.widthMm = preset ? format.widthMm : this.label.widthMm;
+        this.label.heightMm = preset ? format.heightMm : this.label.heightMm;
+        this.label.pageWidthMm = preset ? format.pageWidthMm : this.label.pageWidthMm;
+        this.label.pageHeightMm = preset ? format.pageHeightMm : this.label.pageHeightMm;
+        this.label.columns = preset ? format.columns : this.label.columns;
+        this.label.rows = preset ? format.rows : this.label.rows;
+        this.label.marginTopMm = preset ? format.marginTopMm : this.label.marginTopMm;
+        this.label.marginRightMm = preset ? format.marginRightMm : this.label.marginRightMm;
+        this.label.marginBottomMm = preset ? format.marginBottomMm : this.label.marginBottomMm;
+        this.label.marginLeftMm = preset ? format.marginLeftMm : this.label.marginLeftMm;
+        this.label.gapXmm = preset ? format.gapXmm : this.label.gapXmm;
+        this.label.gapYmm = preset ? format.gapYmm : this.label.gapYmm;
+      },
+      reloadSelection() {
+        this.app.phase9LoadSelection({ filters: this.filters, resetOffset: true });
+      },
+      scheduleSelection() {
+        this.app.phase9ScheduleSelectionSearch(this.filters);
+      },
+      selectionPage(direction) {
+        this.app.phase9SelectionPage(direction);
+      },
+      rowSelected(asset) {
+        return !this.explicit || this.ids.indexOf(asset.id) !== -1;
+      },
+      toggle(asset) {
+        if (!this.explicit) {
+          this.ids = this.selection.items.map((item) => item.id);
+          this.explicit = true;
+        }
+        const index = this.ids.indexOf(asset.id);
+        if (index >= 0) this.ids.splice(index, 1);
+        else this.ids.push(asset.id);
+      },
+      selectPage() {
+        this.explicit = true;
+        this.ids = this.selection.items.map((item) => item.id);
+      },
+      selectAllMatching() {
+        this.explicit = false;
+        this.ids = [];
+      },
+      clearSelection() {
+        this.explicit = true;
+        this.ids = [];
+      },
+      request() {
+        const request = labelRequest(this.label);
+        request.assetIds = this.explicit ? this.ids.slice() : [];
+        request.filters = {
+          search: this.filters.search,
+          category: this.filters.category,
+          siteId: this.filters.siteId,
+          locationId: this.filters.locationId,
+          responsiblePersonId: this.filters.responsiblePersonId,
+          status: this.filters.status,
+          archived: this.filters.archived === 'archived' ? true : (this.filters.archived === 'active' ? false : null)
+        };
+        return request;
+      },
+      async preview() {
+        this.error = '';
+        const result = await this.app.phase9PreviewReport(this.request());
+        if (!result.ok) this.error = result.error || '';
+      },
+      async generate() {
+        this.error = '';
+        if (!this.selectedCount) {
+          this.error = 'Selecciona al menos un activo.';
+          return;
+        }
+        if (!this.label.fields.length) {
+          this.error = 'Selecciona al menos un elemento para la etiqueta.';
+          return;
+        }
+        const result = await this.app.phase9CreateJob(this.request());
+        if (!result.ok) {
+          this.error = result.error || '';
+          return;
+        }
+        this.notice = 'Trabajo de etiquetas en cola.';
+      },
+      jobLabel(value) {
+        return JOB_LABELS[value] || value || 'Sin estado';
+      },
+      date(value) {
+        return formatDate(value);
+      },
+      size(value) {
+        return formatBytes(value);
+      },
+      async download(documentRef) {
+        const result = await this.app.phase9DownloadDocument(documentRef);
+        if (!result.ok) this.error = result.error || '';
+      }
+    },
+    template: `
+      <section class="page labels-page" data-od-id="labels-center">
+        <header class="page-head">
+          <div>
+            <p class="eyebrow">Identificación física</p>
+            <h1>Etiquetas de inventario</h1>
+            <p class="page-head__description">Etiquetas reales del servidor con formatos A4 y adhesivos, tamaños y márgenes configurables, logotipo y código QR permanente.</p>
+          </div>
+          <a class="btn btn--secondary" href="#/configuracion/etiquetas"><app-icon name="sliders"></app-icon>Valores predeterminados</a>
+        </header>
+        <div class="doc-workspace">
+          <aside class="doc-controls">
+            <div class="doc-control-head"><p class="eyebrow">01 · Composición</p><h2>Prepara las etiquetas</h2></div>
+            <label class="doc-field">Formato
+              <select v-model="label.formatId" @change="applyFormat">
+                <option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }}</option>
+              </select>
+            </label>
+            <p class="doc-help">{{ currentFormat.detail }}</p>
+            <div v-if="custom" class="doc-form-grid">
+              <label class="doc-field">Ancho (mm)<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
+              <label class="doc-field">Alto (mm)<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
+              <label class="doc-field">Ancho de página<input type="number" v-model.number="label.pageWidthMm" min="20" max="1000" step="0.5"></label>
+              <label class="doc-field">Alto de página<input type="number" v-model.number="label.pageHeightMm" min="20" max="1000" step="0.5"></label>
+              <label class="doc-field">Margen superior<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">Margen derecho<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">Margen inferior<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">Margen izquierdo<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">Separación horizontal<input type="number" v-model.number="label.gapXmm" min="0" max="30" step="0.5"></label>
+              <label class="doc-field">Separación vertical<input type="number" v-model.number="label.gapYmm" min="0" max="30" step="0.5"></label>
+              <label class="doc-field">Columnas<input type="number" v-model.number="label.columns" min="1" max="12"></label>
+              <label class="doc-field">Posiciones usadas<input type="number" v-model.number="label.offset" min="0" max="500"></label>
+            </div>
+            <div class="doc-inline">
+              <label><input type="checkbox" v-model="label.logo">Logotipo</label>
+              <label><input type="checkbox" v-model="label.qr">Código QR</label>
+            </div>
+            <fieldset class="doc-field-options">
+              <legend>Elementos de la etiqueta</legend>
+              <label v-for="field in fieldOptions" :key="field.key">
+                <input type="checkbox" v-model="label.fields" :value="field.key">{{ field.label }}
+              </label>
+            </fieldset>
+
+            <hr class="doc-rule">
+            <label class="doc-field">Buscar activos<input type="search" v-model="filters.search" placeholder="Nombre, ID o código" @input="scheduleSelection"></label>
+            <div class="doc-form-grid">
+              <label class="doc-field">Categoría
+                <select v-model="filters.category" @change="reloadSelection">
+                  <option value="">Todas</option>
+                  <option v-for="category in categoryOptions" :key="category.id" :value="category.id">{{ category.label }}</option>
+                </select>
+              </label>
+              <label class="doc-field">Estado
+                <select v-model="filters.status" @change="reloadSelection">
+                  <option value="">Todos</option>
+                  <option v-for="status in statusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
+                </select>
+              </label>
+              <label class="doc-field">Sede
+                <select v-model="filters.siteId" @change="reloadSelection">
+                  <option value="">Todas</option>
+                  <option v-for="site in siteOptions" :key="site.id" :value="site.id">{{ site.label }}</option>
+                </select>
+              </label>
+              <label class="doc-field">Ubicación
+                <select v-model="filters.locationId" @change="reloadSelection">
+                  <option value="">Todas</option>
+                  <option v-for="location in locationOptions" :key="location.id" :value="location.id">{{ location.name }}</option>
+                </select>
+              </label>
+              <label class="doc-field">Responsable
+                <select v-model="filters.responsiblePersonId" @change="reloadSelection">
+                  <option value="">Todos</option>
+                  <option v-for="person in responsibleOptions" :key="person.id" :value="person.id">{{ person.name }}</option>
+                </select>
+              </label>
+              <label class="doc-field">Archivados
+                <select v-model="filters.archived" @change="reloadSelection">
+                  <option value="active">Solo activos</option>
+                  <option value="archived">Solo archivados</option>
+                </select>
+              </label>
+            </div>
+            <div class="doc-section-label">
+              <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'etiqueta' : 'etiquetas' }}</strong>
+              <span class="mono">{{ explicit ? 'Selección manual' : 'Todos los resultados' }}</span>
+            </div>
+            <div class="doc-inline">
+              <button type="button" class="text-button" @click="selectAllMatching">Todos los resultados</button>
+              <button type="button" class="text-button" @click="selectPage">Página actual</button>
+              <button type="button" class="text-button" @click="clearSelection">Vaciar</button>
+            </div>
+            <div class="doc-asset-picker" aria-live="polite">
+              <p v-if="selection.loading" class="doc-help">Cargando activos del servidor…</p>
+              <p v-else-if="selection.error" class="doc-error" role="alert">{{ selection.error }}</p>
+              <p v-else-if="!selection.items.length" class="doc-help">Ningún activo coincide con los filtros.</p>
+              <label v-for="asset in selection.items" :key="asset.id">
+                <input type="checkbox" :checked="rowSelected(asset)" @change="toggle(asset)">
+                <span><strong>{{ asset.name }}</strong><small class="mono">{{ asset.id }} · {{ asset.code || asset.quickCode }}</small></span>
+              </label>
+            </div>
+            <div class="doc-inline">
+              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.offset === 0 || selection.loading" @click="selectionPage('previous')">← Anterior</button>
+              <span class="mono">{{ pageNumber }} / {{ pageCount }}</span>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.loading || selection.offset + selection.limit >= selection.total" @click="selectionPage('next')">Siguiente →</button>
+            </div>
+          </aside>
+
+          <div class="doc-preview-area">
+            <header class="doc-preview-toolbar">
+              <div>
+                <p class="eyebrow">02 · Vista previa</p>
+                <h2>Hoja de etiquetas</h2>
+                <p>{{ selectedCount }} etiquetas · {{ pages }} {{ pages === 1 ? 'página' : 'páginas' }} · {{ currentFormat.widthMm }} × {{ currentFormat.heightMm }} mm</p>
+              </div>
+              <button type="button" class="btn btn--secondary" :disabled="previewState.loading" @click="preview">
+                <app-icon name="eye"></app-icon>{{ previewState.loading ? 'Preparando…' : 'Actualizar vista previa' }}
+              </button>
+            </header>
+            <div v-if="previewState.html" class="doc-pages">
+              <iframe :srcdoc="previewState.html" sandbox="" title="Vista previa de etiquetas" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
+            </div>
+            <div v-else class="doc-empty">
+              <app-icon name="printer"></app-icon>
+              <h3>{{ previewState.loading ? 'Preparando etiquetas…' : 'Sin vista previa' }}</h3>
+              <p>El servidor compone la hoja con la misma geometría y contenido que el PDF final.</p>
+            </div>
+            <p v-if="error || previewState.error || selection.error" class="doc-error" role="alert">{{ error || previewState.error || selection.error }}</p>
+            <p v-if="notice" class="doc-help" role="status">{{ notice }}</p>
+            <div v-if="activeJob" class="doc-output-bar" data-od-id="active-label-job">
+              <div>
+                <strong>{{ jobLabel(activeJob.status) }} · {{ activeJob.processed }} / {{ activeJob.total }}</strong>
+                <p v-if="activeJob.errors.length" class="doc-error">{{ activeJob.errors.join(' · ') }}</p>
+              </div>
+              <button v-for="document in activeJobDocuments" :key="document.id" type="button" class="btn btn--ghost btn--small" @click="download(document)">Descargar {{ document.name }}</button>
+            </div>
+            <footer class="doc-output-bar">
+              <div>
+                <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'etiqueta' : 'etiquetas' }} para preparar</strong>
+                <p>PDF real generado por el servidor · QR permanente · acceso privado por defecto</p>
+              </div>
+              <button type="button" class="btn btn--primary" :disabled="!selectedCount || !label.fields.length || !canGenerate" data-od-id="prepare-labels" @click="generate">
+                <app-icon name="printer"></app-icon>Preparar PDF de etiquetas
+              </button>
+            </footer>
+          </div>
+        </div>
+      </section>
+    `
+  };
+
+  const QrSettings = {
+    name: 'Phase9QrSettings',
+    props: { app: { type: Object, required: true } },
+    data() {
+      return { baseUrl: '', error: '', saved: false };
+    },
+    computed: {
+      settings() {
+        return this.app.phase9.settings;
+      },
+      canSave() {
+        return this.app.can('config.general');
+      },
+      example() {
+        return this.app.phase9.selection.items[0]
+          ? LABEL.assetUrl(this.baseUrl || 'https://activos.organizacion.example/', this.app.phase9.selection.items[0].id)
+          : '';
+      }
+    },
+    created() {
+      this.load();
+    },
+    methods: {
+      async load() {
+        await this.app.phase9LoadSettings();
+        this.baseUrl = this.settings.baseUrl;
+      },
+      async save() {
+        this.error = '';
+        if (this.baseUrl) {
+          try {
+            const url = new URL(this.baseUrl);
+            if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol');
+          } catch (_) {
+            this.error = 'Introduce una URL http o https válida.';
+            return;
+          }
+        }
+        if (!this.canSave) {
+          this.error = 'Necesitas el permiso de configuración general.';
+          return;
+        }
+        const result = await this.app.phase9SaveSettings({ baseUrl: this.baseUrl });
+        if (!result.ok) {
+          this.error = result.error;
+          return;
+        }
+        this.saved = true;
+        this.app.showToast('URL base de los códigos QR guardada.');
+      }
+    },
+    template: `
+      <section class="config-section doc-settings" data-od-id="qr-settings">
+        <header class="config-section-head">
+          <p class="eyebrow">Identidad y acceso</p>
+          <h2>URL base y códigos QR</h2>
+          <p>El QR de cada activo usa la URL base de la organización y el identificador permanente emitido por el servidor.</p>
+        </header>
+        <form class="qr-settings-form" @submit.prevent="save">
+          <label class="doc-field">URL base de los reportes
+            <input type="url" v-model="baseUrl" maxlength="400" placeholder="https://activos.organizacion.example/">
+          </label>
+          <p class="doc-help">Destino privado: <code>#/reporte/{id-permanente}</code>. Los enlaces públicos se crean y revocan por activo con el permiso de reportes.</p>
+          <div v-if="example" class="qr-example">
+            <div><strong>Ejemplo de destino</strong><code>{{ example }}</code></div>
+          </div>
+          <div class="qr-access-note">
+            <app-icon name="lock"></app-icon>
+            <div><strong>Acceso privado por defecto</strong><p>Cada enlace público limita sus campos y su caducidad, y puede revocarse de forma independiente.</p></div>
+          </div>
+          <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? 'Guardando…' : (saved ? 'Guardado' : 'Guardar URL base') }}</button>
+        </form>
+      </section>
+    `
+  };
+
+  const LabelSettings = {
+    name: 'Phase9LabelSettings',
+    props: { app: { type: Object, required: true } },
+    data() {
+      return { label: LABEL.defaultLabelOptions({}), error: '', saved: false };
+    },
+    computed: {
+      formats() {
+        return LABEL.FORMATS;
+      },
+      fieldOptions() {
+        return LABEL.LABEL_FIELDS;
+      },
+      canSave() {
+        return this.app.can('config.general');
+      },
+      settings() {
+        return this.app.phase9.settings;
+      }
+    },
+    created() {
+      this.load();
+    },
+    methods: {
+      async load() {
+        await this.app.phase9LoadSettings();
+        this.label = LABEL.defaultLabelOptions(this.settings.labelDefaults);
+      },
+      applyFormat() {
+        const format = LABEL.formatOf(this.label.formatId);
+        const preset = this.label.formatId !== 'custom';
+        if (!preset) return;
+        this.label.widthMm = format.widthMm;
+        this.label.heightMm = format.heightMm;
+        this.label.pageWidthMm = format.pageWidthMm;
+        this.label.pageHeightMm = format.pageHeightMm;
+        this.label.columns = format.columns;
+        this.label.rows = format.rows;
+        this.label.marginTopMm = format.marginTopMm;
+        this.label.marginRightMm = format.marginRightMm;
+        this.label.marginBottomMm = format.marginBottomMm;
+        this.label.marginLeftMm = format.marginLeftMm;
+        this.label.gapXmm = format.gapXmm;
+        this.label.gapYmm = format.gapYmm;
+      },
+      async save() {
+        if (!this.canSave) {
+          this.error = 'Necesitas el permiso de configuración general.';
+          return;
+        }
+        this.error = '';
+        const result = await this.app.phase9SaveSettings({ labelDefaults: this.label });
+        if (!result.ok) {
+          this.error = result.error;
+          return;
+        }
+        this.saved = true;
+        this.app.showToast('Valores predeterminados de etiquetas guardados.');
+      }
+    },
+    template: `
+      <section class="config-section doc-settings" data-od-id="label-settings">
+        <header class="config-section-head">
+          <p class="eyebrow">Identificación física</p>
+          <h2>Formatos y valores de etiquetas</h2>
+          <p>Los valores predeterminados se aplican al preparar etiquetas; la hoja final conserva la geometría canónica del servidor.</p>
+        </header>
+        <form class="qr-settings-form" @submit.prevent="save">
+          <label class="doc-field">Formato predeterminado
+            <select v-model="label.formatId" @change="applyFormat">
+              <option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }} · {{ format.detail }}</option>
+            </select>
+          </label>
+          <div class="doc-form-grid">
+            <label class="doc-field">Ancho (mm)<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
+            <label class="doc-field">Alto (mm)<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
+            <label class="doc-field">Columnas<input type="number" v-model.number="label.columns" min="1" max="12"></label>
+            <label class="doc-field">Posiciones usadas<input type="number" v-model.number="label.offset" min="0" max="500"></label>
+            <label class="doc-field">Margen superior<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">Margen derecho<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">Margen inferior<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">Margen izquierdo<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
+          </div>
+          <div class="doc-inline">
+            <label><input type="checkbox" v-model="label.logo">Logotipo</label>
+            <label><input type="checkbox" v-model="label.qr">Código QR</label>
+          </div>
+          <fieldset class="doc-field-options">
+            <legend>Elementos predeterminados</legend>
+            <label v-for="field in fieldOptions" :key="field.key">
+              <input type="checkbox" v-model="label.fields" :value="field.key">{{ field.label }}
+            </label>
+          </fieldset>
+          <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? 'Guardando…' : (saved ? 'Guardado' : 'Guardar valores') }}</button>
+        </form>
+      </section>
+    `
+  };
+
+  window.AssetLabelViews = {
+    AssetQrCode: AssetQrCode,
+    AssetQrPanel: AssetQrPanel,
+    PublicAssetReport: PublicAssetReport,
+    LabelsCenter: LabelsCenter,
+    QrSettings: QrSettings,
+    LabelSettings: LabelSettings
+  };
+
+  Object.values(window.AssetLabelViews).forEach(function (component) {
+    component.components = Object.assign({ AppIcon: window.AppIcon }, component.components || {});
+  });
 })();
