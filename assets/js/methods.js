@@ -203,13 +203,11 @@
         this.showToast('El activo solicitado ya no está disponible.', 'error');
         parsed = { name: 'inventory', assetId: null, personId: null, section: null };
       }
-      if (parsed.name === 'incident') {
-        const incidents = (this.maintenance && this.maintenance.incidents) || [];
-        if (!incidents.some((incident) => incident.id === parsed.incidentId)) {
-          this.ensureHash('#/mantenimiento');
-          this.showToast('El incidente solicitado ya no está disponible.', 'error');
-          parsed = { name: 'maintenance', incidentId: '', assetId: null, personId: null, section: null };
-        }
+      // Server incident routes are authoritative: the detail view loads the
+      // incident from the API instead of checking a local prototype list.
+      if (parsed.name === 'incident' && !parsed.incidentId) {
+        this.ensureHash('#/mantenimiento');
+        parsed = { name: 'maintenance', incidentId: '', assetId: null, personId: null, section: null };
       }
       if (parsed.name === 'person' && !this.serverOrganizationMode && !this.people.some((person) => person.id === parsed.personId)) {
         this.ensureHash('#/personas');

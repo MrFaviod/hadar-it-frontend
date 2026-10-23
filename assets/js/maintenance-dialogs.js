@@ -4,36 +4,80 @@
   const Engine = window.AssetMaintEngine;
   const Data = window.ASSET_MAINT;
 
+  const Dialogs = window.AssetMaintDialogs = window.AssetMaintDialogs || {};
+
   function pad(value) {
     return String(value).padStart(2, '0');
   }
 
-  function toInput(value) {
+  function dayInput(value) {
+    const day = Engine.toDay(value);
+    return day && Engine.validDay(day) ? day : Engine.today();
+  }
+
+  function timeInput(value) {
     const date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) return '';
     return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
       'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
   }
 
-  function fromInput(value) {
+  function isoInput(value) {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toISOString();
   }
 
-  // Dates render through the shared view helpers once that module is loaded; the
-  // fallback keeps the dialogs self-contained for isolated rendering.
   function fmtDay(value) {
     const helpers = window.AssetMaintViews && window.AssetMaintViews.helpers;
     if (helpers && helpers.fmtDay) return helpers.fmtDay(value);
-    return value || '';
+    const day = Engine.toDay(value);
+    if (!day || !Engine.validDay(day)) return 'Sin fecha';
+    return day;
+  }
+
+  const PLAN_STATUS_LABELS = {
+    active: 'Activo',
+    postponed: 'Pospuesto',
+    cancelled: 'Cancelado'
+  };
+
+  function planStatusLabel(status) {
+    return PLAN_STATUS_LABELS[status] || status || 'Sin estado';
+  }
+
+  function money(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+  }
+
+  function addDays(day, amount) {
+    return Engine.addDays(day, amount);
+  }
+
+  function personLabel(person) {
+    return person ? (person.label || person.name) : '';
+  }
+
+  function assetLabel(asset) {
+    if (!asset) return '';
+    const code = asset.quickCode || asset.id || '';
+    const name = asset.name || '';
+    if (name && name !== code) return code + ' · ' + name;
+    return code || name;
+  }
+
+  function searchDebounce(vm, key, run) {
+    if (vm[key]) window.clearTimeout(vm[key]);
+    vm[key] = window.setTimeout(() => {
+      vm[key] = null;
+      run();
+    }, 250);
   }
 
   const baseProps = {
     open: { type: Boolean, default: false },
     app: { type: Object, required: true }
   };
-
-  const Dialogs = window.AssetMaintDialogs = window.AssetMaintDialogs || {};
 
   Dialogs.InterventionDialog = {
     name: 'InterventionDialog',
@@ -47,237 +91,396 @@
     emits: ['close', 'saved'],
     data() {
       return {
-        form: { assetId: '', type: 'preventivo', title: '', description: '', date: '', technicianId: '', state: 'planned', notes: '', partLabel: '', partQty: 1, partCost: '', attachmentName: '' },
-        errors: [],
-        error: ''
+        form: {
+          assetId: '', type: 'preventive', description: '', technicianPersonId: '', occurredOn: Engine.today(),
+          status: 'open', notes: '', laborCost: '', incidentId: '', planId: ''
+        },
+        parts: [],
+        attachments: [],
+        selectedAsset: null,
+        selectedPerson: null,
+        assetQuery: '',
+        assetResults: [],
+        assetLoading: false,
+        personQuery: '',
+        personResults: [],
+        personLoading: false,
+        uploading: false,
+        saving: false,
+        error: '',
+        searchTimer: null,
+        personTimer: null,
+        loadedRecord: null
       };
     },
     computed: {
       isComplete() {
         return this.mode === 'complete';
       },
-      maintenance() {
-        return this.app.maintenance;
-      },
-      targets() {
-        return (this.app.assets || []).filter((asset) => !asset.retired || asset.id === this.form.assetId);
-      },
       types() {
-        return (this.maintenance.types || []).filter((type) => !this.isComplete || type.id === this.form.type || true);
+        return Data.INTERVENTION_TYPES || [];
       },
-      people() {
-        return (this.app.people || []).filter((person) => person.active);
+      typeOptions() {
+        const current = this.form && this.form.type;
+        if (!current || this.types.some((type) => type.id === current)) return this.types;
+        return this.types.concat([{ id: current, label: Engine.typeMeta(current).label }]);
       },
-      intervention() {
-        return (this.maintenance.interventions || []).find((item) => item.id === this.interventionId) || null;
+      priorities() {
+        return Data.PRIORITIES;
       },
-      technicianName() {
-        return Engine.personName(this.app.people, this.form.technicianId) || 'Sin asignar';
+      canEdit() {
+        return this.app.can('assets.edit');
       },
-      assetLabel() {
-        const asset = (this.app.assets || []).find((item) => item.id === this.form.assetId);
-        return asset ? asset.name : 'el activo';
+      contextIncident() {
+        return (this.preset && this.preset.incidentId) || this.form.incidentId;
+      },
+      contextPlan() {
+        return (this.preset && this.preset.planId) || this.form.planId;
       }
     },
     watch: {
-      open(value) {
-        if (value) this.reset();
+      open: {
+        immediate: true,
+        handler(value) {
+          if (value) this.reset();
+        }
       }
     },
+    beforeUnmount() {
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      if (this.personTimer) window.clearTimeout(this.personTimer);
+    },
     methods: {
+      fmtDay,
+      money,
+      assetLabel,
       reset() {
-        const ctx = this.preset || {};
-        const assetId = this.assetId || (this.intervention ? this.intervention.assetId : ((this.app.assets[0] || {}).id || ''));
-        const user = this.app.currentUser || {};
-        this.errors = [];
+        const preset = this.preset || {};
         this.error = '';
-        if (this.isComplete && this.intervention) {
-          this.form = {
-            assetId: this.intervention.assetId,
-            type: this.intervention.type,
-            title: this.intervention.title,
-            description: this.intervention.description,
-            date: toInput(this.intervention.date),
-            technicianId: this.intervention.technicianId,
-            state: 'done',
-            notes: this.intervention.notes,
-            partLabel: '',
-            partQty: 1,
-            partCost: '',
-            attachmentName: ''
-          };
+        this.parts = [];
+        this.attachments = [];
+        this.assetResults = [];
+        this.personResults = [];
+        this.assetQuery = '';
+        this.personQuery = '';
+        this.loadedRecord = null;
+        this.selectedPerson = null;
+        const initialAssetId = this.assetId || preset.assetId || '';
+        const known = this.app.assets.find((asset) => asset.id === initialAssetId);
+        const presetName = preset.assetName || '';
+        const presetCode = preset.assetQuickCode || '';
+        this.selectedAsset = known || (initialAssetId ? { id: initialAssetId, name: presetName, quickCode: presetCode, serverAsset: true } : null);
+        this.form = {
+          assetId: initialAssetId,
+          type: preset.type || 'preventive',
+          description: preset.description || '',
+          technicianPersonId: preset.technicianPersonId || '',
+          occurredOn: preset.occurredOn || Engine.today(),
+          status: this.isComplete ? 'completed' : (preset.status || 'open'),
+          notes: '',
+          laborCost: '',
+          incidentId: preset.incidentId || '',
+          planId: preset.planId || ''
+        };
+        if (this.isComplete || this.interventionId) {
+          this.loadRecord();
+        }
+      },
+      loadRecord() {
+        if (!this.interventionId) return;
+        const cached = (this.app.maintenanceInterventions || []).find((item) => item.id === this.interventionId);
+        if (cached) this.applyRecord(cached);
+        this.app.loadMaintenanceIntervention(this.interventionId).then(() => {
+          const detail = this.app.maintenanceApi && this.app.maintenanceApi.interventionDetail;
+          if (detail && detail.record) this.applyRecord(detail.record);
+        });
+      },
+      applyRecord(record) {
+        if (!record) return;
+        this.loadedRecord = record;
+        this.selectedAsset = record.asset || { id: record.assetId, name: record.assetName, quickCode: record.assetQuickCode, serverAsset: true };
+        this.selectedPerson = record.technicianPersonId ? { id: record.technicianPersonId, name: record.technicianName, label: record.technicianName } : null;
+        this.form = {
+          assetId: record.assetId,
+          type: record.type,
+          description: record.description || record.title || '',
+          technicianPersonId: record.technicianPersonId,
+          occurredOn: Engine.toDay(record.occurredOn),
+          status: this.isComplete ? 'completed' : record.status,
+          notes: record.notes || '',
+          laborCost: record.laborCost || '',
+          incidentId: record.incidentId || (this.preset && this.preset.incidentId) || '',
+          planId: record.planId || (this.preset && this.preset.planId) || ''
+        };
+        this.parts = (record.parts || []).map((part) => ({ name: part.name, quantity: part.quantity, unitCost: part.unitCost }));
+        this.attachments = (record.attachments || []).map((item) => ({ id: item.id, filename: item.filename, name: item.filename }));
+      },
+      chooseAsset(asset) {
+        this.selectedAsset = asset;
+        this.form.assetId = asset.id;
+        this.assetResults = [];
+        this.assetQuery = '';
+      },
+      clearAsset() {
+        this.selectedAsset = null;
+        this.form.assetId = '';
+      },
+      searchAssets() {
+        const query = this.assetQuery.trim();
+        if (query.length < 2) {
+          this.assetResults = [];
           return;
         }
-        this.form = {
-          assetId: assetId,
-          type: ctx.type || 'preventivo',
-          title: ctx.title || '',
-          description: ctx.description || '',
-          date: toInput(null),
-          technicianId: ctx.technicianId || user.personId || '',
-          state: ctx.state || 'planned',
-          notes: '',
-          partLabel: '',
-          partQty: 1,
-          partCost: '',
-          attachmentName: ''
+        searchDebounce(this, 'searchTimer', async () => {
+          this.assetLoading = true;
+          try {
+            this.assetResults = await this.app.searchMaintenanceAssets(query);
+          } catch (error) {
+            this.error = (error && error.message) || 'No se pudo buscar activos.';
+          } finally {
+            this.assetLoading = false;
+          }
+        });
+      },
+      choosePerson(person) {
+        this.selectedPerson = person;
+        this.form.technicianPersonId = person.id;
+        this.personResults = [];
+        this.personQuery = '';
+      },
+      clearPerson() {
+        this.selectedPerson = null;
+        this.form.technicianPersonId = '';
+      },
+      searchPeople() {
+        const query = this.personQuery.trim();
+        if (query.length < 2) {
+          this.personResults = [];
+          return;
+        }
+        searchDebounce(this, 'personTimer', async () => {
+          this.personLoading = true;
+          try {
+            this.personResults = await this.app.searchMaintenancePeople(query);
+          } catch (error) {
+            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+          } finally {
+            this.personLoading = false;
+          }
+        });
+      },
+      addPart() {
+        this.parts.push({ name: '', quantity: 1, unitCost: '' });
+      },
+      removePart(index) {
+        this.parts.splice(index, 1);
+      },
+      async onFile(event) {
+        const file = event && event.target && event.target.files ? event.target.files[0] : null;
+        if (!file || !this.form.assetId) return;
+        this.uploading = true;
+        this.error = '';
+        const result = await this.app.uploadMaintenanceAttachment(this.form.assetId, file);
+        this.uploading = false;
+        if (event.target) event.target.value = '';
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo subir el adjunto.';
+          return;
+        }
+        if (result.attachment) this.attachments.push(result.attachment);
+      },
+      removeAttachment(index) {
+        this.attachments.splice(index, 1);
+      },
+      payload() {
+        const parts = this.parts
+          .filter((part) => String(part.name || '').trim())
+          .map((part) => ({ name: String(part.name).trim(), quantity: Number(part.quantity) || 1, unitCost: part.unitCost === '' ? undefined : String(part.unitCost) }));
+        const payload = {
+          assetId: this.form.assetId,
+          type: this.form.type,
+          description: String(this.form.description || '').trim(),
+          technicianPersonId: this.form.technicianPersonId || undefined,
+          occurredOn: this.form.occurredOn,
+          status: this.form.status,
+          notes: String(this.form.notes || '').trim() || undefined,
+          parts,
+          laborCost: this.form.laborCost === '' ? undefined : String(this.form.laborCost),
+          attachmentIds: this.attachments.map((item) => item.id),
+          incidentId: this.contextIncident || undefined,
+          planId: this.contextPlan || undefined
         };
+        if (!payload.incidentId) delete payload.incidentId;
+        if (!payload.planId) delete payload.planId;
+        return payload;
       },
-      fieldError(name) {
-        return this.errors.some((message) => message.toLowerCase().indexOf(name) !== -1);
-      },
-      partsPayload() {
-        if (!this.form.partLabel.trim()) return [];
-        return [{
-          label: this.form.partLabel.trim(),
-          qty: Number(this.form.partQty) || 1,
-          cost: Number(this.form.partCost) || 0
-        }];
-      },
-      attachmentsPayload() {
-        const name = this.form.attachmentName.trim();
-        return name ? [{ name: name, size: '—', kind: 'adjunto' }] : [];
-      },
-      close() {
+      async save() {
+        if (!this.form.assetId) {
+          this.error = 'Selecciona el activo del trabajo.';
+          return;
+        }
+        if (!String(this.form.description || '').trim()) {
+          this.error = 'Describe brevemente el trabajo realizado.';
+          return;
+        }
+        if (!this.form.occurredOn) {
+          this.error = 'Indica la fecha del trabajo.';
+          return;
+        }
+        this.saving = true;
+        this.error = '';
+        const payload = this.payload();
+        const result = this.interventionId
+          ? await this.app.updateMaintenanceIntervention(this.interventionId, payload)
+          : await this.app.saveMaintenanceIntervention(payload);
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo guardar la intervención.';
+          return;
+        }
+        this.app.showToast(this.isComplete ? 'Intervención completada.' : (this.interventionId ? 'Intervención actualizada.' : 'Intervención registrada.'));
+        const record = result.intervention || this.loadedRecord;
+        this.$emit('saved', { intervention: record, result });
         this.$emit('close');
       },
-      save() {
-        const ctx = {
-          actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador',
-          actorId: (this.app.currentUser && this.app.currentUser.personId) || '',
-          people: this.app.people
-        };
-        this.errors = [];
-        this.error = '';
-        let result;
-        if (this.isComplete) {
-          result = Engine.completeIntervention(this.maintenance, this.app.assets, this.interventionId, {
-            completedAt: fromInput(this.form.date),
-            notes: this.form.notes,
-            parts: this.partsPayload(),
-            attachments: this.attachmentsPayload()
-          }, ctx);
-        } else {
-          result = Engine.saveIntervention(this.maintenance, this.app.assets, {
-            assetId: this.form.assetId,
-            type: this.form.type,
-            title: this.form.title,
-            description: this.form.description,
-            date: fromInput(this.form.date) || new Date().toISOString(),
-            technicianId: this.form.technicianId,
-            state: this.form.state,
-            notes: this.form.notes,
-            parts: this.partsPayload(),
-            attachments: this.attachmentsPayload()
-          }, ctx);
-        }
-        if (!result.ok) {
-          this.errors = result.errors;
-          this.error = result.errors[0] || 'No se pudo guardar la intervención.';
-          return;
-        }
-        this.app.showToast(this.isComplete ? 'Intervención completada.' : 'Intervención registrada.');
-        this.$emit('saved', result);
+      close() {
         this.$emit('close');
       }
     },
     template: `
-      <modal-shell :open="open" :title="isComplete ? 'Completar intervención' : 'Registrar intervención'"
+      <modal-shell :open="open" :title="isComplete ? 'Completar intervención' : (interventionId ? 'Editar intervención' : 'Registrar intervención')"
                    :eyebrow="isComplete ? 'Cierre de trabajo' : 'Trabajo técnico'" size="wide" @close="close">
-        <div v-if="isComplete && intervention" class="maint-modal-context">
-          <span class="maint-modal-context__icon"><app-icon :name="(types.find(t => t.id === form.type) || {}).icon || 'activity'"></app-icon></span>
-          <div>
-            <strong>{{ intervention.title }}</strong>
-            <span class="mono">{{ intervention.id }} · {{ assetLabel }}</span>
-          </div>
-        </div>
-
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
 
+        <div v-if="contextIncident || contextPlan" class="maint-modal-context">
+          <span class="maint-modal-context__icon"><app-icon name="activity"></app-icon></span>
+          <div>
+            <strong>{{ contextIncident ? 'Vinculada al incidente ' + contextIncident : 'Vinculada al plan preventivo' }}</strong>
+            <span class="mono">{{ contextPlan || '' }}</span>
+          </div>
+        </div>
+
         <div class="form-grid form-grid--two">
-          <label v-if="!isComplete" class="field">
+          <div class="field field--span">
             <span class="field__label">Activo <em>*</em></span>
-            <span class="select-field">
-              <select v-model="form.assetId">
-                <option v-for="asset in targets" :key="asset.id" :value="asset.id">{{ asset.id }} · {{ asset.name }}</option>
-              </select>
-            </span>
-          </label>
-          <label v-if="!isComplete" class="field">
+            <div v-if="selectedAsset" class="maint-picker">
+              <span class="maint-picker__value">{{ assetLabel(selectedAsset) }}</span>
+              <button v-if="!interventionId" type="button" class="icon-button" aria-label="Cambiar activo" @click="clearAsset"><app-icon name="x"></app-icon></button>
+            </div>
+            <div v-else class="maint-picker">
+              <label class="search-field maint-picker__search">
+                <span class="sr-only">Buscar activo</span>
+                <app-icon name="search"></app-icon>
+                <input v-model="assetQuery" type="search" placeholder="Buscar por código o nombre" data-maint-picker="asset" @input="searchAssets">
+              </label>
+              <span v-if="assetLoading" class="cell-muted">Buscando…</span>
+            </div>
+            <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
+              <li v-for="asset in assetResults" :key="asset.id">
+                <button type="button" class="maint-picker__option" @click="chooseAsset(asset)">
+                  <strong>{{ asset.quickCode || asset.id }}</strong> · {{ asset.name }} <span class="cell-muted">{{ asset.category }}</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <label class="field">
             <span class="field__label">Tipo de trabajo <em>*</em></span>
             <span class="select-field">
-              <select v-model="form.type">
-                <option v-for="type in types" :key="type.id" :value="type.id">{{ type.label }}</option>
+              <select v-model="form.type" data-maint-field="type">
+                <option v-for="type in typeOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
               </select>
             </span>
           </label>
-          <label v-if="!isComplete" class="field">
-            <span class="field__label">Estado inicial</span>
+
+          <label class="field">
+            <span class="field__label">Estado</span>
             <span class="select-field">
-              <select v-model="form.state">
-                <option value="planned">Planificada</option>
+              <select v-model="form.status" data-maint-field="status">
+                <option value="open">Abierta</option>
                 <option value="in_progress">En curso</option>
-                <option value="done">Completada</option>
+                <option value="completed">Completada</option>
+                <option value="cancelled">Cancelada</option>
               </select>
             </span>
           </label>
+
           <label class="field">
-            <span class="field__label">{{ isComplete ? 'Fecha de cierre' : 'Fecha' }}</span>
-            <input v-model="form.date" type="datetime-local" class="input-shell input-shell--plain">
+            <span class="field__label">Fecha <em>*</em></span>
+            <input v-model="form.occurredOn" type="date" max="2100-12-31" class="input-shell input-shell--plain" data-maint-field="occurredOn">
           </label>
-          <label class="field">
-            <span class="field__label">Técnico responsable</span>
-            <span class="select-field">
-              <select v-model="form.technicianId">
-                <option value="">Sin asignar</option>
-                <option v-for="person in people" :key="person.id" :value="person.id">{{ person.name }}</option>
-              </select>
-            </span>
-          </label>
-          <label v-if="!isComplete" class="field field--span">
-            <span class="field__label">Asunto <em>*</em></span>
-            <input v-model="form.title" type="text" maxlength="120" class="input-shell input-shell--plain" placeholder="Revisión trimestral, sustitución de disco, ajuste de firmware…">
-          </label>
-          <label v-if="!isComplete" class="field field--span">
-            <span class="field__label">Descripción <em>*</em></span>
-            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" placeholder="Qué se revisa, qué se ha encontrado y qué se ha hecho."></textarea>
-          </label>
+
+          <div class="field">
+            <span class="field__label">Técnico</span>
+            <div v-if="selectedPerson" class="maint-picker">
+              <span class="maint-picker__value">{{ personLabel(selectedPerson) }}</span>
+              <button type="button" class="icon-button" aria-label="Quitar técnico" @click="clearPerson"><app-icon name="x"></app-icon></button>
+            </div>
+            <div v-else class="maint-picker">
+              <label class="search-field maint-picker__search">
+                <span class="sr-only">Buscar técnico</span>
+                <app-icon name="search"></app-icon>
+                <input v-model="personQuery" type="search" placeholder="Buscar responsable" data-maint-picker="person" @input="searchPeople">
+              </label>
+              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+            </div>
+            <ul v-if="personResults.length" class="maint-picker__results" role="listbox">
+              <li v-for="person in personResults" :key="person.id">
+                <button type="button" class="maint-picker__option" @click="choosePerson(person)">{{ person.label || person.name }}</button>
+              </li>
+            </ul>
+          </div>
+
           <label class="field field--span">
-            <span class="field__label">{{ isComplete ? 'Observaciones del cierre' : 'Observaciones' }}</span>
-            <textarea v-model="form.notes" rows="2" maxlength="600" class="input-shell input-shell--plain" placeholder="Detalles que conviene conservar en el historial del activo."></textarea>
+            <span class="field__label">Descripción <em>*</em></span>
+            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" placeholder="Qué se hizo y qué se encontró"></textarea>
+          </label>
+
+          <label class="field field--span">
+            <span class="field__label">Observaciones <span class="cell-muted">(opcional)</span></span>
+            <textarea v-model="form.notes" rows="2" maxlength="1200" class="input-shell input-shell--plain"></textarea>
           </label>
         </div>
 
-        <fieldset class="maint-fieldset">
-          <legend>Repuestos y coste <span class="cell-muted">(opcional)</span></legend>
-          <div class="maint-part-row">
-            <label class="field">
-              <span class="field__label">Repuesto</span>
-              <input v-model="form.partLabel" type="text" maxlength="80" class="input-shell input-shell--plain" placeholder="Batería, disco, latiguillo…">
-            </label>
-            <label class="field maint-part-row__qty">
-              <span class="field__label">Cantidad</span>
-              <input v-model="form.partQty" type="number" min="1" max="99" class="input-shell input-shell--plain">
-            </label>
-            <label class="field maint-part-row__cost">
-              <span class="field__label">Coste (€)</span>
-              <input v-model="form.partCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain" placeholder="0,00">
-            </label>
+        <section class="maint-subsection" aria-labelledby="maint-parts-title">
+          <header class="maint-subsection__head">
+            <h3 id="maint-parts-title">Repuestos</h3>
+            <button type="button" class="text-button" @click="addPart"><app-icon name="plus"></app-icon> Añadir repuesto</button>
+          </header>
+          <div v-for="(part, index) in parts" :key="index" class="maint-part-row">
+            <input v-model="part.name" type="text" class="input-shell input-shell--plain" placeholder="Pieza" aria-label="Pieza">
+            <input v-model.number="part.quantity" type="number" min="1" class="input-shell input-shell--plain" placeholder="Cantidad" aria-label="Cantidad">
+            <input v-model="part.unitCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain" placeholder="Coste unitario" aria-label="Coste unitario">
+            <button type="button" class="icon-button" aria-label="Quitar repuesto" @click="removePart(index)"><app-icon name="trash"></app-icon></button>
           </div>
-        </fieldset>
+          <p v-if="!parts.length" class="cell-muted maint-aside-note">Sin repuestos. Puedes registrar el trabajo sin desglose de material.</p>
+          <label class="field">
+            <span class="field__label">Mano de obra (opcional)</span>
+            <input v-model="form.laborCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain">
+          </label>
+        </section>
 
-        <label class="field maint-attachment">
-          <span class="field__label">Archivo adjunto <span class="cell-muted">(simulado)</span></span>
-          <input v-model="form.attachmentName" type="text" maxlength="120" class="input-shell input-shell--plain" placeholder="informe-tecnico.pdf">
-          <span class="field__hint">El prototipo guarda el nombre del archivo, no su contenido.</span>
-        </label>
+        <section class="maint-subsection" aria-labelledby="maint-files-title">
+          <header class="maint-subsection__head">
+            <h3 id="maint-files-title">Documentos adjuntos</h3>
+            <span v-if="uploading" class="cell-muted">Subiendo…</span>
+          </header>
+          <label class="btn btn--ghost btn--small maint-file">
+            <input type="file" class="sr-only" data-maint-field="attachment" :disabled="!form.assetId || uploading" @change="onFile">
+            <app-icon name="file"></app-icon> Adjuntar documento
+          </label>
+          <ul v-if="attachments.length" class="maint-attachment-list">
+            <li v-for="(file, index) in attachments" :key="file.id">
+              <span class="mono">{{ file.filename || file.name }}</span>
+              <button type="button" class="icon-button" aria-label="Quitar adjunto" @click="removeAttachment(index)"><app-icon name="x"></app-icon></button>
+            </li>
+          </ul>
+          <p v-else class="cell-muted maint-aside-note">Los adjuntos se suben al activo antes de guardar la intervención.</p>
+        </section>
 
         <template #footer>
-          <span class="modal-foot__note">{{ isComplete ? 'El cierre queda registrado en el historial del activo.' : 'La intervención queda vinculada a la ficha del activo.' }}</span>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" data-od-id="intervention-save" @click="save">
-            <app-icon name="check"></app-icon> {{ isComplete ? 'Completar' : 'Registrar' }}
-          </button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-intervention-save" :disabled="saving || uploading" @click="save">{{ saving ? 'Guardando…' : 'Guardar intervención' }}</button>
         </template>
       </modal-shell>
     `
@@ -288,149 +491,316 @@
     components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
     props: Object.assign({
       primaryAssetId: { type: String, default: '' },
-      alertId: { type: String, default: '' }
+      preset: { type: Object, default: null }
     }, baseProps),
     emits: ['close', 'saved'],
     data() {
       return {
-        form: { title: '', description: '', priority: 'media', primaryAssetId: '', affectedIds: [], assigneeId: '', note: '' },
-        error: ''
+        form: { primaryAssetId: '', description: '', priority: 'normal', responsiblePersonId: '', openedOn: Engine.today() },
+        primaryAsset: null,
+        responsible: null,
+        affected: [],
+        assetQuery: '',
+        assetResults: [],
+        assetLoading: false,
+        personQuery: '',
+        personResults: [],
+        personLoading: false,
+        saving: false,
+        error: '',
+        searchTimer: null,
+        personTimer: null
       };
     },
     computed: {
-      maintenance() {
-        return this.app.maintenance;
-      },
-      assets() {
-        return (this.app.assets || []).filter((asset) => !asset.retired);
-      },
-      people() {
-        return (this.app.people || []).filter((person) => person.active);
-      },
       priorities() {
         return Data.PRIORITIES;
       },
-      affected() {
-        return this.assets.filter((asset) => asset.id !== this.form.primaryAssetId);
-      },
-      alert() {
-        return (this.maintenance.alerts || []).find((item) => item.id === this.alertId) || null;
-      },
-      heading() {
-        return this.alert ? 'Convertir alerta en incidente' : 'Nuevo incidente';
+      canEdit() {
+        return this.app.can('assets.edit');
       }
     },
     watch: {
-      open(value) {
-        if (!value) return;
-        const user = this.app.currentUser || {};
-        const alert = (this.maintenance.alerts || []).find((item) => item.id === this.alertId) || null;
-        this.error = '';
-        this.form = {
-          title: alert ? alert.message : '',
-          description: alert ? alert.message : '',
-          priority: alert ? alert.severity : 'media',
-          primaryAssetId: alert ? alert.assetId : (this.primaryAssetId || ((this.app.assets[0] || {}).id || '')),
-          affectedIds: [],
-          assigneeId: user.personId || '',
-          note: ''
-        };
+      open: {
+        immediate: true,
+        handler(value) {
+          if (!value) return;
+          this.error = '';
+          this.affected = [];
+          this.assetResults = [];
+          this.personResults = [];
+          this.assetQuery = '';
+          this.personQuery = '';
+          this.responsible = null;
+          const assetId = this.primaryAssetId || (this.preset && this.preset.primaryAssetId) || '';
+          this.primaryAsset = this.app.assets.find((asset) => asset.id === assetId) || (assetId ? { id: assetId, name: assetId, quickCode: assetId, serverAsset: true } : null);
+          this.form = {
+            primaryAssetId: assetId,
+            description: (this.preset && this.preset.description) || '',
+            priority: (this.preset && this.preset.priority) || 'normal',
+            responsiblePersonId: '',
+            openedOn: Engine.today()
+          };
+        }
       }
     },
+    beforeUnmount() {
+      if (this.searchTimer) window.clearTimeout(this.searchTimer);
+      if (this.personTimer) window.clearTimeout(this.personTimer);
+    },
     methods: {
-      close() {
-        this.$emit('close');
+      assetLabel,
+      choosePrimary(asset) {
+        this.primaryAsset = asset;
+        this.form.primaryAssetId = asset.id;
+        this.assetResults = [];
+        this.assetQuery = '';
       },
-      toggleAffected(id) {
-        const index = this.form.affectedIds.indexOf(id);
-        if (index === -1) this.form.affectedIds.push(id);
-        else this.form.affectedIds.splice(index, 1);
+      clearPrimary() {
+        this.primaryAsset = null;
+        this.form.primaryAssetId = '';
       },
-      save() {
-        const context = {
-          actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador',
-          actorId: (this.app.currentUser && this.app.currentUser.personId) || '',
-          origin: 'el módulo de mantenimiento'
-        };
-        const payload = {
-          title: this.form.title,
-          description: this.form.description,
-          priority: this.form.priority,
-          affectedIds: this.form.affectedIds,
-          assigneeId: this.form.assigneeId,
-          note: this.form.note
-        };
-        const result = this.alert
-          ? Engine.createFromAlert(this.maintenance, this.app.assets, this.alert.id, payload, context)
-          : Engine.createIncident(this.maintenance, this.app.assets, Object.assign({ primaryAssetId: this.form.primaryAssetId }, payload), context);
-        if (!result.ok) {
-          this.error = result.errors[0];
+      searchAssets() {
+        const query = this.assetQuery.trim();
+        if (query.length < 2) {
+          this.assetResults = [];
           return;
         }
-        this.app.showToast(this.alert
-          ? 'Alerta convertida en ' + result.incident.id + '.'
-          : 'Incidente ' + result.incident.id + ' registrado.');
-        this.$emit('saved', result);
+        searchDebounce(this, 'searchTimer', async () => {
+          this.assetLoading = true;
+          try {
+            this.assetResults = await this.app.searchMaintenanceAssets(query);
+          } catch (error) {
+            this.error = (error && error.message) || 'No se pudo buscar activos.';
+          } finally {
+            this.assetLoading = false;
+          }
+        });
+      },
+      addAffected(asset) {
+        if (!asset || this.form.primaryAssetId === asset.id) return;
+        if (this.affected.some((item) => item.id === asset.id)) return;
+        this.affected.push(asset);
+        this.assetResults = [];
+        this.assetQuery = '';
+      },
+      removeAffected(id) {
+        this.affected = this.affected.filter((asset) => asset.id !== id);
+      },
+      choosePerson(person) {
+        this.responsible = person;
+        this.form.responsiblePersonId = person.id;
+        this.personResults = [];
+        this.personQuery = '';
+      },
+      clearPerson() {
+        this.responsible = null;
+        this.form.responsiblePersonId = '';
+      },
+      searchPeople() {
+        const query = this.personQuery.trim();
+        if (query.length < 2) {
+          this.personResults = [];
+          return;
+        }
+        searchDebounce(this, 'personTimer', async () => {
+          this.personLoading = true;
+          try {
+            this.personResults = await this.app.searchMaintenancePeople(query);
+          } catch (error) {
+            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+          } finally {
+            this.personLoading = false;
+          }
+        });
+      },
+      async save() {
+        if (!this.form.primaryAssetId) {
+          this.error = 'Selecciona el activo principal.';
+          return;
+        }
+        if (!String(this.form.description || '').trim()) {
+          this.error = 'Describe brevemente el incidente.';
+          return;
+        }
+        this.saving = true;
+        this.error = '';
+        const payload = {
+          primaryAssetId: this.form.primaryAssetId,
+          description: String(this.form.description).trim(),
+          priority: this.form.priority,
+          affectedAssetIds: this.affected.map((asset) => asset.id),
+          responsiblePersonId: this.form.responsiblePersonId || undefined,
+          openedOn: this.form.openedOn
+        };
+        const result = await this.app.createMaintenanceIncident(payload);
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo crear el incidente.';
+          return;
+        }
+        this.app.showToast('Incidente creado.');
+        this.$emit('saved', { incident: result.incident, result });
+        this.$emit('close');
+      },
+      close() {
         this.$emit('close');
       }
     },
     template: `
-      <modal-shell :open="open" :title="heading" eyebrow="Operación técnica" size="wide" @close="close">
+      <modal-shell :open="open" title="Nuevo incidente" eyebrow="Problema técnico" size="wide" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <div class="form-grid form-grid--two">
-          <label class="field">
+        <div v-if="!canEdit" class="config-lock"><app-icon name="lock"></app-icon><p>Necesitas permiso de edición de activos para crear incidentes.</p></div>
+        <div v-else class="form-grid form-grid--two">
+          <div class="field field--span">
             <span class="field__label">Activo principal <em>*</em></span>
-            <span class="select-field">
-              <select v-model="form.primaryAssetId">
-                <option v-for="asset in assets" :key="asset.id" :value="asset.id">{{ asset.id }} · {{ asset.name }}</option>
-              </select>
-            </span>
+            <div v-if="primaryAsset" class="maint-picker">
+              <span class="maint-picker__value">{{ assetLabel(primaryAsset) }}</span>
+              <button type="button" class="icon-button" aria-label="Cambiar activo principal" @click="clearPrimary"><app-icon name="x"></app-icon></button>
+            </div>
+            <div v-else class="maint-picker">
+              <label class="search-field maint-picker__search">
+                <span class="sr-only">Buscar activo principal</span>
+                <app-icon name="search"></app-icon>
+                <input v-model="assetQuery" type="search" placeholder="Buscar por código o nombre" data-maint-picker="primary-asset" @input="searchAssets">
+              </label>
+              <span v-if="assetLoading" class="cell-muted">Buscando…</span>
+            </div>
+            <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
+              <li v-for="asset in assetResults" :key="asset.id">
+                <button type="button" class="maint-picker__option" @click="choosePrimary(asset)"><strong>{{ asset.quickCode || asset.id }}</strong> · {{ asset.name }}</button>
+              </li>
+            </ul>
+          </div>
+
+          <label class="field field--span">
+            <span class="field__label">Descripción <em>*</em></span>
+            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" placeholder="Qué falla, desde cuándo y qué se ha observado"></textarea>
           </label>
+
           <label class="field">
             <span class="field__label">Prioridad</span>
             <span class="select-field">
-              <select v-model="form.priority">
+              <select v-model="form.priority" data-maint-field="priority">
                 <option v-for="priority in priorities" :key="priority.id" :value="priority.id">{{ priority.label }}</option>
               </select>
             </span>
           </label>
-          <label class="field field--span">
-            <span class="field__label">Título <em>*</em></span>
-            <input v-model="form.title" type="text" maxlength="140" class="input-shell input-shell--plain" placeholder="Pérdida de conectividad, servicio caído, equipo sin arrancar…">
+
+          <label class="field">
+            <span class="field__label">Fecha de apertura</span>
+            <input v-model="form.openedOn" type="date" class="input-shell input-shell--plain" data-maint-field="openedOn">
           </label>
-          <label class="field field--span">
-            <span class="field__label">Descripción</span>
-            <textarea v-model="form.description" rows="3" maxlength="800" class="input-shell input-shell--plain" placeholder="Síntoma, alcance y primeras comprobaciones."></textarea>
+
+          <div class="field field--span">
+            <span class="field__label">Responsable <span class="cell-muted">(opcional)</span></span>
+            <div v-if="responsible" class="maint-picker">
+              <span class="maint-picker__value">{{ personLabel(responsible) }}</span>
+              <button type="button" class="icon-button" aria-label="Quitar responsable" @click="clearPerson"><app-icon name="x"></app-icon></button>
+            </div>
+            <div v-else class="maint-picker">
+              <label class="search-field maint-picker__search">
+                <span class="sr-only">Buscar responsable</span>
+                <app-icon name="search"></app-icon>
+                <input v-model="personQuery" type="search" placeholder="Buscar responsable" data-maint-picker="person" @input="searchPeople">
+              </label>
+              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+            </div>
+            <ul v-if="personResults.length" class="maint-picker__results" role="listbox">
+              <li v-for="person in personResults" :key="person.id"><button type="button" class="maint-picker__option" @click="choosePerson(person)">{{ person.label || person.name }}</button></li>
+            </ul>
+          </div>
+
+          <div class="field field--span">
+            <span class="field__label">Otros dispositivos afectados</span>
+            <ul v-if="affected.length" class="maint-picker__chips">
+              <li v-for="asset in affected" :key="asset.id">
+                <span>{{ asset.quickCode || asset.id }} · {{ asset.name }}</span>
+                <button type="button" class="icon-button" aria-label="Quitar dispositivo afectado" @click="removeAffected(asset.id)"><app-icon name="x"></app-icon></button>
+              </li>
+            </ul>
+            <label class="search-field maint-picker__search">
+              <span class="sr-only">Añadir dispositivo afectado</span>
+              <app-icon name="plus"></app-icon>
+              <input v-model="assetQuery" type="search" placeholder="Buscar otro dispositivo" data-maint-picker="affected-asset" @input="searchAssets">
+            </label>
+            <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
+              <li v-for="asset in assetResults" :key="asset.id">
+                <button type="button" class="maint-picker__option" @click="addAffected(asset)"><strong>{{ asset.quickCode || asset.id }}</strong> · {{ asset.name }}</button>
+              </li>
+            </ul>
+          </div>
+        </div>
+        <template #footer>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-incident-save" :disabled="saving || !canEdit" @click="save">{{ saving ? 'Creando…' : 'Crear incidente' }}</button>
+        </template>
+      </modal-shell>
+    `
+  };
+
+  Dialogs.PlanCompleteDialog = {
+    name: 'PlanCompleteDialog',
+    components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
+    props: Object.assign({
+      planId: { type: String, default: '' },
+      label: { type: String, default: '' }
+    }, baseProps),
+    emits: ['close', 'saved'],
+    data() {
+      return { completedOn: Engine.today(), notes: '', saving: false, error: '' };
+    },
+    watch: {
+      open: {
+        immediate: true,
+        handler(value) {
+          if (!value) return;
+          this.completedOn = Engine.today();
+          this.notes = '';
+          this.error = '';
+        }
+      }
+    },
+    methods: {
+      fmtDay,
+      async save() {
+        if (!this.completedOn) {
+          this.error = 'Indica la fecha de realización.';
+          return;
+        }
+        this.saving = true;
+        this.error = '';
+        const result = await this.app.completeMaintenancePlan(this.planId, { completedOn: this.completedOn, notes: this.notes || undefined });
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo completar el preventivo.';
+          return;
+        }
+        this.$emit('saved', result);
+        this.$emit('close');
+      },
+      close() {
+        this.$emit('close');
+      }
+    },
+    template: `
+      <modal-shell :open="open" title="Completar preventivo" eyebrow="Cierre de mantenimiento" @close="close">
+        <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
+        <p class="cell-muted">{{ label }}</p>
+        <p class="cell-muted">Al completar, el siguiente vencimiento se calcula desde la fecha real de realización.</p>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Fecha de realización <em>*</em></span>
+            <input v-model="completedOn" type="date" class="input-shell input-shell--plain" data-maint-field="completedOn">
           </label>
           <label class="field">
-            <span class="field__label">Responsable</span>
-            <span class="select-field">
-              <select v-model="form.assigneeId">
-                <option value="">Sin asignar</option>
-                <option v-for="person in people" :key="person.id" :value="person.id">{{ person.name }}</option>
-              </select>
-            </span>
+            <span class="field__label">Observaciones <span class="cell-muted">(opcional)</span></span>
+            <textarea v-model="notes" rows="3" class="input-shell input-shell--plain"></textarea>
           </label>
         </div>
-
-        <fieldset class="maint-fieldset">
-          <legend>Otros dispositivos afectados</legend>
-          <div class="maint-affected">
-            <label v-for="asset in affected" :key="asset.id" class="maint-affected__item" :class="{ 'is-selected': form.affectedIds.indexOf(asset.id) !== -1 }">
-              <input type="checkbox" :checked="form.affectedIds.indexOf(asset.id) !== -1" @change="toggleAffected(asset.id)">
-              <span class="mono">{{ asset.id }}</span>
-              <span>{{ asset.name }}</span>
-            </label>
-          </div>
-          <span class="field__hint">{{ form.affectedIds.length }} dispositivos adicionales marcados.</span>
-        </fieldset>
-
         <template #footer>
-          <span class="modal-foot__note">El incidente aparece en el historial de cada activo afectado.</span>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" data-od-id="incident-save" @click="save">
-            <app-icon name="plus"></app-icon> Abrir incidente
-          </button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-complete-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Completar preventivo' }}</button>
         </template>
       </modal-shell>
     `
@@ -439,202 +809,74 @@
   Dialogs.PostponeDialog = {
     name: 'PostponeDialog',
     components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
-    props: Object.assign({ planId: { type: String, default: '' }, label: { type: String, default: '' } }, baseProps),
+    props: Object.assign({
+      planId: { type: String, default: '' },
+      label: { type: String, default: '' }
+    }, baseProps),
     emits: ['close', 'saved'],
     data() {
-      return { days: 7, note: '', error: '' };
+      return { dueOn: addDays(Engine.today(), 7), notes: '', saving: false, error: '' };
     },
     computed: {
-      plan() {
-        return (this.app.maintenance.plans || []).find((item) => item.id === this.planId) || null;
-      },
-      currentDue() {
-        return this.plan ? Engine.dueOf(this.plan) : '';
-      },
-      newDue() {
-        return this.currentDue ? Engine.addDays(Engine.daysUntil(this.currentDue) < 0 ? Engine.today() : this.currentDue, this.days) : '';
+      quickOptions() {
+        return [7, 14, 30].map((days) => ({ days, label: days + ' días', dueOn: addDays(Engine.today(), days) }));
       }
     },
     watch: {
-      open(value) {
-        if (!value) return;
-        this.days = 7;
-        this.note = '';
-        this.error = '';
+      open: {
+        immediate: true,
+        handler(value) {
+          if (!value) return;
+          this.dueOn = addDays(Engine.today(), 7);
+          this.notes = '';
+          this.error = '';
+        }
       }
     },
     methods: {
-      fmtDay,
-      close() {
-        this.$emit('close');
+      pick(dueOn) {
+        this.dueOn = dueOn;
       },
-      save() {
-        const result = Engine.postponePlan(this.app.maintenance, this.app.assets, this.planId, Number(this.days), { note: this.note }, {
-          actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador'
-        });
-        if (!result.ok) {
-          this.error = result.errors[0];
+      async save() {
+        if (!this.dueOn) {
+          this.error = 'Indica el nuevo vencimiento.';
           return;
         }
-        this.app.showToast('Preventivo aplazado hasta el ' + fmtDay(this.newDue) + '.');
+        this.saving = true;
+        this.error = '';
+        const result = await this.app.postponeMaintenancePlan(this.planId, { dueOn: this.dueOn, notes: this.notes || undefined });
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo posponer el preventivo.';
+          return;
+        }
         this.$emit('saved', result);
+        this.$emit('close');
+      },
+      close() {
         this.$emit('close');
       }
     },
     template: `
-      <modal-shell :open="open" title="Posponer preventivo" eyebrow="Plan de mantenimiento" @close="close">
-        <p class="maint-dialog-lead">{{ label || 'Plan preventivo' }}. El vencimiento actual es el <strong class="mono">{{ fmtDay(currentDue) }}</strong>.</p>
+      <modal-shell :open="open" title="Posponer preventivo" eyebrow="Reprogramación" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <label class="field">
-          <span class="field__label">Aplazar</span>
-          <span class="select-field">
-            <select v-model.number="days">
-              <option :value="3">3 días</option>
-              <option :value="7">1 semana</option>
-              <option :value="14">2 semanas</option>
-              <option :value="30">1 mes</option>
-            </select>
-          </span>
-        </label>
-        <label class="field">
-          <span class="field__label">Motivo <span class="cell-muted">(opcional)</span></span>
-          <input v-model="note" type="text" maxlength="160" class="input-shell input-shell--plain" placeholder="Ventana ocupada, pieza pendiente de recibir…">
-        </label>
-        <div class="maint-due-preview">
-          <span>Nuevo vencimiento</span>
-          <strong class="mono">{{ fmtDay(newDue) }}</strong>
+        <p class="cell-muted">{{ label }}</p>
+        <div class="maint-quick-dates">
+          <button v-for="option in quickOptions" :key="option.days" type="button" class="chip chip--muted" :class="{ 'is-active': dueOn === option.dueOn }" @click="pick(option.dueOn)">+{{ option.label }}</button>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span class="field__label">Nuevo vencimiento <em>*</em></span>
+            <input v-model="dueOn" type="date" class="input-shell input-shell--plain" data-maint-field="dueOn">
+          </label>
+          <label class="field">
+            <span class="field__label">Motivo <span class="cell-muted">(opcional)</span></span>
+            <textarea v-model="notes" rows="3" class="input-shell input-shell--plain"></textarea>
+          </label>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" data-od-id="postpone-confirm" @click="save">Posponer</button>
-        </template>
-      </modal-shell>
-    `
-  };
-
-  Dialogs.LinkAlertDialog = {
-    name: 'LinkAlertDialog',
-    components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
-    props: Object.assign({ alertId: { type: String, default: '' } }, baseProps),
-    emits: ['close', 'saved'],
-    data() {
-      return { incidentId: '', error: '' };
-    },
-    computed: {
-      alert() {
-        return (this.app.maintenance.alerts || []).find((item) => item.id === this.alertId) || null;
-      },
-      incidents() {
-        return (this.app.maintenance.incidents || []).filter((item) => item.state !== 'cerrado');
-      },
-      asset() {
-        return this.alert ? (this.app.assets || []).find((item) => item.id === this.alert.assetId) : null;
-      }
-    },
-    watch: {
-      open(value) {
-        if (!value) return;
-        this.incidentId = this.alert && this.alert.incidentId ? this.alert.incidentId : ((this.incidents[0] || {}).id || '');
-        this.error = '';
-      }
-    },
-    methods: {
-      close() {
-        this.$emit('close');
-      },
-      save() {
-        const result = Engine.linkAlert(this.app.maintenance, this.app.assets, this.alertId, this.incidentId, {
-          actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador'
-        });
-        if (!result.ok) {
-          this.error = result.errors[0];
-          return;
-        }
-        this.app.showToast('Alerta vinculada a ' + this.incidentId + '.');
-        this.$emit('saved', result);
-        this.$emit('close');
-      }
-    },
-    template: `
-      <modal-shell :open="open" title="Vincular alerta a un incidente" eyebrow="Supervisión" @close="close">
-        <div v-if="alert" class="maint-alert-context">
-          <span class="maint-alert-context__icon"><app-icon name="alert"></app-icon></span>
-          <div>
-            <strong>{{ alert.message }}</strong>
-            <span class="mono">{{ alert.id }} · {{ asset ? asset.name : alert.assetId }}</span>
-          </div>
-        </div>
-        <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <label class="field">
-          <span class="field__label">Incidente</span>
-          <span class="select-field">
-            <select v-model="incidentId">
-              <option v-for="incident in incidents" :key="incident.id" :value="incident.id">{{ incident.id }} · {{ incident.title }}</option>
-            </select>
-          </span>
-        </label>
-        <p class="form-note">Si la alerta ya se recuperó, el incidente mostrará la sugerencia de confirmar su resolución. Nada se cierra automáticamente.</p>
-        <template #footer>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" @click="save">Vincular</button>
-        </template>
-      </modal-shell>
-    `
-  };
-
-  Dialogs.ResolveDialog = {
-    name: 'ResolveDialog',
-    components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
-    props: Object.assign({ incidentId: { type: String, default: '' }, mode: { type: String, default: 'resolve' } }, baseProps),
-    emits: ['close', 'saved'],
-    data() {
-      return { note: '', error: '' };
-    },
-    computed: {
-      incident() {
-        return (this.app.maintenance.incidents || []).find((item) => item.id === this.incidentId) || null;
-      },
-      isClose() {
-        return this.mode === 'close';
-      }
-    },
-    watch: {
-      open(value) {
-        if (!value) return;
-        this.note = '';
-        this.error = '';
-      }
-    },
-    methods: {
-      close() {
-        this.$emit('close');
-      },
-      save() {
-        const ctx = { actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador' };
-        const result = this.isClose
-          ? Engine.closeIncident(this.app.maintenance, this.app.assets, this.incidentId, { note: this.note }, ctx)
-          : Engine.resolveIncident(this.app.maintenance, this.app.assets, this.incidentId, { note: this.note }, ctx);
-        if (!result.ok) {
-          this.error = result.errors[0];
-          return;
-        }
-        this.app.showToast(this.isClose ? 'Incidente cerrado.' : 'Incidente marcado como resuelto.');
-        this.$emit('saved', result);
-        this.$emit('close');
-      }
-    },
-    template: `
-      <modal-shell :open="open" :title="isClose ? 'Cerrar incidente' : 'Confirmar resolución'"
-                   :eyebrow="isClose ? 'Archivo' : 'Resolución'" @close="close">
-        <p class="maint-dialog-lead">{{ isClose ? 'El incidente se archiva y deja de aparecer entre los abiertos. Su historial se conserva.' : 'Confirma que el problema está resuelto. La recuperación de la supervisión no cierra el incidente por sí sola.' }}</p>
-        <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <label class="field">
-          <span class="field__label">{{ isClose ? 'Nota de cierre' : 'Nota de resolución' }}</span>
-          <textarea v-model="note" rows="3" maxlength="400" class="input-shell input-shell--plain" placeholder="Qué se hizo y cómo se verificó."></textarea>
-        </label>
-        <template #footer>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" @click="save">{{ isClose ? 'Cerrar incidente' : 'Confirmar resolución' }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-postpone-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Posponer' }}</button>
         </template>
       </modal-shell>
     `
@@ -643,127 +885,235 @@
   Dialogs.PlanDialog = {
     name: 'PlanDialog',
     components: { AppIcon: window.AppIcon, ModalShell: window.ModalShell },
-    props: Object.assign({ assetId: { type: String, default: '' } }, baseProps),
+    props: Object.assign({
+      assetId: { type: String, required: true },
+      preset: { type: Object, default: null }
+    }, baseProps),
     emits: ['close', 'saved'],
     data() {
       return {
-        form: { templateId: '', intervalMonths: 6, lastCompletedAt: '', note: '', paused: false, tasksText: '' },
+        form: { maintenanceType: 'preventivo', intervalMonths: 6, dueOn: '', responsiblePersonId: '' },
+        tasksText: '',
+        plan: null,
+        templates: [],
+        responsible: null,
+        personQuery: '',
+        personResults: [],
+        personLoading: false,
+        personTimer: null,
+        saving: false,
+        loading: false,
         error: ''
       };
     },
     computed: {
+      types() {
+        return Data.INTERVENTION_TYPES.filter((type) => type.id === 'preventive' || type.id === 'inspection');
+      },
+      typeOptions() {
+        const current = this.form && this.form.maintenanceType;
+        if (!current || this.types.some((type) => type.id === current)) return this.types;
+        return this.types.concat([{ id: current, label: Engine.typeMeta(current).label }]);
+      },
       asset() {
-        return (this.app.assets || []).find((item) => item.id === this.assetId) || null;
+        const source = this.plan || {};
+        const preset = this.preset || {};
+        return {
+          id: this.assetId,
+          name: source.assetName || preset.assetName || this.assetId,
+          quickCode: source.assetQuickCode || preset.assetQuickCode || '',
+          category: source.assetCategory || preset.assetCategory || ''
+        };
       },
-      plan() {
-        return (this.app.maintenance.plans || []).find((item) => item.assetId === this.assetId) || null;
+      availableTemplates() {
+        return this.templates.filter((template) => !this.asset.category || template.category === this.asset.category);
       },
-      templates() {
-        return this.app.maintenance.templates || [];
-      },
-      dueAt() {
-        return this.form.lastCompletedAt ? Engine.addMonths(this.form.lastCompletedAt, Number(this.form.intervalMonths) || 6) : '';
+      paused() {
+        return !!this.plan && this.plan.status === 'postponed';
       }
     },
     watch: {
-      open(value) {
-        if (!value) return;
-        const plan = this.plan;
-        const template = plan
-          ? this.templates.find((item) => item.id === plan.templateId)
-          : this.templates.find((item) => this.asset && item.category === this.asset.category);
-        this.error = '';
-        this.form = {
-          templateId: plan ? plan.templateId : (template ? template.id : ''),
-          intervalMonths: plan ? plan.intervalMonths : (template ? template.intervalMonths : 6),
-          lastCompletedAt: plan ? plan.lastCompletedAt : '',
-          note: plan ? plan.note : '',
-          paused: plan ? plan.paused : false,
-          tasksText: (plan ? plan.tasks : (template ? template.tasks : [])).join('\n')
-        };
+      open: {
+        immediate: true,
+        handler(value) {
+          if (value) this.load();
+        }
       }
+    },
+    beforeUnmount() {
+      if (this.personTimer) window.clearTimeout(this.personTimer);
     },
     methods: {
       fmtDay,
+      planStatusLabel,
+      responsibleName() {
+        return personLabel(this.responsible);
+      },
+      searchPeople() {
+        const query = this.personQuery.trim();
+        if (query.length < 2) {
+          this.personResults = [];
+          return;
+        }
+        searchDebounce(this, 'personTimer', async () => {
+          this.personLoading = true;
+          try {
+            this.personResults = await this.app.searchMaintenancePeople(query);
+          } catch (error) {
+            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+          } finally {
+            this.personLoading = false;
+          }
+        });
+      },
+      choosePerson(person) {
+        this.responsible = person;
+        this.form.responsiblePersonId = person.id;
+        this.personResults = [];
+        this.personQuery = '';
+      },
+      clearPerson() {
+        this.responsible = null;
+        this.form.responsiblePersonId = '';
+        this.personQuery = '';
+        this.personResults = [];
+      },
+      async load() {
+        this.error = '';
+        this.loading = true;
+        this.tasksText = '';
+        this.plan = null;
+        this.responsible = null;
+        this.personQuery = '';
+        this.personResults = [];
+        await this.app.loadAssetMaintenanceWork(this.assetId);
+        await this.app.loadMaintenanceTemplates({ reset: true });
+        this.templates = this.app.maintenanceTemplates || [];
+        const work = this.app.maintenanceAssetWork;
+        const plans = work && work.assetId === this.assetId ? work.plans.items : [];
+        this.plan = plans.find((plan) => plan.status !== 'cancelled') || plans[0] || null;
+        const source = this.plan || {};
+        this.form = {
+          maintenanceType: source.maintenanceType || 'preventivo',
+          intervalMonths: source.intervalMonths || 6,
+          dueOn: Engine.toDay(source.dueOn) || '',
+          responsiblePersonId: source.responsiblePersonId || ''
+        };
+        this.responsible = source.responsiblePersonId
+          ? { id: source.responsiblePersonId, label: source.responsibleLabel || source.responsibleName || source.responsiblePersonId }
+          : null;
+        this.tasksText = (source.tasks || []).join('\n');
+        this.loading = false;
+      },
+      applyTemplate(id) {
+        const template = this.templates.find((item) => item.id === id);
+        if (!template) return;
+        this.form.maintenanceType = template.maintenanceType;
+        this.form.intervalMonths = template.intervalMonths || this.form.intervalMonths;
+        this.form.responsiblePersonId = template.responsiblePersonId || this.form.responsiblePersonId;
+        this.tasksText = (template.tasks || []).join('\n');
+      },
+      async save() {
+        if (!this.form.intervalMonths || this.form.intervalMonths < 1) {
+          this.error = 'El intervalo debe ser al menos de un mes.';
+          return;
+        }
+        this.saving = true;
+        this.error = '';
+        const tasks = this.tasksText.split('\n').map((line) => line.trim()).filter(Boolean);
+        const payload = {
+          intervalMonths: Number(this.form.intervalMonths),
+          tasks,
+          responsiblePersonId: this.form.responsiblePersonId || null,
+          dueOn: this.form.dueOn || undefined
+        };
+        const result = this.plan
+          ? await this.app.updateMaintenancePlan(this.plan.id, payload)
+          : await this.app.saveMaintenancePlan(Object.assign({ assetId: this.assetId, maintenanceType: this.form.maintenanceType }, payload));
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo guardar el plan.';
+          return;
+        }
+        this.app.showToast(this.plan ? 'Plan preventivo actualizado.' : 'Plan preventivo creado.');
+        this.$emit('saved', result);
+        this.$emit('close');
+      },
+      async cancelPlan() {
+        if (!this.plan) return;
+        this.saving = true;
+        this.error = '';
+        const result = await this.app.cancelMaintenancePlan(this.plan.id, { notes: '' });
+        this.saving = false;
+        if (!result.ok) {
+          this.error = result.error || 'No se pudo cancelar el plan.';
+          return;
+        }
+        this.app.showToast('Plan preventivo cancelado.');
+        this.$emit('saved', result);
+        this.$emit('close');
+      },
       close() {
         this.$emit('close');
       },
-      onTemplate() {
-        const template = this.templates.find((item) => item.id === this.form.templateId);
-        if (!template) return;
-        this.form.intervalMonths = template.intervalMonths;
-        this.form.tasksText = template.tasks.join('\n');
-      },
-      save() {
-        const result = Engine.savePlan(this.app.maintenance, this.app.assets, {
-          assetId: this.assetId,
-          templateId: this.form.templateId,
-          intervalMonths: Number(this.form.intervalMonths),
-          lastCompletedAt: this.form.lastCompletedAt,
-          note: this.form.note,
-          paused: this.form.paused,
-          tasks: this.form.tasksText.split('\n')
-        }, { actor: (this.app.currentUser && this.app.currentUser.name) || 'Administrador' });
-        if (!result.ok) {
-          this.error = result.errors[0];
-          return;
-        }
-        this.app.showToast('Plan preventivo actualizado.');
-        this.$emit('saved', result);
-        this.$emit('close');
-      }
+      fmtDay
     },
     template: `
-      <modal-shell :open="open" title="Plan preventivo" eyebrow="Configuración del activo" size="wide" @close="close">
-        <div v-if="asset" class="maint-modal-context">
-          <span class="maint-modal-context__icon"><app-icon name="refresh"></app-icon></span>
-          <div>
-            <strong>{{ asset.name }}</strong>
-            <span class="mono">{{ asset.id }} · {{ asset.type }}</span>
-          </div>
-        </div>
+      <modal-shell :open="open" title="Plan preventivo" eyebrow="Excepción del activo" size="wide" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <div class="form-grid form-grid--two">
-          <label class="field">
-            <span class="field__label">Plantilla</span>
+        <div v-if="loading" class="cell-muted">Cargando plan…</div>
+        <div v-else class="form-grid form-grid--two">
+          <p class="field field--span cell-muted">{{ asset.quickCode ? asset.quickCode + ' · ' : '' }}{{ asset.name }}. Los cambios se aplican solo a este equipo.</p>
+          <label v-if="!plan" class="field field--span">
+            <span class="field__label">Plantilla de la categoría</span>
             <span class="select-field">
-              <select v-model="form.templateId" @change="onTemplate">
+              <select data-maint-field="template" @change="applyTemplate($event.target.value)">
                 <option value="">Sin plantilla</option>
-                <option v-for="template in templates" :key="template.id" :value="template.id">{{ template.label }}</option>
+                <option v-for="template in availableTemplates" :key="template.id" :value="template.id">{{ template.label }} · {{ template.intervalMonths }} meses</option>
+              </select>
+            </span>
+          </label>
+          <label class="field">
+            <span class="field__label">Tipo</span>
+            <span class="select-field">
+              <select v-model="form.maintenanceType" :disabled="!!plan" data-maint-field="maintenanceType">
+                <option v-for="type in typeOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
               </select>
             </span>
           </label>
           <label class="field">
             <span class="field__label">Intervalo (meses)</span>
-            <input v-model.number="form.intervalMonths" type="number" min="1" max="60" class="input-shell input-shell--plain">
+            <input v-model.number="form.intervalMonths" type="number" min="1" max="60" class="input-shell input-shell--plain" data-maint-field="intervalMonths">
           </label>
           <label class="field">
-            <span class="field__label">Último preventivo completado</span>
-            <input v-model="form.lastCompletedAt" type="date" class="input-shell input-shell--plain">
+            <span class="field__label">Próximo vencimiento <span class="cell-muted">(opcional)</span></span>
+            <input v-model="form.dueOn" type="date" class="input-shell input-shell--plain">
           </label>
-          <div class="field">
-            <span class="field__label">Próximo vencimiento</span>
-            <span class="maint-due-preview maint-due-preview--inline">
-              <strong class="mono">{{ dueAt ? fmtDay(dueAt) : 'Sin programar' }}</strong>
-            </span>
-          </div>
+          <label class="field">
+            <span class="field__label">Responsable</span>
+            <div class="maint-picker" data-maint-picker="responsible">
+              <input v-model="personQuery" type="search" class="input-shell input-shell--plain maint-picker__search" placeholder="Buscar en el directorio" data-maint-field="responsible" @input="searchPeople">
+              <span v-if="responsible" class="maint-picker__value">{{ responsibleName() }}</span>
+              <span v-else class="maint-picker__value">Sin asignar</span>
+              <button v-if="responsible" type="button" class="text-button text-button--quiet" @click="clearPerson">Quitar</button>
+              <ul v-if="personResults.length" class="maint-picker__results">
+                <li v-for="person in personResults" :key="person.id">
+                  <button type="button" class="maint-picker__option" @click="choosePerson(person)">{{ person.label || person.name }}</button>
+                </li>
+              </ul>
+              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+            </div>
+          </label>
           <label class="field field--span">
-            <span class="field__label">Tareas del plan <span class="cell-muted">(una por línea)</span></span>
-            <textarea v-model="form.tasksText" rows="5" class="input-shell input-shell--plain"></textarea>
+            <span class="field__label">Tareas <span class="cell-muted">(una por línea)</span></span>
+            <textarea v-model="tasksText" rows="5" class="input-shell input-shell--plain" data-maint-field="tasks"></textarea>
           </label>
-          <label class="field field--span">
-            <span class="field__label">Excepción del dispositivo</span>
-            <input v-model="form.note" type="text" maxlength="400" class="input-shell input-shell--plain" placeholder="Particularidades que no aplican al resto de la categoría.">
-          </label>
-          <label class="maint-switch field--span">
-            <input v-model="form.paused" type="checkbox">
-            <span><strong>Pausar el plan</strong><small>El activo deja de aparecer en la agenda hasta reactivarlo.</small></span>
-          </label>
+          <p v-if="plan" class="field field--span cell-muted">Último preventivo: {{ fmtDay(plan.lastCompletedOn) }} · Estado: {{ planStatusLabel(plan.status) }}</p>
         </div>
         <template #footer>
-          <span class="modal-foot__note">Los cambios no alteran la plantilla de la categoría.</span>
-          <button type="button" class="btn btn--ghost" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary" @click="save">Guardar plan</button>
+          <button v-if="plan" type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="cancelPlan">Cancelar plan</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cerrar</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="asset-plan-save" :disabled="saving || loading" @click="save">{{ saving ? 'Guardando…' : (plan ? 'Guardar plan' : 'Crear plan') }}</button>
         </template>
       </modal-shell>
     `

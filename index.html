@@ -346,7 +346,7 @@
         <div class="sidebar__foot">
           <div class="sidebar__note">
             <app-icon name="info"></app-icon>
-            <p v-if="serverInventory"><strong>Inventario del servidor</strong><span>Inventario, ficha y conversación usan la API. Los demás módulos siguen con datos de demostración locales.</span></p>
+            <p v-if="serverInventory"><strong>Inventario del servidor</strong><span>Inventario, ficha, conversación y mantenimiento usan la API. El resto de módulos sigue con datos de demostración locales.</span></p>
             <p v-else><strong>Datos de demostración</strong><span>Los cambios se guardan solo en este navegador.</span></p>
           </div>
         </div>
@@ -1887,7 +1887,7 @@
                   <asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
                   <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations>
 
-                  <asset-maintenance-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
+                  <asset-maintenance-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
                   <asset-monitoring-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
 
                   <section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
@@ -2828,7 +2828,7 @@
     <bulk-editor :open="bulk.open" :ids="bulk.ids" :app="$root" @close="closeBulkEditor" @applied="handleBulkApplied"></bulk-editor>
 
     <search-palette :open="universalOpen" :records="universalRecords" :favorites="workspaceFavoriteKeys" :usage="workspaceUsage" @close="universalOpen=false" @select="openWorkspaceTarget" @favorite="toggleWorkspaceFavorite"></search-palette>
-    <quick-intervention v-if="quickDialog.type==='intervention'" :open="true" :app="$root" :asset-id="quickDialog.assetId" :intervention="quickDialog.intervention" @close="quickDialog.type=''" @saved="quickDialog.type=''"></quick-intervention>
+    <quick-intervention v-if="quickDialog.type==='intervention'" :open="true" :app="$root" :asset-id="quickDialog.assetId" :intervention-id="quickDialog.interventionId" @close="quickDialog.type=''" @saved="quickDialog.type=''"></quick-intervention>
     <quick-incident v-if="quickDialog.type==='incident'" :open="true" :app="$root" :primary-asset-id="quickDialog.assetId" @close="quickDialog.type=''" @saved="quickDialog.type=''"></quick-incident>
     <transition name="toast">
       <div v-if="toast.text" class="toast" :class="{ 'toast--error': toast.tone === 'error' }" role="status" aria-live="polite">
@@ -2905,6 +2905,7 @@
   <script src="assets/js/organization-api.js"></script>
   <script src="assets/js/redundancy-api.js"></script>
   <script src="assets/js/inventory-api.js"></script>
+  <script src="assets/js/maintenance-api.js"></script>
   <script src="assets/js/conversation.js"></script>
   <script src="assets/js/app.js"></script>
 </body>

@@ -15,7 +15,6 @@
     transfer: 'asset-manager.transfer',
     relations: 'asset-manager.relations',
     maps: 'asset-manager.maps',
-    maintenance: 'asset-manager.maintenance',
     monitoring: 'asset-manager.monitoring',
     seedAssets: 'asset-manager.seed-assets'
   };
@@ -429,11 +428,6 @@
     assets,
     config.sites
   );
-  const maintenance = window.AssetMaintEngine.normalize(
-    readJSON(window.localStorage, KEYS.maintenance, null),
-    assets,
-    config.categories
-  );
   const monitoring = window.AssetMonitorEngine.normalize(
     readJSON(window.localStorage, KEYS.monitoring, null),
     assets,
@@ -474,7 +468,6 @@
         graphPrefs: relations.prefs,
         maps,
         mapPrefs: maps.prefs,
-        maintenance,
         monitoring,
         assetAdmin,
         settings: settingsFromConfig(config),

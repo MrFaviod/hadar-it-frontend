@@ -155,13 +155,12 @@
         workspaceState: window.AssetWorkspace.createState(),
         workspaceInventory: {status:'all',location:'all',columns:['model','location','assignee','ip','remote']},
         workspacePending: null, workspaceMaintenanceId: '', workspaceRevision: 0,
-        universalOpen: false, quickDialog: {type:'',assetId:'',intervention:null},
+        universalOpen: false, quickDialog: {type:'',assetId:'',interventionId:''},
         config: initial.config,
         assets: initial.assets,
         relations: initial.relations,
         graphPrefs: initial.graphPrefs,
         maps: initial.maps,
-        maintenance: initial.maintenance,
         monitoring: initial.monitoring,
         dashboard: window.AssetDashboardPrefs.createState(),
         documents: window.AssetReportEngine.createState(),
@@ -177,6 +176,7 @@
         ...window.AssetOrganization.data(),
         ...window.AssetRedundancy.data(),
         ...window.AssetPhase6.data(),
+        ...window.AssetMaintenanceApi.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -466,12 +466,18 @@
         if (!this.deleteDialog.assetId) return null;
         return this.assets.find((asset) => asset.id === this.deleteDialog.assetId) || null;
       },
+      maintenance() {
+        return this.maintenancePlanning;
+      },
       maintenanceOverdueCount() {
-        if (!this.maintenance) return 0;
+        const overview = this.maintenanceApi && this.maintenanceApi.overview;
+        if (!overview) return 0;
+        if (overview.overdue !== null) return overview.overdue;
         const today = window.AssetMaintEngine.today();
-        return (this.maintenance.plans || []).reduce((total, plan) => {
-          if (plan.paused) return total;
-          return window.AssetMaintEngine.scheduleRow(this.maintenance, plan, this.assets, today).status === 'overdue' ? total + 1 : total;
+        return this.maintenancePlans.reduce((total, plan) => {
+          if (plan.status !== 'active') return total;
+          const days = window.AssetMaintEngine.daysUntil(plan.dueOn, today);
+          return days !== null && days < 0 ? total + 1 : total;
         }, 0);
       },
       monitorAlertCount() {
@@ -535,9 +541,9 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); },
+      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.maintainMaintenanceIdentity(); },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -596,12 +602,6 @@
           Store.writeJSON(window.localStorage, Store.KEYS.maps, value);
         }
       },
-      maintenance: {
-        deep: true,
-        handler(value) {
-          Store.writeJSON(window.localStorage, Store.KEYS.maintenance, value);
-        }
-      },
       monitoring: {
         deep: true,
         handler(value) {
@@ -616,6 +616,7 @@
           this.handleInventoryRoute(next,previous);
           this.handleOrganizationRoute(next,previous);
           this.handleRedundancyRoute(next,previous);
+          this.handleMaintenanceRoute(next,previous);
         }
       },
       inventoryFilters: {
@@ -630,6 +631,9 @@
           this.clearOrganizationState();
           this.clearRedundancyState();
           this.clearPhase6State();
+          this.clearMaintenanceState();
+        } else {
+          this.maintainMaintenanceIdentity();
         }
       },
       mobileNavOpen(value) {
@@ -667,6 +671,7 @@
       this.clearOrganizationState();
       this.clearRedundancyState();
       this.clearPhase6State();
+      this.clearMaintenanceState();
       window.AssetAccess.stop(this);
       window.removeEventListener('hashchange', this.handleHashChange);
       window.removeEventListener('asset-theme-change', this.handleThemeChange);
@@ -676,7 +681,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods))
   });
   app.mount(target || '#app');
   return app;

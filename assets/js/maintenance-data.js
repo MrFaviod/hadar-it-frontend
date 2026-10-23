@@ -1,680 +1,46 @@
 (function () {
   'use strict';
 
-  const DAY = 86400000;
+  /* Maintenance constants and the explicitly demo monitoring alert fixtures.
+   *
+   * Phase 7 removed the prototype plans, interventions, incidents and templates:
+   * those collections are server-authoritative through the maintenance adapter.
+   * Only the monitoring alert list is still demo data for the next phase, and it
+   * is labelled as such wherever it is rendered. */
+
+  function dayAt(offsetDays) {
+    const date = new Date();
+    date.setDate(date.getDate() + offsetDays);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return date.getFullYear() + '-' + month + '-' + day;
+  }
 
   function isoAt(offsetDays, hours, minutes) {
     const date = new Date();
-    date.setHours(hours === undefined ? 9 : hours, minutes === undefined ? 0 : minutes, 0, 0);
     date.setDate(date.getDate() + offsetDays);
+    date.setHours(hours, minutes, 0, 0);
     return date.toISOString();
   }
 
-  function dayAt(offsetDays) {
-    return isoAt(offsetDays).slice(0, 10);
+  function isoInHours(hours) {
+    return new Date(Date.now() + hours * 3600000).toISOString();
   }
 
-  // Relative hour helpers keep the seeded alert history recent without ever
-  // landing in the future: a fixed clock time would break before that hour.
-  function isoInHours(offsetHours) {
-    return new Date(Date.now() + offsetHours * 3600000).toISOString();
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
   }
 
-  function isoAgoHours(offsetHours) {
-    return new Date(Date.now() - offsetHours * 3600000).toISOString();
-  }
-
-  // ---------------------------------------------------------------- types
+  /* Canonical server vocabulary: preventive, corrective, inspection,
+   * installation and other. The labels are display-only. */
   const INTERVENTION_TYPES = [
-    {
-      id: 'preventivo',
-      label: 'Preventivo',
-      icon: 'refresh',
-      tone: 'ok',
-      resetsPreventive: true,
-      hint: 'Revisión periódica del plan. Reinicia el intervalo preventivo al completarse.'
-    },
-    {
-      id: 'correctivo',
-      label: 'Correctivo',
-      icon: 'alert',
-      tone: 'warn',
-      resetsPreventive: false,
-      hint: 'Reparación de una avería. No reinicia el intervalo preventivo.'
-    },
-    {
-      id: 'inspeccion',
-      label: 'Inspección',
-      icon: 'search',
-      tone: 'neutral',
-      resetsPreventive: false,
-      hint: 'Comprobación puntual sin sustitución de piezas.'
-    },
-    {
-      id: 'actualizacion',
-      label: 'Actualización',
-      icon: 'download',
-      tone: 'neutral',
-      resetsPreventive: false,
-      hint: 'Firmware, sistema operativo o software del equipo.'
-    },
-    {
-      id: 'sustitucion',
-      label: 'Sustitución',
-      icon: 'box',
-      tone: 'warn',
-      resetsPreventive: false,
-      hint: 'Cambio de un componente o repuesto.'
-    },
-    {
-      id: 'limpieza',
-      label: 'Limpieza',
-      icon: 'check',
-      tone: 'neutral',
-      resetsPreventive: false,
-      hint: 'Limpieza física o lógica sin intervención mayor.'
-    }
+    { id: 'preventive', label: 'Preventivo', icon: 'refresh', tone: 'ok', resetsPreventive: true, hint: 'Revisión planificada. Si completa un plan vinculado, reinicia su ciclo.' },
+    { id: 'corrective', label: 'Correctivo', icon: 'alert', tone: 'warn', resetsPreventive: false, hint: 'Reparación de una avería o incidencia real.' },
+    { id: 'inspection', label: 'Inspección', icon: 'search', tone: 'neutral', resetsPreventive: false, hint: 'Comprobación técnica sin recambio.' },
+    { id: 'installation', label: 'Instalación', icon: 'download', tone: 'neutral', resetsPreventive: false, hint: 'Alta, despliegue o puesta en marcha.' },
+    { id: 'other', label: 'Otro', icon: 'box', tone: 'neutral', resetsPreventive: false, hint: 'Trabajo técnico que no encaja en el resto.' }
   ];
 
-  // ---------------------------------------------------------------- templates
-  const TEMPLATES = [
-    {
-      id: 'tpl-ups',
-      category: 'ups',
-      label: 'Revisión de UPS',
-      intervalMonths: 6,
-      active: true,
-      tasks: [
-        'Prueba de autonomía y transferencia a batería',
-        'Revisión del estado de baterías y bornes',
-        'Comprobación de alarmas y registro de eventos',
-        'Limpieza de rejillas y verificación de ventilación'
-      ]
-    },
-    {
-      id: 'tpl-servidores',
-      category: 'servidores',
-      label: 'Revisión de servidores',
-      intervalMonths: 3,
-      active: true,
-      tasks: [
-        'Lectura de SMART y estado del RAID',
-        'Revisión de temperaturas y ventiladores',
-        'Actualización de firmware y agentes de gestión',
-        'Limpieza de filtros y comprobación de logs'
-      ]
-    },
-    {
-      id: 'tpl-switches',
-      category: 'switches',
-      label: 'Mantenimiento de red',
-      intervalMonths: 6,
-      active: true,
-      tasks: [
-        'Copia de seguridad de la configuración',
-        'Revisión de puertos, errores y SFP',
-        'Limpieza y comprobación de ventilación',
-        'Actualización de firmware planificada'
-      ]
-    },
-    {
-      id: 'tpl-camaras',
-      category: 'camaras',
-      label: 'Revisión de videovigilancia',
-      intervalMonths: 3,
-      active: true,
-      tasks: [
-        'Limpieza de lente y comprobación del enfoque',
-        'Verificación de visión nocturna e infrarrojos',
-        'Comprobación de grabación y retención',
-        'Revisión de cableado y alimentación PoE'
-      ]
-    },
-    {
-      id: 'tpl-computadoras',
-      category: 'computadoras',
-      label: 'Mantenimiento de equipos',
-      intervalMonths: 12,
-      active: true,
-      tasks: [
-        'Limpieza interna y de ventiladores',
-        'Actualizaciones del sistema y antivirus',
-        'Comprobación de disco y de la batería CMOS',
-        'Verificación de cableado y periféricos'
-      ]
-    },
-    {
-      id: 'tpl-notebooks',
-      category: 'notebooks',
-      label: 'Mantenimiento de notebooks',
-      intervalMonths: 12,
-      active: true,
-      tasks: [
-        'Limpieza del sistema de refrigeración',
-        'Diagnóstico de batería y cargador',
-        'Actualizaciones del sistema operativo',
-        'Revisión de bisagras y teclado'
-      ]
-    },
-    {
-      id: 'tpl-impresoras',
-      category: 'impresoras',
-      label: 'Mantenimiento de impresión',
-      intervalMonths: 3,
-      active: true,
-      tasks: [
-        'Limpieza de rodillos y zona de paso de papel',
-        'Revisión de consumibles y contadores',
-        'Prueba de impresión y alineación',
-        'Comprobación de conectividad en red'
-      ]
-    },
-    {
-      id: 'tpl-virtualizacion',
-      category: 'virtualizacion',
-      label: 'Revisión de máquinas virtuales',
-      intervalMonths: 6,
-      active: true,
-      tasks: [
-        'Comprobación de respaldos y snapshots',
-        'Revisión de espacio en discos virtuales',
-        'Actualizaciones del sistema invitado',
-        'Verificación de alarmas del hipervisor'
-      ]
-    },
-    {
-      id: 'tpl-contenedores',
-      category: 'contenedores',
-      label: 'Revisión de contenedores',
-      intervalMonths: 6,
-      active: true,
-      tasks: [
-        'Actualización de la imagen base',
-        'Revisión de límites de CPU y memoria',
-        'Comprobación de respaldos de volúmenes',
-        'Rotación de logs y verificación de salud'
-      ]
-    }
-  ];
-
-  // ---------------------------------------------------------------- plans
-  const PLANS = [
-    {
-      id: 'plan-AM-1058',
-      assetId: 'AM-1058',
-      templateId: 'tpl-ups',
-      intervalMonths: 6,
-      lastCompletedAt: dayAt(-190),
-      tasks: TEMPLATES[0].tasks.slice(),
-      exceptions: [],
-      note: 'Rack A-04. Incluye prueba de transferencia con carga real.',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1047',
-      assetId: 'AM-1047',
-      templateId: 'tpl-servidores',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-85),
-      tasks: TEMPLATES[1].tasks.slice(),
-      exceptions: ['El firmware se actualiza junto al hipervisor, no en ventana propia.'],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1050',
-      assetId: 'AM-1050',
-      templateId: 'tpl-switches',
-      intervalMonths: 6,
-      lastCompletedAt: dayAt(-182),
-      tasks: TEMPLATES[2].tasks.slice(),
-      exceptions: [],
-      note: 'Ventana de mantenimiento: martes de 07:00 a 08:00.',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1057',
-      assetId: 'AM-1057',
-      templateId: 'tpl-camaras',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-88),
-      tasks: TEMPLATES[3].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1046',
-      assetId: 'AM-1046',
-      templateId: 'tpl-servidores',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-70),
-      tasks: TEMPLATES[1].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1062',
-      assetId: 'AM-1062',
-      templateId: 'tpl-servidores',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-60),
-      tasks: TEMPLATES[1].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1042',
-      assetId: 'AM-1042',
-      templateId: 'tpl-notebooks',
-      intervalMonths: 12,
-      lastCompletedAt: dayAt(-370),
-      tasks: TEMPLATES[5].tasks.slice(),
-      exceptions: ['Se entrega con el cargador de viaje; no requiere limpieza interna anual.'],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1048',
-      assetId: 'AM-1048',
-      templateId: 'tpl-impresoras',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-95),
-      tasks: TEMPLATES[6].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1067',
-      assetId: 'AM-1067',
-      templateId: 'tpl-camaras',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-3),
-      tasks: TEMPLATES[3].tasks.slice(),
-      exceptions: [],
-      note: 'Cubre el pasillo de racks y el acceso a la zona fría.',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1064',
-      assetId: 'AM-1064',
-      templateId: 'tpl-switches',
-      intervalMonths: 6,
-      lastCompletedAt: dayAt(-181),
-      tasks: TEMPLATES[2].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1059',
-      assetId: 'AM-1059',
-      templateId: 'tpl-virtualizacion',
-      intervalMonths: 6,
-      lastCompletedAt: dayAt(-160),
-      tasks: TEMPLATES[7].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1051',
-      assetId: 'AM-1051',
-      templateId: 'tpl-switches',
-      intervalMonths: 6,
-      lastCompletedAt: dayAt(-140),
-      tasks: TEMPLATES[2].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1065',
-      assetId: 'AM-1065',
-      templateId: 'tpl-computadoras',
-      intervalMonths: 12,
-      lastCompletedAt: dayAt(-350),
-      tasks: TEMPLATES[4].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1044',
-      assetId: 'AM-1044',
-      templateId: 'tpl-computadoras',
-      intervalMonths: 12,
-      lastCompletedAt: dayAt(-360),
-      tasks: TEMPLATES[4].tasks.slice(),
-      exceptions: [],
-      note: '',
-      paused: false
-    },
-    {
-      id: 'plan-AM-1061',
-      assetId: 'AM-1061',
-      templateId: 'tpl-impresoras',
-      intervalMonths: 3,
-      lastCompletedAt: dayAt(-120),
-      tasks: TEMPLATES[6].tasks.slice(),
-      exceptions: [],
-      note: 'Equipo dado de baja: el plan queda en pausa.',
-      paused: true
-    }
-  ];
-
-  // ---------------------------------------------------------------- interventions
-  const INTERVENTIONS = [
-    {
-      id: 'INT-2401',
-      assetId: 'AM-1058',
-      type: 'preventivo',
-      title: 'Revisión semestral de UPS',
-      description: 'Prueba de transferencia con carga real y revisión de baterías del rack A.',
-      date: isoAt(-12, 8, 30),
-      state: 'done',
-      technicianId: 'sergio-vidal',
-      notes: 'Autonomía medida: 14 min al 60 % de carga. Sin alarmas activas.',
-      parts: [{ label: 'Batería RBC7', qty: 2, cost: 180 }],
-      attachments: [{ name: 'informe-ups-rack-a.pdf', size: '148 KB', kind: 'pdf' }],
-      incidentId: '',
-      completedAt: isoAt(-12, 11, 10)
-    },
-    {
-      id: 'INT-2402',
-      assetId: 'AM-1047',
-      type: 'correctivo',
-      title: 'Sustitución de disco con alerta SMART',
-      description: 'El disco 2 del arreglo presentaba sectores reasignados y alertas intermitentes.',
-      date: isoAt(-5, 9, 15),
-      state: 'done',
-      technicianId: 'lucia-pardo',
-      notes: 'Arreglo reconstruido al 100 %. El plan preventivo sigue su calendario.',
-      parts: [{ label: 'SSD empresarial 480 GB', qty: 1, cost: 95 }],
-      attachments: [{ name: 'smart-disco-2.txt', size: '12 KB', kind: 'txt' }],
-      incidentId: 'INC-2404',
-      completedAt: isoAt(-5, 13, 40)
-    },
-    {
-      id: 'INT-2403',
-      assetId: 'AM-1050',
-      type: 'preventivo',
-      title: 'Mantenimiento semestral del switch de núcleo',
-      description: 'Copia de configuración, revisión de puertos y limpieza del chasis.',
-      date: isoAt(0, 7, 0),
-      state: 'in_progress',
-      technicianId: 'ivan-costa',
-      notes: 'Ventana abierta. Pendiente la actualización de firmware.',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2404',
-      assetId: 'AM-1057',
-      type: 'preventivo',
-      title: 'Revisión trimestral de cámara de recepción',
-      description: 'Limpieza de lente, comprobación de infrarrojos y retención de grabación.',
-      date: isoAt(2, 9, 0),
-      state: 'planned',
-      technicianId: 'diego-salas',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: 'INC-2405',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2405',
-      assetId: 'AM-1046',
-      type: 'preventivo',
-      title: 'Revisión trimestral del servidor de virtualización',
-      description: 'SMART, RAID, temperaturas y actualización de agentes de gestión.',
-      date: isoAt(10, 8, 0),
-      state: 'planned',
-      technicianId: 'sergio-vidal',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2406',
-      assetId: 'AM-1062',
-      type: 'correctivo',
-      title: 'Revisión de latencia del servidor de aplicaciones',
-      description: 'Picos de latencia tras el incidente de facturación; se revisan conexiones y colas.',
-      date: isoAt(1, 10, 0),
-      state: 'planned',
-      technicianId: 'lucia-pardo',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: 'INC-2401',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2407',
-      assetId: 'AM-1060',
-      type: 'correctivo',
-      title: 'Reinicio y ajuste de límites del contenedor de API',
-      description: 'El contenedor alcanzó el límite de CPU durante el pico de facturación.',
-      date: isoAt(-2, 11, 20),
-      state: 'done',
-      technicianId: 'sergio-vidal',
-      notes: 'Límite de CPU ampliado a 2 núcleos y memoria a 2 GB.',
-      parts: [],
-      attachments: [{ name: 'docker-stats.png', size: '86 KB', kind: 'imagen' }],
-      incidentId: 'INC-2401',
-      completedAt: isoAt(-2, 12, 5)
-    },
-    {
-      id: 'INT-2408',
-      assetId: 'AM-1048',
-      type: 'correctivo',
-      title: 'Atasco recurrente en la bandeja 1',
-      description: 'La impresora de administración atasca el papel en la bandeja superior.',
-      date: isoAt(1, 9, 30),
-      state: 'planned',
-      technicianId: 'diego-salas',
-      notes: '',
-      parts: [{ label: 'Rodillo de arrastre', qty: 1, cost: 32 }],
-      attachments: [],
-      incidentId: 'INC-2402',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2409',
-      assetId: 'AM-1049',
-      type: 'preventivo',
-      title: 'Revisión trimestral de impresora de recepción',
-      description: 'Limpieza de rodillos, consumibles y prueba de red.',
-      date: isoAt(-30, 9, 0),
-      state: 'done',
-      technicianId: 'elena-navarro',
-      notes: 'Sin incidencias. Contador de páginas: 12 480.',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: isoAt(-30, 10, 15)
-    },
-    {
-      id: 'INT-2410',
-      assetId: 'AM-1067',
-      type: 'preventivo',
-      title: 'Puesta a punto de la cámara de sala de servidores',
-      description: 'Ajuste de encuadre y comprobación del campo de visión tras la instalación.',
-      date: isoAt(-3, 16, 0),
-      state: 'done',
-      technicianId: 'ivan-costa',
-      notes: 'Encuadre validado con el diagrama de cobertura.',
-      parts: [],
-      attachments: [{ name: 'cobertura-camara-dc.svg', size: '3 KB', kind: 'svg' }],
-      incidentId: '',
-      completedAt: isoAt(-3, 17, 20)
-    },
-    {
-      id: 'INT-2411',
-      assetId: 'AM-1064',
-      type: 'correctivo',
-      title: 'Puerto 12 sin enlace en el switch de acceso Norte',
-      description: 'El puerto presentaba errores CRC y caídas intermitentes.',
-      date: isoAt(-20, 12, 0),
-      state: 'done',
-      technicianId: 'ivan-costa',
-      notes: 'Se movió el cableado al puerto 18 y se reemplazó el latiguillo.',
-      parts: [{ label: 'Latiguillo Cat 6 2 m', qty: 1, cost: 8 }],
-      attachments: [],
-      incidentId: '',
-      completedAt: isoAt(-20, 12, 45)
-    },
-    {
-      id: 'INT-2412',
-      assetId: 'AM-1059',
-      type: 'preventivo',
-      title: 'Revisión semestral de la VM de facturación',
-      description: 'Respaldos, snapshots y espacio en discos virtuales.',
-      date: isoAt(21, 9, 0),
-      state: 'planned',
-      technicianId: 'lucia-pardo',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2413',
-      assetId: 'AM-1051',
-      type: 'preventivo',
-      title: 'Revisión semestral del switch de planta',
-      description: 'Configuración respaldada, puertos y limpieza.',
-      date: isoAt(40, 8, 30),
-      state: 'planned',
-      technicianId: 'ivan-costa',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: ''
-    },
-    {
-      id: 'INT-2414',
-      assetId: 'AM-1045',
-      type: 'inspeccion',
-      title: 'Revisión de equipo sin responsable',
-      description: 'Equipo de producción sin asignar: se comprueba estado físico y etiquetado.',
-      date: isoAt(6, 10, 0),
-      state: 'planned',
-      technicianId: 'diego-salas',
-      notes: '',
-      parts: [],
-      attachments: [],
-      incidentId: '',
-      completedAt: ''
-    }
-  ];
-
-  // ---------------------------------------------------------------- incidents
-  const INCIDENTS = [
-    {
-      id: 'INC-2401',
-      title: 'Caída intermitente del servicio de facturación',
-      description: 'Los usuarios reportan cortes al emitir facturas. El contenedor de API alcanza el límite de CPU y la VM de facturación responde con latencia.',
-      priority: 'critica',
-      state: 'en_curso',
-      primaryAssetId: 'AM-1059',
-      affectedIds: ['AM-1060', 'AM-1046'],
-      assigneeId: 'lucia-pardo',
-      openedAt: isoAt(-2, 8, 45),
-      resolvedAt: '',
-      closedAt: '',
-      actions: [
-        { id: 'act-1', at: isoAt(-2, 8, 50), actor: 'Lucía Pardo', text: 'Se confirma el impacto en facturación y se abre el incidente.' },
-        { id: 'act-2', at: isoAt(-2, 10, 10), actor: 'Sergio Vidal', text: 'El contenedor de API se reinicia y se amplía el límite de CPU.' },
-        { id: 'act-3', at: isoAt(-1, 9, 20), actor: 'Lucía Pardo', text: 'Se programa revisión de latencia en el servidor de aplicaciones.' }
-      ],
-      interventionIds: ['INT-2407', 'INT-2406']
-    },
-    {
-      id: 'INC-2402',
-      title: 'Atasco de papel en la impresora de administración',
-      description: 'La bandeja 1 atasca el papel de forma recurrente desde el lunes.',
-      priority: 'media',
-      state: 'abierto',
-      primaryAssetId: 'AM-1048',
-      affectedIds: [],
-      assigneeId: 'diego-salas',
-      openedAt: isoAt(0, 8, 10),
-      resolvedAt: '',
-      closedAt: '',
-      actions: [
-        { id: 'act-4', at: isoAt(0, 8, 12), actor: 'Diego Salas', text: 'Se registra la incidencia desde la ficha del activo.' }
-      ],
-      interventionIds: ['INT-2408']
-    },
-    {
-      id: 'INC-2403',
-      title: 'Pérdida de conectividad en Planta Sur',
-      description: 'El switch de planta dejó de responder durante 14 minutos y arrastró al teléfono de operaciones.',
-      priority: 'alta',
-      state: 'en_curso',
-      primaryAssetId: 'AM-1051',
-      affectedIds: ['AM-1056'],
-      assigneeId: 'ivan-costa',
-      openedAt: isoAt(-6, 15, 5),
-      resolvedAt: '',
-      closedAt: '',
-      actions: [
-        { id: 'act-5', at: isoAt(-6, 15, 8), actor: 'Iván Costa', text: 'Se detecta el corte desde la supervisión y se abre el incidente.' },
-        { id: 'act-6', at: isoAt(-6, 15, 30), actor: 'Iván Costa', text: 'Se reinicia el switch y se revisa la alimentación del rack.' },
-        { id: 'act-7', at: isoAt(-5, 9, 40), actor: 'Iván Costa', text: 'La supervisión deja de reportar el corte. Se confirma la resolución tras la ventana de observación.' }
-      ],
-      interventionIds: []
-    },
-    {
-      id: 'INC-2404',
-      title: 'Ruido y alerta SMART en el servidor de respaldo',
-      description: 'El servidor de respaldo emite ruido en el ventilador 3 y el disco 2 presenta alertas SMART.',
-      priority: 'baja',
-      state: 'abierto',
-      primaryAssetId: 'AM-1047',
-      affectedIds: [],
-      assigneeId: 'sergio-vidal',
-      openedAt: isoAt(-9, 11, 0),
-      resolvedAt: '',
-      closedAt: '',
-      actions: [
-        { id: 'act-8', at: isoAt(-9, 11, 5), actor: 'Sergio Vidal', text: 'Se abre el incidente a partir de la alerta de supervisión.' },
-        { id: 'act-9', at: isoAt(-5, 13, 45), actor: 'Lucía Pardo', text: 'Disco sustituido. Queda pendiente revisar el ventilador.' }
-      ],
-      interventionIds: ['INT-2402']
-    },
-    {
-      id: 'INC-2405',
-      title: 'Cámara de recepción sin grabación',
-      description: 'La cámara de recepción no envía segmentos al grabador desde hace tres días.',
-      priority: 'media',
-      state: 'abierto',
-      primaryAssetId: 'AM-1057',
-      affectedIds: [],
-      assigneeId: 'diego-salas',
-      openedAt: isoAt(-3, 10, 25),
-      resolvedAt: '',
-      closedAt: '',
-      actions: [
-        { id: 'act-10', at: isoAt(-3, 10, 30), actor: 'Diego Salas', text: 'Se vincula la alerta de heartbeat al incidente.' }
-      ],
-      interventionIds: ['INT-2404']
-    }
-  ];
-
-  // ---------------------------------------------------------------- alerts
   const ALERTS = [
     {
       id: 'ALT-2401',
@@ -907,77 +273,54 @@
     }
   ];
 
-  const PREFS = {
-    rangeDays: 30,
-    showCompleted: false,
-    defaultAssigneeId: '',
-    defaultView: 'agenda'
-  };
+  const PREFS = { rangeDays: 30, showCompleted: false, defaultAssigneeId: '', defaultView: 'agenda' };
 
   const PRIORITIES = [
-    { id: 'critica', label: 'Crítica', tone: 'down', weight: 4 },
-    { id: 'alta', label: 'Alta', tone: 'warn', weight: 3 },
-    { id: 'media', label: 'Media', tone: 'hold', weight: 2 },
-    { id: 'baja', label: 'Baja', tone: 'neutral', weight: 1 }
+    { id: 'critical', label: 'Crítica', tone: 'down', weight: 4 },
+    { id: 'high', label: 'Alta', tone: 'warn', weight: 3 },
+    { id: 'normal', label: 'Normal', tone: 'hold', weight: 2 },
+    { id: 'low', label: 'Baja', tone: 'neutral', weight: 1 }
   ];
 
   const INCIDENT_STATES = [
-    { id: 'abierto', label: 'Abierto', tone: 'warn' },
-    { id: 'en_curso', label: 'En curso', tone: 'hold' },
-    { id: 'resuelto', label: 'Resuelto', tone: 'ok' },
-    { id: 'cerrado', label: 'Cerrado', tone: 'neutral' }
+    { id: 'open', label: 'Abierto', tone: 'warn' },
+    { id: 'in_progress', label: 'En curso', tone: 'hold' },
+    { id: 'resolved', label: 'Resuelto', tone: 'ok' },
+    { id: 'closed', label: 'Cerrado', tone: 'neutral' }
   ];
 
   const INTERVENTION_STATES = [
-    { id: 'planned', label: 'Planificada', tone: 'hold' },
+    { id: 'open', label: 'Abierta', tone: 'hold' },
     { id: 'in_progress', label: 'En curso', tone: 'warn' },
-    { id: 'done', label: 'Completada', tone: 'ok' },
+    { id: 'completed', label: 'Completada', tone: 'ok' },
     { id: 'cancelled', label: 'Cancelada', tone: 'neutral' }
   ];
 
   const ALERT_STATES = [
-    { id: 'open', label: 'Activa', tone: 'warn' },
-    { id: 'recovered', label: 'Recuperada', tone: 'ok' },
-    { id: 'converted', label: 'Convertida', tone: 'hold' },
-    { id: 'linked', label: 'Vinculada', tone: 'neutral' },
-    { id: 'resolved', label: 'Resuelta', tone: 'ok' }
+    { id: 'open', label: 'Activa' },
+    { id: 'recovered', label: 'Recuperada' },
+    { id: 'converted', label: 'Convertida' },
+    { id: 'linked', label: 'Vinculada' },
+    { id: 'resolved', label: 'Resuelta' }
   ];
 
   const ALERT_KINDS = [
-    { id: 'offline', label: 'Sin conexión', icon: 'x-circle' },
-    { id: 'heartbeat', label: 'Sin señal', icon: 'activity' },
-    { id: 'cpu', label: 'CPU alta', icon: 'activity' },
-    { id: 'disk', label: 'Disco', icon: 'server' },
+    { id: 'offline', label: 'Sin conexión', icon: 'wifi-off' },
+    { id: 'heartbeat', label: 'Heartbeat', icon: 'activity' },
+    { id: 'cpu', label: 'CPU', icon: 'cpu' },
+    { id: 'disk', label: 'Disco', icon: 'hard-drive' },
     { id: 'battery', label: 'Batería', icon: 'battery' },
-    { id: 'temperature', label: 'Temperatura', icon: 'alert' },
-    { id: 'latency', label: 'Latencia alta', icon: 'activity' },
-    { id: 'services', label: 'Servicio caído', icon: 'x-circle' }
+    { id: 'temperature', label: 'Temperatura', icon: 'thermometer' },
+    { id: 'latency', label: 'Latencia', icon: 'timer' },
+    { id: 'services', label: 'Servicios', icon: 'server' }
   ];
 
-  function clone(value) {
-    return JSON.parse(JSON.stringify(value));
-  }
-
-  function seed() {
-    return {
-      version: 1,
-      types: clone(INTERVENTION_TYPES),
-      templates: clone(TEMPLATES),
-      plans: clone(PLANS),
-      interventions: clone(INTERVENTIONS),
-      incidents: clone(INCIDENTS),
-      alerts: clone(ALERTS),
-      prefs: clone(PREFS)
-    };
+  function seedAlerts() {
+    return clone(ALERTS);
   }
 
   window.ASSET_MAINT = {
-    DAY: DAY,
     INTERVENTION_TYPES,
-    TEMPLATES,
-    PLANS,
-    INTERVENTIONS,
-    INCIDENTS,
     ALERTS,
     PREFS,
     PRIORITIES,
@@ -985,11 +328,10 @@
     INTERVENTION_STATES,
     ALERT_STATES,
     ALERT_KINDS,
-    isoAt,
     dayAt,
+    isoAt,
     isoInHours,
-    isoAgoHours,
     clone,
-    seed
+    seedAlerts
   };
 })();

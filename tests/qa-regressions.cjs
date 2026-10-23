@@ -41,12 +41,12 @@ test('QA-4 inventory internal id text uses the readable secondary tone and the d
  const ap=fsq.readFileSync(pq.join(__dirname,'../assets/css/appearance.css'),'utf8');
  assert.match(ap,/\.appearance-resource__preview\.is-dark>span \{[^}]*color: var\(--paper\)/);
 });
-test('QA-5 maintenance plans appear in universal search with a readable name instead of their internal id',()=>{
- const s=setup(),idx=s.c.AssetSearch.buildIndex(s.app),plan=s.app.maintenance.plans.find(p=>p.assetId==='AM-1042');
- const tpl=s.app.maintenance.templates.find(t=>t.id===plan.templateId),asset=s.app.assets.find(a=>a.id==='AM-1042');
- const rec=s.c.AssetSearch.search(idx,'AM-1042').find(r=>r.key==='plan:'+plan.id);
- assert.ok(rec);assert.equal(rec.label,tpl.label+' · '+asset.name);
- assert.ok(s.c.AssetSearch.search(idx,tpl.label).some(r=>r.key==='plan:'+plan.id));
+test('QA-5 canonical maintenance plans appear in universal search with the readable server name instead of their internal id',()=>{
+ const s=setup(),a=s.app,asset=a.assets.find(x=>x.id==='AM-1042'),plan={id:'plan-qa-1',assetId:asset.id,name:'Preventivo · '+asset.name,title:'Preventivo · '+asset.name,status:'active',maintenanceType:'preventive'};
+ a.maintenanceApi.plans.items=[plan];
+ const idx=s.c.AssetSearch.buildIndex(a),rec=s.c.AssetSearch.search(idx,'AM-1042').find(r=>r.key==='plan:'+plan.id);
+ assert.ok(rec);assert.equal(rec.label,plan.name);assert.notEqual(rec.label,plan.id);
+ assert.ok(s.c.AssetSearch.search(idx,'Preventivo').some(r=>r.key==='plan:'+plan.id));
 });
 test('QA-6 label field reorder buttons are announced with the field name, not its internal id',()=>{
  const v=fsq.readFileSync(pq.join(__dirname,'../assets/js/label-views.js'),'utf8');

@@ -66,7 +66,7 @@ test('additional metrics require configured checks and no-probe equipment receiv
 test('recovery events preserve their real text and the activity filter exposes them', () => {
   const c = context(); const s = c.AssetStore.initialState();
   const now = Date.now(), at = new Date(now - 60000).toISOString();
-  s.maintenance.alerts = [{ id: 'demo-recovery', assetId: s.assets[0].id, state: 'recovered', severity: 'alta', events: [{ at, type: 'recovered', text: 'Conectividad recuperada' }] }];
+  s.maintenance = { alerts: [{ id: 'demo-recovery', assetId: s.assets[0].id, state: 'recovered', severity: 'alta', events: [{ at, type: 'recovered', text: 'Conectividad recuperada' }] }] };
   const m = c.AssetDashboardModel.build(s, { period: '24h' }, now);
   const e = m.activity.find(e => e.id === 'demo-recovery:event:0');
   assert.equal(e.kind, 'recovery');
