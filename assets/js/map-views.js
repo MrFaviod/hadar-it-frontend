@@ -55,7 +55,16 @@
         announce: '',
         drag: null,
         resizeObserver: null,
-        syncFrame: 0
+        syncFrame: 0,
+        // Authenticated floor plan + selected asset detail. The plan image is a
+        // revoked object URL, never a filesystem path or unauthenticated URL.
+        floorPlanState: 'idle',
+        floorPlanMeta: null,
+        floorPlanSrc: '',
+        floorPlanError: '',
+        floorPlanVisible: true,
+        floorViewport: null,
+        selectedDetail: null
       };
     },
     computed: Object.assign({}, FloorLogic.computed, {
@@ -106,9 +115,59 @@
       sitePoints() {
         return Engine.sitePoints(this.source, this.filters);
       },
+      serverMapMode() {
+        return !!(this.app && this.app.serverMapMode);
+      },
+      plan() {
+        if (!this.serverMapMode) return this.floorView ? this.floorView.plan : null;
+        const meta = this.floorPlanMeta;
+        if (!meta || !this.floorPlanSrc) return null;
+        return {
+          id: 'plan-' + this.activeFloorId,
+          floor: this.activeFloorId,
+          name: meta.planRef || meta.planPage || (this.floorContext && this.floorContext.floorName) || 'Plano de planta',
+          src: this.floorPlanSrc,
+          width: Number(meta.width) || Engine.PLAN_W,
+          height: Number(meta.height) || Engine.PLAN_H,
+          format: meta.contentType || '',
+          visible: this.floorPlanVisible,
+          opacity: Number(this.prefs.planOpacity) || 1
+        };
+      },
+      availablePlans() {
+        if (!this.serverMapMode) return this.maps.plans;
+        return this.plan ? [this.plan] : [];
+      },
       selectedAsset() {
         if (!this.selectedId) return null;
-        return (this.source.assets || []).find((asset) => asset.id === this.selectedId) || null;
+        const base = (this.source.assets || []).find((asset) => asset.id === this.selectedId) || null;
+        if (!base || !this.selectedDetail || this.selectedDetail.id !== base.id) return base;
+        const mapped = window.AssetOrganization && window.AssetOrganization.mapAsset
+          ? window.AssetOrganization.mapAsset(this.selectedDetail)
+          : null;
+        if (!mapped) return base;
+        // The detail read enriches category, technical FOV metadata and images;
+        // the map position still comes from the canonical map payload.
+        return Object.assign({}, base, mapped, {
+          positionX: base.positionX,
+          positionY: base.positionY
+        });
+      },
+      floorLooseGroups() {
+        if (!this.floorView) return [];
+        const onCanvas = {};
+        this.roomChips.forEach((room) => { onCanvas[room.id] = true; });
+        const groups = this.floorView.rooms
+          .filter((room) => room.count > 0 && !onCanvas[room.id])
+          .map((room) => ({ id: room.id, name: room.name, assets: room.assets }));
+        if (this.floorView.orphans.length) {
+          groups.push({
+            id: 'floor-orphans',
+            name: 'Sin sala asignada en esta planta',
+            assets: this.floorView.orphans
+          });
+        }
+        return groups.filter((group) => group.assets.length);
       },
       activeSite() {
         return this.activeSiteId ? Engine.siteById(this.source, this.activeSiteId) : null;
@@ -188,6 +247,15 @@
       'prefs.base'() {
         this.applyMapColors();
       },
+      'prefs.showPlans'() {
+        this.applyFloorPlanStyle();
+      },
+      'prefs.planOpacity'() {
+        this.applyFloorPlanStyle();
+      },
+      activeFloorId(value) {
+        this.loadFloorPlan(value);
+      },
       focusId(value) {
         if (!value) return;
         const asset = (this.source.assets || []).find((item) => item.id === value);
@@ -198,6 +266,7 @@
       },
       selectedId(value) {
         this.app.explorerSelection = value || '';
+        this.loadAssetDetail(value);
       }
     },
     mounted() {
@@ -229,7 +298,11 @@
           : (site && site.buildings[0] ? site.buildings[0].id : '');
         if (building) this.openBuildingId = building;
       }
-      this.$nextTick(() => this.initMap());
+      this.$nextTick(() => {
+        this.initMap();
+        this.loadFloorPlan(this.activeFloorId);
+        this.loadAssetDetail(this.selectedId);
+      });
       window.addEventListener('asset-theme-change', this.applyMapColors);
       window.addEventListener('resize', this.syncScreen);
       if (typeof window.ResizeObserver === 'function' && this.$refs.stage) {
@@ -248,10 +321,13 @@
         this.map.remove();
         this.map = null;
       }
+      this.releaseFloorPlan();
+      this.releaseAssetDetail();
     },
     methods: Object.assign({}, FloorLogic.methods, {
       mapColors() {
-        const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const root = document.documentElement;
+        const dark = !!root && root.getAttribute('data-theme') === 'dark';
         return dark
           ? { bg: '#081a22', country: '#0f2831', region: '#123038', line: '#2c4a52', regionLine: '#3a5b62', detail: '#17393f' }
           : { bg: '#eef5f3', country: '#e3edea', region: '#f8fbfa', line: '#c2d5d1', regionLine: '#a6c2bd', detail: '#eaf3f0' };
@@ -504,6 +580,254 @@
       iconFor(category) {
         return iconFor(category);
       },
+      // --------------------------------------------------- authenticated plan,
+      async loadFloorPlan(floorId) {
+        if (!floorId || !this.serverMapMode) {
+          this.releaseFloorPlan();
+          return;
+        }
+        if (this._planFloor === floorId && (this.floorPlanState === 'loading' || this.floorPlanState === 'ready')) return;
+        this.releaseFloorPlan();
+        this._planFloor = floorId;
+        const serial = this._planSerial;
+        const controller = typeof window.AbortController === 'function' ? new window.AbortController() : null;
+        this._planController = controller;
+        this.floorPlanState = 'loading';
+        this.floorPlanError = '';
+        try {
+          const location = encodeURIComponent(floorId);
+          const signal = controller ? controller.signal : undefined;
+          const meta = await window.AssetAccess.request(this, '/locations/' + location + '/plan/meta', { signal });
+          if (serial !== this._planSerial) return;
+          const blob = await window.AssetAccess.request(this, '/locations/' + location + '/plan', {
+            responseType: 'blob',
+            signal
+          });
+          if (serial !== this._planSerial) return;
+          if (!blob || typeof blob.size !== 'number' || !blob.size) throw new Error('El plano no contiene una imagen.');
+          this.floorPlanMeta = meta;
+          this.floorPlanSrc = URL.createObjectURL(blob);
+          this.floorPlanState = 'ready';
+          this.floorPlanVisible = true;
+          await this.$nextTick();
+          if (serial === this._planSerial) this.mountFloorMap();
+        } catch (error) {
+          if (serial !== this._planSerial) return;
+          if (error && error.name === 'AbortError') return;
+          this.floorPlanState = error && error.status === 404 ? 'empty' : 'error';
+          this.floorPlanError = (error && error.message) || 'No se pudo cargar el plano de la planta.';
+        }
+      },
+      releaseFloorPlan() {
+        this._planSerial = (this._planSerial || 0) + 1;
+        if (this._planController) {
+          this._planController.abort();
+          this._planController = null;
+        }
+        this.destroyFloorMap();
+        if (this.floorPlanSrc) URL.revokeObjectURL(this.floorPlanSrc);
+        this.floorPlanSrc = '';
+        this.floorPlanMeta = null;
+        this.floorPlanState = 'idle';
+        this.floorPlanError = '';
+        this.floorPlanVisible = true;
+        this.floorViewport = null;
+        this._planFloor = '';
+        this._floorFitZoom = null;
+      },
+      destroyFloorMap() {
+        if (!this._floorMap) return;
+        try { this._floorMap.remove(); } catch (error) { /* already gone */ }
+        this._floorMap = null;
+        this._floorMapReady = false;
+      },
+      mountFloorMap() {
+        const canvas = this.$refs.floorCanvas;
+        if (!canvas || !this.floorPlanSrc) return;
+        if (!window.maplibregl) {
+          this.floorPlanState = 'error';
+          this.floorPlanError = 'MapLibre no está disponible para dibujar el plano.';
+          return;
+        }
+        this.destroyFloorMap();
+        const map = new window.maplibregl.Map({
+          container: canvas,
+          style: {
+            version: 8,
+            sources: {},
+            layers: [{ id: 'floor-background', type: 'background', paint: { 'background-color': this.mapColors().bg } }]
+          },
+          bounds: [[0, 0], [Engine.PLAN_W / Engine.PLAN_H, 1]],
+          fitBoundsOptions: { padding: 0, duration: 0 },
+          minZoom: 0,
+          maxZoom: 16,
+          dragRotate: false,
+          pitchWithRotate: false,
+          attributionControl: false,
+          renderWorldCopies: false,
+          fadeDuration: 0
+        });
+        this._floorMap = map;
+        map.on('load', () => {
+          if (this._floorMap !== map) return;
+          try {
+            map.addSource('floor-plan', {
+              type: 'image',
+              url: this.floorPlanSrc,
+              // Synthetic plan pixels. MapLibre places the image by its four
+              // corners; the original map coordinate system is untouched.
+              coordinates: [
+                [0, 1],
+                [Engine.PLAN_W / Engine.PLAN_H, 1],
+                [Engine.PLAN_W / Engine.PLAN_H, 0],
+                [0, 0]
+              ]
+            });
+            map.addLayer({
+              id: 'floor-plan-layer',
+              type: 'raster',
+              source: 'floor-plan',
+              paint: { 'raster-opacity': Number(this.prefs.planOpacity) || 1 }
+            });
+            this._floorMapReady = true;
+            this.applyFloorPlanStyle();
+            map.fitBounds([[0, 0], [Engine.PLAN_W / Engine.PLAN_H, 1]], { padding: 0, duration: 0 });
+            this.syncFloorViewport();
+          } catch (error) {
+            this.floorPlanState = 'error';
+            this.floorPlanError = 'No se pudo dibujar la imagen del plano.';
+          }
+        });
+        map.on('move', this.syncFloorViewport);
+        map.on('idle', () => {
+          if (this._floorMap !== map) return;
+          if (this._floorFitZoom === null) {
+            this._floorFitZoom = map.getZoom();
+            this.floorZoom = 1;
+          }
+        });
+        map.on('error', () => {
+          if (this._floorMap === map && !this._floorMapReady && this.floorPlanState === 'ready') {
+            this.floorPlanError = 'No se pudo cargar la imagen del plano.';
+          }
+        });
+      },
+      syncFloorViewport() {
+        const map = this._floorMap;
+        if (!map || !this._floorMapReady) return;
+        const topLeft = map.project([0, 1]);
+        const bottomRight = map.project([Engine.PLAN_W / Engine.PLAN_H, 0]);
+        const left = Math.min(topLeft.x, bottomRight.x);
+        const top = Math.min(topLeft.y, bottomRight.y);
+        const width = Math.abs(bottomRight.x - topLeft.x);
+        const height = Math.abs(bottomRight.y - topLeft.y);
+        if (!(width > 0 && height > 0)) return;
+        this.floorViewport = { left, top, width, height };
+        if (this._floorFitZoom !== null) {
+          const ratio = Math.pow(2, map.getZoom() - this._floorFitZoom);
+          this.floorZoom = Math.max(0.75, Math.min(3, Math.round(ratio * 100) / 100));
+        }
+      },
+      applyFloorPlanStyle() {
+        const map = this._floorMap;
+        if (!map || !this._floorMapReady) return;
+        const visible = this.prefs.showPlans !== false && this.floorPlanVisible;
+        try {
+          map.setLayoutProperty('floor-plan-layer', 'visibility', visible ? 'visible' : 'none');
+          map.setPaintProperty('floor-plan-layer', 'raster-opacity', Math.max(0.2, Math.min(1, Number(this.prefs.planOpacity) || 1)));
+        } catch (error) {
+          // Layer not ready; the load callback applies the current state.
+        }
+      },
+      floorPaperStyle() {
+        return this.serverMapMode ? { width: '100%' } : { width: Math.round(this.floorZoom * 100) + '%' };
+      },
+      floorOverlayStyle() {
+        if (!this.serverMapMode || !this.floorViewport) return null;
+        return {
+          left: this.floorViewport.left + 'px',
+          top: this.floorViewport.top + 'px',
+          width: this.floorViewport.width + 'px',
+          height: this.floorViewport.height + 'px'
+        };
+      },
+      floorTop(value) {
+        return this.percentY(Number(value) || 0);
+      },
+      togglePlan(plan) {
+        if (!this.serverMapMode) {
+          FloorLogic.methods.togglePlan.call(this, plan);
+          return;
+        }
+        this.floorPlanVisible = !this.floorPlanVisible;
+        this.applyFloorPlanStyle();
+        this.announce = 'Plano ' + (plan.name || '') + (this.floorPlanVisible ? ' visible.' : ' oculto.');
+      },
+      setPlanOpacity(value) {
+        if (!this.serverMapMode) {
+          FloorLogic.methods.setPlanOpacity.call(this, value);
+          return;
+        }
+        const opacity = Math.max(0.2, Math.min(1, Number(value) || 1));
+        Engine.setPrefs(this.app, { planOpacity: opacity });
+        this.applyFloorPlanStyle();
+      },
+      openPlan(planId) {
+        if (!this.serverMapMode) {
+          FloorLogic.methods.openPlan.call(this, planId);
+          return;
+        }
+        const plan = this.availablePlans.find((item) => item.id === planId);
+        if (plan) this.openFloor(plan.floor);
+      },
+      zoomFloor(factor) {
+        if (!this.serverMapMode || !this._floorMap) {
+          FloorLogic.methods.zoomFloor.call(this, factor);
+          return;
+        }
+        if (factor > 1) this._floorMap.zoomIn({ duration: this.reduced ? 0 : 180 });
+        else this._floorMap.zoomOut({ duration: this.reduced ? 0 : 180 });
+      },
+      resetFloorZoom() {
+        if (!this.serverMapMode || !this._floorMap) {
+          FloorLogic.methods.resetFloorZoom.call(this);
+          return;
+        }
+        this._floorFitZoom = null;
+        this._floorMap.fitBounds([[0, 0], [Engine.PLAN_W / Engine.PLAN_H, 1]], { padding: 0, duration: 0 });
+        this.floorZoom = 1;
+        this.syncFloorViewport();
+      },
+      // ----------------------------------------------------- selected detail,
+      async loadAssetDetail(assetId) {
+        if (!assetId || !this.serverMapMode) {
+          this.releaseAssetDetail();
+          return;
+        }
+        if (this.selectedDetail && this.selectedDetail.id === assetId) return;
+        this.releaseAssetDetail();
+        const serial = (this._assetSerial = (this._assetSerial || 0) + 1);
+        const controller = typeof window.AbortController === 'function' ? new window.AbortController() : null;
+        this._assetController = controller;
+        try {
+          const payload = await window.AssetAccess.request(this, '/assets/' + encodeURIComponent(assetId), {
+            signal: controller ? controller.signal : undefined
+          });
+          if (serial !== this._assetSerial || this.selectedId !== assetId) return;
+          this.selectedDetail = payload && payload.id === assetId ? payload : null;
+        } catch (error) {
+          if (serial !== this._assetSerial) return;
+          this.selectedDetail = null;
+        }
+      },
+      releaseAssetDetail() {
+        this._assetSerial = (this._assetSerial || 0) + 1;
+        if (this._assetController) {
+          this._assetController.abort();
+          this._assetController = null;
+        }
+        this.selectedDetail = null;
+      },
       categoryLabel(id) {
         const category = this.app.categories.find((item) => item.id === id);
         return category ? category.label : id;
@@ -641,7 +965,7 @@
             </label>
             <h3 class="map-popover__subhead">Planos disponibles</h3>
             <ul class="map-plan-list">
-              <li v-for="plan in maps.plans" :key="plan.id" class="map-plan-list__row">
+              <li v-for="plan in availablePlans" :key="plan.id" class="map-plan-list__row">
                 <label class="map-check">
                   <input type="checkbox" :checked="plan.visible" @change="togglePlan(plan)">
                   <span>{{ plan.name }}</span>
@@ -773,41 +1097,76 @@
                 </p>
               </header>
               <div class="floor-scroll">
-                <div ref="paper" class="floor-paper" :style="{ width: Math.round(floorZoom * 100) + '%' }">
-                  <img v-if="plan && prefs.showPlans !== false" :src="plan.src" class="floor-plan"
+                <div ref="paper" class="floor-paper" :style="floorPaperStyle">
+                  <template v-if="serverMapMode">
+                    <div ref="floorCanvas" class="floor-map" aria-hidden="true"></div>
+                    <div v-if="floorPlanState === 'loading'" class="floor-noplan" role="status">
+                      <app-icon name="layers"></app-icon>
+                      <p>Cargando el plano de la planta…</p>
+                    </div>
+                    <div v-else-if="floorPlanState === 'empty'" class="floor-noplan">
+                      <app-icon name="layers"></app-icon>
+                      <p>Esta planta no tiene un plano asociado. Los activos se agrupan por sala.</p>
+                    </div>
+                    <div v-else-if="floorPlanState === 'error'" class="floor-noplan floor-noplan--error" role="alert">
+                      <app-icon name="alert"></app-icon>
+                      <p>{{ floorPlanError }}</p>
+                      <button type="button" class="text-button" @click="loadFloorPlan(activeFloorId)">Reintentar</button>
+                    </div>
+                  </template>
+                  <img v-else-if="plan && prefs.showPlans !== false" :src="plan.src" class="floor-plan"
                        :alt="'Plano de ' + floorContext.buildingName + ', ' + floorContext.floorName"
                        :style="{ opacity: plan.opacity }">
-                  <div v-else class="floor-noplan">
+                  <div v-else-if="!serverMapMode" class="floor-noplan">
                     <app-icon name="layers"></app-icon>
                     <p>Esta planta no tiene un plano asociado. Los activos se agrupan por sala.</p>
                   </div>
-                  <svg v-if="fovCone" class="floor-fov" viewBox="0 0 1600 1000" aria-hidden="true">
-                    <path :d="fovCone"></path>
-                  </svg>
-                  <button v-for="room in roomChips" :key="room.id" type="button" class="floor-room"
-                          :class="{ 'is-active': selectedRoom === room.id }"
-                          :style="{ left: percentX(room.x) + '%', top: percentY(room.y) + '%' }"
-                          :aria-label="room.name + ': ' + room.count + ' activos agrupados'"
-                          @click="selectRoom(room.id, activeFloorId)">
-                    <span class="floor-room__name">{{ room.name }}</span>
-                    <span class="floor-room__count mono">+{{ room.count }}</span>
-                  </button>
-                  <button v-for="marker in floorMarkers" :key="marker.id" type="button"
-                          class="floor-marker" :class="['floor-marker--' + marker.family, { 'is-selected': marker.selected, 'is-cluster': marker.count > 1 }]"
-                          :style="{ left: percentX(marker.x) + '%', top: percentY(marker.y) + '%' }"
-                          :aria-label="marker.count > 1 ? marker.count + ' activos agrupados' : marker.asset.name + ', ' + categoryLabel(marker.asset.category)"
-                          @pointerdown="startMarkerDrag(marker, $event)"
-                          @keydown="startMarkerKey($event, marker)"
-                          @click="marker.count > 1 ? zoomFloor(1.35) : selectAsset(marker.asset.id)">
-                    <app-icon :name="marker.icon" class="floor-marker__icon"></app-icon>
-                    <span v-if="marker.count > 1" class="floor-marker__count mono">{{ marker.count }}</span>
-                    <span v-else class="floor-marker__code mono">{{ marker.asset.code }}</span>
-                  </button>
-                  <p v-if="floorView && !floorView.count" class="floor-empty">
-                    Ningún activo coincide con los filtros en esta planta.
-                  </p>
+                  <div class="floor-overlay" :class="{ 'floor-overlay--map': serverMapMode }" :style="floorOverlayStyle">
+                    <button v-for="room in roomChips" :key="room.id" type="button" class="floor-room"
+                            :class="{ 'is-active': selectedRoom === room.id }"
+                            :style="{ left: percentX(room.x) + '%', top: floorTop(room.y) + '%' }"
+                            :aria-label="room.name + ': ' + room.count + ' activos agrupados'"
+                            @click="selectRoom(room.id, activeFloorId)">
+                      <span class="floor-room__name">{{ room.name }}</span>
+                      <span class="floor-room__count mono">+{{ room.count }}</span>
+                    </button>
+                    <button v-for="marker in floorMarkers" :key="marker.id" type="button"
+                            class="floor-marker" :class="['floor-marker--' + marker.family, { 'is-selected': marker.selected, 'is-cluster': marker.count > 1 }]"
+                            :style="{ left: percentX(marker.x) + '%', top: floorTop(marker.y) + '%' }"
+                            :aria-label="marker.count > 1 ? marker.count + ' activos agrupados' : marker.asset.name + ', ' + categoryLabel(marker.asset.category)"
+                            @pointerdown="startMarkerDrag(marker, $event)"
+                            @keydown="startMarkerKey($event, marker)"
+                            @click="marker.count > 1 ? zoomFloor(1.35) : selectAsset(marker.asset.id)">
+                      <app-icon :name="marker.icon" class="floor-marker__icon"></app-icon>
+                      <span v-if="marker.count > 1" class="floor-marker__count mono">{{ marker.count }}</span>
+                      <span v-else class="floor-marker__code mono">{{ marker.asset.code }}</span>
+                    </button>
+                    <p v-if="floorView && !floorView.count" class="floor-empty">
+                      Ningún activo coincide con los filtros en esta planta.
+                    </p>
+                  </div>
                 </div>
               </div>
+              <section v-if="floorLooseGroups.length" class="floor-groups" aria-label="Activos sin posición individual">
+                <header class="floor-groups__head">
+                  <h3>Sin posición individual</h3>
+                  <p>Estos equipos siguen asociados a su sala o planta.</p>
+                </header>
+                <details v-for="group in floorLooseGroups" :key="group.id" class="floor-group">
+                  <summary class="floor-group__summary">
+                    <span>{{ group.name }}</span>
+                    <span class="mono">{{ group.assets.length }}</span>
+                  </summary>
+                  <ul class="floor-group__list">
+                    <li v-for="asset in group.assets" :key="asset.id">
+                      <button type="button" class="floor-group__asset" @click="selectAsset(asset.id)">
+                        <span>{{ asset.name }}</span>
+                        <span class="mono">{{ asset.code }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </details>
+              </section>
               <div class="floor-controls" role="group" aria-label="Controles del plano">
                 <button type="button" class="icon-button" aria-label="Acercar el plano" @click="zoomFloor(1.25)">
                   <app-icon name="plus"></app-icon>

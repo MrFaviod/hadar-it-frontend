@@ -568,8 +568,8 @@
           tech: dto.technical && typeof dto.technical === 'object' ? copy(dto.technical) : {},
           warranty: null,
           history: [],
-          anydeskId: '',
-          rmmAgentId: '',
+          anydeskId: text(dto.technical && dto.technical.anydeskId),
+          rmmAgentId: text(dto.technical && dto.technical.rmmAgentId),
           rmmOnline: false,
           serverAsset: true
         };

@@ -4,6 +4,7 @@
   const KEY = 'asset-manager.theme';
   const MEDIA_QUERY = '(prefers-color-scheme: dark)';
   const root = document.documentElement;
+  let storageKey = KEY;
   let preference = readPreference();
 
   function normalize(value) {
@@ -12,7 +13,7 @@
 
   function readPreference() {
     try {
-      return normalize(window.localStorage.getItem(KEY));
+      return normalize(window.localStorage.getItem(storageKey));
     } catch (error) {
       return 'system';
     }
@@ -47,7 +48,7 @@
   function setPreference(value) {
     preference = normalize(value);
     try {
-      window.localStorage.setItem(KEY, preference);
+      window.localStorage.setItem(storageKey, preference);
     } catch (error) {
       /* El tema se mantiene en memoria si el almacenamiento no está disponible. */
     }
@@ -64,17 +65,26 @@
     else if (media.addListener) media.addListener(handleSystemChange);
   }
   window.addEventListener('storage', function (event) {
-    if (event.key !== KEY) return;
+    if (event.key !== storageKey) return;
     preference = normalize(event.newValue);
     apply(preference, true);
   });
 
   apply(preference, false);
 
+  function setScope(id) {
+    storageKey = id === null || id === undefined || id === ''
+      ? KEY
+      : KEY + '.user.' + encodeURIComponent(String(id));
+    preference = readPreference();
+    return apply(preference, true);
+  }
+
   window.AssetTheme = {
     getPreference: function () { return preference; },
     getResolved: function () { return root.dataset.theme || resolve(preference); },
     set: setPreference,
+    setScope: setScope,
     toggle: function () {
       return setPreference(resolve(preference) === 'dark' ? 'light' : 'dark');
     }

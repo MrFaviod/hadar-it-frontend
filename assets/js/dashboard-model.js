@@ -1,63 +1,105 @@
 (function () {
   'use strict';
-  const M = window.AssetMonitorEngine;
   const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
   const statusLabels = { up: 'Disponibles', degraded: 'Degradados', down: 'Fuera de línea', unmonitored: 'Sin supervisión', unknown: 'Sin datos' };
-  function date(value) { const n = Date.parse(value); return Number.isFinite(n) ? n : 0; }
-  function build(app, filters, reference) {
-    const now = reference || Date.now();
+  const statusTones = { up: 'ok', degraded: 'warn', down: 'down', unmonitored: 'hold', unknown: 'hold' };
+  const severityIds = { critical: 'critica', warning: 'alta', info: 'media', critica: 'critica', alta: 'alta', media: 'media', baja: 'baja' };
+  const severityLabels = { critica: 'Crítica', alta: 'Alta', media: 'Media', baja: 'Baja' };
+  const number = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
+  const list = value => Array.isArray(value) ? value : [];
+  const zeroStats = () => ({ total: 0, monitored: 0, up: 0, degraded: 0, down: 0, unmonitored: 0, unknown: 0, criticalAlerts: 0, unacknowledged: 0, activeIncidents: 0, availability: null });
+  const emptyInventory = () => ({ total: 0, active: 0, unassigned: 0, attention: [] });
+  const assetFromRow = row => ({ id: row.assetId, name: row.assetName || row.name || row.assetCode || row.quickCode || row.assetId, code: row.assetCode || row.quickCode || row.assetId, category: row.category || '', type: row.type || '', site: row.siteId || row.site || '', locationId: row.locationId || '', statusId: row.status || '', retired: false, assigneeId: '' });
+  const linkFor = target => {
+    const t = target || {};
+    if (t.kind === 'alert') return '#/supervision/alerta/' + encodeURIComponent(t.id);
+    if (t.kind === 'asset') return '#/activo/' + encodeURIComponent(t.id);
+    return '';
+  };
+  function empty(period) { return fromSummary(null, { period }, undefined); }
+
+  function fromSummary(raw, filters, reference) {
     const f = filters || {};
     const period = periods[f.period] ? f.period : '24h';
-    const assets = (app.assets || []).filter(a => (!f.category || a.category === f.category) && (!f.site || a.site === f.site) && (!f.status || f.status==='all' || a.statusId===f.status) && (!f.location || f.location==='all' || a.locationId===f.location));
-    const ids = new Set(assets.map(a => a.id));
-    const alerts = ((app.maintenance || {}).alerts || []).filter(a => ids.has(a.assetId));
-    const activeAlerts = alerts.filter(a => a.state === 'open');
-    const rows = M.deviceRows(app.monitoring, assets, alerts, now).map(row => {
-      const ids = M.checkIdsFor(app.monitoring, row.asset);
-      return { ...row, status: row.monitored && !row.probe ? 'unknown' : row.status,
-        latencyMs: ids.includes('latency') ? row.latencyMs : null,
-        uptimePct: ids.includes('availability') ? row.uptimePct : null };
+    const now = reference || Date.now();
+    if (!raw || typeof raw !== 'object') {
+      return { available: false, assets: [], rows: [], stats: { ...zeroStats(), availability: null }, alerts: [], activeAlerts: [], availability: [], latency: [],
+        distribution: [], severity: [], maintenance: [], warranties: [], activity: [], byCategory: [], bySite: [], outages: [], incidents: [],
+        inventory: emptyInventory(), period, now, lastCheck: '', uptimeDays: null, widgetAvailable: () => false };
+    }
+    const rows = list(raw.rows).map(row => ({
+      asset: assetFromRow(row), status: statusLabels[row.status] ? row.status : 'unknown',
+      statusMeta: { id: row.status || 'unknown', label: statusLabels[row.status] || statusLabels.unknown, tone: statusTones[row.status] || 'hold' },
+      monitored: !!row.monitored, reason: row.reason || '', uptimePct: number(row.uptimePct), latencyMs: number(row.latencyMs),
+      lastCheckAt: row.lastCheckAt || '', uptimeDays: null, href: linkFor(row.target) || '#/activo/' + encodeURIComponent(row.assetId)
+    })).filter(row => {
+      if (f.status && f.status !== 'all' && row.status !== f.status) return false;
+      if (f.location && f.location !== 'all' && row.asset.locationId !== f.location) return false;
+      if (f.search && !(row.asset.name + ' ' + row.asset.code).toLocaleLowerCase('es').includes(String(f.search).toLocaleLowerCase('es'))) return false;
+      return true;
     });
-    const stats = M.stats(app.monitoring, assets, alerts, now);
-    const eligible = check => assets.filter(a => M.isMonitored(app.monitoring, a) && M.probeOf(app.monitoring, a.id) && M.checkIdsFor(app.monitoring, a).includes(check));
-    const availability = M.aggregateAvailability(app.monitoring, eligible('availability'), period, now).filter(p => Number.isFinite(p.value));
-    const latency = M.aggregateLatency(app.monitoring, eligible('latency'), period, now).filter(p => Number.isFinite(p.value));
-    const uptimeValues = rows.filter(r => Number.isFinite(r.uptimePct)).map(r => r.uptimePct);
-    stats.availability = uptimeValues.length ? uptimeValues.reduce((sum, n) => sum + n, 0) / uptimeValues.length : null;
-    const distribution = Object.keys(statusLabels).map(id => ({ id, label: statusLabels[id], count: rows.filter(r => r.status === id).length }));
-    // Some monitor versions call unmonitored devices "unmonitored"; preserve all other no-data states explicitly.
-    const covered = distribution.reduce((sum, r) => sum + r.count, 0);
-    if (covered < assets.length) distribution.find(r => r.id === 'unknown').count += assets.length - covered;
-    const breakdown = (field, catalogue) => (catalogue || []).map(item => {
-      const grouped = rows.filter(r => r.asset[field] === item.id);
-      return { id: item.id, label: item.label, total: grouped.length, up: grouped.filter(r => r.status === 'up').length,
-        degraded: grouped.filter(r => r.status === 'degraded').length, down: grouped.filter(r => r.status === 'down').length,
-        other: grouped.filter(r => !['up', 'degraded', 'down'].includes(r.status)).length };
-    }).filter(r => r.total);
-    const activity = [];
-    assets.forEach(asset => (asset.history || []).forEach((e, i) => {
-      activity.push({ id: asset.id + ':history:' + i, at: e.at || e.date || '', kind: ['monitoring', 'alert'].includes(e.kind) ? 'alert' : ['maintenance', 'intervention', 'repair', 'incident'].includes(e.kind) ? 'technical' : 'inventory',
-        title: e.title || e.detail || 'Cambio registrado', detail: e.detail || '', asset, href: '#/activo/' + encodeURIComponent(asset.id) });
+    const assets = rows.map(row => row.asset);
+    const byId = new Map(assets.map(asset => [asset.id, asset]));
+    const assetFor = (id, name, code) => byId.get(id) || (id ? { id, name: name || code || id, code: code || id, category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' } : { id: '', name: name || 'Sin activo', code: code || '', category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' });
+    const availabilitySource = raw.availability || {};
+    const samples = list(availabilitySource.samples).map(point => ({ at: point.at || '', label: point.label || period, value: number(point.value) })).filter(point => point.value !== null);
+    const currentAvailability = number(availabilitySource.current);
+    const availability = samples.length ? samples : currentAvailability === null ? [] : [{ at: availabilitySource.lastCheckAt || '', label: period, value: currentAvailability }];
+    const latencyCurrent = number((raw.latency || {}).current);
+    const latency = latencyCurrent === null ? [] : [{ at: availabilitySource.lastCheckAt || '', label: 'Actual', value: latencyCurrent }];
+    const stats = { ...zeroStats(), ...(raw.stats || {}), availability: currentAvailability };
+    const activeAlerts = list(raw.activeAlerts).map(alert => ({
+      id: alert.id, title: alert.title || alert.description || 'Alerta', description: alert.description || '',
+      severity: alert.severity || 'info', severityRank: ({ critical: 3, warning: 2, info: 1 })[alert.severity] || 0,
+      assetId: alert.assetId || '', asset: assetFor(alert.assetId, alert.assetName, alert.assetCode),
+      state: alert.state || 'open', acknowledged: !!alert.acknowledged, acknowledgedAt: alert.acknowledgedAt || null,
+      createdAt: alert.createdAt || '', href: linkFor(alert.target) || '#/supervision/alerta/' + encodeURIComponent(alert.id)
     }));
-    alerts.forEach(alert => {
-      const asset = assets.find(a => a.id === alert.assetId);
-      const events = Array.isArray(alert.events) && alert.events.length ? alert.events : [{ at: alert.createdAt || alert.at, title: alert.title || alert.description }];
-      events.forEach((e, i) => activity.push({ id: alert.id + ':event:' + i, at: e.at || alert.createdAt, kind: e.type === 'recovered' || /recuper/i.test(e.title || e.text || e.kind || '') ? 'recovery' : 'alert', title: e.title || e.text || e.message || alert.title || alert.description || 'Evento de alerta', detail: e.detail || '', asset, href: '#/supervision/alerta/' + encodeURIComponent(alert.id) }));
+    const activity = list(raw.activity).map(event => {
+      const asset = assetFor(event.assetId, event.assetName, event.assetCode);
+      return { id: event.id, at: event.at || '', kind: event.kind || 'inventory', title: event.title || 'Cambio registrado',
+        detail: event.detail || '', asset, assetId: asset.id, href: linkFor(event.target) || (asset.id ? '#/activo/' + encodeURIComponent(asset.id) : '') };
+    }).sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
+    const maintenance = list(raw.maintenance).map(row => ({
+      planId: row.planId, assetId: row.assetId, asset: assetFor(row.assetId, row.assetName, row.assetCode),
+      label: row.label || 'Mantenimiento preventivo', template: { label: row.label || 'Mantenimiento preventivo' },
+      status: row.status || '', statusMeta: { label: row.status || 'Pendiente', tone: row.statusTone || 'hold' }, dueAt: row.dueAt || ''
+    }));
+    const warranties = list(raw.warranties).map(row => ({
+      asset: assetFor(row.assetId, row.assetName, row.assetCode), assetId: row.assetId, until: row.until || '',
+      days: Number(row.days) || 0, coverage: row.coverage || 'expiring'
+    }));
+    const distribution = list(raw.distribution).map(item => ({ id: item.id, label: item.label || statusLabels[item.id] || item.id, count: Number(item.count) || 0 }));
+    const severity = ['critica', 'alta', 'media', 'baja'].map(id => {
+      const item = list(raw.severity).find(entry => (severityIds[entry.id] || entry.id) === id);
+      return { id, label: (item && item.label) || severityLabels[id], count: Number(item && item.count) || 0 };
     });
-    ((app.maintenance || {}).interventions || []).filter(i => ids.has(i.assetId)).forEach(i => {
-      const asset = assets.find(a => a.id === i.assetId);
-      activity.push({ id: 'intervention:' + i.id, at: i.completedAt || i.date || i.createdAt, kind: 'technical', title: i.description || 'Intervención técnica', detail: i.status || '', asset, href: '#/activo/' + encodeURIComponent(asset.id) });
-    });
-    const recentActivity = activity.filter(e => date(e.at) && date(e.at) >= now - periods[period] && date(e.at) <= now).sort((a, b) => date(b.at) - date(a.at));
-    const maintenance = window.AssetMaintEngine.agenda(app.maintenance, assets, {}, window.AssetMaintEngine.localDay(new Date(now))).filter(r => !['paused', 'unscheduled'].includes(r.status));
-    const warranties = assets.filter(a => !a.retired && a.warranty && date(a.warranty.until)).map(asset => ({ asset, until: asset.warranty.until, days: window.AssetMaintEngine.daysUntil(asset.warranty.until, window.AssetMaintEngine.localDay(new Date(now))) }))
-      .filter(r => r.days >= 0 && r.days <= 90).sort((a, b) => a.days - b.days);
-    const severity = ['critica', 'alta', 'media', 'baja'].map(id => ({ id, label: M.severityMeta(id).label, count: activeAlerts.filter(a => a.severity === id).length }));
-    return { assets, rows, stats, alerts, activeAlerts, availability, latency, distribution, severity, maintenance, warranties, activity: recentActivity,
-      byCategory: breakdown('category', app.categories || app.config.categories), bySite: breakdown('site', app.sites || app.config.sites),
-      outages: recentActivity.filter(e => e.kind === 'recovery' || (e.kind === 'alert' && /caída|sin respuesta|conectividad|fuera de línea|recuper/i.test(e.title + ' ' + e.detail))),
-      period, now, lastCheck: rows.map(r => r.lastCheckAt).filter(Boolean).sort().at(-1) || '',
-      uptimeDays: rows.filter(r => Number.isFinite(r.uptimeDays)).length ? Math.round(rows.filter(r => Number.isFinite(r.uptimeDays)).reduce((n, r) => n + r.uptimeDays, 0) / rows.filter(r => Number.isFinite(r.uptimeDays)).length) : null };
+    const outages = activity.filter(event => event.kind === 'recovery' || (event.kind === 'alert' && /caída|sin respuesta|conectividad|fuera de línea|recuper/i.test(event.title + ' ' + event.detail)));
+    const inventorySource = raw.inventory || {};
+    const inventory = { total: Number(inventorySource.total) || 0, active: Number(inventorySource.active) || 0, unassigned: Number(inventorySource.unassigned) || 0,
+      attention: list(inventorySource.attention).map(item => ({ ...item, asset: assetFor(item.assetId, item.assetName, item.assetCode) })) };
+    const incidents = Array.isArray(raw.incidents) ? raw.incidents.map(item => ({ ...item, asset: assetFor(item.assetId, item.assetName, item.assetCode), href: '#/mantenimiento/incidente/' + encodeURIComponent(item.id) })) : [];
+    const unavailable = new Set(list(raw.unavailable).map(item => typeof item === 'string' ? item : item && item.id));
+    const group = item => ({ id: item.id, label: item.label || item.id, total: Number(item.total) || 0, up: Number(item.up) || 0, degraded: Number(item.degraded) || 0, down: Number(item.down) || 0, other: Number(item.other) || 0 });
+    const model = {
+      available: true, raw, assets, rows, stats: { ...stats, activeIncidents: Number(raw.stats && raw.stats.activeIncidents) || incidents.length },
+      alerts: activeAlerts, activeAlerts, availability, latency, distribution, severity, maintenance, warranties, activity, outages, incidents, inventory,
+      byCategory: list(raw.byCategory).map(group), bySite: list(raw.bySite).map(group), period, now,
+      lastCheck: availabilitySource.lastCheckAt || rows.map(row => row.lastCheckAt).filter(Boolean).sort().at(-1) || '', uptimeDays: null
+    };
+    model.widgetAvailable = widget => {
+      if (unavailable.has(widget)) return false;
+      if (widget === 'availability') return !!(availabilitySource.configured || availability.length);
+      if (widget === 'latency') return latencyCurrent !== null;
+      if (widget === 'incidents') return Array.isArray(raw.incidents);
+      if (widget === 'distribution') return Array.isArray(raw.distribution);
+      return true;
+    };
+    return model;
   }
-  window.AssetDashboardModel = { build, periods };
+  function build(app, filters, reference) {
+    const summary = app && app.dashboard ? app.dashboard.summary : null;
+    return fromSummary(summary, filters, reference);
+  }
+  window.AssetDashboardModel = { build, fromSummary, empty, periods, statusLabels };
 })();

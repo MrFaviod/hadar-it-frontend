@@ -227,7 +227,7 @@
         this.showToast('La persona solicitada ya no está disponible.', 'error');
         parsed = { name: 'people', assetId: null, personId: null, section: null };
       }
-      if ((parsed.name === 'graph' || parsed.name === 'map') && parsed.focusId && !this.assets.some((asset) => asset.id === parsed.focusId)) {
+      if ((parsed.name === 'graph' || parsed.name === 'map') && !this.serverOrganizationMode && parsed.focusId && !this.assets.some((asset) => asset.id === parsed.focusId)) {
         this.ensureHash(this.hashFor({ name: parsed.name }));
         this.showToast('El activo enfocado ya no está disponible.', 'error');
         parsed = { name: parsed.name, assetId: null, personId: null, section: null, focusId: '' };
@@ -408,46 +408,48 @@
     closeAssetConfig() {
       this.assetConfig.open = false;
     },
-    persistOverrides() {
-      const map = {};
-      this.assets.forEach((asset) => {
-        map[asset.id] = {
-          anydeskId: asset.anydeskId,
-          rmmAgentId: asset.rmmAgentId,
-          rmmOnline: asset.rmmOnline
-        };
-      });
-      Store.writeJSON(window.localStorage, KEYS.overrides, map);
-    },
-    saveAssetConfig() {
-      const anydeskId = this.assetConfig.anydeskId.trim();
-      const rmmAgentId = this.assetConfig.rmmAgentId.trim();
+    async saveAssetConfig() {
+      const dialog = this.assetConfig;
+      const anydeskId = dialog.anydeskId.trim();
+      const rmmAgentId = dialog.rmmAgentId.trim();
       const errors = { anydeskId: '', rmmAgentId: '', general: '' };
-
-      if (this.settings.anydeskEnabled && anydeskId && !/^\d{5,12}$/.test(anydeskId)) {
+      if (anydeskId && !/^\d{5,12}$/.test(anydeskId)) {
         errors.anydeskId = 'Usa solo números, entre 5 y 12 dígitos.';
       }
-      if (this.settings.rmmEnabled && rmmAgentId && !/^[A-Za-z0-9._-]{3,64}$/.test(rmmAgentId)) {
+      if (rmmAgentId && !/^[A-Za-z0-9._-]{3,64}$/.test(rmmAgentId)) {
         errors.rmmAgentId = 'Usa entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo.';
       }
       this.assetConfigErrors = errors;
-      if (errors.anydeskId || errors.rmmAgentId) return;
-
-      if (!this.assetConfig.asset) {
-        this.assetConfigErrors.general = 'No se ha encontrado el activo.';
-        return;
+      if (errors.anydeskId || errors.rmmAgentId) return false;
+      const asset = dialog.asset;
+      if (!asset || !asset.serverAsset || !this.authenticated) {
+        errors.general = 'No se ha encontrado el activo en el servidor.';
+        return false;
       }
-      const asset = this.assets.find((item) => item.id === this.assetConfig.asset.id);
-      if (!asset) {
-        this.assetConfigErrors.general = 'No se ha encontrado el activo.';
-        return;
+      if (!this.can('assets.edit')) {
+        errors.general = 'Tu rol no permite modificar las integraciones del activo.';
+        return false;
       }
-      asset.anydeskId = anydeskId;
-      asset.rmmAgentId = rmmAgentId;
-      asset.rmmOnline = rmmAgentId ? !!asset.rmmOnline : false;
-      this.persistOverrides();
-      this.assetConfig.open = false;
-      this.showToast('Integraciones del activo actualizadas.');
+      const epoch = this.inventory.epoch;
+      const current = () => this.authenticated && this.inventory.epoch === epoch && this.assetConfig === dialog;
+      try {
+        const technical = Object.assign({}, asset.technical || {}, { anydeskId, rmmAgentId });
+        const payload = await window.AssetAccess.request(this, '/assets/' + encodeURIComponent(asset.id), {
+          method: 'PATCH', body: { technical }
+        });
+        if (!current()) return false;
+        const saved = this.inventoryMapAsset(payload);
+        if (this.inventoryDetail.asset && this.inventoryDetail.asset.id === asset.id) this.inventoryDetail.asset = saved;
+        const index = this.inventory.items.findIndex((item) => item.id === asset.id);
+        if (index !== -1) this.inventory.items.splice(index, 1, saved);
+        dialog.open = false;
+        this.showToast('Integraciones del activo actualizadas.');
+        return true;
+      } catch (error) {
+        if (!current()) return false;
+        this.assetConfigErrors.general = (error && error.message) || 'No se pudieron guardar las integraciones del activo.';
+        return false;
+      }
     },
     openRemote(asset, kind) {
       if (!asset) return;

@@ -4,13 +4,16 @@
   const format = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('es-ES', { maximumFractionDigits: 2 });
   const DashboardKpis = {
     props: ['app', 'filters', 'snapshot'],
-    computed: { model() { return this.snapshot || window.AssetDashboardModel.build(this.app, this.filters); } },
+    computed: {
+      model() { return this.snapshot || window.AssetDashboardModel.build(this.app, this.filters); },
+      alertTotal() { return this.model.severity.reduce((total, item) => total + item.count, 0); }
+    },
     methods: { format },
     template: `<div class="noc-kpis" data-od-id="dashboard-kpis">
-      <a href="#/supervision" class="noc-kpi" data-od-id="kpi-availability"><span>Disponibilidad · {{ filters.period }}</span><strong>{{ format(model.availability.length ? model.availability.reduce((n,p)=>n+p.value,0)/model.availability.length : null) }}<small v-if="model.availability.length"> %</small></strong><em>{{ model.stats.monitored }} equipos supervisados · media del período</em></a>
+      <a href="#/supervision" class="noc-kpi" data-od-id="kpi-availability"><span>Disponibilidad · {{ filters.period }}</span><strong>{{ format(model.stats.availability) }}<small v-if="model.stats.availability !== null"> %</small></strong><em>{{ model.stats.monitored }} equipos supervisados · media del período</em></a>
       <a href="#/supervision/dispositivos" class="noc-kpi" data-od-id="kpi-devices"><span>Disponibles ahora</span><strong>{{ model.stats.up }}<small> / {{ model.stats.monitored }}</small></strong><em>{{ model.stats.unmonitored }} sin supervisión, no fuera de línea</em></a>
       <a href="#/supervision/dispositivos" class="noc-kpi noc-kpi--attention" data-od-id="kpi-problems"><span>Requieren atención</span><strong>{{ model.stats.down + model.stats.degraded }}</strong><em>{{ model.stats.down }} fuera de línea · {{ model.stats.degraded }} degradados</em></a>
-      <a href="#/supervision/alertas" class="noc-kpi" data-od-id="kpi-alerts"><span>Alertas activas</span><strong>{{ model.activeAlerts.length }}</strong><em>{{ model.stats.criticalAlerts }} críticas · {{ model.stats.unacknowledged }} sin reconocer</em></a>
+      <a href="#/supervision/alertas" class="noc-kpi" data-od-id="kpi-alerts"><span>Alertas activas</span><strong>{{ alertTotal }}</strong><em>{{ model.stats.criticalAlerts }} críticas · {{ model.stats.unacknowledged }} sin reconocer</em></a>
     </div>`
   };
   const DashboardWidget = {
@@ -22,8 +25,7 @@
       activity() { return this.model.activity.filter(e => !this.activityKind || e.kind === this.activityKind).slice(0, 8); },
       groups() { return this.breakdown === 'site' ? this.model.bySite : this.model.byCategory; },
       currentPoint() { const s = this.widget === 'latency' ? this.model.latency : this.model.availability; return s[this.pointIndex < 0 ? s.length - 1 : this.pointIndex]; },
-      series() { return this.widget === 'latency' ? this.model.latency : this.model.availability; },
-      attention() { return this.model.rows.filter(r => ['down', 'degraded'].includes(r.status)).slice(0, 4); }
+      series() { return this.widget === 'latency' ? this.model.latency : this.model.availability; }
     },
     methods: {
       format,
@@ -49,8 +51,8 @@
         <a class="noc-text-link" href="#/supervision/alertas">Consultar todas las alertas <app-icon name="arrow-right"></app-icon></a>
       </template>
       <template v-else-if="widget === 'distribution'">
-        <div class="noc-distribution" role="img" :aria-label="model.distribution.map(r=>r.label+': '+r.count).join(', ')"><span v-for="item in model.distribution.filter(r=>r.count)" :key="item.id" :class="'noc-state--'+item.id" :style="{width:fraction(item.count,model.assets.length)}"></span></div>
-        <a v-for="item in model.distribution.filter(r=>r.count || ['up','degraded','down','unmonitored'].includes(r.id))" :key="item.id" class="noc-state-row" href="#/supervision/dispositivos"><i :class="'noc-state--'+item.id"></i><span>{{ item.label }}</span><strong>{{ item.count }}</strong><small>{{ format(model.assets.length ? item.count/model.assets.length*100 : 0) }} %</small></a>
+        <div class="noc-distribution" role="img" :aria-label="model.distribution.map(r=>r.label+': '+r.count).join(', ')"><span v-for="item in model.distribution.filter(r=>r.count)" :key="item.id" :class="'noc-state--'+item.id" :style="{width:fraction(item.count,model.stats.total)}"></span></div>
+        <a v-for="item in model.distribution.filter(r=>r.count || ['up','degraded','down','unmonitored'].includes(r.id))" :key="item.id" class="noc-state-row" href="#/supervision/dispositivos"><i :class="'noc-state--'+item.id"></i><span>{{ item.label }}</span><strong>{{ item.count }}</strong><small>{{ format(model.stats.total ? item.count/model.stats.total*100 : 0) }} %</small></a>
         <p class="noc-footnote">El estado operativo es independiente del estado administrativo del inventario.</p>
       </template>
       <template v-else-if="widget === 'infrastructure'">
@@ -71,8 +73,13 @@
         <p v-if="!model.warranties.length" class="noc-empty">No hay garantías que venzan en los próximos 90 días para esta selección.</p><p class="noc-footnote">Solo se consideran fechas de cobertura registradas en las fichas.</p>
       </template>
       <template v-else-if="widget === 'inventory'">
-        <div class="noc-inventory"><a href="#/inventario"><strong>{{ model.assets.length }}</strong><span>Registros</span></a><a href="#/inventario"><strong>{{ model.assets.filter(a=>!a.retired).length }}</strong><span>En inventario activo</span></a><a href="#/inventario"><strong>{{ model.assets.filter(a=>!a.retired && !a.assigneeId).length }}</strong><span>Sin responsable</span></a></div>
-        <div v-if="attention.length" class="noc-inventory-attention"><h3>Equipos que requieren atención</h3><a v-for="row in attention" :key="row.asset.id" :href="'#/supervision/activo/'+encodeURIComponent(row.asset.id)"><span>{{ row.asset.name }}</span><mon-status-pill :status="row.status"></mon-status-pill></a></div><a class="noc-text-link" href="#/inventario">Explorar el inventario <app-icon name="arrow-right"></app-icon></a>
+        <div class="noc-inventory"><a href="#/inventario"><strong>{{ model.inventory.total }}</strong><span>Registros</span></a><a href="#/inventario"><strong>{{ model.inventory.active }}</strong><span>En inventario activo</span></a><a href="#/inventario"><strong>{{ model.inventory.unassigned }}</strong><span>Sin responsable</span></a></div>
+        <div v-if="model.inventory.attention.length" class="noc-inventory-attention"><h3>Equipos que requieren atención</h3><a v-for="item in model.inventory.attention" :key="item.assetId" :href="'#/activo/'+encodeURIComponent(item.assetId)"><span>{{ item.assetName }}<small>{{ item.assetCode || '' }} · {{ item.status }}</small></span></a></div><a class="noc-text-link" href="#/inventario">Explorar el inventario <app-icon name="arrow-right"></app-icon></a>
+      </template>
+      <template v-else-if="widget === 'incidents'">
+        <div class="noc-alert-list"><a v-for="item in model.incidents" :key="item.id" :href="'#/mantenimiento/incidente/'+encodeURIComponent(item.id)" :data-od-id="'dashboard-incident-'+item.id"><span class="noc-alert-dot" :class="'noc-alert-dot--'+item.severity"></span><span><b>{{ item.title }}</b><small>{{ item.assetName || 'Sin activo' }} · {{ item.status }}</small></span><app-icon name="chevron-right"></app-icon></a></div>
+        <p v-if="!model.incidents.length" class="noc-empty">Sin incidencias activas para esta selección.</p>
+        <a class="noc-text-link" href="#/mantenimiento">Abrir mantenimiento <app-icon name="arrow-right"></app-icon></a>
       </template>
     </div>`
   };

@@ -363,7 +363,7 @@
         <div class="sidebar__foot">
           <div class="sidebar__note">
             <app-icon name="info"></app-icon>
-            <p v-if="serverInventory"><strong>Inventario del servidor</strong><span>Inventario, ficha, conversación, mantenimiento, supervisión y notificaciones usan la API. El resto de módulos sigue con datos de demostración locales.</span></p>
+            <p v-if="serverInventory"><strong>Datos del servidor</strong><span>El Panel, inventario, directorio, infraestructura, búsqueda, mantenimiento, supervisión, reportes y apariencia consultan los servicios autorizados.</span></p>
             <p v-else><strong>Datos de demostración</strong><span>Los cambios se guardan solo en este navegador.</span></p>
           </div>
         </div>
@@ -391,7 +391,7 @@
               <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
               <span class="theme-toggle__label">{{ themeToggleText }}</span>
             </button>
-            <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> Entorno demo</span>
+            <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> Prealfa</span>
             <div class="user-menu" ref="userMenu">
               <button class="user-trigger" type="button" aria-haspopup="menu" :aria-expanded="userMenuOpen" @click="userMenuOpen = !userMenuOpen">
                 <span class="avatar" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : 'Usuario') }}</span>
@@ -1062,60 +1062,12 @@
                       </header>
 
                       <div class="brand-preview">
-                        <span class="brand-preview__logo"><img :src="generalDraft.logo || 'assets/svg/logo.svg'" width="64" height="64" alt=""></span>
-                        <div class="brand-preview__copy">
-                          <span class="eyebrow">Vista previa</span>
-                          <strong>{{ generalDraft.appName || 'Asset Manager' }}</strong>
-                          <small>{{ generalDraft.organizationName || 'Operaciones TI' }}</small>
-                        </div>
-                        <span class="config-status is-on">Activa</span>
+                        <span class="brand-preview__logo"><img :src="brandLogo" width="64" height="64" alt=""></span>
+                        <div class="brand-preview__copy"><strong>{{ appName }}</strong><small>{{ organizationName }}</small></div>
                       </div>
-
-                      <form id="general-form" class="form-stack" @submit.prevent="saveGeneral" novalidate>
-                        <div class="config-form-grid">
-                          <div class="field" :class="{ 'field--invalid': generalErrors.organizationName }">
-                            <label for="config-organization">Organización</label>
-                            <div class="input-shell input-shell--plain">
-                              <app-icon name="building"></app-icon>
-                              <input id="config-organization" v-model="generalDraft.organizationName" type="text" autocomplete="organization"
-                                     :aria-invalid="!!generalErrors.organizationName">
-                            </div>
-                            <p class="field__hint">Aparece como contexto en la barra superior y el acceso.</p>
-                            <p v-if="generalErrors.organizationName" class="field__error">{{ generalErrors.organizationName }}</p>
-                          </div>
-                          <div class="field" :class="{ 'field--invalid': generalErrors.appName }">
-                            <label for="config-app-name">Nombre de la aplicación</label>
-                            <div class="input-shell input-shell--plain">
-                              <app-icon name="inventory"></app-icon>
-                              <input id="config-app-name" v-model="generalDraft.appName" type="text"
-                                     :aria-invalid="!!generalErrors.appName">
-                            </div>
-                            <p class="field__hint">Se usa en el título del navegador y en la marca lateral.</p>
-                            <p v-if="generalErrors.appName" class="field__error">{{ generalErrors.appName }}</p>
-                          </div>
-                        </div>
-
-                        <div class="field" :class="{ 'field--invalid': generalErrors.logo }">
-                          <label for="config-logo">Logotipo</label>
-                          <div class="logo-picker">
-                            <span class="logo-picker__preview"><img :src="generalDraft.logo || 'assets/svg/logo.svg'" width="72" height="72" alt="Vista previa del logotipo"></span>
-                            <div class="logo-picker__body">
-                              <div class="logo-picker__actions">
-                                <button type="button" class="btn btn--secondary btn--small" @click="$refs.logoInput.click()"><app-icon name="upload"></app-icon> Subir imagen</button>
-                                <button type="button" class="text-button text-button--quiet" @click="resetGeneral">Restaurar marca</button>
-                              </div>
-                              <p class="field__hint">PNG, JPG, WebP, GIF o SVG. Máximo 1 MB. Fondo transparente recomendado.</p>
-                              <p v-if="generalErrors.logo" class="field__error">{{ generalErrors.logo }}</p>
-                            </div>
-                          </div>
-                          <input id="config-logo" ref="logoInput" class="sr-only" type="file" tabindex="-1" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" @change="handleLogoUpload">
-                        </div>
-
-                        <div class="config-form-foot">
-                          <p class="config-form-foot__note"><app-icon name="shield"></app-icon> Los datos se guardan solo en este navegador.</p>
-                          <button type="submit" class="btn btn--primary">Guardar identidad</button>
-                        </div>
-                      </form>
+                      <p>La identidad es global para esta instalación. Administra los logotipos, colores y presets en Apariencia.</p>
+                      <a class="btn btn--secondary" href="#/configuracion/apariencia">Administrar apariencia</a>
+                      <search-settings :app="$root"></search-settings>
                       <dashboard-preferences :app="$root"></dashboard-preferences>
                     </section>
 
@@ -1550,7 +1502,7 @@
               <section v-else-if="route.name === 'map'" class="page" aria-labelledby="infra-title">
                 <p v-if="serverOrganizationMode" class="server-notice" role="status">
                   <app-icon name="map-pin"></app-icon>
-                  Ubicaciones y posiciones del servidor. Las posiciones se guardan como coordenadas relativas al plano; la referencia del plano es solo metadato.
+                  Ubicaciones y posiciones del servidor. Los planos se cargan con tu sesión; los activos sin posición individual siguen asociados a su ubicación.
                   <span v-if="organization.map.truncated">Hay más posiciones de las mostradas.</span>
                   <span v-if="organization.map.error"> · {{ organization.map.error }}</span>
                 </p>
@@ -1831,7 +1783,7 @@
                     </div>
                   </section>
 
-                  <section v-if="!serverAssetMode && assetHasRemote(currentAsset)" class="remote-panel" aria-labelledby="remote-title">
+                  <section v-if="can('assets.view') && (assetHasRemote(currentAsset) || can('assets.edit'))" class="remote-panel" aria-labelledby="remote-title">
                     <header class="panel-head panel-head--remote">
                       <div>
                         <p class="eyebrow">Conectividad</p>
@@ -2887,6 +2839,7 @@
   <script src="assets/js/asset-config-views.js"></script>
   <script src="assets/js/access.js"></script>
   <script src="assets/js/access-views.js"></script>
+  <script src="assets/js/phase10-api.js"></script>
   <script src="assets/js/dashboard-model.js"></script>
   <script src="assets/js/dashboard-preferences.js"></script>
   <script src="assets/js/dashboard-views.js"></script>
@@ -2912,6 +2865,7 @@
   <script src="assets/js/transfer-server.js"></script>
   <script src="assets/js/appearance-engine.js"></script>
   <script src="assets/js/appearance-package.js"></script>
+  <script src="assets/js/appearance-api.js"></script>
   <script src="assets/js/appearance-runtime.js"></script>
   <script src="assets/js/appearance-views.js"></script>
   <script src="assets/js/workspace-engine.js"></script>

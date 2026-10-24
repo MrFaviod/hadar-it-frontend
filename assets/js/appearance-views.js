@@ -6,7 +6,7 @@
     data: () => ({ tab: 'panel', query: '', selected: false }),
     computed: {
       palette() { try { return E.tokens(this.preset, this.mode); } catch (_) { return {}; } },
-      logo() { return (this.mode === 'dark' && this.preset.branding.logoDark) || this.preset.branding.logo; },
+      logo() { return E.safeResource((this.mode === 'dark' && this.preset.branding.logoDark) || this.preset.branding.logo); },
       rows() { return [{ name: 'Portátil de administración', code: 'EQ-001', status: 'Asignado' }, { name: 'Monitor de recepción', code: 'EQ-002', status: 'Disponible' }].filter(x => x.name.toLowerCase().includes(this.query.toLowerCase())); }
     },
     template: `<div class="appearance-specimen" :class="{'is-dark':mode==='dark'}" :style="palette" :data-theme="mode" data-od-id="appearance-preview">
@@ -23,12 +23,14 @@
   };
   const AppearancePackageDialog = {
     components: { ModalShell: window.ModalShell, AppearancePreview },
-    props: ['open', 'kind', 'presets', 'active', 'current'], emits: ['close', 'imported'],
+    props: ['open', 'kind', 'presets', 'active', 'current', 'app'], emits: ['close', 'imported'],
     data() { return { presetId: this.active.id, filename: 'apariencia-asset-manager.zip', detected: null, error: '', busy: false, policy: 'both', dragging: false, prepared: false }; },
     computed: {
       selected() { return this.presetId === this.active.id ? this.active : (this.presets.find(p => p.id === this.presetId) || this.active); },
       collision() { return this.detected && this.presets.find(p => p.name === this.detected.preset.name); },
-      canReplace() { return this.collision && this.collision.id !== 'generic'; }
+      builtinIds() { return (this.app && this.app.appearance.builtinIds) || ['generic']; },
+      canReplace() { return this.collision && !this.builtinIds.includes(this.collision.id); },
+      server() { return !!(this.app && this.app.authenticated && window.AssetAppearanceApi); }
     },
     methods: {
       async read(file) {
@@ -36,8 +38,14 @@
         try {
           if (!file || !/\.zip$/i.test(file.name)) throw new Error('Selecciona un archivo ZIP de apariencia.');
           if (file.size > 24 * 1024 * 1024) throw new Error('El paquete supera el máximo de 24 MB.');
-          this.detected = await window.AssetAppearancePackage.decode(await file.arrayBuffer());
-          E.validate(this.detected.preset); this.policy = 'both';
+          if (this.server) {
+            this.detected = await window.AssetAppearanceApi.previewImport(this.app, await file.arrayBuffer());
+          } else {
+            this.detected = await window.AssetAppearancePackage.decode(await file.arrayBuffer());
+            E.validate(this.detected.preset);
+          }
+          if (!this.detected) throw new Error('El paquete no se pudo previsualizar.');
+          this.policy = 'both';
         } catch (error) { this.detected = null; this.error = error.message; }
         finally { this.busy = false; }
       },
@@ -46,10 +54,15 @@
       async download() {
         this.busy = true; this.error = ''; this.prepared = false;
         try {
-          const bytes = await window.AssetAppearancePackage.encode(this.selected);
-          const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
-          const link = document.createElement('a'); link.href = url; link.download = (this.filename.trim() || 'apariencia.zip').replace(/\.zip$/i, '') + '.zip'; link.click();
-          window.setTimeout(() => URL.revokeObjectURL(url), 1000); this.prepared = true;
+          if (this.server) {
+            const blob = await window.AssetAppearanceApi.downloadPreset(this.app, this.selected, this.filename.trim() || 'apariencia');
+            if (blob) this.prepared = true;
+          } else {
+            const bytes = await window.AssetAppearancePackage.encode(this.selected);
+            const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+            const link = document.createElement('a'); link.href = url; link.download = (this.filename.trim() || 'apariencia.zip').replace(/\.zip$/i, '') + '.zip'; link.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000); this.prepared = true;
+          }
         } catch (error) { this.error = error.message; }
         finally { this.busy = false; }
       }
@@ -59,7 +72,7 @@
         <template v-if="kind==='import'">
           <p>Importa la configuración y sus recursos. La identidad actual no cambiará hasta que apliques el preset.</p>
           <label class="appearance-drop" :class="{'is-dragging':dragging}" @dragover.prevent="dragging=true" @dragleave.prevent="dragging=false" @drop.prevent="drop" data-od-id="appearance-zip-drop"><strong>{{busy?'Leyendo el paquete…':'Arrastra aquí un archivo ZIP'}}</strong><span>o selecciona un paquete · Máximo 24 MB</span><input type="file" accept=".zip,application/zip" :disabled="busy" @change="read($event.target.files[0])"></label>
-          <template v-if="detected"><div class="appearance-package__detected"><strong>{{detected.preset.name}}</strong><span>Versión {{detected.preset.version}} · {{detected.resources.length}} recursos incluidos</span><ul><li v-for="r in detected.resources" :key="r.name">{{r.name}} <small>{{Math.ceil(r.size/1024)}} KB</small></li></ul></div>
+          <template v-if="detected"><div class="appearance-package__detected"><strong>{{detected.preset.name}}</strong><span>Versión {{detected.preset.version}} · {{detected.resources.length}} recursos incluidos</span><ul><li v-for="r in detected.resources" :key="r.name">{{r.name}} <small>{{Math.ceil(r.size/1024)}} KB</small></li></ul><p v-for="warning in (detected.warnings||[])" :key="warning" class="appearance-hint">{{warning}}</p></div>
           <div class="appearance-compare"><div><h3>Apariencia actual</h3><appearance-preview :preset="current" mode="light"></appearance-preview></div><div><h3>Preset importado</h3><appearance-preview :preset="detected.preset" mode="light"></appearance-preview></div></div>
           <fieldset v-if="collision" class="appearance-conflict"><legend>Ya existe un preset con este nombre</legend><label><input type="radio" v-model="policy" value="both"> Conservar ambos con un nombre distinto</label><label v-if="canReplace"><input type="radio" v-model="policy" value="replace"> Sustituir el preset guardado</label><p v-else>La identidad genérica original se conserva siempre.</p></fieldset></template>
         </template>
@@ -76,14 +89,37 @@
       dirty() { return JSON.stringify(this.draft) !== JSON.stringify(this.app.appearance.active); },
       valid() { try { E.validate(this.draft); return true; } catch (_) { return false; } },
       currentMode() { return this.app.themeMode; },
-      colors() { return this.draft.colors[this.editMode]; }
+      colors() { return this.draft.colors[this.editMode]; },
+      server() { return !!(this.app.authenticated && window.AssetAppearanceApi); },
+      appearanceError() { return this.server ? window.AssetAppearanceApi.lastError(this.app) : ''; },
+      appearanceLoading() { return this.server && window.AssetAppearanceApi.isLoading(this.app); },
+      builtinIds() { return this.app.appearance.builtinIds || ['generic']; }
     },
     methods: {
       select(preset) { this.draft = E.clone(preset); this.error = ''; this.notice = 'Vista previa seleccionada. Pulsa Aplicar para cambiar la identidad global.'; },
       discard() { this.draft = E.clone(this.app.appearance.active); this.error = ''; this.notice = 'Cambios sin aplicar descartados.'; },
-      apply() {
+      async apply() {
         try {
           E.validate(this.draft);
+          if (this.server) {
+            const stored = this.app.appearance.presets.find(p => p.id === this.draft.id);
+            let target = stored && JSON.stringify(stored) === JSON.stringify(this.draft) ? stored : null;
+            if (!target) {
+              const candidate = E.clone(this.draft);
+              if (candidate.id === 'generic' || this.builtinIds.includes(candidate.id)) {
+                delete candidate.id;
+                if (candidate.name === 'Asset Manager') candidate.name = 'Mi organización';
+              }
+              target = await window.AssetAppearanceApi.savePreset(this.app, candidate);
+              if (!target) return;
+            }
+            const active = await window.AssetAppearanceApi.applyPreset(this.app, target);
+            if (!active) return;
+            this.draft = E.clone(active);
+            this.app.applyAppearanceState(active);
+            this.notice = 'Identidad aplicada. Tu modo de apariencia se mantiene.'; this.error = '';
+            return;
+          }
           const generic = this.app.appearance.presets[0];
           if (this.draft.id === 'generic' && JSON.stringify(this.draft) !== JSON.stringify(generic)) {
             const p = E.clone(this.draft); p.name = p.name === generic.name ? 'Mi organización' : p.name; this.draft = E.savePreset(this.app.appearance, p, 'both');
@@ -94,15 +130,83 @@
           this.app.applyAppearance(this.draft); this.notice = 'Identidad aplicada. Tu modo de apariencia se mantiene.'; this.error = '';
         } catch (error) { this.error = error.message; }
       },
-      duplicate() { this.draft = E.duplicate(this.app.appearance, this.draft); this.notice = 'Copia guardada. Puedes editarla sin cambiar el preset original.'; },
-      save() {
-        try { E.validate(this.draft); const p = E.clone(this.draft); if (p.id === 'generic') p.name = 'Mi organización'; this.draft = E.savePreset(this.app.appearance, p, 'replace'); this.notice = 'Preset guardado en la galería de esta sesión. No se ha aplicado.'; }
-        catch (error) { this.error = error.message; }
+      async duplicate() {
+        if (this.server) {
+          try {
+            const copy = E.clone(this.draft);
+            copy.name = (copy.name || 'Preset') + ' · Copia';
+            delete copy.id;
+            const saved = await window.AssetAppearanceApi.savePreset(this.app, copy);
+            if (!saved) return;
+            this.draft = E.clone(saved);
+            this.notice = 'Copia guardada en la galería de la instalación. Puedes editarla sin cambiar el preset original.';
+            this.error = '';
+          } catch (error) { this.error = error.message; }
+          return;
+        }
+        this.draft = E.duplicate(this.app.appearance, this.draft); this.notice = 'Copia guardada. Puedes editarla sin cambiar el preset original.';
       },
-      restore() { this.restorePrompt = false; const generic = this.app.appearance.presets[0]; this.draft = E.clone(generic); this.app.applyAppearance(generic); this.notice = 'Se ha restaurado la identidad original de Asset Manager.'; },
-      previous() { if (!this.app.appearance.previous) return; const p = E.clone(this.app.appearance.previous); this.draft = p; this.app.applyAppearance(p); this.notice = 'Se ha recuperado la apariencia anterior.'; },
-      setMode(mode) { this.app.setAppearanceMode(mode); },
-      imported(result) { try { this.draft = E.savePreset(this.app.appearance, result.preset, result.policy); this.packageKind = ''; this.notice = 'Preset importado. Revisa el resultado antes de pulsar Aplicar.'; } catch (error) { this.error = error.message; } },
+      async save() {
+        try {
+          E.validate(this.draft);
+          if (this.server) {
+            const candidate = E.clone(this.draft);
+            if (candidate.id === 'generic' || this.builtinIds.includes(candidate.id)) {
+              delete candidate.id;
+              if (candidate.name === 'Asset Manager') candidate.name = 'Mi organización';
+            }
+            const saved = await window.AssetAppearanceApi.savePreset(this.app, candidate);
+            if (!saved) return;
+            this.draft = E.clone(saved);
+            this.notice = 'Preset guardado en la galería de la instalación. No se ha aplicado.';
+            this.error = '';
+            return;
+          }
+          const p = E.clone(this.draft); if (p.id === 'generic') p.name = 'Mi organización'; this.draft = E.savePreset(this.app.appearance, p, 'replace'); this.notice = 'Preset guardado en la galería de esta sesión. No se ha aplicado.';
+        } catch (error) { this.error = error.message; }
+      },
+      async restore() {
+        this.restorePrompt = false;
+        if (this.server) {
+          try {
+            const active = await window.AssetAppearanceApi.restore(this.app);
+            if (!active) return;
+            this.draft = E.clone(active);
+            this.app.applyAppearanceState(active);
+            this.notice = 'Se ha restaurado la identidad original de Asset Manager.'; this.error = '';
+          } catch (error) { this.error = error.message; }
+          return;
+        }
+        const generic = this.app.appearance.presets[0]; this.draft = E.clone(generic); this.app.applyAppearance(generic); this.notice = 'Se ha restaurado la identidad original de Asset Manager.';
+      },
+      async previous() {
+        if (this.server) {
+          try {
+            const active = await window.AssetAppearanceApi.revert(this.app);
+            if (!active) return;
+            this.draft = E.clone(active);
+            this.app.applyAppearanceState(active);
+            this.notice = 'Se ha recuperado la apariencia anterior.'; this.error = '';
+          } catch (error) { this.error = error.message; }
+          return;
+        }
+        if (!this.app.appearance.previous) return;
+        const p = E.clone(this.app.appearance.previous); this.draft = p; this.app.applyAppearance(p); this.notice = 'Se ha recuperado la apariencia anterior.';
+      },
+      setMode(mode) { return this.app.setAppearanceMode(mode); },
+      async imported(result) {
+        if (this.server) {
+          try {
+            const staged = await window.AssetAppearanceApi.stageImport(this.app, result.preset, result.policy);
+            if (!staged) return;
+            this.draft = E.clone(staged);
+            this.packageKind = '';
+            this.notice = 'Preset importado y guardado. Revisa el resultado antes de pulsar Aplicar.'; this.error = '';
+          } catch (error) { this.error = error.message; }
+          return;
+        }
+        try { this.draft = E.savePreset(this.app.appearance, result.preset, result.policy); this.packageKind = ''; this.notice = 'Preset importado. Revisa el resultado antes de pulsar Aplicar.'; } catch (error) { this.error = error.message; }
+      },
       async resource(event, key) {
         const file = event.target.files[0]; if (!file) return;
         if (!['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'].includes(file.type)) { this.error = 'Selecciona una imagen SVG, PNG, JPEG, WebP o ICO.'; return; }
@@ -114,7 +218,8 @@
     template: `<section class="config-section appearance" data-od-id="appearance-settings">
       <header class="config-section__head"><div><span class="eyebrow">Configuración</span><h2 data-od-id="appearance-heading">Apariencia</h2><p>Logotipos, colores y tipografía de la organización.</p></div><div class="appearance-tools"><button class="btn btn--secondary" @click="packageKind='import'" data-od-id="appearance-import">Importar ZIP</button><button class="btn btn--secondary" @click="packageKind='export'" data-od-id="appearance-export">Exportar</button></div></header>
       <div class="appearance-mode" data-od-id="appearance-user-mode"><div><h3>Tu modo de apariencia</h3><p>Solo cambia para tu usuario. La identidad de la organización es compartida.</p></div><div class="appearance-segments" aria-label="Modo de apariencia"><button v-for="m in [{id:'light',label:'Claro'},{id:'dark',label:'Oscuro'},{id:'system',label:'Automático'}]" :key="m.id" :aria-pressed="currentMode===m.id" :class="{'is-active':currentMode===m.id}" @click="setMode(m.id)">{{m.label}}</button></div></div>
-      <div class="appearance-section-title"><div><h3>Presets de identidad</h3><p>Selecciona un preset para previsualizarlo.</p></div><span class="appearance-session">Galería de esta sesión</span></div>
+      <div class="appearance-section-title"><div><h3>Presets de identidad</h3><p>Selecciona un preset para previsualizarlo.</p></div><span class="appearance-session">{{appearanceLoading?'Sincronizando galería…':'Galería de la instalación'}}</span></div>
+      <p v-if="appearanceError" class="appearance-error" role="alert">{{appearanceError}}</p>
       <div class="appearance-gallery" data-od-id="appearance-gallery"><button v-for="p in app.appearance.presets" :key="p.id" class="appearance-preset" :class="{'is-selected':draft.id===p.id}" :aria-pressed="draft.id===p.id" :data-od-id="'appearance-preset-'+p.id" @click="select(p)"><div class="appearance-preset__sample" :style="{'--sample-primary':p.colors.light.primary,'--sample-secondary':p.colors.light.secondary}"><span class="appearance-preset__rail"></span><div><i></i><div><b></b><b></b><b></b></div><em></em></div></div><div class="appearance-preset__label"><strong>{{p.name}}</strong><span v-if="app.appearance.active.id===p.id" class="appearance-active">Activo</span></div><small>{{p.description||'Identidad personalizada'}}</small></button></div>
       <div class="appearance-workspace">
         <div class="appearance-editor" data-od-id="appearance-identity-editor"><div class="appearance-section-title"><h3>Identidad de la organización</h3><button class="btn btn--ghost" @click="duplicate" data-od-id="appearance-duplicate">Duplicar</button></div>
@@ -136,7 +241,7 @@
       <footer class="appearance-apply" data-od-id="appearance-apply-bar"><div><strong>{{dirty?'Hay cambios sin aplicar':'Apariencia actualizada'}}</strong><span>{{dirty?'Solo los ves en esta vista previa.':'La identidad genérica siempre estará disponible.'}}</span></div><div><button class="btn btn--ghost" :disabled="!dirty" @click="discard" data-od-id="appearance-discard">Descartar</button><button class="btn btn--primary" :disabled="!dirty||!valid" @click="apply" data-od-id="appearance-apply">Aplicar apariencia</button></div></footer>
       <div class="appearance-restore"><div><h3>Volver a lo conocido</h3><p>Restaura el diseño genérico sin eliminar tus presets guardados.</p></div><button class="btn btn--secondary" @click="restorePrompt=true" data-od-id="appearance-restore">Restaurar original</button><button v-if="app.appearance.previous" class="appearance-text-button" @click="previous">Apariencia anterior</button></div>
       <div v-if="restorePrompt" class="appearance-confirm" role="group" aria-label="Confirmar restauración"><p>¿Restaurar la identidad original de Asset Manager? Tus presets se conservarán.</p><button class="btn btn--secondary" @click="restorePrompt=false">Cancelar</button><button class="btn btn--secondary" @click="restore">Sí, restaurar</button></div>
-      <appearance-package-dialog v-if="packageKind" :open="true" :kind="packageKind" :presets="app.appearance.presets" :active="app.appearance.active" :current="app.appearance.active" @close="packageKind=''" @imported="imported"></appearance-package-dialog>
+      <appearance-package-dialog v-if="packageKind" :open="true" :kind="packageKind" :presets="app.appearance.presets" :active="app.appearance.active" :current="app.appearance.active" :app="app" @close="packageKind=''" @imported="imported"></appearance-package-dialog>
     </section>`
   };
   window.AssetAppearanceViews = { AppearanceSettings, AppearancePreview, AppearancePackageDialog };

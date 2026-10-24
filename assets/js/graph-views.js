@@ -82,13 +82,13 @@
         return Array.isArray(list) ? list : [];
       },
       categories() {
-        return Array.isArray(this.app.categories) ? this.app.categories : [];
+        return Array.isArray(this.source.categories) ? this.source.categories : [];
       },
       sites() {
-        return Array.isArray(this.app.sites) ? this.app.sites : [];
+        return Array.isArray(this.source.sites) ? this.source.sites : [];
       },
       types() {
-        return this.app.relations && Array.isArray(this.app.relations.types) ? this.app.relations.types : [];
+        return this.source.relations && Array.isArray(this.source.relations.types) ? this.source.relations.types : [];
       },
       activeFocusId() {
         return this.focusId || '';
@@ -206,10 +206,10 @@
         return Math.round(this.view.k * 100) + '%';
       },
       selectedAsset() {
-        return this.selectedId ? Engine.assetById(this.app, this.selectedId) : null;
+        return this.selectedId ? Engine.assetById(this.source, this.selectedId) : null;
       },
       selectedRows() {
-        return this.selectedAsset ? Engine.rowsFor(this.app, this.selectedAsset.id) : [];
+        return this.selectedAsset ? Engine.rowsFor(this.source, this.selectedAsset.id) : [];
       },
       selectedHidden() {
         return this.selectedAsset ? this.hiddenIds.filter((id) => this.neighbourIds(this.selectedAsset.id).indexOf(id) !== -1) : [];
@@ -231,7 +231,7 @@
         };
       },
       totalRelations() {
-        return Engine.counts(this.app);
+        return Engine.counts(this.source);
       },
       hasFilters() {
         return !!(this.filters.categories.length || this.filters.sites.length || this.filters.types.length
@@ -284,7 +284,7 @@
     watch: {
       focusId(value) {
         if (value) {
-          this.selectedId = Engine.assetById(this.app, value) ? value : '';
+          this.selectedId = Engine.assetById(this.source, value) ? value : '';
           this.hiddenIds = [];
           this.$nextTick(() => {
             this.measure();
@@ -329,7 +329,7 @@
       'app.explorerSelection'(value) {
         const next = value || '';
         if (next === this.selectedId) return;
-        if (next && !Engine.assetById(this.app, next)) return;
+        if (next && !Engine.assetById(this.source, next)) return;
         this.selectedId = next;
       },
       'app.explorerFilters': {
@@ -342,6 +342,10 @@
           if (!sameList(value.locations, this.filters.locations)) this.filters.locations = (value.locations || []).slice();
           if ((value.search || '') !== this.filters.search) this.filters.search = value.search || '';
         }
+      },
+      baseData() {
+        if (this.activeFocusId && this.focusAsset) this.selectedId = this.activeFocusId;
+        this.rebuild(true);
       },
       'app.relations.links.length'() {
         this.rebuild(true);
@@ -606,10 +610,10 @@
       selectNode(id, options) {
         if (!id) return;
         this.selectedId = id;
-        const asset = Engine.assetById(this.app, id);
+        const asset = Engine.assetById(this.source, id);
         const options2 = options || {};
         this.announce = asset
-          ? asset.name + ', ' + RelationsData.categoryLabel(asset.category) + ', ' + Engine.rowsFor(this.app, id).length + ' relaciones.'
+          ? asset.name + ', ' + RelationsData.categoryLabel(asset.category) + ', ' + Engine.rowsFor(this.source, id).length + ' relaciones.'
           : '';
         if (options2.center) this.centerOn(id);
       },
@@ -624,13 +628,13 @@
         this.announce = 'Vista global del grafo.';
       },
       openAsset(id) {
-        const asset = Engine.assetById(this.app, id);
+        const asset = Engine.assetById(this.source, id);
         if (asset) this.app.openAsset(asset);
       },
       expandNode(id) {
         const hiddenNeighbours = this.hiddenIds.filter((item) => this.neighbourIds(id).indexOf(item) !== -1);
         if (!hiddenNeighbours.length) {
-          this.announce = 'No hay relaciones contraídas en ' + (this.shortName(Engine.assetById(this.app, id) || { name: 'este activo' })) + '.';
+          this.announce = 'No hay relaciones contraídas en ' + (this.shortName(Engine.assetById(this.source, id) || { name: 'este activo' })) + '.';
           return;
         }
         this.hiddenIds = this.hiddenIds.filter((item) => hiddenNeighbours.indexOf(item) === -1);
@@ -638,7 +642,7 @@
         this.rebuild(false);
       },
       collapseNode(id) {
-        const asset = Engine.assetById(this.app, id);
+        const asset = Engine.assetById(this.source, id);
         if (!asset) return;
         const visible = this.visibleNodeIds;
         const leaves = this.neighbourIds(id).filter((neighbour) => {

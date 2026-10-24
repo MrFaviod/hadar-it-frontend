@@ -131,29 +131,6 @@
         (this.remoteEnabled('rmm') && asset.rmmAgentId ? 1 : 0);
     },
 
-    saveGeneral() {
-      const organizationName = this.generalDraft.organizationName.trim();
-      const appName = this.generalDraft.appName.trim();
-      const logo = (this.generalDraft.logo || '').trim() || 'assets/svg/logo.svg';
-      const errors = { organizationName: '', appName: '', logo: '', general: '' };
-
-      if (!organizationName) errors.organizationName = 'Introduce el nombre de la organización.';
-      if (!appName) errors.appName = 'Introduce el nombre de la aplicación.';
-      this.generalErrors = errors;
-      if (errors.organizationName || errors.appName) return;
-
-      this.config.general = { organizationName, appName, logo };
-      if (!this.persistConfig()) return;
-      this.generalDraft = Store.clone(this.config.general);
-      this.updateDocumentTitle();
-      this.showToast('Identidad de la aplicación actualizada.');
-    },
-
-    resetGeneral() {
-      this.generalDraft = Store.clone(window.ASSET_DATA.defaultGeneral);
-      this.generalErrors = { organizationName: '', appName: '', logo: '', general: '' };
-      this.showToast('Valores predeterminados restaurados. Guarda para aplicarlos.');
-    },
 
     readImageFile(file, onLoad, onError) {
       if (!file) return;
@@ -171,16 +148,6 @@
       reader.readAsDataURL(file);
     },
 
-    handleLogoUpload(event) {
-      const file = event.target.files && event.target.files[0];
-      this.readImageFile(file, (dataUrl) => {
-        this.generalDraft.logo = dataUrl;
-        this.generalErrors.logo = '';
-      }, (message) => {
-        this.generalErrors.logo = message;
-      });
-      event.target.value = '';
-    },
 
     handleCategoryImageUpload(event) {
       const file = event.target.files && event.target.files[0];
@@ -550,7 +517,7 @@
       }
     },
 
-    saveIntegrations() {
+    async saveIntegrations() {
       const errors = { anydesk: '', rmm: '', general: '' };
       const next = {};
       this.integrationDefinitions.forEach((definition) => {
@@ -565,9 +532,14 @@
       });
       this.integrationErrors = errors;
       if (errors.anydesk || errors.rmm) return;
-
-      this.config.integrations = next;
-      if (!this.persistConfig()) return;
+      const result = await this.saveArtifactIntegrations({
+        anydeskEnabled: next.anydesk.enabled, anydeskUrl: next.anydesk.url,
+        rmmEnabled: next.rmm.enabled, rmmUrl: next.rmm.url
+      });
+      if (!result || !result.ok) {
+        this.integrationErrors.general = result && result.error || 'No se pudieron guardar las integraciones.';
+        return;
+      }
       this.integrationDraft = Store.clone(this.config.integrations);
       this.showToast('Integraciones actualizadas.');
     }

@@ -147,7 +147,9 @@ test('the map explorer renders the server map and toggles only local display pre
   assert.deepEqual(engineMaps.sites.map((site) => site.label), ['Sede Central'], 'the engine map input keeps server sites only');
   assert.equal(engineMaps.buildings.length, 1, 'the engine map input keeps the server building');
   assert.equal(engineMaps.floors.length, 1, 'the engine map input keeps the server floor');
-  assert.deepEqual(Object.keys(engineMaps).sort(), ['buildings', 'floors', 'geo', 'plans', 'positions', 'prefs', 'rooms', 'serverMap', 'sites'], 'the composed map model is the server model plus preferences only');
+  assert.deepEqual(Object.keys(engineMaps.positions), [ASSET_ID], 'the engine map input keeps the server asset placement');
+  assert.equal(engineMaps.positions[ASSET_ID].floor, FLOOR_ID, 'the placement keeps its canonical floor');
+  assert.equal(engineMaps.locationIndex[FLOOR_ID].id, FLOOR_ID, 'the engine map input keeps the canonical location index');
 
   // The preference object is replaced by Engine.setPrefs; the render must follow.
   c.AssetMapEngine.setPrefs(app, { base: 'esquema' });

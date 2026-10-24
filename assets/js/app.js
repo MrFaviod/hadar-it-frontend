@@ -81,10 +81,11 @@
   const initial = Store.initialState();
 
   const app = window.Vue.createApp({
-    mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }],
+    mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }, window.AssetPhase10],
     components: {
       AppIcon: window.AppIcon,
       SearchPalette: window.AssetSearchViews.SearchPalette,
+      SearchSettings: window.AssetSearchViews.SearchSettings,
       WorkspaceShortcuts: window.AssetWorkspaceViews.WorkspaceShortcuts,
       QuickIntervention: window.AssetMaintDialogs.InterventionDialog,
       QuickIncident: window.AssetMaintDialogs.IncidentDialog,
@@ -296,8 +297,6 @@
         loginErrors: { username: '', password: '', general: '' },
         loginBusy: false,
         showPassword: false,
-        generalDraft: Store.clone(initial.config.general),
-        generalErrors: { organizationName: '', appName: '', logo: '', general: '' },
         integrationDraft: Store.clone(initial.config.integrations),
         integrationErrors: { anydesk: '', rmm: '', general: '' },
         personDialog: {
@@ -545,7 +544,7 @@
       }
     }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
+      activeUserId() { this.changeAppearanceUser(); this.phase10IdentityChanged(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -609,6 +608,7 @@
         handler(next,previous) {
           this.updateDocumentTitle();
           this.handleWorkspaceRoute(next,previous);
+          this.handlePhase10Route(next);
           this.handleInventoryRoute(next,previous);
           this.handleOrganizationRoute(next,previous);
           this.handleRedundancyRoute(next,previous);
@@ -624,6 +624,7 @@
       },
       authenticated(value) {
         if (!value) {
+          this.phase10Clear();
           this.clearInventoryState();
           this.clearOrganizationState();
           this.clearRedundancyState();
@@ -643,6 +644,8 @@
     created() {
       window.AssetAccess.start(this);
       this.changeAppearanceUser();
+      this.startAppearance();
+      this.phase10Start();
       const parsed = this.parseRoute();
       let next = parsed;
       if (!this.authenticated && parsed.name === 'reportAsset' && parsed.section === 'publico' && parsed.shareToken) {
@@ -652,7 +655,7 @@
       } else if (!this.authenticated) {
         next = { name: 'login', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'login') {
-        next = { name: 'inventory', assetId: null, personId: null, section: null };
+        next = { name: 'panel', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'detail' && !this.assetExists(parsed.assetId)) {
         next = { name: 'inventory', assetId: null, personId: null, section: null };
       } else if (parsed.name === 'person' && !this.serverOrganizationMode && !this.people.some((person) => person.id === parsed.personId)) {
@@ -671,6 +674,8 @@
       }
     },
     beforeUnmount() {
+      this.phase10Stop();
+      this.stopAppearance();
       this.clearInventoryState();
       this.clearOrganizationState();
       this.clearRedundancyState();

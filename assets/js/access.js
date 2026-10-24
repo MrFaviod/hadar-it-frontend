@@ -306,9 +306,6 @@
     saveSecurityPreferences(minutes) { return save(this, '/identity/settings', 'PUT', { sessionMinutes: Number(minutes) }, 'sessions.manage'); }
   };
   const wrapperPermissions = {
-    saveGeneral: () => 'config.general',
-    resetGeneral: () => 'config.general',
-    handleLogoUpload: () => 'config.general',
     saveCategory: () => 'config.categories',
     handleCategoryImageUpload: () => 'config.categories',
     applyImagePreset: () => 'config.categories',
