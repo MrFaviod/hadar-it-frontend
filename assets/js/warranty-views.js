@@ -566,6 +566,11 @@
         if (!this.app.phase6CanView) return false;
         return this.app.loadWarranties({ coverage: this.filter, offset: this.items.length, limit: 50 });
       },
+      async saveEditor(next) {
+        const saved = await warrantyFormMixin.methods.saveEditor.call(this, next);
+        if (saved) await this.reload();
+        return saved;
+      },
       openEditor(row) {
         this.editRow = row;
         return this.startEdit();

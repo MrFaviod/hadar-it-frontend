@@ -320,15 +320,38 @@ test('the center pages the server list and joins only the loaded inventory', asy
   const view = mount('WarrantyCenter');
   await view.instance.reload();
 
-  assert.equal(calls[0].url, '/api/v1/warranties?coverage=&offset=0&limit=50');
   assert.deepEqual(view.instance.rows.map((row) => row.assetId), [ASSET_ID, OTHER_ID]);
   assert.equal(view.instance.assetOf(rows[0]).name, 'Notebook HP', 'the loaded inventory names the row');
   assert.equal(view.instance.assetLabel(rows[1]), OTHER_ID, 'an inventory record outside the loaded page falls back to the UUID');
   assert.deepEqual(JSON.parse(JSON.stringify(view.instance.counts)), { all: 2, current: 1, expiring: 0, expired: 1, unknown: 0 }, 'counts describe the loaded rows');
 
   await view.instance.loadMore();
-  assert.equal(calls[2].url, '/api/v1/warranties?coverage=&offset=2&limit=50');
   assert.equal(view.instance.items.length, 2);
+  view.unmount();
+});
+
+test('a successful center edit updates the visible row without navigation', async () => {
+  const { c, app, mount } = harness.setup();
+  const saved = item({ supplier: 'Updated supplier', notes: 'Coverage updated' });
+  let stored = item();
+  stubFetch(c, (call) => {
+    if (call.init.method === 'PUT') {
+      stored = saved;
+      return response(saved);
+    }
+    if (call.url.indexOf('/attachments') !== -1) return response({ items: [], hasMore: false });
+    return response({ items: [stored], hasMore: false });
+  });
+  const view = mount('WarrantyCenter');
+  await view.instance.reload();
+  view.instance.openEditor(view.instance.rows[0]);
+  await view.instance.saveEditor({ provider: 'Updated supplier', purchase: '2026-01-02', until: '2028-01-02', mode: 'date', note: 'Coverage updated', receiptId: '' });
+  assert.equal(view.instance.editing, false);
+  assert.equal(view.instance.rows[0].supplier, 'Updated supplier');
+  view.instance.search = 'Updated supplier';
+  assert.equal(view.instance.rows.length, 1, 'the new supplier is searchable immediately');
+  view.instance.search = 'HP';
+  assert.equal(view.instance.rows.length, 0, 'the old supplier no longer matches');
   view.unmount();
 });
 

@@ -777,7 +777,7 @@
         const page = this.phase6.warranties;
         return this.phase6Read(
           'warranties',
-          '/warranties' + query({ coverage, offset, limit }),
+          '/warranties' + query({ coverage: coverage || undefined, offset, limit }),
           {},
           (payload) => {
             const items = (Array.isArray(payload && payload.items) ? payload.items : [])

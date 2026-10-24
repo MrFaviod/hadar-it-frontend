@@ -334,7 +334,7 @@
                  :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
                 <app-icon name="user"></app-icon>
                 <span>Personas</span>
-                <span class="nav-link__count">{{ people.length }}</span>
+                <span v-if="organization.peopleTotals.loaded" class="nav-link__count">{{ organization.peopleTotals.total }}</span>
               </a>
               <a v-if="can('users.view')" class="nav-link" href="#/usuarios" :class="{ 'is-active': route.name === 'users' || route.name === 'user' }" :aria-current="route.name === 'users' || route.name === 'user' ? 'page' : null" @click="closeSidebar">
                 <app-icon name="user"></app-icon><span>Usuarios</span><span class="nav-link__count">{{ security.users.length }}</span>
@@ -785,7 +785,7 @@
                   <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset + organization.people.limit >= organization.people.total || organization.people.loading" @click="nextOrganizationPeoplePage">Siguientes</button>
                 </nav>
 
-                <div v-else class="empty-state">
+                <div v-if="!filteredPeople.length && (!serverOrganizationMode || (organization.people.loaded && !organization.people.loading && !organization.people.error))" class="empty-state">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
                   <h2>No hay personas con estos filtros</h2>
                   <p>Ajusta la búsqueda o crea una persona nueva.</p>
