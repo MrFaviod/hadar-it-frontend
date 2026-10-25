@@ -1291,6 +1291,28 @@
       customCount() {
         return Data.profiles('import').filter((profile) => !profile.builtin).length
           + Data.profiles('export').filter((profile) => !profile.builtin).length;
+      },
+      /* The workspace header counts the canonical inventory read, never the
+       * prototype catalogue. Loading, errors and missing permission show a
+       * concise state instead of a stale or demo total; a genuine empty
+       * inventory renders 0 activos, and only a completed count can carry the
+       * filtered-scope label. */
+      inventoryCountState() {
+        const app = this.app || {};
+        if (typeof app.inventoryAvailable !== 'function' || !app.inventoryAvailable()) return 'hidden';
+        const inventory = app.inventory || {};
+        if (inventory.loading) return 'loading';
+        if (inventory.error) return 'error';
+        if (!inventory.loaded) return 'hidden';
+        return 'ready';
+      },
+      inventoryCountLabel() {
+        const state = this.inventoryCountState;
+        if (state === 'loading') return 'Cargando inventario…';
+        if (state === 'error') return 'Inventario no disponible';
+        if (state !== 'ready') return '';
+        const total = Number(this.app.inventory.total) || 0;
+        return total === 1 ? '1 activo' : total + ' activos';
       }
     },
     methods: {
@@ -1308,7 +1330,8 @@
           </div>
           <div class="page-head__side">
             <div class="page-head__meta" aria-label="Resumen del módulo">
-              <span class="mono">{{ app.assets.length }} activos</span>
+              <span v-if="inventoryCountLabel" class="mono">{{ inventoryCountLabel }}</span>
+              <span v-if="inventoryCountState === 'ready' && app.inventoryFiltersActive">inventario filtrado</span>
               <span>{{ profileCount }} perfiles · {{ customCount }} propios</span>
             </div>
           </div>

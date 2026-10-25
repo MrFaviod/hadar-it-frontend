@@ -829,6 +829,16 @@
           if (!this.inventory.loaded) tasks.push(this.loadInventory());
           return Promise.all(tasks);
         }
+        if (next && next.name === 'datos') {
+          // The Data workspace header reports the canonical inventory total, so
+          // every entry re-reads the same state the inventory screen uses. The
+          // retained filters stay untouched and the read is not followed by the
+          // non-inventory abort fallthrough below, which would cancel it.
+          this.abortInventoryDetail();
+          this.abortInventoryHistory();
+          this.inventoryHistory = createHistory();
+          return this.loadInventory();
+        }
         if (next && next.name === 'detail' && next.assetId) {
           const tasks = [];
           if (!this.inventoryCatalog.loaded) tasks.push(this.loadInventoryCatalog());
