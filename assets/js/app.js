@@ -116,6 +116,7 @@
       AgentInstallationsPanel: window.AssetAgentViews.AgentInstallationsPanel,
       AgentIntegrationWizard: window.AssetAgentViews.AgentIntegrationWizard,
       AgentIntegrationsSettings: window.AssetAgentViews.AgentIntegrationsSettings,
+      AgentProvidersPanel: window.AssetAgentViews.AgentProvidersPanel,
       SystemOperations: window.AssetSystemViews.SystemOperations,
       AssetFieldsPanel: window.AssetConfigViews.AssetFieldsPanel,
       AssetFormsPanel: window.AssetConfigViews.AssetFormsPanel,

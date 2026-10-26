@@ -264,6 +264,146 @@
   min-height: 44px;
 }
 
+.conversation[hidden] {
+  display: none;
+}
+
+.conversation-host--full {
+  max-width: 880px;
+}
+
+.conversation-opener {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 35;
+  min-height: 44px;
+  box-shadow: var(--shadow-md);
+}
+
+.conversation__body {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.conversation__window-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.conversation__window-actions .btn,
+.conversation__window-actions .icon-button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.conversation--compact {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(76px, calc(env(safe-area-inset-bottom) + 60px));
+  z-index: 45;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  box-sizing: border-box;
+  width: min(400px, calc(100% - 32px));
+  max-height: min(720px, calc(100vh - 96px));
+  max-height: min(720px, calc(100dvh - 96px));
+  gap: 0;
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.conversation--compact .conversation__head {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.conversation--compact .conversation__head .eyebrow {
+  display: none;
+}
+
+.conversation--compact .conversation__head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.conversation--compact .conversation__window-actions {
+  margin-left: auto;
+}
+
+.conversation--compact .conversation__body {
+  min-height: 0;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.conversation--compact .conversation__engine {
+  gap: 6px;
+}
+
+.conversation--compact .conversation__tags,
+.conversation--compact .conversation__engine > .conversation__usage,
+.conversation--compact .conversation__engine > .conversation__help:not([role]),
+.conversation--compact .conversation__engine-head .conversation__heading {
+  display: none;
+}
+
+.conversation--compact .conversation__engine-head:empty {
+  display: none;
+}
+
+.conversation--compact .conversation__label {
+  font-size: 13px;
+}
+
+.conversation--compact .conversation__body {
+  gap: 10px;
+}
+
+.conversation--compact .conversation__engine,
+.conversation--compact .conversation__log {
+  padding: 12px;
+}
+
+.conversation--compact .conversation__engine-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.conversation--compact .conversation__form {
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+
+.conversation--compact .conversation__form textarea {
+  max-height: 120px;
+}
+
+@media (max-width: 480px) {
+  .conversation--compact {
+    right: max(8px, env(safe-area-inset-right));
+    left: max(8px, env(safe-area-inset-left));
+    width: auto;
+  }
+
+  .conversation__head {
+    flex-wrap: wrap;
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .conversation__turn {
     transition: opacity var(--dur-fast) var(--ease-out);

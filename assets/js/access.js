@@ -48,6 +48,14 @@
       ]
     },
     {
+      id: 'agents',
+      label: 'Inteligencia artificial',
+      icon: 'layers',
+      permissions: [
+        { id: 'agents.providers.personal', label: 'Administrar proveedores propios' }
+      ]
+    },
+    {
       // Installation ownership: these grants are reserved for the human
       // Superadmin and never imply business administration.
       id: 'system',

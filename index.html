@@ -430,6 +430,7 @@
             <div v-if="workspaceChips.length" class="universal-filter-strip__chips" aria-label="Filtros seleccionados"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="'Quitar filtro: '+chip.label" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">Restablecer filtros</button></div>
           </section>
 
+          <asset-conversation v-if="authenticated && can('assets.view')" :key="activeUserId" :app="$root"></asset-conversation>
           <transition name="page" mode="out-in">
             <div class="page-host" :key="route.name + ':' + (route.assetId || '') + ':' + (route.personId || '') + ':' + (route.userId || '') + ':' + (route.name === 'datos' ? '' : (route.section || ''))">
               <!-- Inventario -->
@@ -643,9 +644,7 @@
               </section>
 
               <!-- Conversación -->
-              <section v-else-if="route.name === 'conversation'" class="page conversation-page" aria-labelledby="conversation-title">
-                <asset-conversation :app="$root"></asset-conversation>
-              </section>
+              <template v-else-if="route.name === 'conversation'"></template>
 
               <!-- Personas -->
               <section v-else-if="route.name === 'people'" class="page people-page" aria-labelledby="people-title">

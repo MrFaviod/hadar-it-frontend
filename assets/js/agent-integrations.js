@@ -190,6 +190,18 @@
     savePreference(vm, body, options) {
       return window.AssetAccess.request(vm, '/agent/preferences', Object.assign({ method: 'PUT', body }, options || {}));
     },
+    listSessions(vm, options) {
+      return window.AssetAccess.request(vm, '/agent/sessions', options || {});
+    },
+    providers(vm, options) {
+      return window.AssetAccess.request(vm, '/agent/providers', options || {});
+    },
+    saveProvider(vm, id, body, options) {
+      return window.AssetAccess.request(vm, '/agent/providers' + (id ? '/' + encodeURIComponent(id) : ''), Object.assign({ method: id ? 'PATCH' : 'POST', body }, options || {}));
+    },
+    deleteProvider(vm, id, options) {
+      return window.AssetAccess.request(vm, '/agent/providers/' + encodeURIComponent(id), Object.assign({ method: 'DELETE' }, options || {}));
+    },
     createSession(vm, body, options) {
       return window.AssetAccess.request(vm, '/agent/sessions', Object.assign({ method: 'POST', body }, options || {}));
     },
@@ -307,6 +319,7 @@
       }
     },
     methods: {
+      agentDefaultModel(instance) { return defaultModelFor(instance); },
       agentModelLabel(model) {
         return modelLabel(model);
       },
@@ -321,9 +334,9 @@
         return text(identity.name, text(identity.username, identity.id));
       },
       isCurrentAgentEpoch(epoch) {
-        return epoch === this.agentEpoch && this.disposed !== true;
+        return epoch === this.agentEpoch && this.disposed !== true && this.app.authenticated !== false;
       },
-      applyAgentEngines(payload) {
+      applyAgentEngines(payload, options) {
         const instances = payload && Array.isArray(payload.instances)
           ? payload.instances.filter(instance => instance && typeof instance.id === 'string' && instance.id)
           : [];
@@ -334,6 +347,15 @@
         this.agentEnginesLoaded = true;
         this.agentEnginesAvailable = true;
         this.agentEnginesError = '';
+        if (options && options.preserveSelection) {
+          const selection = options.preserveSelection;
+          this.agentPreference = { instanceId: text(selection.instanceId), model: text(selection.model) };
+          this.agentPreferenceSaved = saved;
+          const instance = instances.find(item => item.id === selection.instanceId && item.enabled !== false);
+          const available = instance && Array.isArray(instance.models) && instance.models.some(item => item.id === selection.model);
+          this.agentSelectionNotice = available ? '' : 'El motor o el modelo de esta conversación ya no está disponible. Elige otro motor o modelo para continuar.';
+          return;
+        }
 
         const selectable = instances.filter(instance => instance.enabled !== false);
         let instance = selectable.find(item => item.id === saved.instanceId) || null;
@@ -381,7 +403,7 @@
           this.agentEnginesAvailable = !(error && error.status === 404);
           this.agentEnginesError = error && error.status === 404
             ? ''
-            : (error && error.message) || 'No se pudieron consultar los motores del servidor.';
+            : (error && (error.serverMessage || error.message)) || 'No se pudieron consultar los motores del servidor.';
           return false;
         } finally {
           if (this.isCurrentAgentEpoch(epoch)) this.agentEnginesLoading = false;
@@ -393,15 +415,17 @@
         if (samePreference(this.agentPreferenceSaved, target)) return true;
         const token = this.agentPreferenceEpoch + 1;
         this.agentPreferenceEpoch = token;
+        const userId = this.app.activeUserId;
+        const epoch = this.agentEpoch;
         try {
           await api.savePreference(this.app, target);
-          if (token !== this.agentPreferenceEpoch) return false;
+          if (token !== this.agentPreferenceEpoch || userId !== this.app.activeUserId || !this.isCurrentAgentEpoch(epoch)) return false;
           this.agentPreferenceSaved = Object.assign({}, target);
           return true;
         } catch (error) {
-          if (token !== this.agentPreferenceEpoch) return false;
+          if (token !== this.agentPreferenceEpoch || userId !== this.app.activeUserId || !this.isCurrentAgentEpoch(epoch)) return false;
           if (error && error.name === 'AbortError') return false;
-          this.agentSelectionNotice = (error && error.message) || 'No se pudo guardar la preferencia en el servidor.';
+          this.agentSelectionNotice = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la preferencia en el servidor.';
           return false;
         }
       },
@@ -446,6 +470,22 @@
     },
     data() {
       return { disposed: false };
+    },
+    watch: {
+      'app.activeUserId': {
+        flush: 'sync',
+        handler() {
+          this.agentEpoch += 1;
+          this.agentPreferenceEpoch += 1;
+          this.agentEngines = [];
+          this.agentPreference = { instanceId: '', model: '' };
+          this.agentPreferenceSaved = { instanceId: '', model: '' };
+          this.agentBudget = null;
+          this.agentEnginesError = '';
+          this.agentSelectionNotice = '';
+          if (this.app.authenticated) void this.loadAgentEngines();
+        }
+      }
     },
     created() {
       void this.loadAgentEngines();
@@ -1376,6 +1416,195 @@
     `
   };
 
+  const providersPanel = {
+    name: 'AgentProvidersPanel',
+    props: { app: { type: Object, required: true } },
+    emits: ['changed'],
+    data() {
+      return {
+        items: [], canManageGlobal: false, canManagePersonal: false,
+        credentialStorageAvailable: false, loading: false, busy: false,
+        error: '', notice: '', draft: null, pendingDeleteId: '',
+        epoch: 0, disposed: false, controller: null
+      };
+    },
+    computed: {
+      globalAllowed() { return this.canManageGlobal && !!(this.app.can && this.app.can(ADMIN_PERMISSION)); },
+      personalAllowed() { return this.canManagePersonal && !!(this.app.can && this.app.can('agents.providers.personal')); }
+    },
+    watch: {
+      'app.activeUserId': { flush: 'sync', handler() { this.resetProviders(); if (this.app.authenticated) void this.loadProviders(); } },
+      'app.authenticated': { flush: 'sync', handler(value) { this.resetProviders(); if (value) void this.loadProviders(); } }
+    },
+    created() { if (this.app.authenticated) void this.loadProviders(); },
+    beforeUnmount() { this.disposed = true; this.resetProviders(); },
+    methods: {
+      current(epoch) { return epoch === this.epoch && !this.disposed && !!this.app.authenticated; },
+      resetProviders() {
+        this.epoch += 1;
+        if (this.controller) this.controller.abort();
+        this.controller = null;
+        this.items = [];
+        this.canManageGlobal = false;
+        this.canManagePersonal = false;
+        this.credentialStorageAvailable = false;
+        this.loading = false;
+        this.busy = false;
+        this.error = '';
+        this.notice = '';
+        this.draft = null;
+        this.pendingDeleteId = '';
+      },
+      canEditProvider(provider) {
+        return !!provider && (provider.scope === 'global' ? this.globalAllowed : provider.scope === 'personal' && this.personalAllowed);
+      },
+      async loadProviders() {
+        const epoch = ++this.epoch;
+        if (this.controller) this.controller.abort();
+        const controller = new AbortController();
+        this.controller = controller;
+        this.loading = true;
+        this.error = '';
+        try {
+          const payload = await api.providers(this.app, { signal: controller.signal });
+          if (!this.current(epoch)) return false;
+          if (!payload || !Array.isArray(payload.items)) throw new Error('El servidor no devolvió la configuración de proveedores.');
+          this.items = payload.items.map(item => ({
+            id: text(item.id), name: text(item.name), scope: item.scope, baseUrl: text(item.baseUrl),
+            models: Array.isArray(item.models) ? item.models.map(model => text(model)) : [],
+            credentialConfigured: item.credentialConfigured === true, enabled: item.enabled !== false
+          }));
+          this.canManageGlobal = payload.canManageGlobal === true;
+          this.canManagePersonal = payload.canManagePersonal === true;
+          this.credentialStorageAvailable = payload.credentialStorageAvailable === true;
+          return true;
+        } catch (error) {
+          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || 'No se pudieron consultar los proveedores.';
+          return false;
+        } finally {
+          if (this.current(epoch)) { this.loading = false; this.controller = null; }
+        }
+      },
+      newProvider(scope) {
+        if (this.busy || (scope === 'global' ? !this.globalAllowed : scope !== 'personal' || !this.personalAllowed)) return false;
+        this.draft = { id: '', name: '', scope, baseUrl: '', modelsText: '', apiKey: '', enabled: true };
+        this.error = '';
+        this.notice = '';
+        return true;
+      },
+      editProvider(provider) {
+        if (this.busy || !this.canEditProvider(provider)) return false;
+        this.draft = { id: provider.id, name: provider.name, scope: provider.scope, baseUrl: provider.baseUrl, modelsText: provider.models.join('\n'), apiKey: '', enabled: provider.enabled };
+        this.error = '';
+        this.notice = '';
+        return true;
+      },
+      cancelProviderEdit() { this.draft = null; this.error = ''; },
+      async saveProvider() {
+        const draft = this.draft;
+        if (!draft || this.busy || !this.canEditProvider(draft)) return false;
+        const models = draft.modelsText.split(/\r?\n/).map(model => model.trim()).filter(Boolean);
+        if (!draft.name.trim() || !draft.baseUrl.trim() || !models.length) {
+          this.error = 'Indica el nombre, el endpoint y al menos un modelo explícito.';
+          return false;
+        }
+        if (draft.apiKey && !this.credentialStorageAvailable) {
+          this.error = 'No se puede guardar la credencial: falta ITSM_AI_CREDENTIAL_KEY en el servidor.';
+          draft.apiKey = '';
+          return false;
+        }
+        const body = { name: draft.name.trim(), scope: draft.scope, baseUrl: draft.baseUrl.trim(), models, enabled: draft.enabled };
+        if (draft.apiKey) body.apiKey = draft.apiKey;
+        const epoch = this.epoch;
+        const controller = new AbortController();
+        this.controller = controller;
+        this.busy = true;
+        this.error = '';
+        try {
+          await api.saveProvider(this.app, draft.id, body, { signal: controller.signal });
+          if (!this.current(epoch)) return false;
+          this.draft = null;
+          this.busy = false;
+          this.notice = 'Proveedor guardado. Sus modelos se ofrecen a través de Pydantic AI.';
+          await this.loadProviders();
+          this.$emit('changed');
+          return true;
+        } catch (error) {
+          if (this.current(epoch) && error.name !== 'AbortError') {
+            this.error = error.serverMessage || error.message || 'No se pudo guardar el proveedor.';
+            if (this.draft) this.draft.apiKey = '';
+          }
+          return false;
+        } finally {
+          if (this.current(epoch)) { this.busy = false; this.controller = null; }
+        }
+      },
+      async removeProvider(provider) {
+        if (this.busy || !this.canEditProvider(provider) || this.pendingDeleteId !== provider.id) return false;
+        const epoch = this.epoch;
+        const controller = new AbortController();
+        this.controller = controller;
+        this.busy = true;
+        this.error = '';
+        try {
+          await api.deleteProvider(this.app, provider.id, { signal: controller.signal });
+          if (!this.current(epoch)) return false;
+          this.pendingDeleteId = '';
+          this.draft = null;
+          this.busy = false;
+          this.notice = 'Proveedor eliminado.';
+          await this.loadProviders();
+          this.$emit('changed');
+          return true;
+        } catch (error) {
+          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || 'No se pudo eliminar el proveedor.';
+          return false;
+        } finally {
+          if (this.current(epoch)) { this.busy = false; this.controller = null; }
+        }
+      }
+    },
+    template: `
+      <section class="agent-panel agent-providers" aria-labelledby="agent-providers-title" :aria-busy="loading || busy">
+        <header class="agent-panel__head">
+          <div><h3 id="agent-providers-title" class="agent-panel__title">Proveedores compatibles con OpenAI</h3><p class="agent-panel__sub">Los globales los administra el Superadmin. Los personales solo están disponibles para su propietario autorizado. Las herramientas conservan tus permisos.</p></div>
+          <div class="agent-provider-actions">
+            <button v-if="globalAllowed" id="provider-new-global" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('global')">Añadir proveedor global</button>
+            <button v-if="personalAllowed" id="provider-new-personal" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('personal')">Añadir proveedor personal</button>
+          </div>
+        </header>
+        <p v-if="loading" class="agent-note" role="status">Consultando proveedores…</p>
+        <p v-if="error" id="provider-error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
+        <button v-if="error && !draft" type="button" class="btn btn--ghost btn--small" @click="loadProviders">Volver a consultar proveedores</button>
+        <p v-if="notice" class="agent-note" role="status">{{ notice }}</p>
+        <p v-if="!loading && !error && !items.length" class="agent-note">No hay proveedores adicionales disponibles. El proveedor predeterminado del servidor no se modifica aquí.</p>
+        <p v-if="!loading && (globalAllowed || personalAllowed) && !credentialStorageAvailable" id="provider-storage-help" class="agent-note">No está disponible la escritura de credenciales: el servidor necesita ITSM_AI_CREDENTIAL_KEY. No se genera ni se guarda esa clave desde esta pantalla.</p>
+        <ul v-if="items.length" class="agent-instance-list">
+          <li v-for="provider in items" :key="provider.id" class="agent-instance">
+            <div><strong>{{ provider.name }}</strong> <span class="agent-tag">{{ provider.scope === 'global' ? 'Global' : 'Personal' }}</span> <span class="status-pill" :class="provider.enabled ? 'status--ok' : 'status--hold'">{{ provider.enabled ? 'Habilitado' : 'Deshabilitado' }}</span></div>
+            <p class="agent-skill__meta">{{ provider.baseUrl }}</p>
+            <p class="agent-skill__meta">Modelos: {{ provider.models.join(', ') || 'Sin modelos configurados' }}</p>
+            <p class="agent-skill__meta">{{ provider.credentialConfigured ? 'Credencial configurada' : 'Sin credencial configurada' }} · Pydantic AI</p>
+            <div v-if="canEditProvider(provider)" class="agent-provider-actions">
+              <button :id="'provider-edit-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Editar proveedor ' + provider.name" @click="editProvider(provider)">Editar</button>
+              <button :id="'provider-delete-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Eliminar proveedor ' + provider.name" @click="pendingDeleteId = provider.id">Eliminar</button>
+              <template v-if="pendingDeleteId === provider.id"><span>¿Eliminar {{ provider.name }}?</span><button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="removeProvider(provider)">Confirmar eliminación</button><button type="button" class="btn btn--ghost btn--small" @click="pendingDeleteId = ''">Conservar proveedor</button></template>
+            </div>
+          </li>
+        </ul>
+        <form v-if="draft" id="provider-form" class="agent-editor agent-provider-form" :aria-describedby="error ? 'provider-error' : undefined" @submit.prevent="saveProvider">
+          <h4 class="agent-panel__title">{{ draft.id ? 'Editar proveedor' : 'Nuevo proveedor' }} {{ draft.scope === 'global' ? 'global' : 'personal' }}</h4>
+          <div class="field"><label class="field__label" for="provider-name">Nombre del proveedor</label><input id="provider-name" v-model="draft.name" class="input-shell" required :disabled="busy" maxlength="160"></div>
+          <div class="field"><label class="field__label" for="provider-url">Endpoint compatible con OpenAI</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? 'HTTPS público, sin credenciales en la URL, destinos privados ni redirecciones. El servidor valida el destino.' : 'URL administrada por el propietario de la instalación. Puede ser un endpoint de la red local.' }}</p></div>
+          <div class="field"><label class="field__label" for="provider-models">Modelos disponibles (uno por línea)</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">Identificadores exactos del proveedor. No se descubren ni se inventan modelos automáticamente.</p></div>
+          <div class="field"><label class="field__label" for="provider-key">{{ draft.id ? 'Sustituir credencial (opcional)' : 'Credencial (opcional)' }}</label><input id="provider-key" v-model="draft.apiKey" type="password" class="input-shell" autocomplete="new-password" :disabled="busy || !credentialStorageAvailable" :aria-describedby="!credentialStorageAvailable ? 'provider-storage-help provider-key-help' : 'provider-key-help'"><p id="provider-key-help" class="field__hint">Solo escritura. No se muestra la credencial guardada. Déjalo vacío para conservarla al editar.</p></div>
+          <label class="agent-checkbox"><input v-model="draft.enabled" type="checkbox" :disabled="busy"> Habilitado</label>
+          <div class="agent-provider-actions"><button type="submit" class="btn btn--primary" :disabled="busy">{{ busy ? 'Guardando…' : 'Guardar proveedor' }}</button><button type="button" class="btn btn--secondary" :disabled="busy" @click="cancelProviderEdit">Cancelar</button></div>
+        </form>
+      </section>
+    `
+  };
+
   const settings = {
     name: 'AgentIntegrationsSettings',
     components: {
@@ -1384,7 +1613,8 @@
       AgentInstanceEditor: instanceEditor,
       AgentCatalogPanel: catalogPanel,
       AgentInstallationsPanel: installationsPanel,
-      AgentIntegrationWizard: wizard
+      AgentIntegrationWizard: wizard,
+      AgentProvidersPanel: providersPanel
     },
     mixins: [window.AssetAgentEngineMixin],
     props: {
@@ -1455,6 +1685,10 @@
     },
     methods: {
       engineLabel,
+      async onProvidersChanged() {
+        await this.loadAgentEngines();
+        if (!this.disposed) this.enginePickerKey += 1;
+      },
       installationStatusLabel,
       async load() {
         this.loading = true;
@@ -1694,6 +1928,7 @@
         <p v-if="loading" class="agent-note" role="status">Consultando motores e integraciones…</p>
         <p v-if="loadError" class="agent-note agent-note--error" role="alert">{{ loadError }}</p>
         <agent-engine-picker :key="enginePickerKey" :app="app" heading="Preferencia del chat"></agent-engine-picker>
+        <agent-providers-panel :app="app" @changed="onProvidersChanged"></agent-providers-panel>
 
         <p v-if="!isAdmin" class="agent-note">La administración de instancias, instalaciones y catálogo requiere el permiso de proveedores de IA del sistema.</p>
         <p v-else-if="adminError" class="agent-note agent-note--error" role="alert">{{ adminError }}</p>
@@ -1747,6 +1982,7 @@
     AgentCatalogPanel: catalogPanel,
     AgentInstallationsPanel: installationsPanel,
     AgentIntegrationWizard: wizard,
+    AgentProvidersPanel: providersPanel,
     AgentIntegrationsSettings: settings,
     engineLabel,
     installationStatusLabel

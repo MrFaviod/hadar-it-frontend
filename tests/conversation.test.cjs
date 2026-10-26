@@ -360,7 +360,7 @@ function sessionSurface(config) {
     }
     if (/^\/agent\/sessions\/[^/]+$/.test(path) && method === 'PATCH') {
       state.patch = body;
-      return jsonResponse({ id: path.split('/').pop(), instanceId: body.model, model: body.model });
+      return jsonResponse({ id: path.split('/').pop(), instanceId: body.instanceId || ENGINE_ID, model: body.model });
     }
     if (/^\/agent\/sessions\/[^/]+$/.test(path) && method === 'GET') {
       return jsonResponse(
@@ -435,27 +435,28 @@ test('sending through the common session path streams deltas, tools, usage and e
   assert.equal(surface.vm.streaming, false);
 });
 
-test('changing engine starts a different internal session with bounded prior context', async () => {
+test('changing engine preserves the ITSM session and transcript without replaying prior context', async () => {
   const surface = sessionSurface();
   await surface.settle();
   surface.vm.draft = 'Primera consulta';
   await surface.vm.send();
   surface.vm.draft = 'Segunda consulta';
   await surface.vm.send();
+  const transcript = JSON.parse(JSON.stringify(surface.vm.messages));
 
   await surface.vm.changeEngine('pydantic-built-in');
-  assert.equal(surface.vm.sessionId, '');
+  assert.equal(surface.vm.sessionId, 'sess-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(surface.vm.messages)), transcript);
+  const patch = surface.calls.find(call => call.method === 'PATCH');
+  assert.deepEqual(patch.body, { instanceId: 'pydantic-built-in', model: 'pydantic:default' });
   const saved = surface.calls.filter((call) => call.path === '/agent/preferences' && call.method === 'PUT').pop();
   assert.deepEqual(saved.body, { instanceId: 'pydantic-built-in', model: 'pydantic:default' });
 
   surface.vm.draft = 'Tercera consulta';
   await surface.vm.send();
   const creates = surface.calls.filter((call) => call.path === '/agent/sessions' && call.method === 'POST');
-  assert.equal(creates.length, 2);
-  assert.equal(creates[1].body.instanceId, 'pydantic-built-in');
-  assert.equal(creates[1].body.model, 'pydantic:default');
-  assert.equal(creates[1].body.context.length, 4);
-  assert.equal(creates[1].body.context[0].role, 'user');
+  assert.equal(creates.length, 1);
+  assert.equal(surface.vm.messages.length, 6);
 });
 
 test('a discovery failure on another engine is visible without replacing the saved engine', async () => {
