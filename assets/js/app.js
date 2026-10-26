@@ -80,13 +80,17 @@
   const Store = window.AssetStore;
   const initial = Store.initialState();
 
-  const AgentRouteMethods = {
+  // The shared parser predates the IA and system sections. Each feature keeps
+  // its own narrow override and this seam composes them without forking routes.
+  const RouteMethods = {
     parseRoute() {
       const parsed = window.AssetMethods.parseRoute.call(this);
-      return (window.AssetAgentViews && window.AssetAgentViews.routeOverride(parsed, window.location.hash)) || parsed;
+      const agentRoute = (window.AssetAgentViews && window.AssetAgentViews.routeOverride(parsed, window.location.hash)) || parsed;
+      return (window.AssetSystemViews && window.AssetSystemViews.routeOverride(agentRoute, window.location.hash)) || agentRoute;
     },
     hashFor(route) {
       if (route && route.name === 'config' && route.section === 'ia') return '#/configuracion/ia';
+      if (route && route.name === 'config' && route.section === 'sistema') return '#/configuracion/sistema';
       return window.AssetMethods.hashFor.call(this, route);
     }
   };
@@ -112,6 +116,7 @@
       AgentInstallationsPanel: window.AssetAgentViews.AgentInstallationsPanel,
       AgentIntegrationWizard: window.AssetAgentViews.AgentIntegrationWizard,
       AgentIntegrationsSettings: window.AssetAgentViews.AgentIntegrationsSettings,
+      SystemOperations: window.AssetSystemViews.SystemOperations,
       AssetFieldsPanel: window.AssetConfigViews.AssetFieldsPanel,
       AssetFormsPanel: window.AssetConfigViews.AssetFormsPanel,
       AssetStatusesPanel: window.AssetConfigViews.AssetStatusesPanel,
@@ -249,6 +254,9 @@
           { value: 'type-asc', label: 'Tipo' }
         ],
         configSections: [
+          // Installation ownership stays a filtered section of the existing
+          // Configuración nav; it never becomes a second navigation level.
+          { id: 'sistema', label: 'Sistema', hint: 'Estado, respaldos y actualización', icon: 'server' },
           { id: 'seguridad', label: 'Usuarios y permisos', hint: 'Roles y sesiones', icon: 'user' },
           { id: 'general', label: 'General', hint: 'Identidad y marca', icon: 'sliders' },
           { id: 'ia', label: 'IA', hint: 'Motores, modelos e integraciones', icon: 'layers' },
@@ -710,7 +718,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, AgentRouteMethods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, RouteMethods))
   });
   app.mount(target || '#app');
   return app;

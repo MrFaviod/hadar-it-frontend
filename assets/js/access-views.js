@@ -625,7 +625,9 @@
     methods: {
       canAssign(role) { return canAssignRole(this.app, role); },
       rolePermissionCount(role) { return list(role && role.permissions).length; },
-      isBuiltIn(role) { return !!(role && (role.builtIn || role.system || ['admin', 'operator', 'reader'].indexOf(role.id) !== -1)); },
+      // Whether a role is a persisted default is server metadata; the browser
+      // never infers it from a role id or name.
+      isBuiltIn(role) { return !!(role && (role.builtIn === true || role.system === true)); },
       openCreateRole() {
         if (!this.canManageRoles) return;
         this.roleDialog = { open: true, mode: 'create' };

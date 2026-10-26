@@ -31,7 +31,9 @@
     { id: 'uninstall', label: 'Desinstalar' }
   ];
 
-  const ADMIN_PERMISSION = 'config.integrations';
+  // Global IA administration is an installation-owned capability: the server
+  // rejects it without system.providers, so the browser gate mirrors that.
+  const ADMIN_PERMISSION = 'system.providers';
 
   function text(value, fallback) {
     return typeof value === 'string' && value.trim() ? value.trim() : (fallback || '');
@@ -583,7 +585,8 @@
     props: {
       catalog: { type: Object, default: () => ({ skills: [], modules: [] }) },
       busyId: { type: String, default: '' },
-      error: { type: String, default: '' }
+      error: { type: String, default: '' },
+      canManage: { type: Boolean, default: true }
     },
     emits: ['toggle-module'],
     computed: {
@@ -671,9 +674,10 @@
                 <span class="agent-tag" v-if="module.official">Oficial</span>
                 <span class="agent-tag">{{ moduleStateLabel(module) }}</span>
               </div>
-              <button v-if="!module.official" type="button" class="btn btn--secondary btn--small" :disabled="busyId === module.id" @click="toggle(module)">
+              <button v-if="!module.official && canManage" type="button" class="btn btn--secondary btn--small" :disabled="busyId === module.id" @click="toggle(module)">
                 {{ busyId === module.id ? 'Aplicando…' : (module.enabled === false ? 'Habilitar módulo' : 'Deshabilitar módulo') }}
               </button>
+              <p v-else-if="!module.official" class="field__hint">Cambiar módulos requiere el permiso de módulos del sistema.</p>
             </div>
             <p v-if="module.description">{{ module.description }}</p>
             <p class="agent-skill__meta" v-if="Array.isArray(module.permissions) && module.permissions.length">Permisos: {{ module.permissions.join(', ') }}</p>
@@ -1416,6 +1420,9 @@
       isAdmin() {
         return !!(this.app.can && this.app.can(ADMIN_PERMISSION));
       },
+      canManageModules() {
+        return !!(this.app.can && this.app.can('system.modules'));
+      },
       adminInstances() {
         return Array.isArray(this.integrations.instances) ? this.integrations.instances : [];
       },
@@ -1470,7 +1477,7 @@
             if (this.disposed) return;
             this.adminAvailable = false;
             this.adminError = (error && error.status === 403)
-              ? 'La administración de integraciones requiere el permiso de integraciones de configuración.'
+              ? 'La administración de integraciones requiere el permiso de proveedores de IA del sistema.'
               : ((error && error.message) || 'No se pudieron consultar las integraciones.');
             this.adminError && (this.loadError = this.loadError || this.adminError);
           }
@@ -1504,7 +1511,7 @@
           this.adminError = '';
         } catch (error) {
           this.adminError = (error && error.status === 403)
-            ? 'La administración de integraciones requiere el permiso de integraciones de configuración.'
+            ? 'La administración de integraciones requiere el permiso de proveedores de IA del sistema.'
             : ((error && error.message) || 'No se pudieron consultar las integraciones.');
         }
       },
@@ -1594,6 +1601,10 @@
         }
       },
       async toggleModule(module) {
+        if (!this.canManageModules) {
+          this.moduleError = 'Cambiar módulos requiere el permiso de módulos del sistema.';
+          return false;
+        }
         if (!module || module.official === true || this.moduleBusyId) return false;
         this.moduleError = '';
         this.moduleBusyId = module.id;
@@ -1684,7 +1695,7 @@
         <p v-if="loadError" class="agent-note agent-note--error" role="alert">{{ loadError }}</p>
         <agent-engine-picker :key="enginePickerKey" :app="app" heading="Preferencia del chat"></agent-engine-picker>
 
-        <p v-if="!isAdmin" class="agent-note">La administración de instancias, instalaciones y catálogo requiere el permiso de integraciones de configuración.</p>
+        <p v-if="!isAdmin" class="agent-note">La administración de instancias, instalaciones y catálogo requiere el permiso de proveedores de IA del sistema.</p>
         <p v-else-if="adminError" class="agent-note agent-note--error" role="alert">{{ adminError }}</p>
 
         <template v-if="isAdmin && adminAvailable">
@@ -1721,7 +1732,7 @@
           </div>
           <agent-integration-wizard v-if="wizardOpen" :app="app" :instances="adminInstances" :catalog="catalog" :identities="identities" @close="closeWizard" @applied="onWizardApplied"></agent-integration-wizard>
 
-          <agent-catalog-panel :catalog="catalog" :busy-id="moduleBusyId" :error="moduleError" @toggle-module="toggleModule"></agent-catalog-panel>
+          <agent-catalog-panel :catalog="catalog" :busy-id="moduleBusyId" :error="moduleError" :can-manage="canManageModules" @toggle-module="toggleModule"></agent-catalog-panel>
 
           <agent-installations-panel :app="app" :installations="installations" :busy="operationBusy" :error="operationError" :result="operationResult" @operation="applyOperation" @receipt="importReceipt" @applied="onWizardApplied"></agent-installations-panel>
         </template>

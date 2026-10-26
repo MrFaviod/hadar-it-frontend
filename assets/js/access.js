@@ -48,6 +48,21 @@
       ]
     },
     {
+      // Installation ownership: these grants are reserved for the human
+      // Superadmin and never imply business administration.
+      id: 'system',
+      label: 'Sistema',
+      icon: 'server',
+      permissions: [
+        { id: 'system.view', label: 'Ver estado' },
+        { id: 'system.providers', label: 'Proveedores de IA' },
+        { id: 'system.modules', label: 'Módulos' },
+        { id: 'system.configure', label: 'Configuración del despliegue' },
+        { id: 'system.backup', label: 'Respaldos' },
+        { id: 'system.update', label: 'Actualizaciones' }
+      ]
+    },
+    {
       id: 'users',
       label: 'Usuarios',
       icon: 'user',
@@ -86,6 +101,10 @@
   // each control still checks its own backend permission.
   const CONFIG_SECTION_PERMISSIONS = { activos: ['config.categories', 'config.general'] };
   const CONFIG_PERMISSION_BY_SECTION = {
+    // Installation status and operations: the reserved system grants never
+    // travel with business administration. The section route itself needs
+    // system.view; each control checks its own backend permission.
+    sistema: 'system.view',
     activos: 'config.categories',
     general: 'config.general',
     apariencia: 'config.general',
@@ -94,7 +113,7 @@
     personas: 'config.departments',
     integraciones: 'config.integrations',
     // Chat preferences and the IA page are available to any signed-in user;
-    // administration controls inside the page still require config.integrations.
+    // administration controls inside the page require system.providers.
     ia: 'assets.view',
     // The relationship vocabulary is general configuration on the server, not
     // an asset edit: administering types needs config.general, while editing an

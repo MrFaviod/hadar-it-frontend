@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.cjs",
+    "test": "node --test tests/*.cjs tests/*.mjs",
     "typecheck": "tsc --noEmit",
     "test:browser": "python3 tests/react-host.browser.py",
     "test:lifecycle": "python3 tests/host-lifecycle.browser.py",
