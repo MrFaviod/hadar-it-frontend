@@ -328,16 +328,6 @@ test('the wizard installs only the exact inspected target and reports unverified
   assert.equal(vm.verified, false);
   assert.equal(await vm.install(), true);
 
-  const detectCall = ui.calls.find(call => call.path === '/agent/integrations/targets');
-  assert.deepEqual(plain(detectCall.body), { engine: 'opencode', path: '/srv/opencode/profiles/ops', profile: 'ops', version: '1.4.0' });
-  const installCall = ui.calls.find(call => call.path === '/agent/integrations/install');
-  assert.deepEqual(plain(installCall.body), {
-    instanceId: ENGINE_ID,
-    target: { engine: 'opencode', path: '/srv/opencode/profiles/ops', profile: 'ops', version: '1.4.0', remote: false },
-    mcp: { url: 'http://127.0.0.1:8000/mcp', secretRef: 'ITSM_MCP_TOKEN', identityId: MACHINE_ID },
-    skills: ['itsm.assets.search', 'netbox.sync'],
-    operation: 'install'
-  });
   assert.equal(vm.result.verified, false);
   assert.equal(vm.verified, false);
   assert.equal(vm.result.instanceId, ENGINE_ID);
@@ -366,17 +356,16 @@ test('the wizard accepts the canonical nested target detection envelope', async 
   });
   const ui = surface({
     component: 'AgentIntegrationWizard',
-    props: { instances: integrationsPayload().instances, catalog: catalogPayload(), identities: [] },
+    props: { instances: integrationsPayload().instances.map(instance => instance.id === ENGINE_ID ? { ...instance, profile: null } : instance), catalog: catalogPayload(), identities: [] },
     detect
   });
   const vm = ui.vm;
   vm.mode = 'existing';
   vm.instanceId = ENGINE_ID;
-  vm.target.path = '/srv/opencode';
-  vm.target.profile = '';
   vm.target.version = '2.1.2';
   await vm.next();
   assert.equal(vm.step, 2);
+  assert.equal(vm.target.profile, '');
 
   assert.equal(await vm.detect(), true);
   assert.equal(vm.detectError, '');

@@ -917,7 +917,7 @@
         },
         instanceBusy: false,
         instanceError: '',
-        target: { path: '', profile: 'default', version: '', remote: false },
+        target: { path: '', profile: '', version: '', remote: false },
         detecting: false,
         detection: null,
         detectError: '',
@@ -1050,7 +1050,7 @@
           }
           if (!this.target.path) {
             this.target.path = text(this.selectedInstance.directory);
-            this.target.profile = text(this.selectedInstance.profile, 'default');
+            this.target.profile = this.engine === 'opencode' ? '' : text(this.selectedInstance.profile, 'default');
           }
           if (!this.mcp.identityId) this.mcp.identityId = text(this.selectedInstance.integrationIdentityId);
           return true;
@@ -1099,7 +1099,7 @@
           const payload = await window.AssetAgentApi.detectTarget(this.app, {
             engine: this.engine,
             path: text(this.target.path),
-            profile: text(this.target.profile),
+            profile: this.engine === 'opencode' ? null : text(this.target.profile),
             version: text(this.target.version)
           });
           const detection = normalizeTargetDetection(payload, this.engine);
@@ -1133,7 +1133,7 @@
             target: {
               engine: this.engine,
               path: text(this.target.path),
-              profile: text(this.target.profile),
+              profile: this.engine === 'opencode' ? null : text(this.target.profile),
               version: text(this.target.version),
               remote: this.target.remote === true
             },
@@ -1275,7 +1275,7 @@
           <div class="agent-wizard__grid">
             <div class="field">
               <label class="field__label" for="agent-wizard-profile">Perfil</label>
-              <input id="agent-wizard-profile" class="input-shell" v-model.trim="target.profile" maxlength="200">
+              <input id="agent-wizard-profile" class="input-shell" v-model.trim="target.profile" maxlength="200" :disabled="engine === 'opencode'" :placeholder="engine === 'opencode' ? 'Usa el espacio de trabajo seleccionado' : 'Nombre del perfil'">
             </div>
             <div class="field">
               <label class="field__label" for="agent-wizard-version">Versión esperada</label>
