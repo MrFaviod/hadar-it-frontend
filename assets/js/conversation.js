@@ -1,9 +1,9 @@
 /* Focused conversational surface for the inventory agent.
  *
- * The browser only transports the message, the previous turns and an explicitly
- * selected permanent asset id. Missing data, approvals, parsing and
- * authorization stay on the server; no business operation is inferred here and
- * nothing is rendered as raw HTML.
+ * The browser only transports the message, the previous turns (bounded), the
+ * chosen engine/model and an explicitly selected permanent asset id. Provider
+ * URLs and credentials stay on the server; streaming frames are parsed but no
+ * business operation is inferred here and nothing is rendered as raw HTML.
  */
 (function () {
   'use strict';
@@ -15,6 +15,8 @@
   const UNAVAILABLE = 'El agente no está disponible: el servidor no tiene un modelo configurado.';
   const EXPIRED = 'La sesión no está disponible. Inicia sesión de nuevo.';
   const MAX_MESSAGE_ERROR = 'El mensaje supera los ' + MAX_MESSAGE + ' caracteres.';
+  const NO_ENGINE = 'No hay un motor habilitado. Elige una instancia en Configuración → IA.';
+  const NO_MODEL = 'La instancia seleccionada no ofrece modelos disponibles. Elige otro motor.';
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   const ACTION_LABELS = {
@@ -24,6 +26,22 @@
   };
 
   const ACTION_TONES = {
+    completed: 'ok',
+    failed: 'down',
+    denied: 'warn'
+  };
+
+  const TOOL_LABELS = {
+    running: 'En curso',
+    pending: 'En curso',
+    completed: 'Completada',
+    failed: 'Fallida',
+    denied: 'Denegada'
+  };
+
+  const TOOL_TONES = {
+    running: 'hold',
+    pending: 'hold',
     completed: 'ok',
     failed: 'down',
     denied: 'warn'
@@ -40,8 +58,19 @@
     return typeof value === 'string' && UUID_RE.test(value);
   }
 
+  function numericOrNull(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  function toolTone(status) {
+    return TOOL_TONES[status] || 'hold';
+  }
+
   window.AssetConversation = {
     name: 'AssetConversation',
+    mixins: window.AssetAgentEngineMixin ? [window.AssetAgentEngineMixin] : [],
     props: {
       app: { type: Object, required: true }
     },
@@ -56,7 +85,23 @@
         selectedAssetId: '',
         requestId: 0,
         request: null,
-        disposed: false
+        disposed: false,
+        epoch: 0,
+        legacyFallback: false,
+        sessionId: '',
+        sessionInstanceId: '',
+        sessionModel: '',
+        streaming: false,
+        streamingIndex: -1,
+        tools: [],
+        usage: null,
+        approvalPending: false,
+        streamStatus: '',
+        retryable: false,
+        cancelPending: false,
+        cancelReason: '',
+        cancelRequested: false,
+        reconnecting: false
       };
     },
     computed: {
@@ -66,11 +111,28 @@
       maxMessageLength() {
         return MAX_MESSAGE;
       },
+      useAgentSessions() {
+        return !this.legacyFallback && this.agentEnginesAvailable;
+      },
+      engineReady() {
+        if (this.legacyFallback) return true;
+        if (!this.agentEnginesLoaded) return false;
+        return !!(this.agentActiveInstance && this.agentPreference.model);
+      },
       canSend() {
-        return !this.busy && this.draft.trim().length > 0;
+        return !this.busy && this.draft.trim().length > 0 && this.engineReady;
+      },
+      canCancel() {
+        return !!this.busy;
+      },
+      canReconnect() {
+        return !this.busy && !!this.sessionId && !!this.error;
       },
       hasMessages() {
         return this.messages.length > 0;
+      },
+      isConversationRoute() {
+        return !!(this.app.route && this.app.route.name === 'conversation');
       },
       routeAssetId() {
         const route = this.app.route;
@@ -94,6 +156,13 @@
     watch: {
       authenticated(value) {
         if (!value) this.resetSurface();
+        else this.loadEnginesForChat();
+      },
+      'app.activeUserId'() {
+        if (this.app.authenticated && this.isConversationRoute) {
+          this.resetSurface();
+          this.loadEnginesForChat();
+        }
       },
       routeAssetId(value) {
         if (value) this.selectedAssetId = value;
@@ -101,15 +170,22 @@
     },
     created() {
       if (this.routeAssetId) this.selectedAssetId = this.routeAssetId;
+      if (this.isConversationRoute) this.loadEnginesForChat();
     },
     beforeUnmount() {
       this.disposed = true;
+      this.epoch += 1;
+      this.agentEpoch += 1;
       this.cancelRequest();
     },
     methods: {
+      isCurrent(epoch) {
+        return epoch === this.epoch && this.disposed !== true && this.app.authenticated !== false;
+      },
       history() {
         return this.messages
-          .filter((message) => message.role === 'user' || message.role === 'assistant')
+          .filter((message) => (message.role === 'user' || message.role === 'assistant') &&
+            typeof message.content === 'string' && message.content.trim().length > 0)
           .slice(-MAX_TURNS)
           .map((message) => ({ role: message.role, content: message.content }));
       },
@@ -120,8 +196,11 @@
           this.request = null;
         }
         this.busy = false;
+        this.streaming = false;
       },
       resetSurface() {
+        this.epoch += 1;
+        this.agentEpoch += 1;
         this.cancelRequest();
         this.messages = [];
         this.draft = '';
@@ -129,12 +208,58 @@
         this.actions = [];
         this.results = [];
         this.selectedAssetId = '';
+        this.sessionId = '';
+        this.sessionInstanceId = '';
+        this.sessionModel = '';
+        this.streamingIndex = -1;
+        this.tools = [];
+        this.usage = null;
+        this.approvalPending = false;
+        this.streamStatus = '';
+        this.retryable = false;
+        this.cancelPending = false;
+        this.cancelReason = '';
+        this.cancelRequested = false;
+        this.reconnecting = false;
+        this.legacyFallback = false;
+        this.agentEngines = [];
+        this.agentEnginesLoaded = false;
+        this.agentEnginesAvailable = false;
+        this.agentEnginesError = '';
+        this.agentPreference = { instanceId: '', model: '' };
+        this.agentPreferenceSaved = { instanceId: '', model: '' };
+        this.agentBudget = null;
+        this.agentSelectionNotice = '';
+      },
+      async loadEnginesForChat() {
+        if (!this.isConversationRoute || !this.app.authenticated) return false;
+        const loaded = await this.loadAgentEngines();
+        if (!this.isCurrent(this.epoch)) return false;
+        if (!loaded) {
+          this.legacyFallback = !this.agentEnginesAvailable;
+          return false;
+        }
+        this.legacyFallback = false;
+        return true;
       },
       contextAssetId() {
         const id = this.selectedAssetId;
         if (!isPermanentId(id)) return '';
         const known = this.routeAssetId === id || this.assetContextOptions.some((asset) => asset.id === id);
         return known ? id : '';
+      },
+      mapActions(list) {
+        return (Array.isArray(list) ? list : [])
+          .filter((action) => action && typeof action === 'object')
+          .map((action) => ({
+            tool: typeof action.tool === 'string' ? action.tool : '',
+            status: typeof action.status === 'string' ? action.status : '',
+            assetIds: Array.isArray(action.assetIds) ? action.assetIds : [],
+            tone: ACTION_TONES[action.status] || 'hold'
+          }));
+      },
+      mapResults(list) {
+        return (Array.isArray(list) ? list : []).filter((asset) => asset && typeof asset.id === 'string' && asset.id);
       },
       async send() {
         const message = this.draft.trim();
@@ -147,6 +272,10 @@
           this.error = MAX_MESSAGE_ERROR;
           return false;
         }
+        if (this.useAgentSessions) return this.sendSession(message);
+        return this.sendLegacy(message);
+      },
+      async sendLegacy(message) {
         const conversation = this.history();
         const assetId = this.contextAssetId();
         const body = { message, conversation };
@@ -170,16 +299,9 @@
           if (requestId !== this.requestId || this.disposed) return false;
           const reply = payload && typeof payload.message === 'string' ? payload.message.trim() : '';
           if (reply) this.messages.push({ role: 'assistant', content: reply });
-          this.actions = (Array.isArray(payload && payload.actions) ? payload.actions : [])
-            .filter((action) => action && typeof action === 'object')
-            .map((action) => ({
-              tool: typeof action.tool === 'string' ? action.tool : '',
-              status: typeof action.status === 'string' ? action.status : '',
-              assetIds: Array.isArray(action.assetIds) ? action.assetIds : [],
-              tone: ACTION_TONES[action.status] || 'hold'
-            }));
-          this.results = (Array.isArray(payload && payload.results) ? payload.results : [])
-            .filter((asset) => asset && typeof asset.id === 'string' && asset.id);
+          this.actions = this.mapActions(payload && payload.actions);
+          this.results = this.mapResults(payload && payload.results);
+          if (payload && typeof payload.approvalPending === 'boolean') this.approvalPending = payload.approvalPending;
           return true;
         } catch (error) {
           if (requestId !== this.requestId || this.disposed) return false;
@@ -193,6 +315,330 @@
             this.request = null;
           }
         }
+      },
+      async sendSession(message) {
+        const instance = this.agentActiveInstance;
+        if (!instance || instance.enabled === false) {
+          this.error = NO_ENGINE;
+          return false;
+        }
+        const model = this.agentPreference.model;
+        if (!model) {
+          this.error = NO_MODEL;
+          return false;
+        }
+        const assetId = this.contextAssetId();
+        this.error = '';
+        this.retryable = false;
+        this.streamStatus = '';
+        this.cancelPending = false;
+        this.cancelReason = '';
+        this.cancelRequested = false;
+        this.actions = [];
+        this.results = [];
+        this.tools = [];
+        this.usage = null;
+        this.approvalPending = false;
+        this.busy = true;
+        this.streaming = false;
+        this.streamingIndex = -1;
+        this.epoch += 1;
+        const epoch = this.epoch;
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        this.request = controller;
+        let done = false;
+        try {
+          await this.ensureSession(instance, model, this.history(), assetId, epoch, controller ? controller.signal : undefined);
+          if (!this.isCurrent(epoch)) return false;
+          if (this.cancelRequested) {
+            this.streamStatus = 'Solicitud cancelada.';
+            return false;
+          }
+          this.messages.push({ role: 'user', content: message });
+          this.draft = '';
+          this.streaming = true;
+          const body = { message };
+          if (assetId) body.assetId = assetId;
+          const frames = window.AssetAgentApi.streamMessage(this.app, this.sessionId, body, {
+            signal: controller ? controller.signal : undefined
+          });
+          for await (const event of frames) {
+            if (!this.isCurrent(epoch)) return false;
+            if (this.applyAgentEvent(event)) {
+              done = true;
+              break;
+            }
+          }
+          if (!this.isCurrent(epoch)) return false;
+          if (!done && !this.error) this.streamStatus = 'La conexión terminó sin un evento de cierre.';
+          this.finishStreamingMessage();
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          if (error && error.name === 'AbortError') return false;
+          if (error && error.status === 401) this.error = EXPIRED;
+          else if (error && (error.status === 503 || error.status === 429)) this.error = error.message;
+          else if (error && error.status === 409) this.error = error.message + ' La ejecución anterior sigue activa; puedes cancelarla o reconectar sin reenviar el mensaje.';
+          else this.error = (error && error.message) || 'No se pudo enviar el mensaje al motor.';
+          this.retryable = !!(error && (error.status === 503 || error.status === 429 || error.status === 0 || !error.status));
+          this.finishStreamingMessage();
+          return false;
+        } finally {
+          if (this.isCurrent(epoch)) {
+            this.busy = false;
+            this.streaming = false;
+            this.request = null;
+          }
+        }
+      },
+      async ensureSession(instance, model, context, assetId, epoch, signal) {
+        if (this.sessionId && this.sessionInstanceId === instance.id) {
+          if (this.sessionModel === model) return;
+          try {
+            const patched = await window.AssetAgentApi.patchSession(this.app, this.sessionId, { model }, { signal });
+            if (!this.isCurrent(epoch)) return;
+            this.sessionModel = (patched && patched.model) || model;
+            return;
+          } catch (error) {
+            if (error && error.name === 'AbortError') throw error;
+            if (error && error.status === 401) throw error;
+            if (error && error.status === 409) throw error;
+            this.startNewSession();
+          }
+        }
+        if (this.sessionId) this.startNewSession();
+        await this.persistAgentPreference(instance.id, model);
+        if (!this.isCurrent(epoch)) return;
+        if (signal && signal.aborted) {
+          const aborted = new Error('Cancelada');
+          aborted.name = 'AbortError';
+          throw aborted;
+        }
+        const body = { instanceId: instance.id, model };
+        if (context.length) body.context = context;
+        if (assetId) body.assetId = assetId;
+        const session = await window.AssetAgentApi.createSession(this.app, body, { signal });
+        if (!this.isCurrent(epoch)) return;
+        if (!session || !session.id) throw new Error('El servidor no devolvió la sesión creada.');
+        this.sessionId = session.id;
+        this.sessionInstanceId = session.instanceId || instance.id;
+        this.sessionModel = session.model || model;
+      },
+      startNewSession() {
+        this.sessionId = '';
+        this.sessionInstanceId = '';
+        this.sessionModel = '';
+        this.tools = [];
+        this.usage = null;
+        this.actions = [];
+        this.results = [];
+        this.approvalPending = false;
+      },
+      async changeEngine(instanceId) {
+        if (this.busy) return false;
+        const previous = this.agentPreference.instanceId;
+        const model = await this.setAgentInstance(instanceId);
+        if (model === false) return false;
+        if (previous !== instanceId) this.startNewSession();
+        if (!model) {
+          this.agentSelectionNotice = 'La instancia seleccionada no anunció modelos. Revisa su conexión o elige otro motor antes de conversar.';
+        }
+        return true;
+      },
+      async changeModel(model) {
+        if (this.busy) return false;
+        const instance = this.agentActiveInstance;
+        if (!instance || !this.agentModels.some((item) => item.id === model)) return false;
+        const previous = this.agentPreference.model;
+        this.agentPreference = { instanceId: instance.id, model };
+        this.agentSelectionNotice = '';
+        if (this.sessionId && this.sessionInstanceId === instance.id) {
+          try {
+            await window.AssetAgentApi.patchSession(this.app, this.sessionId, { model });
+            this.sessionModel = model;
+          } catch (error) {
+            if (error && error.status === 401) {
+              this.agentPreference = { instanceId: instance.id, model: previous };
+              this.error = EXPIRED;
+              return false;
+            }
+            this.startNewSession();
+            this.agentSelectionNotice = 'El servidor no pudo aplicar el modelo a la sesión actual; se iniciará una nueva al enviar.';
+          }
+        }
+        const saved = await this.persistAgentPreference(instance.id, model);
+        if (!saved) {
+          this.agentPreference = { instanceId: instance.id, model: previous };
+          return false;
+        }
+        return true;
+      },
+      async cancelRun() {
+        if (!this.busy) return false;
+        if (!this.useAgentSessions || !this.sessionId) {
+          this.cancelRequested = true;
+          this.cancelRequest();
+          this.streamStatus = 'Solicitud cancelada.';
+          return true;
+        }
+        if (this.cancelPending) return false;
+        const epoch = this.epoch;
+        this.cancelPending = true;
+        this.cancelReason = '';
+        try {
+          const result = await window.AssetAgentApi.cancelSession(this.app, this.sessionId);
+          if (!this.isCurrent(epoch)) return false;
+          if (!result || result.cancelled !== true) {
+            this.cancelPending = false;
+            this.cancelReason = (result && typeof result.reason === 'string' && result.reason.trim())
+              ? result.reason.trim()
+              : 'El motor no permite interrumpir la ejecución.';
+            this.streamStatus = this.cancelReason;
+            return false;
+          }
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          this.cancelPending = false;
+          this.error = (error && error.message) || 'No se pudo cancelar la ejecución.';
+          return false;
+        }
+      },
+      async reconnectSession() {
+        if (!this.sessionId || this.busy || this.reconnecting) return false;
+        const epoch = this.epoch;
+        this.reconnecting = true;
+        try {
+          const session = await window.AssetAgentApi.getSession(this.app, this.sessionId);
+          if (!this.isCurrent(epoch)) return false;
+          this.applySessionSnapshot(session);
+          this.error = '';
+          this.retryable = false;
+          this.streamStatus = '';
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          this.error = (error && error.message) || 'No se pudo consultar el estado de la sesión.';
+          return false;
+        } finally {
+          if (this.isCurrent(epoch)) this.reconnecting = false;
+        }
+      },
+      applySessionSnapshot(session) {
+        const payload = session && typeof session === 'object' ? session : {};
+        if (Array.isArray(payload.messages)) {
+          this.messages = payload.messages
+            .filter((message) => message && (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string')
+            .map((message) => ({ role: message.role, content: message.content }));
+        }
+        if (Array.isArray(payload.actions)) this.actions = this.mapActions(payload.actions);
+        if (Array.isArray(payload.results)) this.results = this.mapResults(payload.results);
+        if (typeof payload.approvalPending === 'boolean') this.approvalPending = payload.approvalPending;
+        if (typeof payload.model === 'string') this.sessionModel = payload.model;
+        if (typeof payload.instanceId === 'string') this.sessionInstanceId = payload.instanceId;
+        if (payload.status === 'running') this.streamStatus = 'El servidor indica una ejecución en curso.';
+      },
+      applyAgentEvent(event) {
+        if (!event || typeof event !== 'object') return false;
+        if (event.type === 'session' && typeof event.sessionId === 'string' && event.sessionId) {
+          this.sessionId = event.sessionId;
+        } else if (event.type === 'delta') {
+          const chunk = typeof event.text === 'string' ? event.text : '';
+          if (chunk) {
+            this.ensureStreamingMessage();
+            const message = this.messages[this.streamingIndex];
+            // Neutral contract: every delta.text is a new fragment. The server
+            // diffs cumulative provider snapshots before emitting.
+            message.content = String(message.content || '') + chunk;
+          }
+        } else if (event.type === 'tool') {
+          this.applyToolEvent(event);
+        } else if (event.type === 'usage') {
+          this.applyUsage(event);
+        } else if (event.type === 'error') {
+          this.error = typeof event.message === 'string' && event.message.trim()
+            ? event.message.trim()
+            : 'El motor informó un error durante la ejecución.';
+          this.retryable = event.retryable === true;
+        } else if (event.type === 'done') {
+          this.applyDone(event);
+          this.finishStreamingMessage();
+          return true;
+        }
+        return false;
+      },
+      ensureStreamingMessage() {
+        if (this.streamingIndex >= 0 && this.messages[this.streamingIndex]) return;
+        this.messages.push({ role: 'assistant', content: '', streaming: true });
+        this.streamingIndex = this.messages.length - 1;
+      },
+      finishStreamingMessage() {
+        if (this.streamingIndex < 0) return;
+        const message = this.messages[this.streamingIndex];
+        if (message && !String(message.content || '').trim()) this.messages.splice(this.streamingIndex, 1);
+        else if (message) message.streaming = false;
+        this.streamingIndex = -1;
+      },
+      applyDone(event) {
+        if (Array.isArray(event.actions)) this.actions = this.mapActions(event.actions);
+        if (Array.isArray(event.results)) this.results = this.mapResults(event.results);
+        if (typeof event.approvalPending === 'boolean') this.approvalPending = event.approvalPending;
+        const wasPending = this.cancelPending;
+        this.cancelPending = false;
+        if (event.cancelled === true) this.streamStatus = 'Ejecución cancelada.';
+        else if (wasPending && this.cancelReason) this.streamStatus = this.cancelReason;
+        else if (this.error) this.streamStatus = 'La ejecución terminó con un error informado por el motor.';
+      },
+      applyToolEvent(event) {
+        const tool = typeof event.tool === 'string' && event.tool.trim() ? event.tool.trim() : 'herramienta';
+        const status = this.normalizeToolStatus(event.status);
+        let index = -1;
+        for (let cursor = this.tools.length - 1; cursor >= 0; cursor -= 1) {
+          const item = this.tools[cursor];
+          if (item.tool === tool && (item.status === 'running' || item.status === 'pending')) {
+            index = cursor;
+            break;
+          }
+        }
+        const row = index >= 0 ? this.tools[index] : { tool, status, input: '', output: '' };
+        row.status = status;
+        if (event.input !== undefined && event.input !== null) row.input = this.serializeToolValue(event.input);
+        if (event.output !== undefined && event.output !== null) row.output = this.serializeToolValue(event.output);
+        if (index < 0) this.tools.push(row);
+      },
+      serializeToolValue(value) {
+        if (typeof value === 'string') return value;
+        try { return JSON.stringify(value); } catch (_) { return ''; }
+      },
+      normalizeToolStatus(status) {
+        if (status === 'started' || status === 'in_progress' || status === 'pending') return 'running';
+        if (status === 'succeeded' || status === 'success') return 'completed';
+        if (status === 'error') return 'failed';
+        return typeof status === 'string' && status ? status : 'running';
+      },
+      applyUsage(event) {
+        const source = event.source === 'reported' ? 'reported' : (event.source === 'measured' ? 'measured' : 'unknown');
+        this.usage = {
+          inputTokens: numericOrNull(event.inputTokens),
+          outputTokens: numericOrNull(event.outputTokens),
+          source,
+          cost: event.cost === undefined || event.cost === null ? '' : String(event.cost)
+        };
+      },
+      toolStatusLabel(status) {
+        return TOOL_LABELS[status] || 'Registrada';
+      },
+      toolTone(status) {
+        return toolTone(status);
+      },
+      tokenCount(value) {
+        return value === null || value === undefined ? '—' : Number(value).toLocaleString('es-ES');
+      },
+      usageSourceLabel() {
+        if (!this.usage) return '';
+        if (this.usage.source === 'measured') return 'medido';
+        if (this.usage.source === 'reported') return 'informado por el motor externo';
+        return 'sin clasificar por el servidor';
       },
       actionStatusLabel(status) {
         return ACTION_LABELS[status] || 'Registrada';
@@ -223,15 +669,67 @@
       '      <p class="page-sub">Consulta o cambia activos del inventario. El servidor decide qué operaciones ejecutar y pide los datos que falten.</p>',
       '    </div>',
       '  </header>',
+      '  <section v-if="!legacyFallback" class="conversation__engine" aria-labelledby="conversation-engine-title">',
+      '    <div class="conversation__engine-head">',
+      '      <h2 id="conversation-engine-title" class="conversation__heading">Motor y modelo</h2>',
+      '      <span v-if="agentEnginesLoading" class="conversation__meta" role="status">Consultando motores…</span>',
+      '    </div>',
+      '    <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
+      '    <div v-if="agentInstanceList.length" class="conversation__engine-grid">',
+      '      <div class="conversation__field">',
+      '        <label class="conversation__label" for="conversation-engine">Motor</label>',
+      '        <select id="conversation-engine" class="conversation__select" :value="agentPreference.instanceId" :disabled="busy" @change="changeEngine($event.target.value)">',
+      '          <option v-for="instance in agentInstanceList" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentInstanceLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
+      '        </select>',
+      '      </div>',
+      '      <div class="conversation__field">',
+      '        <label class="conversation__label" for="conversation-model">Modelo</label>',
+      '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || !agentModels.length" @change="changeModel($event.target.value)">',
+      '          <option v-if="!agentModels.length" value="">Sin modelos anunciados</option>',
+      '          <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
+      '        </select>',
+      '      </div>',
+      '    </div>',
+      '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" aria-label="Errores de descubrimiento de motores">',
+      '      <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
+      '    </ul>',
+      '    <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
+      '    <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="conversation__help" role="status">El servidor no anunció motores de sesión. Crea una instancia en Configuración → IA para conversar.</p>',
+      '    <p v-else-if="agentEnginesLoaded && !agentActiveInstance" class="conversation__help" role="status">No hay un motor habilitado. Habilita una instancia en Configuración → IA.</p>',
+      '    <div v-if="agentCapabilityList.length" class="conversation__tags">',
+      '      <span v-for="capability in agentCapabilityList" :key="capability.key" class="chip chip--muted">{{ capability.label }}</span>',
+      '    </div>',
+      '    <p v-if="agentBudgetSummary" class="conversation__usage">{{ agentBudgetSummary }}</p>',
+      '    <p v-if="agentBudgetStrictDisclosure" class="conversation__help">{{ agentBudgetStrictDisclosure }}</p>',
+      '  </section>',
+      '  <p v-else-if="agentEnginesLoaded" class="conversation__help">El servidor no anunció motores de sesión; se usa el chat compatible del servidor.</p>',
       '  <div class="conversation__log" role="log" aria-live="polite" aria-relevant="additions text">',
       '    <p v-if="!hasMessages && !busy" class="conversation__empty">Todavía no hay mensajes. Escribe una consulta para empezar.</p>',
       '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
       '      <p class="conversation__role">{{ message.role === \'user\' ? \'Tú\' : \'Agente\' }}</p>',
-      '      <p class="conversation__text">{{ message.content }}</p>',
+      '      <p class="conversation__text">{{ message.content }}<span v-if="message.streaming" class="conversation__streaming" aria-hidden="true">…</span></p>',
       '    </article>',
-      '    <p v-if="busy" class="conversation__pending" role="status">Esperando la respuesta del agente…</p>',
+      '    <p v-if="busy && !streaming" class="conversation__pending" role="status">Preparando la sesión del motor…</p>',
+      '    <p v-if="streaming" class="conversation__pending" role="status">Recibiendo la respuesta del agente…</p>',
       '  </div>',
-      '  <p v-if="error" class="conversation__error" role="alert">{{ error }}</p>',
+      '  <div v-if="error" class="conversation__error-box">',
+      '    <p class="conversation__error" role="alert">{{ error }}</p>',
+      '    <p v-if="retryable && !busy" class="conversation__help">La ejecución se interrumpió; el mensaje no se reenvió automáticamente.</p>',
+      '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? \'Consultando…\' : \'Reconectar y consultar el estado\' }}</button>',
+      '  </div>',
+      '  <p v-if="streamStatus" class="conversation__help" role="status">{{ streamStatus }}</p>',
+      '  <p v-if="approvalPending" class="conversation__approval" role="status">La última operación queda pendiente de aprobación en el servidor.</p>',
+      '  <section v-if="tools.length" class="conversation__section" aria-labelledby="conversation-tools">',
+      '    <h2 id="conversation-tools" class="conversation__heading">Herramientas</h2>',
+      '    <ul class="conversation__actions">',
+      '      <li v-for="(tool, index) in tools" :key="index" class="conversation__action">',
+      '        <span class="conversation__action-tool">{{ tool.tool }}</span>',
+      '        <span class="status-pill" :class="\'status--\' + toolTone(tool.status)">{{ toolStatusLabel(tool.status) }}</span>',
+      '        <p v-if="tool.output" class="conversation__meta">{{ tool.output }}</p>',
+      '      </li>',
+      '    </ul>',
+      '  </section>',
+      '  <p v-if="usage" class="conversation__usage" role="status">Consumo {{ usageSourceLabel() }}: {{ tokenCount(usage.inputTokens) }} de entrada · {{ tokenCount(usage.outputTokens) }} de salida<template v-if="usage.cost"> · coste {{ usage.cost }}</template>.</p>',
       '  <section v-if="actions.length" class="conversation__section" aria-labelledby="conversation-actions">',
       '    <h2 id="conversation-actions" class="conversation__heading">Acciones ejecutadas</h2>',
       '    <ul class="conversation__actions">',
@@ -263,7 +761,10 @@
       '    <label class="conversation__label" for="conversation-input">Mensaje</label>',
       '    <textarea id="conversation-input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy" aria-describedby="conversation-help" placeholder="Ej.: Muéstrame los servidores de Matriz"></textarea>',
       '    <p id="conversation-help" class="conversation__help">El agente pide los datos que falten antes de cambiar un activo.</p>',
-      '    <button type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
+      '    <div class="conversation__form-actions">',
+      '      <button type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
+      '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? \'Cancelando…\' : \'Cancelar\' }}</button>',
+      '    </div>',
       '  </form>',
       '</section>'
     ].join('\n')

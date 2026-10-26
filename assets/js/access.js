@@ -93,6 +93,9 @@
     sedes: 'config.sites',
     personas: 'config.departments',
     integraciones: 'config.integrations',
+    // Chat preferences and the IA page are available to any signed-in user;
+    // administration controls inside the page still require config.integrations.
+    ia: 'assets.view',
     // The relationship vocabulary is general configuration on the server, not
     // an asset edit: administering types needs config.general, while editing an
     // individual relation still needs assets.edit.
@@ -173,8 +176,48 @@
     conflict: 'La operación no se puede completar con el estado actual.',
     validation_error: 'Revisa los campos indicados.',
     not_found: 'El registro no está disponible.',
-    rate_limited: 'Demasiados intentos. Espera antes de volver a intentarlo.'
+    rate_limited: 'Demasiados intentos. Espera antes de volver a intentarlo.',
+    too_many_requests: 'Se alcanzó el límite diario de tokens. Un motor externo pudo haber procesado la solicitud y la cuota estricta no está garantizada.',
+    unavailable: 'El motor no está disponible en este momento.'
   };
+  function responseError(vm, path, response, payload) {
+    if (response.status === 401 && path !== '/auth/login' && !path.startsWith('/reports/public/')) clearIdentity(vm);
+    const code = payload && payload.error && payload.error.code;
+    const serverMessage = payload && payload.error && typeof payload.error.message === 'string' ? payload.error.message.trim() : '';
+    const details = Array.isArray(payload && payload.details) ? payload.details : [];
+    const detailText = details.map(item => {
+      const field = typeof item.field === 'string' ? item.field.trim() : '';
+      const message = typeof item.message === 'string' ? item.message.trim() : '';
+      return message ? (field ? field + ': ' + message : message) : '';
+    }).filter(Boolean).join(' · ');
+    const reason = code === 'validation_error' ? (detailText || serverMessage) : '';
+    const error = new Error(path === '/auth/login' && response.status === 401 ? 'Usuario o contraseña incorrectos.' : (reason ? 'El servidor rechazó la solicitud: ' + reason : (messages[code] || 'No se pudo completar la solicitud.')));
+    error.status = response.status;
+    error.code = code || '';
+    error.serverMessage = serverMessage;
+    error.details = details.map(item => ({ field: String(item.field || ''), message: String(item.message || '') }));
+    error.fieldErrors = {};
+    details.forEach(item => { const field = String(item.field || '').split('.').pop(); if (field) error.fieldErrors[field] = 'Revisa este campo.'; });
+    return error;
+  }
+  function takeFrame(buffer) {
+    const match = /\r\n\r\n|\n\n|\r\r/.exec(buffer);
+    if (!match) return null;
+    return { frame: buffer.slice(0, match.index), rest: buffer.slice(match.index + match[0].length) };
+  }
+  function parseFrame(raw) {
+    const data = [];
+    String(raw || '').split(/\r\n|\r|\n/).forEach(line => {
+      if (!line || line.charAt(0) === ':') return;
+      const colon = line.indexOf(':');
+      const field = colon === -1 ? line : line.slice(0, colon);
+      const value = colon === -1 ? '' : line.slice(colon + 1).replace(/^ /, '');
+      if (field === 'data') data.push(value);
+    });
+    if (!data.length) return null;
+    const event = JSON.parse(data.join('\n'));
+    return event && typeof event === 'object' && !Array.isArray(event) ? event : null;
+  }
   async function request(vm, path, options) {
     const init = Object.assign({ method: 'GET' }, options || {});
     const headers = { Accept: 'application/json' };
@@ -186,20 +229,59 @@
     const state = vm.__assetAccess;
     const signal = init.signal || (state && state.controller.signal);
     const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal }));
-    const payload = response.ok && init.responseType === 'blob'
+    if (!response.ok) {
+      let payload = null;
+      try { payload = await response.json(); } catch (_) { /* Text/HTML failures keep their HTTP status and use the Spanish status mapping. */ }
+      if (state && state.stopped) throw new Error('Solicitud cancelada.');
+      throw responseError(vm, path, response, payload);
+    }
+    const payload = init.responseType === 'blob'
       ? await response.blob()
       : response.status === 204 ? null : await response.json();
     if (state && state.stopped) throw new Error('Solicitud cancelada.');
-    if (!response.ok) {
-      if (response.status === 401 && path !== '/auth/login' && !path.startsWith('/reports/public/')) clearIdentity(vm);
-      const code = payload.error && payload.error.code;
-      const error = new Error(path === '/auth/login' && response.status === 401 ? 'Usuario o contraseña incorrectos.' : (messages[code] || 'No se pudo completar la solicitud.'));
-      error.status = response.status;
-      error.fieldErrors = {};
-      (payload.details || []).forEach(item => { const field = String(item.field || '').split('.').pop(); if (field) error.fieldErrors[field] = 'Revisa este campo.'; });
-      throw error;
-    }
     return payload;
+  }
+  // POST streaming: the message body must be sent as a request, so EventSource
+  // is not usable. This reads the response incrementally with the same cookie,
+  // CSRF, origin and abort semantics as `request`, and yields parsed SSE events.
+  async function* stream(vm, path, options) {
+    const init = Object.assign({ method: 'GET' }, options || {});
+    const headers = { Accept: 'text/event-stream' };
+    if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(init.body); }
+    if (init.method !== 'GET' && vm.csrfToken) headers['X-CSRF-Token'] = vm.csrfToken;
+    const state = vm.__assetAccess;
+    const signal = init.signal || (state && state.controller.signal);
+    const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal }));
+    if (state && state.stopped) throw new Error('Solicitud cancelada.');
+    if (!response.ok) {
+      let payload = null;
+      try { payload = await response.json(); } catch (_) { /* non-JSON failures use the status mapping */ }
+      throw responseError(vm, path, response, payload);
+    }
+    if (!response.body || typeof response.body.getReader !== 'function') throw new Error('El servidor no envió un flujo de eventos.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        let taken = takeFrame(buffer);
+        while (taken) {
+          buffer = taken.rest;
+          const event = parseFrame(taken.frame);
+          if (event) yield event;
+          taken = takeFrame(buffer);
+        }
+        if (state && state.stopped) throw new Error('Solicitud cancelada.');
+      }
+      buffer += decoder.decode();
+      const trailing = parseFrame(buffer);
+      if (trailing) yield trailing;
+    } finally {
+      try { await reader.cancel(); } catch (_) { /* already closed or aborted */ }
+    }
   }
   function applySession(vm, payload) {
     if (!payload.user || !payload.user.active) throw new Error('La sesión no está disponible.');
@@ -477,6 +559,6 @@
   window.AssetAccess = {
     catalog: CATALOG,
     data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
-    computed, methods, start, stop, guardMethods, request
+    computed, methods, start, stop, guardMethods, request, stream
   };
 })();
