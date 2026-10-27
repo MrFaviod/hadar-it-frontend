@@ -14,6 +14,47 @@ function vnodeText(node) {
   return (node.text || '') + ' ' + vnodeText(node.children || []);
 }
 
+function findById(node, id) {
+  if (!node) return null;
+  if (node.props && node.props.id === id) return node;
+  for (const child of node.children || []) {
+    const found = findById(child, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+function optionsOf(select) {
+  return ((select && select.children) || []).filter(node => node.tag === 'option');
+}
+
+function changeHandler(control) {
+  return (control && control.listeners && control.listeners.change) ||
+    (control && control.props && control.props.onChange) || null;
+}
+
+function hermesInstance(id, profile, name) {
+  return {
+    id,
+    name,
+    engine: 'hermes',
+    profile,
+    enabled: true,
+    capabilities: { streaming: true, cancel: true, tools: true, usage: true },
+    version: '0.22.5',
+    models: [{ id: 'hermes:' + profile, name: 'Modelo ' + profile, provider: 'hermes', free: null }],
+    error: null
+  };
+}
+
+function hermesPayload() {
+  const payload = enginesPayload();
+  payload.instances.push(hermesInstance('hermes-itsm', 'itsm', 'Hermes ITSM'));
+  payload.instances.push(hermesInstance('hermes-default', 'default', 'Hermes personal'));
+  payload.preference = { instanceId: 'hermes-itsm', model: 'hermes:itsm' };
+  return payload;
+}
+
 function agentPayload(overrides) {
   return Object.assign(
     {
@@ -360,6 +401,10 @@ function sessionSurface(config) {
     }
     if (/^\/agent\/sessions\/[^/]+$/.test(path) && method === 'PATCH') {
       state.patch = body;
+      if (state.patchPending) await new Promise((resolve) => { state.releasePatch = resolve; });
+      if (state.patchError) {
+        return jsonResponse({ error: { code: 'unavailable', message: state.patchError.message } }, state.patchError.status);
+      }
       return jsonResponse({ id: path.split('/').pop(), instanceId: body.instanceId || ENGINE_ID, model: body.model });
     }
     if (/^\/agent\/sessions\/[^/]+$/.test(path) && method === 'GET') {
@@ -842,4 +887,155 @@ test('logging out aborts the stream and a late event cannot revive the surface',
   await pending;
   assert.equal(surface.vm.messages.length, 0);
   assert.equal(surface.vm.sessionId, '');
+});
+
+test('a same-engine profile switch patches the ITSM session and keeps transcript, draft and identity', async () => {
+  const surface = sessionSurface({ engines: hermesPayload() });
+  await surface.settle();
+  const vm = surface.vm;
+  vm.draft = 'Consulta inicial';
+  assert.equal(await vm.send(), true);
+  vm.draft = 'Borrador sin enviar';
+  const transcript = JSON.parse(JSON.stringify(vm.messages));
+  const sessionId = vm.sessionId;
+  assert.equal(sessionId, 'sess-1');
+
+  const engineSelect = findById(surface.mount.root, 'conversation-engine');
+  assert.ok(engineSelect, 'the rendered chat engine selector exists');
+  const engineOptions = optionsOf(engineSelect);
+  assert.equal(engineOptions.filter(option => option.props.value === 'hermes').length, 1,
+    'one engine choice covers every authorized Hermes profile');
+  assert.equal(engineOptions.some(option => option.props.value === 'hermes-itsm'), false);
+  assert.match(vnodeText(engineOptions.find(option => option.props.value === 'hermes')), /Hermes 0\.22\.5/);
+
+  const profileSelect = findById(surface.mount.root, 'conversation-profile');
+  assert.ok(profileSelect, 'the profile selector is rendered for distinct external profiles');
+  assert.deepEqual(optionsOf(profileSelect).map(option => option.props.value), ['hermes-itsm', 'hermes-default']);
+  assert.deepEqual(optionsOf(profileSelect).map(option => vnodeText(option).trim()), ['itsm', 'default']);
+  assert.equal(profileSelect.props['aria-describedby'], 'conversation-profile-help');
+  assert.ok(findById(surface.mount.root, 'conversation-profile-help'), 'the profile help target is rendered');
+
+  const change = changeHandler(profileSelect);
+  assert.ok(change, 'the profile selector is wired');
+  profileSelect.value = 'hermes-default';
+  assert.equal(await change(Object.create({ target: profileSelect })), true);
+  await surface.settle();
+
+  assert.equal(vm.sessionId, sessionId);
+  assert.deepEqual(JSON.parse(JSON.stringify(vm.messages)), transcript);
+  assert.equal(vm.draft, 'Borrador sin enviar');
+  assert.equal(vm.sessionInstanceId, 'hermes-default');
+  assert.equal(vm.sessionModel, 'hermes:default');
+  assert.equal(vm.agentPreference.instanceId, 'hermes-default');
+  const patches = surface.calls.filter(call => call.method === 'PATCH');
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].path, '/agent/sessions/sess-1');
+  assert.deepEqual(patches[0].body, { instanceId: 'hermes-default', model: 'hermes:default' });
+  assert.equal(surface.calls.filter(call => call.path === '/agent/sessions' && call.method === 'POST').length, 1);
+  assert.deepEqual(surface.state.preference, { instanceId: 'hermes-default', model: 'hermes:default' });
+});
+
+test('a rejected profile switch restores the selected profile and keeps the ITSM session intact', async () => {
+  const surface = sessionSurface({
+    engines: hermesPayload(),
+    patchError: { status: 503, message: 'El motor rechazó el cambio de perfil.' }
+  });
+  await surface.settle();
+  const vm = surface.vm;
+  vm.draft = 'Consulta inicial';
+  await vm.send();
+  vm.draft = 'Borrador sin enviar';
+  const transcript = JSON.parse(JSON.stringify(vm.messages));
+  const preferenceWrites = () => surface.calls.filter(call => call.path === '/agent/preferences').length;
+  assert.equal(preferenceWrites(), 0);
+
+  const profileSelect = findById(surface.mount.root, 'conversation-profile');
+  const change = changeHandler(profileSelect);
+  profileSelect.value = 'hermes-default';
+  assert.equal(await change(Object.create({ target: profileSelect })), false);
+  await surface.settle();
+
+  assert.equal(profileSelect.value, 'hermes-itsm');
+  assert.equal(vm.agentPreference.instanceId, 'hermes-itsm');
+  assert.equal(vm.agentPreference.model, 'hermes:itsm');
+  assert.equal(vm.sessionInstanceId, 'hermes-itsm');
+  assert.equal(vm.sessionId, 'sess-1');
+  assert.deepEqual(JSON.parse(JSON.stringify(vm.messages)), transcript);
+  assert.equal(vm.draft, 'Borrador sin enviar');
+  assert.match(vm.error, /rechazó el cambio de perfil/i);
+  assert.equal(preferenceWrites(), 0);
+  assert.equal(surface.state.preference, undefined);
+});
+
+test('a profile switch that resolves after logout cannot restore state or leak a preference', async () => {
+  const surface = sessionSurface({ engines: hermesPayload(), patchPending: true });
+  await surface.settle();
+  const vm = surface.vm;
+  vm.draft = 'Consulta inicial';
+  await vm.send();
+  const pending = vm.changeProfile('hermes-default');
+  await surface.settle();
+  assert.equal(vm.selecting, true);
+  assert.equal(findById(surface.mount.root, 'conversation-profile').props.disabled, true);
+  assert.equal(findById(surface.mount.root, 'conversation-engine').props.disabled, true);
+
+  surface.app.authenticated = false;
+  await surface.settle();
+  assert.equal(vm.sessionId, '');
+  surface.state.releasePatch();
+  assert.equal(await pending, false);
+  await surface.settle();
+
+  assert.equal(vm.agentPreference.instanceId, '');
+  assert.equal(vm.agentPreference.model, '');
+  assert.equal(vm.sessionInstanceId, '');
+  assert.equal(vm.sessionId, '');
+  assert.equal(vm.selecting, false);
+  assert.equal(vm.messages.length, 0);
+  assert.equal(vm.error, '');
+  assert.equal(surface.calls.filter(call => call.path === '/agent/preferences').length, 0);
+  assert.equal(surface.state.preference, undefined);
+});
+
+test('the profile selector is hidden without external profiles and Pydantic providers stay distinct', async () => {
+  const payload = enginesPayload({
+    instances: [
+      { id: 'pydantic-global', name: 'Proveedor global', engine: 'pydantic', profile: '', enabled: true, capabilities: { tools: true }, version: '1.0', models: [{ id: 'global:model', name: 'Global', provider: 'pydantic', free: null }], error: null },
+      { id: 'pydantic-personal', name: 'Mi proveedor', engine: 'pydantic', profile: '', enabled: true, capabilities: { tools: true }, version: '1.0', models: [{ id: 'personal:model', name: 'Personal', provider: 'pydantic', free: null }], error: null }
+    ],
+    preference: { instanceId: 'pydantic-global', model: 'global:model' }
+  });
+  const surface = sessionSurface({ engines: payload });
+  await surface.settle();
+
+  assert.equal(findById(surface.mount.root, 'conversation-profile'), null);
+  const engineSelect = findById(surface.mount.root, 'conversation-engine');
+  assert.deepEqual(optionsOf(engineSelect).map(option => option.props.value), ['pydantic-global', 'pydantic-personal']);
+  const rendered = vnodeText(surface.mount.root);
+  assert.match(rendered, /Proveedor global/);
+  assert.match(rendered, /Mi proveedor/);
+});
+
+test('a single external profile hides the selector while its engine choice stays selectable', async () => {
+  const payload = enginesPayload();
+  payload.instances.push(hermesInstance('hermes-itsm', 'itsm', 'Hermes ITSM'));
+  payload.preference = { instanceId: 'pydantic-built-in', model: 'pydantic:default' };
+  const surface = sessionSurface({ engines: payload });
+  await surface.settle();
+  const vm = surface.vm;
+
+  assert.equal(findById(surface.mount.root, 'conversation-profile'), null);
+  const engineSelect = findById(surface.mount.root, 'conversation-engine');
+  const option = optionsOf(engineSelect).find(item => item.props.value === 'hermes');
+  assert.ok(option, 'one Hermes engine option is rendered');
+  assert.match(vnodeText(option), /Hermes 0\.22\.5/);
+
+  const change = changeHandler(engineSelect);
+  engineSelect.value = 'hermes';
+  assert.equal(await change(Object.create({ target: engineSelect })), true);
+  assert.equal(vm.agentPreference.instanceId, 'hermes-itsm');
+  assert.equal(vm.agentPreference.model, 'hermes:itsm');
+  assert.equal(surface.calls.some(call => call.method === 'PATCH'), false);
+  const saved = surface.calls.filter(call => call.path === '/agent/preferences' && call.method === 'PUT').pop();
+  assert.deepEqual(saved.body, { instanceId: 'hermes-itsm', model: 'hermes:itsm' });
 });

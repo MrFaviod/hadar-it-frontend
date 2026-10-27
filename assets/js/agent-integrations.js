@@ -150,6 +150,25 @@
     return '';
   }
 
+  // The receipt may hide an invalid configuration behind a failed status with
+  // no checks; surface the sanitized server message instead of a generic line.
+  function resultErrorText(result) {
+    const error = result && result.error;
+    if (!error) return '';
+    if (typeof error === 'string') return text(error);
+    return text(error.message) || text(error.code);
+  }
+
+  function resultLimitations(result) {
+    return Array.isArray(result && result.limitations) ? result.limitations : [];
+  }
+
+  function limitationText(item) {
+    if (typeof item === 'string') return text(item);
+    if (item && typeof item === 'object') return text(item.message) || text(item.detail) || text(item.code);
+    return text(item);
+  }
+
   // Client-side Blob download for a server-built request. The request is the
   // only artifact the remote helper consumes; PI/credentials stay out of it.
   function saveJsonFile(value, installationId) {
@@ -266,9 +285,75 @@
       agentInstanceList() {
         return Array.isArray(this.agentEngines) ? this.agentEngines : [];
       },
+      // The engine selector offers one choice per external engine: its named
+      // profiles are selected separately. Pydantic instances are distinct
+      // provider configurations (global or personal), so each one stays its own
+      // choice instead of collapsing into an anonymous "Pydantic AI" option.
+      agentEngineChoices() {
+        const choices = [];
+        const grouped = new Map();
+        for (const instance of this.agentInstanceList) {
+          if (!instance || typeof instance.id !== 'string' || !instance.id) continue;
+          const engine = text(instance.engine);
+          if (!engine) continue;
+          if (engine === 'pydantic') {
+            choices.push({
+              value: instance.id,
+              engine,
+              instanceId: instance.id,
+              label: this.agentInstanceLabel(instance),
+              disabled: instance.enabled === false
+            });
+            continue;
+          }
+          const choice = grouped.get(engine);
+          if (choice) {
+            if (instance.enabled !== false) {
+              if (choice.disabled) {
+                const version = text(instance.version);
+                choice.label = engineLabel(engine) + (version ? ' ' + version : '');
+              }
+              choice.disabled = false;
+            }
+            continue;
+          }
+          const version = text(instance.version);
+          const created = {
+            value: engine,
+            engine,
+            instanceId: '',
+            label: engineLabel(engine) + (version ? ' ' + version : ''),
+            disabled: instance.enabled === false
+          };
+          grouped.set(engine, created);
+          choices.push(created);
+        }
+        return choices;
+      },
+      agentEngineValue() {
+        const instance = this.agentActiveInstance;
+        if (!instance) return '';
+        const engine = text(instance.engine);
+        return !engine || engine === 'pydantic' ? instance.id : engine;
+      },
+      agentProfileOptions() {
+        const engine = this.agentActiveEngine;
+        if (!engine || engine === 'pydantic') return [];
+        return this.agentInstanceList.filter(instance =>
+          instance && typeof instance.id === 'string' && instance.id && text(instance.engine) === engine);
+      },
+      // A profile is only a choice when the authorized discovery returned more
+      // than one for the selected external engine. Single-profile engines show
+      // no dead control, and Pydantic providers had their own engine choice.
+      agentProfileSelectorVisible() {
+        return this.agentProfileOptions.length > 1;
+      },
       agentActiveInstance() {
         const id = this.agentPreference && this.agentPreference.instanceId;
         return this.agentInstanceList.find(instance => instance && instance.id === id) || null;
+      },
+      agentActiveEngine() {
+        return this.agentActiveInstance ? text(this.agentActiveInstance.engine) : '';
       },
       agentModels() {
         const instance = this.agentActiveInstance;
@@ -328,6 +413,38 @@
         const engine = engineLabel(instance.engine);
         const version = text(instance.version);
         return (text(instance.name, engine) + ' · ' + engine) + (version ? ' ' + version : '');
+      },
+      // Only the profile or instance name already authorized by discovery is
+      // shown; endpoints, directories and credentials never reach this label.
+      agentProfileLabel(instance) {
+        if (!instance) return '';
+        return text(instance.profile) || text(instance.name, engineLabel(instance.engine));
+      },
+      // Picking an engine keeps the current or saved profile of that engine
+      // when it is still authorized and enabled.
+      agentEngineInstanceFor(engine) {
+        const name = text(engine);
+        if (!name) return null;
+        const candidates = this.agentInstanceList.filter(instance =>
+          instance && instance.enabled !== false && text(instance.engine) === name);
+        if (!candidates.length) return null;
+        const current = this.agentPreference && this.agentPreference.instanceId;
+        const saved = this.agentPreferenceSaved && this.agentPreferenceSaved.instanceId;
+        return candidates.find(instance => instance.id === current) ||
+          candidates.find(instance => instance.id === saved) ||
+          candidates[0];
+      },
+      agentProfileInstance(instanceId) {
+        const engine = this.agentActiveEngine;
+        if (!engine || engine === 'pydantic') return null;
+        return this.agentInstanceList.find(instance =>
+          instance && instance.id === instanceId && text(instance.engine) === engine) || null;
+      },
+      // A rejected same-session switch leaves the reactive preference intact,
+      // so the native control is restored to the value that authority reports.
+      agentResetSelection(event, value) {
+        const target = event && typeof event === 'object' ? event.target : null;
+        if (target && typeof value === 'string' && 'value' in target) target.value = value;
       },
       agentIdentityLabel(identity) {
         if (!identity) return '';
@@ -495,8 +612,25 @@
       this.agentEpoch += 1;
     },
     methods: {
-      onInstance(event) {
-        return this.setAgentInstance(event.target.value);
+      async onEngine(event) {
+        const value = event && event.target ? event.target.value : '';
+        const choice = this.agentEngineChoices.find(item => item.value === value);
+        const instance = choice
+          ? (choice.instanceId
+            ? this.agentInstanceList.find(item => item.id === choice.instanceId)
+            : this.agentEngineInstanceFor(choice.engine))
+          : this.agentInstanceList.find(item => item.id === value);
+        const saved = instance && instance.enabled !== false ? await this.setAgentInstance(instance.id) : false;
+        if (saved === false) this.agentResetSelection(event, this.agentEngineValue);
+        return saved !== false;
+      },
+      async onProfile(event) {
+        const value = event && event.target ? event.target.value : '';
+        const instance = this.agentProfileInstance(value);
+        const previous = this.agentPreference.instanceId;
+        const saved = instance && instance.enabled !== false ? await this.setAgentInstance(instance.id) : false;
+        if (saved === false) this.agentResetSelection(event, previous || this.agentPreference.instanceId);
+        return saved !== false;
       },
       onModel(event) {
         return this.setAgentModel(event.target.value);
@@ -512,11 +646,20 @@
         <div v-if="agentEnginesLoaded && agentInstanceList.length" class="agent-engine__grid">
           <div class="field">
             <label class="field__label" for="agent-engine-instance">Motor</label>
-            <select id="agent-engine-instance" class="input-shell" :value="agentPreference.instanceId" @change="onInstance">
-              <option v-for="instance in agentInstanceList" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">
-                {{ agentInstanceLabel(instance) }}{{ instance.enabled === false ? ' · Deshabilitada' : '' }}
+            <select id="agent-engine-instance" class="input-shell" :value="agentEngineValue" @change="onEngine">
+              <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">
+                {{ choice.label }}{{ choice.disabled ? ' · Deshabilitada' : '' }}
               </option>
             </select>
+          </div>
+          <div v-if="agentProfileSelectorVisible" class="field">
+            <label class="field__label" for="agent-engine-profile">Perfil</label>
+            <select id="agent-engine-profile" class="input-shell" :value="agentPreference.instanceId" @change="onProfile">
+              <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">
+                {{ agentProfileLabel(instance) }}{{ instance.enabled === false ? ' · Deshabilitada' : '' }}
+              </option>
+            </select>
+            <p class="field__hint">El perfil elegido se usará en las conversaciones nuevas; una conversación guardada conserva su motor y modelo.</p>
           </div>
           <div class="field">
             <label class="field__label" for="agent-engine-model">Modelo</label>
@@ -767,6 +910,9 @@
         return statusTone(text(record.status), record.verified);
       },
       checkText,
+      resultError: resultErrorText,
+      resultLimitations,
+      limitationText,
       pathLabel(record) {
         const target = record && record.target ? record.target : {};
         return [text(target.engine) ? engineLabel(target.engine) : '', text(target.path), text(target.profile)].filter(Boolean).join(' · ');
@@ -878,12 +1024,17 @@
             <strong>Resultado del instalador</strong>
             <span class="status-pill" :class="'status--' + tone(result)">{{ statusLabel(result) }}</span>
           </div>
-          <p v-if="result.verified === true">El servidor verificó la conexión MCP con este destino.</p>
+          <p v-if="resultError(result)" class="agent-note agent-note--error" role="alert">{{ resultError(result) }}</p>
+          <p v-else-if="result.verified === true">El servidor verificó la conexión MCP con este destino.</p>
           <p v-else>El servidor no confirmó una conexión MCP real.</p>
           <p v-if="result.target && result.target.version" class="agent-skill__meta">Versión: {{ result.target.version }}</p>
           <div v-if="Array.isArray(result.checks) && result.checks.length">
             <p class="agent-skill__meta">Comprobaciones informadas:</p>
             <ul><li v-for="(check, index) in result.checks" :key="index">{{ checkText(check) || check }}</li></ul>
+          </div>
+          <div v-if="resultLimitations(result).length">
+            <p class="agent-skill__meta">Limitaciones informadas por el servidor:</p>
+            <ul><li v-for="(item, index) in resultLimitations(result)" :key="index">{{ limitationText(item) }}</li></ul>
           </div>
           <div v-if="Array.isArray(result.conflicts) && result.conflicts.length">
             <p class="agent-skill__meta">Conflictos conservados:</p>
@@ -918,6 +1069,7 @@
         instanceBusy: false,
         instanceError: '',
         target: { path: '', profile: '', version: '', remote: false },
+        preparedInstanceId: '',
         detecting: false,
         detection: null,
         detectError: '',
@@ -1001,8 +1153,22 @@
         return statusTone(text(record && record.status), record && record.verified);
       },
       checkText,
+      resultError: resultErrorText,
+      resultLimitations,
+      limitationText,
       machineIdentityLabel(identity) {
         return (text(identity.name, text(identity.username, identity.id))) + ' · ' + text(identity.actorKind);
+      },
+      registeredProfile(instance) {
+        if (!instance) return '';
+        const profile = text(instance.profile);
+        if (text(instance.engine) === 'opencode') return profile;
+        return profile || 'default';
+      },
+      targetProfilePayload() {
+        const profile = text(this.target.profile);
+        if (profile) return profile;
+        return this.engine === 'opencode' ? null : profile;
       },
       skillIsOfficial(skill) {
         const moduleId = text(skill.module);
@@ -1048,10 +1214,12 @@
             this.instanceError = 'Selecciona una instancia OpenCode o Hermes registrada.';
             return false;
           }
-          if (!this.target.path) {
-            this.target.path = text(this.selectedInstance.directory);
-            this.target.profile = this.engine === 'opencode' ? '' : text(this.selectedInstance.profile, 'default');
+          if (this.preparedInstanceId !== this.selectedInstance.id) {
+            this.target.profile = this.registeredProfile(this.selectedInstance);
+            this.preparedInstanceId = this.selectedInstance.id;
+            this.detection = null;
           }
+          if (!this.target.path) this.target.path = text(this.selectedInstance.directory);
           if (!this.mcp.identityId) this.mcp.identityId = text(this.selectedInstance.integrationIdentityId);
           return true;
         }
@@ -1076,6 +1244,9 @@
           if (!instance || !text(instance.id)) throw new Error('El servidor no devolvió la instancia creada.');
           this.instanceId = instance.id;
           this.mode = 'existing';
+          this.preparedInstanceId = instance.id;
+          this.target.profile = this.registeredProfile({ engine: body.engine, profile: body.profile });
+          if (!this.target.path) this.target.path = text(body.directory);
           this.$emit('applied', instance);
           return true;
         } catch (error) {
@@ -1099,7 +1270,7 @@
           const payload = await window.AssetAgentApi.detectTarget(this.app, {
             engine: this.engine,
             path: text(this.target.path),
-            profile: this.engine === 'opencode' ? null : text(this.target.profile),
+            profile: this.targetProfilePayload(),
             version: text(this.target.version)
           });
           const detection = normalizeTargetDetection(payload, this.engine);
@@ -1133,7 +1304,7 @@
             target: {
               engine: this.engine,
               path: text(this.target.path),
-              profile: this.engine === 'opencode' ? null : text(this.target.profile),
+              profile: this.targetProfilePayload(),
               version: text(this.target.version),
               remote: this.target.remote === true
             },
@@ -1359,7 +1530,8 @@
               <strong>Resultado del instalador</strong>
               <span class="status-pill" :class="'status--' + tone(result)">{{ statusLabel(result) }}</span>
             </div>
-            <p v-if="verified">El servidor verificó la conexión MCP con este destino.</p>
+            <p v-if="resultError(result)" class="agent-note agent-note--error" role="alert">{{ resultError(result) }}</p>
+            <p v-else-if="verified">El servidor verificó la conexión MCP con este destino.</p>
             <p v-else>El servidor no confirmó una conexión MCP real. La configuración puede haberse escrito, pero no está verificada.</p>
             <p v-if="result.mcpVerified === true || result.profileSafetyVerified === true" class="agent-skill__meta">
               MCP: {{ result.mcpVerified === true ? 'verificado' : 'sin verificar' }} · Perfil: {{ result.profileSafetyVerified === true ? 'verificado' : 'sin verificar' }}
@@ -1373,6 +1545,10 @@
             <div v-if="Array.isArray(result.checks) && result.checks.length">
               <p class="agent-skill__meta">Comprobaciones informadas:</p>
               <ul><li v-for="(check, index) in result.checks" :key="index">{{ checkText(check) || check }}</li></ul>
+            </div>
+            <div v-if="resultLimitations(result).length">
+              <p class="agent-skill__meta">Limitaciones informadas por el servidor:</p>
+              <ul><li v-for="(item, index) in resultLimitations(result)" :key="index">{{ limitationText(item) }}</li></ul>
             </div>
             <div v-if="result.request || (result.binding && result.binding.requestDigest)" class="agent-remote">
               <p><strong>Solicitud remota generada.</strong> El destino todavía no está instalado ni verificado.</p>

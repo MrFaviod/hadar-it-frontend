@@ -60,6 +60,29 @@ function enginesPayload(overrides) {
   }, overrides);
 }
 
+function hermesInstance(id, profile, name) {
+  return {
+    id,
+    name,
+    engine: 'hermes',
+    profile,
+    enabled: true,
+    version: '0.22.5',
+    models: [{ id: 'hermes:' + profile, name: 'Modelo ' + profile, provider: 'hermes', free: null }],
+    capabilities: { streaming: true, cancel: true, tools: true, usage: true }
+  };
+}
+
+function hermesEnginesPayload() {
+  const payload = enginesPayload();
+  payload.instances = payload.instances.concat([
+    hermesInstance('hermes-itsm', 'itsm', 'Hermes ITSM'),
+    hermesInstance('hermes-default', 'default', 'Hermes personal')
+  ]);
+  payload.preference = { instanceId: 'hermes-itsm', model: 'hermes:itsm' };
+  return payload;
+}
+
 function catalogPayload() {
   return {
     skills: [
@@ -239,12 +262,201 @@ test('the mounted picker renders discovered engines and persists a model change'
   assert.deepEqual(ui.vm.agentModels.map(model => model.id), ['opencode/free-a', 'opencode/free-b']);
   const text = node => (node.text || '') + (node.children || []).map(text).join(' ');
   const rendered = text(ui.mount.root);
-  assert.match(rendered, /OpenCode local/);
+  assert.match(rendered, /OpenCode 1\.4\.0/);
   assert.match(rendered, /Free B/);
 
   assert.equal(await ui.vm.onModel({ target: { value: 'opencode/free-b' } }), true);
   const saved = ui.calls.filter(call => call.path === '/agent/preferences' && call.method === 'PUT').pop();
   assert.deepEqual(plain(saved.body), { instanceId: ENGINE_ID, model: 'opencode/free-b' });
+});
+
+test('the shared picker groups Hermes profiles under one engine and switches profile through the saved preference', async () => {
+  const ui = surface({ component: 'AgentEnginePicker', engines: hermesEnginesPayload() });
+  await ui.settle();
+
+  const engine = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-engine-instance');
+  assert.ok(engine, 'the picker renders the engine selector');
+  const engineOptions = engine.children.filter(node => node.tag === 'option');
+  assert.equal(engineOptions.filter(option => option.props.value === 'hermes').length, 1,
+    'one engine choice covers every authorized Hermes profile');
+  assert.equal(engineOptions.some(option => option.props.value === 'hermes-itsm'), false);
+
+  const profile = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-engine-profile');
+  assert.ok(profile, 'the picker renders the external profile selector');
+  const profileOptions = profile.children.filter(node => node.tag === 'option');
+  assert.deepEqual(profileOptions.map(option => option.props.value), ['hermes-itsm', 'hermes-default']);
+  assert.deepEqual(profileOptions.map(option => nodeText(option).trim()), ['itsm', 'default']);
+
+  const change = (profile.listeners && profile.listeners.change) || (profile.props && profile.props.onChange);
+  assert.ok(change, 'the profile selector is wired');
+  profile.value = 'hermes-default';
+  assert.equal(await change(Object.create({ target: profile })), true);
+
+  const saved = ui.calls.filter(call => call.path === '/agent/preferences' && call.method === 'PUT').pop();
+  assert.deepEqual(plain(saved.body), { instanceId: 'hermes-default', model: 'hermes:default' });
+  assert.equal(ui.vm.agentPreference.instanceId, 'hermes-default');
+  assert.equal(ui.calls.some(call => call.path.startsWith('/agent/sessions')), false);
+});
+
+test('the shared picker hides the profile selector without alternatives and keeps Pydantic providers distinct', async () => {
+  const engines = enginesPayload();
+  engines.instances = engines.instances.concat({
+    id: 'pydantic-personal',
+    name: 'Mi proveedor',
+    engine: 'pydantic',
+    profile: '',
+    enabled: true,
+    version: '1.0',
+    models: [{ id: 'personal:model', name: 'Personal', provider: 'pydantic', free: null }],
+    capabilities: { tools: true }
+  });
+  const ui = surface({ component: 'AgentEnginePicker', engines });
+  await ui.settle();
+
+  assert.equal(findNode(ui.mount.root, node => node.props && node.props.id === 'agent-engine-profile'), null);
+  const engine = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-engine-instance');
+  assert.deepEqual(engine.children.filter(node => node.tag === 'option').map(node => node.props.value),
+    ['pydantic', 'opencode', 'pydantic-personal']);
+  const rendered = nodeText(ui.mount.root);
+  assert.match(rendered, /Mi proveedor/);
+  assert.match(rendered, /OpenCode 1\.4\.0/);
+});
+
+test('a rejected profile preference restores the picker selection', async () => {
+  const ui = surface({ component: 'AgentEnginePicker', engines: hermesEnginesPayload() });
+  await ui.settle();
+  const original = ui.c.AssetAccess.request;
+  ui.c.AssetAccess.request = async (vm, path, options) => {
+    if (path === '/agent/preferences' && options && options.method === 'PUT') {
+      const error = new Error('No se pudo guardar la preferencia.');
+      error.serverMessage = 'El servidor rechazó la preferencia del chat.';
+      error.status = 503;
+      throw error;
+    }
+    return original(vm, path, options);
+  };
+
+  const profile = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-engine-profile');
+  const change = (profile.listeners && profile.listeners.change) || (profile.props && profile.props.onChange);
+  profile.value = 'hermes-default';
+  assert.equal(await change(Object.create({ target: profile })), false);
+  assert.equal(profile.value, 'hermes-itsm');
+  assert.equal(ui.vm.agentPreference.instanceId, 'hermes-itsm');
+  assert.equal(ui.vm.agentPreference.model, 'hermes:itsm');
+  assert.match(ui.vm.agentSelectionNotice, /rechazó la preferencia/i);
+});
+
+test('a newly registered OpenCode instance carries its profile into the wizard target', async () => {
+  const ui = surface({ component: 'AgentIntegrationWizard', props: { instances: integrationsPayload().instances, catalog: catalogPayload(), identities: [] } });
+  const vm = ui.vm;
+  vm.mode = 'new';
+  vm.instanceDraft = Object.assign({}, vm.instanceDraft, {
+    name: 'OpenCode ITSM',
+    engine: 'opencode',
+    baseUrl: 'http://127.0.0.1:4096',
+    profile: 'itsm-real',
+    directory: '/srv/opencode/itsm'
+  });
+  await vm.next();
+  assert.equal(vm.step, 2);
+  assert.equal(vm.instanceId, 'instance-new');
+  assert.equal(vm.target.profile, 'itsm-real');
+  assert.equal(vm.target.path, '/srv/opencode/itsm');
+  const save = ui.calls.find(call => call.path === '/agent/integrations/instances' && call.method === 'POST');
+  assert.equal(save.body.profile, 'itsm-real');
+});
+
+test('the wizard preserves the registered OpenCode profile in inspection and install requests', async () => {
+  const instances = integrationsPayload().instances.map(instance =>
+    instance.id === ENGINE_ID ? Object.assign({}, instance, { profile: 'itsm-real', directory: '/srv/opencode/itsm' }) : instance);
+  const ui = surface({
+    component: 'AgentIntegrationWizard',
+    props: { instances, catalog: catalogPayload(), identities: [{ id: MACHINE_ID, name: 'OpenCode ops', actorKind: 'external_agent', roleId: 'reader', active: true }] }
+  });
+  const vm = ui.vm;
+  vm.mode = 'existing';
+  vm.instanceId = ENGINE_ID;
+  await vm.next();
+  assert.equal(vm.step, 2);
+  assert.equal(vm.target.profile, 'itsm-real');
+  assert.equal(vm.target.path, '/srv/opencode/itsm');
+
+  assert.equal(await vm.detect(), true);
+  const inspection = ui.calls.filter(call => call.path === '/agent/integrations/targets').pop();
+  assert.equal(inspection.body.profile, 'itsm-real');
+
+  vm.mcp.url = 'http://127.0.0.1:8000/mcp';
+  vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
+  vm.mcp.identityId = MACHINE_ID;
+  vm.selectedSkills = ['itsm.assets.search'];
+  vm.step = 5;
+  assert.equal(await vm.install(), true);
+  const installation = ui.calls.filter(call => call.path === '/agent/integrations/install').pop();
+  assert.equal(installation.body.target.instanceId, undefined);
+  assert.equal(installation.body.instanceId, ENGINE_ID);
+  assert.equal(installation.body.target.profile, 'itsm-real');
+});
+
+test('the wizard refreshes the profile when the selected instance changes', async () => {
+  const base = integrationsPayload().instances.find(instance => instance.id === ENGINE_ID);
+  const instances = [
+    Object.assign({}, base, { id: 'opencode-alpha', name: 'Alpha', profile: 'alpha', directory: '/srv/alpha' }),
+    Object.assign({}, base, { id: 'opencode-beta', name: 'Beta', profile: 'beta', directory: '/srv/beta' })
+  ];
+  const ui = surface({ component: 'AgentIntegrationWizard', props: { instances, catalog: catalogPayload(), identities: [] } });
+  const vm = ui.vm;
+  vm.mode = 'existing';
+  vm.instanceId = 'opencode-alpha';
+  await vm.next();
+  assert.equal(vm.target.profile, 'alpha');
+
+  vm.back();
+  assert.equal(vm.step, 1);
+  vm.instanceId = 'opencode-beta';
+  await vm.next();
+  assert.equal(vm.step, 2);
+  assert.equal(vm.target.profile, 'beta');
+});
+
+test('the installer result shows the sanitized server error and limitations instead of only a generic failure', async () => {
+  const hermes = {
+    id: 'hermes-itsm', name: 'Hermes ITSM', engine: 'hermes', profile: 'itsm', enabled: true,
+    directory: '/srv/hermes/itsm', secretRef: 'HERMES_MCP_TOKEN', integrationIdentityId: MACHINE_ID
+  };
+  const ui = surface({
+    component: 'AgentIntegrationWizard',
+    props: { instances: integrationsPayload().instances.concat(hermes), catalog: catalogPayload(), identities: [{ id: MACHINE_ID, name: 'Hermes ops', actorKind: 'external_agent', roleId: 'reader', active: true }] },
+    install: {
+      id: 'installation-1',
+      instanceId: 'hermes-itsm',
+      target: { engine: 'hermes', path: '/srv/hermes/itsm', profile: 'itsm', version: '0.22.5', remote: false },
+      status: 'failed',
+      verified: false,
+      checks: [],
+      conflicts: [],
+      managedFiles: [],
+      operation: 'install',
+      error: { code: 'config_invalid', message: 'La configuración de Hermes no se pudo validar.' },
+      limitations: ['El perfil existente se conservó sin migrar.']
+    }
+  });
+  const vm = ui.vm;
+  vm.mode = 'existing';
+  vm.instanceId = 'hermes-itsm';
+  await vm.next();
+  vm.mcp.url = 'http://127.0.0.1:8000/mcp';
+  vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
+  vm.mcp.identityId = MACHINE_ID;
+  vm.selectedSkills = ['itsm.assets.search'];
+  vm.detection = { detected: true, targetPath: '/srv/hermes/itsm' };
+  vm.step = 5;
+  assert.equal(await vm.install(), true);
+  await ui.settle();
+
+  const rendered = nodeText(ui.mount.root);
+  assert.match(rendered, /La configuración de Hermes no se pudo validar\./);
+  assert.match(rendered, /El perfil existente se conservó sin migrar\./);
+  assert.doesNotMatch(rendered, /no confirmó una conexión MCP real/);
 });
 
 test('administrative writes cross the canonical transport with JSON and CSRF', async () => {
@@ -337,6 +549,7 @@ test('the wizard installs only the exact inspected target and reports unverified
   assert.deepEqual(plain(vm.result.conflicts), ['/srv/opencode/AGENTS.md']);
   await ui.settle();
   assert.match(nodeText(ui.mount.root), /Versión: 1\.4\.0/);
+  assert.match(nodeText(ui.mount.root), /no confirmó una conexión MCP real/);
 });
 
 test('the wizard accepts the canonical nested target detection envelope', async () => {
@@ -368,6 +581,8 @@ test('the wizard accepts the canonical nested target detection envelope', async 
   assert.equal(vm.target.profile, '');
 
   assert.equal(await vm.detect(), true);
+  const inspection = ui.calls.filter(call => call.path === '/agent/integrations/targets').pop();
+  assert.equal(inspection.body.profile, null);
   assert.equal(vm.detectError, '');
   assert.equal(vm.detection.detected, true);
   assert.equal(vm.detection.targetPath, '/srv/opencode');

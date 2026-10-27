@@ -607,6 +607,36 @@
         if (!instance || !this.agentModels.some(item => item.id === model)) return false;
         return this.changeSelection(instance, model);
       },
+      // The rendered engine value groups external profiles; an authorized
+      // instance id is still accepted so the older control contract keeps
+      // working without inventing a new selection authority.
+      async changeEngineChoice(event) {
+        const value = typeof event === 'string' ? event : (event && event.target ? event.target.value : '');
+        const choice = this.agentEngineChoices.find(item => item.value === value);
+        let applied;
+        if (choice) {
+          const instance = choice.instanceId
+            ? this.agentInstanceList.find(item => item.id === choice.instanceId)
+            : this.agentEngineInstanceFor(choice.engine);
+          applied = instance && instance.enabled !== false ? await this.changeEngine(instance.id) : false;
+        } else {
+          applied = await this.changeEngine(value);
+        }
+        if (!applied) this.agentResetSelection(event, this.agentEngineValue);
+        return applied;
+      },
+      // A profile switch is the existing target-instance PATCH: the ITSM
+      // session keeps its id, transcript and actions, while only the engine's
+      // native binding is reset by the server.
+      async changeProfile(event) {
+        const value = typeof event === 'string' ? event : (event && event.target ? event.target.value : '');
+        const instance = this.agentProfileInstance(value);
+        const applied = instance && instance.enabled !== false
+          ? await this.changeSelection(instance, this.agentDefaultModel(instance))
+          : false;
+        if (!applied) this.agentResetSelection(event, this.agentPreference.instanceId);
+        return applied;
+      },
       async changeSelection(instance, model) {
         if (this.busy || this.resuming || this.selecting || this.sessionRunning) return false;
         if (this.sessionId && !model) {
@@ -866,8 +896,14 @@
       '    <div v-if="agentInstanceList.length" class="conversation__engine-grid">',
       '      <div class="conversation__field">',
       '        <label class="conversation__label" for="conversation-engine">Motor</label>',
-      '        <select id="conversation-engine" class="conversation__select" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning" @change="changeEngine($event.target.value)">',
-      '          <option v-for="instance in agentInstanceList" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentInstanceLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
+      '        <select id="conversation-engine" class="conversation__select" :value="agentEngineValue" :disabled="busy || selecting || resuming || sessionRunning" @change="changeEngineChoice($event)">',
+      '          <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? \' · Deshabilitada\' : \'\' }}</option>',
+      '        </select>',
+      '      </div>',
+      '      <div v-if="agentProfileSelectorVisible" class="conversation__field">',
+      '        <label class="conversation__label" for="conversation-profile">Perfil</label>',
+      '        <select id="conversation-profile" class="conversation__select" aria-describedby="conversation-profile-help" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning" @change="changeProfile($event)">',
+      '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
       '        </select>',
       '      </div>',
       '      <div class="conversation__field">',
@@ -878,6 +914,7 @@
       '        </select>',
       '      </div>',
       '    </div>',
+      '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">Cambiar de perfil conserva los mensajes ITSM de esta conversación y reinicia solo la sesión nativa del motor. No cambia el perfil global de Hermes.</p>',
       '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" aria-label="Errores de descubrimiento de motores">',
       '      <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
       '    </ul>',
