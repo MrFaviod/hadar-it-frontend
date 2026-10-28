@@ -331,6 +331,16 @@
               <a v-if="can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>Reportes</span></a>
               <a v-if="can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>Garantías</span></a>
               <a v-if="can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>Etiquetas</span></a>
+              <template v-if="extensionPageLinks.length">
+                <p class="nav-group-label">Extensiones</p>
+                <a v-for="link in extensionPageLinks" :key="link.key" class="nav-link" :href="link.href"
+                   :class="{ 'is-active': route.name === 'extension' && route.extensionId === link.extensionId && route.pageId === link.pageId }"
+                   :aria-current="route.name === 'extension' && route.extensionId === link.extensionId && route.pageId === link.pageId ? 'page' : null"
+                   @click="closeSidebar">
+                  <app-icon :name="link.icon"></app-icon>
+                  <span>{{ link.label }}</span>
+                </a>
+              </template>
               <a v-if="can('people.view')" class="nav-link" href="#/personas" :class="{ 'is-active': route.name === 'people' || route.name === 'person' }"
                  :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
                 <app-icon name="user"></app-icon>
@@ -1051,6 +1061,7 @@
                   <div class="config-content">
                     <!-- Sistema: instalación, no administración del negocio -->
                     <system-operations v-if="route.section === 'sistema'" :app="$root"></system-operations>
+                    <extension-review v-else-if="route.section === 'extensiones'" :app="$root"></extension-review>
                     <!-- General -->
                     <access-security v-else-if="route.section === 'seguridad'" :app="$root"></access-security>
                     <section v-else-if="route.section === 'general'" class="config-section" aria-labelledby="config-general-title">
@@ -1552,6 +1563,7 @@
               <reports-center ref="workspaceView" v-else-if="route.name === 'reports'" :app="$root"></reports-center>
               <warranty-center v-else-if="route.name === 'warranties'" :app="$root"></warranty-center>
               <labels-center v-else-if="route.name === 'labels'" :app="$root"></labels-center>
+              <extension-page v-else-if="route.name === 'extension'" :app="$root" :extension-id="route.extensionId" :page-id="route.pageId"></extension-page>
               <public-asset-report v-else-if="route.name === 'reportAsset'" :app="$root"></public-asset-report>
 
               <!-- Detalle -->
@@ -1862,6 +1874,7 @@
 
                   <asset-maintenance-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
                   <asset-monitoring-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
+                  <extension-asset-panels :app="$root" :asset="currentAsset"></extension-asset-panels>
 
                   <section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
                     <header class="panel-head">
@@ -2885,6 +2898,7 @@
   <script src="assets/js/agent-integrations.js"></script>
   <script src="assets/js/system-operations.js"></script>
   <script src="assets/js/conversation.js"></script>
+  <script src="assets/js/extensions.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
 </html>

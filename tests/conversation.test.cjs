@@ -1303,3 +1303,29 @@ test('live estimated usage displays its server method and explicit zero separate
   assert.match(evidence, /\b0\b/);
   assert.match(evidence, /no disponible/i);
 });
+
+test('a submitted extension offers human review without treating its candidate as an asset', async () => {
+  const { vm, mount, c } = mountConversation();
+  const candidateId = '22222222-3333-4444-5555-666666666666';
+  vm.applyDone({ approvalPending: true, results: [{
+    type: 'extension_review', candidateId, extensionId: 'record-registry',
+    version: '1.0.0', digest: 'a'.repeat(64),
+    reviewUrl: 'https://untrusted.example/approve'
+  }] });
+  await c.Vue.nextTick();
+  const link = findById(mount.root, 'conversation-extension-review-' + candidateId);
+  assert.ok(link, 'human review must be an actionable native link');
+  assert.equal(link.props.href, '#/configuracion/extensiones?candidato=' + candidateId);
+  assert.equal(vm.results.length, 0, 'candidates are not inventory assets');
+  assert.equal(vm.approvalPending, true);
+  vm.resetSurface();
+  await c.Vue.nextTick();
+  assert.equal(findById(mount.root, 'conversation-extension-review-' + candidateId), null);
+});
+
+test('malformed candidate review data never becomes an actionable approval link', () => {
+  const { vm, mount } = mountConversation();
+  vm.applyDone({ results: [{ type: 'extension_review', candidateId: '../admin', digest: 'bad' }] });
+  assert.equal(findById(mount.root, 'conversation-extension-reviews'), null);
+  assert.equal(vm.results.length, 0);
+});

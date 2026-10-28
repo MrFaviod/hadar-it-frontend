@@ -95,10 +95,17 @@
     }
   };
 
-  const app = window.Vue.createApp({
+  const appOptions = {
     mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }, window.AssetPhase10],
     components: {
       AppIcon: window.AppIcon,
+      ItsmTable: window.ItsmTable,
+      ItsmField: window.ItsmField,
+      ItsmStatus: window.ItsmStatus,
+      ItsmError: window.ItsmError,
+      ExtensionPage: window.AssetExtensions.components.ExtensionPage,
+      ExtensionAssetPanels: window.AssetExtensions.components.ExtensionAssetPanels,
+      ExtensionReview: window.AssetExtensions.components.ExtensionReview,
       SearchPalette: window.AssetSearchViews.SearchPalette,
       SearchSettings: window.AssetSearchViews.SearchSettings,
       WorkspaceShortcuts: window.AssetWorkspaceViews.WorkspaceShortcuts,
@@ -201,6 +208,7 @@
         ...window.AssetPhase9.data(),
         ...window.AssetMaintenanceApi.data(),
         ...window.AssetMonitoringApi.data(),
+        ...window.AssetExtensions.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
         assetConfigTabs: [
@@ -258,6 +266,7 @@
           // Installation ownership stays a filtered section of the existing
           // Configuración nav; it never becomes a second navigation level.
           { id: 'sistema', label: 'Sistema', hint: 'Estado, respaldos y actualización', icon: 'server' },
+          { id: 'extensiones', label: 'Extensiones', hint: 'Paquetes, confianza y aprobación', icon: 'package' },
           { id: 'seguridad', label: 'Usuarios y permisos', hint: 'Roles y sesiones', icon: 'user' },
           { id: 'general', label: 'General', hint: 'Identidad y marca', icon: 'sliders' },
           { id: 'ia', label: 'IA', hint: 'Motores, modelos e integraciones', icon: 'layers' },
@@ -531,6 +540,10 @@
         if (this.route.name === 'panel') return 'Panel';
         if (this.route.name === 'inventory') return 'Inventario';
         if (this.route.name === 'conversation') return 'Conversación';
+        if (this.route.name === 'extension') {
+          const link = this.extensionPageLinks.find((entry) => entry.extensionId === this.route.extensionId && entry.pageId === this.route.pageId);
+          return link ? link.label : 'Extensión';
+        }
         if (this.route.name === 'map' || this.route.name === 'graph') return 'Infraestructura';
         if (this.route.name === 'datos') return 'Importar y exportar';
         if (this.route.name === 'config') return 'Configuración';
@@ -569,9 +582,10 @@
           ? 'Menú anclado · clic para liberarlo'
           : 'Anclar el menú lateral';
       }
-    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed),
+    }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed, window.AssetExtensions.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.phase10IdentityChanged(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); },
+      activeUserId() { this.changeAppearanceUser(); this.phase10IdentityChanged(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); this.extensionsIdentityChanged(); },
+      serverPermissions: { deep: true, handler() { this.extensionsIdentityChanged(); } },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);
         this.syncAppearance();
@@ -641,6 +655,7 @@
           this.handleRedundancyRoute(next,previous);
           this.handleMaintenanceRoute(next,previous);
           this.handleMonitoringRoute(next,previous);
+          this.handleExtensionRoute(next);
         }
       },
       inventoryFilters: {
@@ -659,9 +674,11 @@
           this.clearPhase9State();
           this.clearMaintenanceState();
           this.clearMonitoringState();
+          this.extensionsStop();
         } else {
           this.maintainMaintenanceIdentity();
           this.maintainMonitoringIdentity();
+          this.extensionsLoad({ force: true });
         }
       },
       mobileNavOpen(value) {
@@ -701,6 +718,7 @@
       }
     },
     beforeUnmount() {
+      this.extensionsStop();
       this.phase10Stop();
       this.stopAppearance();
       this.clearInventoryState();
@@ -719,7 +737,21 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, RouteMethods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, window.AssetExtensions.methods, RouteMethods))
+  };
+  const app = window.Vue.createApp(appOptions);
+  // Vue local registrations do not propagate to a module's child components.
+  // Only these six stable host primitives are part of the public SDK.
+  if (typeof app.component === 'function') {
+    ['AppIcon', 'ModalShell', 'ItsmTable', 'ItsmField', 'ItsmStatus', 'ItsmError'].forEach((name) => {
+      app.component(name, appOptions.components[name]);
+    });
+  }
+  // Trusted native modules render through this Vue instance. Core component
+  // names are reserved so a module can never replace the host design system.
+  window.ITSMExtensions.configure({
+    app,
+    coreComponents: Object.keys(appOptions.components)
   });
   app.mount(target || '#app');
   return app;

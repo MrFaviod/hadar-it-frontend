@@ -85,6 +85,7 @@
         error: '',
         actions: [],
         results: [],
+        extensionReviews: [],
         selectedAssetId: '',
         requestId: 0,
         request: null,
@@ -375,6 +376,7 @@
         this.error = '';
         this.actions = [];
         this.results = [];
+        this.extensionReviews = [];
         this.selectedAssetId = '';
         this.sessionId = '';
         this.sessionInstanceId = '';
@@ -432,7 +434,17 @@
           }));
       },
       mapResults(list) {
-        return (Array.isArray(list) ? list : []).filter((asset) => asset && typeof asset.id === 'string' && asset.id);
+        const rows = Array.isArray(list) ? list : [];
+        this.extensionReviews = rows.filter((item) => item && item.type === 'extension_review' &&
+          typeof item.candidateId === 'string' && UUID_RE.test(item.candidateId) &&
+          typeof item.digest === 'string' && /^[0-9a-f]{64}$/.test(item.digest) &&
+          typeof item.extensionId === 'string' && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.extensionId) &&
+          typeof item.version === 'string' && /^\d+\.\d+\.\d+$/.test(item.version)).map((item) => ({
+          candidateId: item.candidateId, extensionId: item.extensionId,
+          version: item.version, digest: item.digest,
+          href: '#/configuracion/extensiones?candidato=' + encodeURIComponent(item.candidateId)
+        }));
+        return rows.filter((asset) => asset && asset.type !== 'extension_review' && typeof asset.id === 'string' && UUID_RE.test(asset.id));
       },
       async send() {
         const message = this.draft.trim();
@@ -992,6 +1004,16 @@
       '  </div>',
       '  <p v-if="streamStatus" class="conversation__help" role="status">{{ streamStatus }}</p>',
       '  <p v-if="approvalPending" class="conversation__approval" role="status">La última operación queda pendiente de aprobación en el servidor.</p>',
+      '  <section v-if="extensionReviews.length" id="conversation-extension-reviews" class="conversation__section" aria-labelledby="conversation-extension-reviews-title">',
+      '    <h2 id="conversation-extension-reviews-title" class="conversation__heading">Extensiones pendientes de revisión</h2>',
+      '    <p class="conversation__help">Revisa el paquete y sus permisos. El agente no lo ha instalado.</p>',
+      '    <ul class="conversation__actions">',
+      '      <li v-for="review in extensionReviews" :key="review.candidateId" class="conversation__action">',
+      '        <a :id="\'conversation-extension-review-\' + review.candidateId" class="conversation__result-link" :href="review.href">Revisar {{ review.extensionId }} · {{ review.version }}</a>',
+      '        <span class="conversation__meta">SHA-256: {{ review.digest }}</span>',
+      '      </li>',
+      '    </ul>',
+      '  </section>',
       '  <section v-if="tools.length" class="conversation__section" aria-labelledby="conversation-tools">',
       '    <h2 id="conversation-tools" class="conversation__heading">Herramientas</h2>',
       '    <ul class="conversation__actions">',
