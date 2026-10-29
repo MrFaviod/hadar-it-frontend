@@ -1,0 +1,10 @@
+.help-page { max-width: 960px; }
+.help-search { display: grid; gap: 8px; max-width: 540px; }
+.help-search input { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--paper); color: var(--text); font: inherit; }
+.help-search input:focus-visible { outline: 3px solid var(--teal-700); outline-offset: 3px; }
+.help-topics { display: grid; gap: 16px; }
+.help-topic { padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--paper); overflow-wrap: anywhere; }
+.help-topic h2 { margin: 0 0 12px; font-size: 20px; }
+.help-topic ol { padding-left: 24px; margin: 0 0 12px; }
+.help-topic li + li { margin-top: 8px; }
+.help-topic a { display: inline-flex; align-items: center; min-height: 44px; color: var(--teal-700); text-decoration: underline; }

@@ -98,6 +98,7 @@
   const appOptions = {
     mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }, window.AssetPhase10],
     components: {
+      HelpPage: window.AssetHelp.HelpPage,
       AppIcon: window.AppIcon,
       ItsmTable: window.ItsmTable,
       ItsmField: window.ItsmField,
@@ -522,6 +523,7 @@
         return this.monitoringActiveAlertCount || 0;
       },
       pageLabel() {
+        if (this.route.name === 'help') return 'Ayuda';
         if (this.route.name === 'reports') return 'Reportes';
         if (this.route.name === 'warranties') return 'Garantías';
         if (this.route.name === 'labels') return 'Etiquetas';

@@ -19,6 +19,7 @@
       let candidateId = '';
       if (candidateMatch) { try { candidateId = decodeURIComponent(candidateMatch[1]); } catch (_) { candidateId = candidateMatch[1]; } }
       const parts = raw.split('/').filter(Boolean);
+      if (parts[0] === 'ayuda') return { name: 'help' };
       if (parts[0] === 'usuarios') return { name: 'users', userId: null };
       if (parts[0] === 'usuario' && parts[1]) {
         let userId;
@@ -147,6 +148,7 @@
     },
     openReportAsset(id) { this.setHash('#/reporte/' + encodeURIComponent(id)); },
     hashFor(route) {
+      if (route.name === 'help') return '#/ayuda';
       if (route.name === 'reports') return '#/reportes';
       if (route.name === 'warranties') return '#/garantias';
       if (route.name === 'labels') return '#/etiquetas';

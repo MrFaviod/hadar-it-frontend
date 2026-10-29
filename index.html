@@ -172,6 +172,7 @@
   <link rel="stylesheet" href="assets/css/conversation.css">
   <link rel="stylesheet" href="assets/css/agent-integrations.css">
   <link rel="stylesheet" href="assets/css/workspace.css">
+  <link rel="stylesheet" href="assets/css/help.css">
   <link rel="stylesheet" href="assets/css/motion.css">
   <link rel="stylesheet" href="assets/vendor/maplibre-gl.css">
 </head>
@@ -355,6 +356,7 @@
                 <app-icon name="sliders"></app-icon>
                 <span>Configuración</span>
               </a>
+              <a v-if="can('assets.view')" class="nav-link" href="#/ayuda" :class="{ 'is-active': route.name === 'help' }" :aria-current="route.name === 'help' ? 'page' : null" @click="closeSidebar"><app-icon name="file-text"></app-icon><span>Ayuda</span></a>
             </nav>
           </div>
 
@@ -449,6 +451,7 @@
                 <p>Tu rol no permite acceder a esta sección. Selecciona una opción disponible en el menú.</p>
                 <button type="button" class="btn btn--secondary" @click="logout">Cerrar sesión</button>
               </section>
+              <help-page v-else-if="route.name === 'help'" :app="$root"></help-page>
               <access-users v-else-if="route.name === 'users'" :app="$root"></access-users>
               <access-user-detail v-else-if="route.name === 'user'" :app="$root"></access-user-detail>
               <panel-overview ref="workspaceView" v-else-if="route.name === 'panel'" :app="$root"></panel-overview>
@@ -2899,6 +2902,7 @@
   <script src="assets/js/system-operations.js"></script>
   <script src="assets/js/conversation.js"></script>
   <script src="assets/js/extensions.js"></script>
+  <script src="assets/js/help.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
 </html>
