@@ -236,10 +236,11 @@
           ['state', 'planStatus', 'category', 'siteId', 'type', 'priority', 'technicianId'].filter((key) => this.filters[key] && this.filters[key] !== 'all').length;
       },
       emptyMessage() {
-        if (this.view === 'incidents') return 'Ningún incidente coincide con los filtros activos.';
-        if (this.view === 'interventions') return 'Ninguna intervención coincide con los filtros activos.';
+        const filtered = this.filterCount > 0;
+        if (this.view === 'incidents') return filtered ? 'Ningún incidente coincide con los filtros activos.' : 'Todavía no hay incidentes registrados.';
+        if (this.view === 'interventions') return filtered ? 'Ninguna intervención coincide con los filtros activos.' : 'Todavía no hay intervenciones registradas.';
         if (this.view === 'alerts') return 'No hay alertas de supervisión con estos filtros.';
-        return 'No hay trabajos preventivos con estos filtros.';
+        return filtered ? 'No hay trabajos preventivos con estos filtros.' : 'Todavía no hay trabajos preventivos programados.';
       },
       openPlan() {
         const detail = this.app.maintenanceApi && this.app.maintenanceApi.planDetail;
@@ -647,10 +648,10 @@
               </article>
             </div>
           </div>
-          <div v-if="!groups.length" class="empty-state maint-empty">
+          <div v-if="!groups.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="refresh"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button type="button" class="text-button" @click="clearFilters">Ver toda la agenda</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Ver toda la agenda</button>
           </div>
         </div>
 
@@ -681,10 +682,10 @@
               </div>
             </article>
           </div>
-          <div v-if="!interventions.length" class="empty-state maint-empty">
+          <div v-if="!interventions.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="activity"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
           </div>
         </div>
 
@@ -710,10 +711,10 @@
               </footer>
             </article>
           </div>
-          <div v-if="!incidents.length" class="empty-state maint-empty">
+          <div v-if="!incidents.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="alert"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
           </div>
         </div>
 
