@@ -245,6 +245,9 @@
   }
   function clearIdentity(vm) {
     vm.authenticated = false; vm.activeUserId = null; vm.serverPermissions = []; vm.csrfToken = '';
+    // The demo marker belongs to the session identity: logout, expiry and a
+    // fresh start must not leave a stale notice behind.
+    vm.demoMode = false;
     vm.security = { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES };
     closeSensitiveDialogs(vm); discardLegacyStorage();
     // The tokenized public report is a sessionless screen: an expired private
@@ -370,6 +373,9 @@
     if (!payload.user || !payload.user.active) throw new Error('La sesión no está disponible.');
     vm.csrfToken = payload.csrfToken || '';
     vm.serverPermissions = safePermissions(payload.permissions);
+    // Only the server's exact boolean marks a demo installation. Missing or
+    // malformed values keep an ordinary installation, never a stringified one.
+    vm.demoMode = payload.demoMode === true;
     vm.security.users = [payload.user];
     vm.security.sessionMinutes = payload.sessionMinutes || DEFAULT_SESSION_MINUTES;
     vm.activeUserId = payload.user.id;
@@ -616,7 +622,7 @@
   function start(vm) {
     discardLegacyStorage();
     const requested = vm.parseRoute ? vm.parseRoute() : homeRoute();
-    vm.authenticated = false; vm.activeUserId = null;
+    vm.authenticated = false; vm.activeUserId = null; vm.demoMode = false;
     const state = { timer: null, stopped: false, controller: new AbortController() };
     vm.__assetAccess = state;
     if (isPublicReportRoute(requested)) {
@@ -641,7 +647,7 @@
   }
   window.AssetAccess = {
     catalog: CATALOG,
-    data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
+    data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], demoMode: false, csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
     computed, methods, start, stop, guardMethods, request, stream, setExtensionPermissions
   };
 })();

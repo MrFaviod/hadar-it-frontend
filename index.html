@@ -429,6 +429,11 @@
           </div>
         </header>
 
+        <p v-if="demoMode" class="demo-notice" data-od-id="demo-mode-notice">
+          <span class="demo-notice__dot" aria-hidden="true"></span>
+          <strong>Modo demostración</strong>
+        </p>
+
         <main id="main-content" class="main" tabindex="-1">
           <workspace-shortcuts :app="$root"></workspace-shortcuts>
           <section v-if="workspaceCanSave" class="universal-filter-strip" aria-label="Filtros de la vista" data-od-id="shared-view-filters">

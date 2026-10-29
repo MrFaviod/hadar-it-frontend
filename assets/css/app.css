@@ -1099,6 +1099,32 @@ h3 {
   width: 6px;
   height: 6px;
 }
+/* Demo installation marker. The server owns the flag; this strip only reports
+   it in the authenticated shell and stays visible at every viewport width. */
+.demo-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 6px clamp(20px, 3vw, 40px);
+  border-bottom: 1px solid var(--border);
+  background: var(--teal-050);
+  color: var(--teal-800);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.demo-notice strong {
+  font-weight: 600;
+}
+.demo-notice__dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--teal-600);
+}
 .user-menu {
   position: relative;
 }
