@@ -805,12 +805,27 @@
 
                 <div v-if="!filteredPeople.length && (!serverOrganizationMode || (organization.people.loaded && !organization.people.loading && !organization.people.error))" class="empty-state">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
-                  <h2>No hay personas con estos filtros</h2>
-                  <p>Ajusta la búsqueda o crea una persona nueva.</p>
-                  <div class="empty-state__actions">
-                    <button type="button" class="btn btn--secondary" @click="clearPeopleFilters">Limpiar filtros</button>
-                    <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
-                  </div>
+                  <!-- An empty page is a filtered result only when a filter is really active;
+                       the canonical unfiltered totals decide whether the directory has records. -->
+                  <template v-if="prefs.people.search.trim() || prefs.people.department !== 'all' || prefs.people.site !== 'all' || prefs.people.status !== 'all'">
+                    <h2>No hay personas con estos filtros</h2>
+                    <p>Ajusta la búsqueda o crea una persona nueva.</p>
+                    <div class="empty-state__actions">
+                      <button type="button" class="btn btn--secondary" @click="clearPeopleFilters">Limpiar filtros</button>
+                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
+                    </div>
+                  </template>
+                  <template v-else-if="serverOrganizationMode && organization.peopleTotals.loaded && organization.peopleTotals.total === 0">
+                    <h2>Todavía no hay personas registradas</h2>
+                    <p>Crea la primera persona para empezar a asignarle activos.</p>
+                    <div class="empty-state__actions">
+                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <h2>No hay personas para mostrar</h2>
+                    <p>El directorio no devolvió personas en esta consulta. Vuelve a intentarlo en unos segundos.</p>
+                  </template>
                 </div>
               </section>
 
