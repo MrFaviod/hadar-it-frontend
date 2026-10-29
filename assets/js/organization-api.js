@@ -80,6 +80,15 @@
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  /* Only a value the user actually chose is a filter. The people filters use
+   * 'all' as the unfiltered sentinel of department, site and status, and a
+   * blank or whitespace-only search term matches everything, so neither is
+   * reported as an active filter. */
+  function chosenFilter(value) {
+    const key = text(value);
+    return !!key && key !== 'all';
+  }
+
   /* The prototype people computeds live in app.js; delegating keeps one
    * definition of the demo filters instead of a drifting copy. */
   function peopleComputed(name, vm) {
@@ -830,7 +839,7 @@
         if (!this.organizationDirectoryMode) return 0;
         const filters = (this.prefs && this.prefs.people) || {};
         return ['search', 'department', 'site', 'status'].filter(function (key) {
-          return !!text(filters[key]);
+          return key === 'search' ? !!text(filters[key]) : chosenFilter(filters[key]);
         }).length;
       },
       peopleFilterDescription() {
@@ -838,8 +847,8 @@
         const filters = (this.prefs && this.prefs.people) || {};
         const parts = [];
         if (text(filters.search)) parts.push('"' + text(filters.search) + '"');
-        if (text(filters.department)) parts.push(this.departmentLabel(filters.department));
-        if (text(filters.site)) parts.push(this.siteLabel(filters.site));
+        if (chosenFilter(filters.department)) parts.push(this.departmentLabel(filters.department));
+        if (chosenFilter(filters.site)) parts.push(this.siteLabel(filters.site));
         if (filters.status === 'active') parts.push('Solo activas');
         if (filters.status === 'inactive') parts.push('Solo inactivas');
         return parts.join(' · ');
