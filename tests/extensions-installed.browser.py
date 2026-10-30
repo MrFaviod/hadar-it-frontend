@@ -41,7 +41,7 @@ from pathlib import Path
 from playwright.sync_api import expect, sync_playwright
 
 FRONTEND = Path(__file__).resolve().parent.parent
-PROJECT = FRONTEND.parents[2]
+PROJECT = next(parent for parent in FRONTEND.parents if (parent / "backend" / "pyproject.toml").is_file())
 BACKEND = PROJECT / "backend"
 PYTHON = BACKEND / ".venv" / "bin" / "python"
 SCRATCH = FRONTEND / ".verification" / ("extensions-installed-" + uuid.uuid4().hex[:12])
