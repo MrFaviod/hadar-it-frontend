@@ -26,7 +26,18 @@
     if (Array.isArray(state.widgets)) state.widgets = layout.filter(known);
     else state.layouts[key(userId)] = layout.filter(known);
   }
-  function visibleWidgets(state, userId) { return [...new Set(layoutFor(state, userId).concat(state.temporary[key(userId)] || []))].filter(known); }
+  // Extension composition is a read-only overlay: hidden/replaced core widget
+  // ids are filtered from rendering only, so the saved personal layout (and the
+  // closed server catalogue) never receives extension ids. Disabling the
+  // extension drops the overlay and the core widget returns untouched.
+  function extensionWidgetIds(state, field) {
+    const overlay = state && state.extensionComposition;
+    return overlay && Array.isArray(overlay[field]) ? overlay[field] : [];
+  }
+  function visibleWidgets(state, userId) {
+    const hidden = extensionWidgetIds(state, 'hiddenWidgets').concat(extensionWidgetIds(state, 'replacedWidgets'));
+    return [...new Set(layoutFor(state, userId).concat(state.temporary[key(userId)] || []))].filter(known).filter(id => !hidden.includes(id));
+  }
   function moveWidget(state, userId, id, delta) {
     const layout = layoutFor(state, userId), index = layout.indexOf(id), to = index + Math.sign(delta);
     if (index < 0 || to < 0 || to >= layout.length) return false;

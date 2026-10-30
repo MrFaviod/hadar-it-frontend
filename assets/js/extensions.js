@@ -68,6 +68,49 @@
     runtime.revision += 1;
     const state = ensureState(vm);
     state.revision = runtime.revision;
+    publishComposition(vm);
+  }
+
+  // Dashboard preferences read this narrow projection to hide/replace named
+  // core widgets without persisting extension ids into the closed server
+  // workspace catalogue. Disabling the extension removes the overlay again.
+  function publishComposition(vm) {
+    if (!vm || !vm.dashboard || !window.UIComposition) return;
+    const projection = compositionFor(vm);
+    const hiddenWidgets = [];
+    const replacedWidgets = [];
+    Object.keys(projection.hidden).forEach((target) => {
+      if (target.indexOf('widget.') === 0) hiddenWidgets.push(target.slice(7));
+    });
+    Object.keys(projection.replacement).forEach((target) => {
+      if (target.indexOf('widget.') === 0) replacedWidgets.push(target.slice(7));
+    });
+    vm.dashboard.extensionComposition = { hiddenWidgets, replacedWidgets };
+  }
+
+  // A replacement component that cannot render must not leave the core surface
+  // suppressed. The failure is recorded per declaration; `project` then ignores
+  // that declaration and the overlay is republished, which restores the core
+  // widget and navigation link. Any later successful sync clears the record.
+  function compositionFailure(vm, entry) {
+    if (!vm || !entry || !entry.extensionId || !entry.contributionId) return false;
+    const state = ensureState(vm);
+    const failures = state.compositionFailures || (state.compositionFailures = {});
+    const key = entry.extensionId + ':' + entry.contributionId;
+    if (failures[key]) return true;
+    failures[key] = true;
+    emit(vm);
+    return true;
+  }
+
+  function compositionFor(vm) {
+    if (!vm || !window.UIComposition || typeof window.UIComposition.project !== 'function') {
+      return { additions: {}, hidden: {}, replacement: {}, ignored: [], candidates: [] };
+    }
+    const state = ensureState(vm);
+    const can = typeof vm.can === 'function' ? vm.can.bind(vm) : null;
+    const failures = state.compositionFailures;
+    return window.UIComposition.project(state.items, can, componentFor, failures && typeof failures === 'object' ? failures : null);
   }
 
   function componentKey(name) {
@@ -188,8 +231,8 @@
     if (!isPlainObject(raw)) {
       return {
         id: '', manifest: null, digest: '', enabled: false, version: '', revision: null,
-        schemaVersion: null, frontendUrl: '', operations: [], pages: [], assetPanels: [],
-        declaredComponents: [], invalid: 'El servidor devolvió un módulo no válido.', loadError: '', loading: false, loaded: false
+        schemaVersion: null, frontendUrl: '', operations: [], pages: [], assetPanels: [], contributions: [],
+        ignoredContributions: [], declaredComponents: [], invalid: 'El servidor devolvió un módulo no válido.', loadError: '', loading: false, loaded: false
       };
     }
     const manifest = isPlainObject(raw.manifest) ? raw.manifest : null;
@@ -248,9 +291,28 @@
     });
     if (list(frontend.assetPanels).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados paneles de activo.');
 
+    // Optional SDK v1 UI composition. Entries are validated against the exact
+    // shipped catalogue; one malformed or unknown entry is ignored at runtime
+    // so the core surfaces and the rest of the module keep working.
+    const contributions = [];
+    const ignoredContributions = [];
+    const contributionIds = new Set(pages.concat(assetPanels).map((entry) => entry.id));
+    list(frontend.contributions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
+      const checked = window.UIComposition && typeof window.UIComposition.normalize === 'function'
+        ? window.UIComposition.normalize(entry, { permissions, operations }, contributionIds)
+        : { ok: false, error: 'El host no admite composición de interfaz.' };
+      if (checked.ok) {
+        contributionIds.add(checked.value.id);
+        contributions.push(checked.value);
+      } else {
+        ignoredContributions.push({ raw: entry, error: checked.error });
+      }
+    });
+    if (list(frontend.contributions).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas contribuciones de interfaz.');
+
     const declaredComponents = [];
-    pages.concat(assetPanels).forEach((entry) => {
-      if (declaredComponents.indexOf(entry.component) === -1) declaredComponents.push(entry.component);
+    pages.concat(assetPanels, contributions).forEach((entry) => {
+      if (entry.component && declaredComponents.indexOf(entry.component) === -1) declaredComponents.push(entry.component);
     });
     if (declaredComponents.length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados componentes.');
 
@@ -283,6 +345,8 @@
       permissions,
       pages,
       assetPanels,
+      contributions,
+      ignoredContributions,
       declaredComponents,
       invalid,
       loadError: invalid,
@@ -444,6 +508,7 @@
     state.error = '';
     state.loaded = true;
     state.identity = identityKey(vm);
+    state.compositionFailures = {};
     publishCatalog(vm);
     state.items.forEach((item) => loadScript(vm, item));
     emit(vm);
@@ -490,7 +555,9 @@
     state.loaded = false;
     state.error = '';
     state.identity = '';
+    state.compositionFailures = {};
     state.revision = ++runtime.revision;
+    publishComposition(vm);
     publishCatalog(vm);
   }
 
@@ -1460,6 +1527,8 @@
     routeOverride,
     componentFor,
     sdkFor,
+    compositionFor,
+    compositionFailure,
     readonlyAsset,
     pageLink,
     pageLinks,
@@ -1480,7 +1549,8 @@
     components: {
       ExtensionPage,
       ExtensionAssetPanels,
-      ExtensionReview
+      ExtensionReview,
+      ...(window.UIComposition ? window.UIComposition.components : {})
     }
   };
 })();
