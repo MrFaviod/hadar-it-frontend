@@ -159,7 +159,8 @@ function providersPayload(overrides) {
         baseUrl: 'https://api.openai.example/v1',
         models: ['personal-model'],
         enabled: true,
-        credentialConfigured: true
+        credentialConfigured: true,
+        credentialStatus: 'older'
       },
       {
         id: '99999999-8888-4777-8666-555555555555',
@@ -301,6 +302,10 @@ function surface(options) {
     calls.push({ path, method, body });
     if (path === '/agent/engines') return state.engines;
     if (path === '/agent/usage/me') return state.usage;
+    if (/^\/agent\/providers\/[^/]+\/check$/.test(path) && method === 'POST') {
+      state.providerChecks = (state.providerChecks || 0) + 1;
+      return config.providerCheck || { ok: true, code: 'ok', modelCount: 3, checkedAt: '2026-10-27T12:00:00Z' };
+    }
     if (path === '/agent/providers') {
       if (state.deferProviders) await new Promise(resolve => { state.releaseProviders = resolve; });
       return state.providers;
@@ -1573,4 +1578,27 @@ test('personal balance is recorded without a daily limit and never offers a rema
   assert.match(text, /Límite: Sin límite diario · Solo registro/);
   assert.match(text, /Disponible: No aplica: se usa tu propia clave/);
   assert.doesNotMatch(text, /Límite diario personal/);
+});
+
+test('owners can check a stored key without ever seeing it again', async () => {
+  const owner = { providers: providersPayload({ canManagePersonal: true }), can: () => true };
+  const ui = surface(Object.assign({ providerCheck: { ok: false, code: 'unauthorized', checkedAt: '2026-10-27T12:00:00Z' } }, owner));
+  await ui.settle();
+  const text = nodeText(ui.mount.root);
+  assert.match(text, /Credencial guardada con una clave de cifrado anterior/);
+  assert.doesNotMatch(text, /sk-|apiKey/);
+  const button = findNode(ui.mount.root, node => node.props && node.props.id === 'provider-check-' + PERSONAL_PROVIDER_ID);
+  assert.ok(button, 'the owner sees a check action for their own provider');
+  await button.props.onClick();
+  await ui.settle();
+  const call = ui.calls.find(item => item.path === '/agent/providers/' + PERSONAL_PROVIDER_ID + '/check');
+  assert.equal(call.method, 'POST');
+  assert.equal(call.body, undefined, 'the check sends no credential');
+  assert.match(nodeText(ui.mount.root), /El proveedor rechazó la credencial/);
+
+  const ok = surface(owner);
+  await ok.settle();
+  await findNode(ok.mount.root, node => node.props && node.props.id === 'provider-check-' + PERSONAL_PROVIDER_ID).props.onClick();
+  await ok.settle();
+  assert.match(nodeText(ok.mount.root), /Conexión correcta: el proveedor ofrece 3 modelos/);
 });

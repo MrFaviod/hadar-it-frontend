@@ -55,6 +55,23 @@
   const QUOTA_BASE = '/agent/usage';
   const QUOTA_FUNDING_LABELS = { company: 'Empresa', personal: 'Personal' };
   const QUOTA_LIMIT_SOURCE_LABELS = { override: 'Excepción del usuario', policy: 'Política del servidor', default: 'Valor predeterminado', legacy_config: 'Configuración heredada', record_only: 'Solo registro', not_applicable: 'No aplica' };
+  const PROVIDER_CREDENTIAL_LABELS = {
+    missing: 'Sin credencial configurada',
+    primary: 'Credencial configurada',
+    older: 'Credencial guardada con una clave de cifrado anterior; se volverá a cifrar al rotar',
+    unreadable: 'Credencial ilegible con las claves de cifrado actuales; vuelve a introducirla',
+    unavailable: 'Credencial guardada, pero el servidor no tiene claves de cifrado configuradas'
+  };
+  const PROVIDER_CHECK_LABELS = {
+    unauthorized: 'El proveedor rechazó la credencial.',
+    unreachable: 'No se pudo conectar con el endpoint.',
+    blocked_address: 'El endpoint apunta a una dirección que este despliegue no autoriza.',
+    redirect: 'El endpoint respondió con una redirección; no se siguen redirecciones.',
+    invalid_response: 'El endpoint no respondió como un servicio compatible con OpenAI.',
+    credential_unavailable: 'No se pudo leer la credencial guardada.',
+    timeout: 'El endpoint no respondió a tiempo.',
+    request_failed: 'No se pudo solicitar la comprobación.'
+  };
   const QUOTA_PRECISION_LABELS = { measured: 'Medido', estimated: 'Estimado', unavailable: 'No disponible' };
   const QUOTA_SOURCE_LABELS = { provider: 'Proveedor', engine: 'Motor', estimate: 'Estimación', none: 'Sin fuente', legacy: 'Legado' };
   const QUOTA_STATE_LABELS = { settled: 'Liquidado', unresolved: 'Sin resolver', pending: 'Pendiente', released: 'Liberado', legacy: 'Legado sin atribuir' };
@@ -407,6 +424,9 @@
     },
     saveProvider(vm, id, body, options) {
       return window.AssetAccess.request(vm, '/agent/providers' + (id ? '/' + encodeURIComponent(id) : ''), Object.assign({ method: id ? 'PATCH' : 'POST', body }, options || {}));
+    },
+    checkProvider(vm, id, options) {
+      return window.AssetAccess.request(vm, '/agent/providers/' + encodeURIComponent(id) + '/check', Object.assign({ method: 'POST' }, options || {}));
     },
     deleteProvider(vm, id, options) {
       return window.AssetAccess.request(vm, '/agent/providers/' + encodeURIComponent(id), Object.assign({ method: 'DELETE' }, options || {}));
@@ -2175,7 +2195,7 @@
       return {
         items: [], canManageGlobal: false, canManagePersonal: false,
         credentialStorageAvailable: false, loading: false, busy: false,
-        error: '', notice: '', draft: null, pendingDeleteId: '',
+        error: '', notice: '', draft: null, pendingDeleteId: '', checks: {},
         epoch: 0, disposed: false, controller: null
       };
     },
@@ -2205,6 +2225,40 @@
         this.notice = '';
         this.draft = null;
         this.pendingDeleteId = '';
+        this.checks = {};
+      },
+      credentialText(provider) {
+        return PROVIDER_CREDENTIAL_LABELS[provider.credentialStatus] ||
+          (provider.credentialConfigured ? 'Credencial configurada' : 'Sin credencial configurada');
+      },
+      checkResultText(provider) {
+        const result = this.checks[provider.id];
+        if (!result) return '';
+        if (result.pending) return 'Comprobando conexión…';
+        if (result.ok) {
+          return typeof result.modelCount === 'number'
+            ? 'Conexión correcta: el proveedor ofrece ' + result.modelCount + ' modelos.'
+            : 'Conexión correcta.';
+        }
+        return PROVIDER_CHECK_LABELS[result.code] || 'No se pudo comprobar el proveedor.';
+      },
+      async checkProvider(provider) {
+        if (this.busy || !this.canEditProvider(provider)) return false;
+        const epoch = this.epoch;
+        this.checks = Object.assign({}, this.checks, { [provider.id]: { pending: true } });
+        try {
+          const result = await api.checkProvider(this.app, provider.id);
+          if (!this.current(epoch)) return false;
+          const outcome = result && typeof result === 'object' ? result : {};
+          this.checks = Object.assign({}, this.checks, {
+            [provider.id]: { ok: outcome.ok === true, code: text(outcome.code), modelCount: outcome.modelCount }
+          });
+          return outcome.ok === true;
+        } catch (error) {
+          if (!this.current(epoch)) return false;
+          this.checks = Object.assign({}, this.checks, { [provider.id]: { ok: false, code: 'request_failed' } });
+          return false;
+        }
       },
       canEditProvider(provider) {
         return !!provider && (provider.scope === 'global' ? this.globalAllowed : provider.scope === 'personal' && this.personalAllowed);
@@ -2223,7 +2277,8 @@
           this.items = payload.items.map(item => ({
             id: text(item.id), name: text(item.name), scope: item.scope, baseUrl: text(item.baseUrl),
             models: Array.isArray(item.models) ? item.models.map(model => text(model)) : [],
-            credentialConfigured: item.credentialConfigured === true, enabled: item.enabled !== false
+            credentialConfigured: item.credentialConfigured === true, credentialStatus: text(item.credentialStatus),
+            enabled: item.enabled !== false
           }));
           this.canManageGlobal = payload.canManageGlobal === true;
           this.canManagePersonal = payload.canManagePersonal === true;
@@ -2260,7 +2315,7 @@
           return false;
         }
         if (draft.apiKey && !this.credentialStorageAvailable) {
-          this.error = 'No se puede guardar la credencial: falta ITSM_AI_CREDENTIAL_KEY en el servidor.';
+          this.error = 'No se puede guardar la credencial: faltan ITSM_AI_CREDENTIAL_KEYS en el servidor.';
           draft.apiKey = '';
           return false;
         }
@@ -2329,15 +2384,17 @@
         <button v-if="error && !draft" type="button" class="btn btn--ghost btn--small" @click="loadProviders">Volver a consultar proveedores</button>
         <p v-if="notice" class="agent-note" role="status">{{ notice }}</p>
         <p v-if="!loading && !error && !items.length" class="agent-note">No hay proveedores adicionales disponibles. El proveedor predeterminado del servidor no se modifica aquí.</p>
-        <p v-if="!loading && (globalAllowed || personalAllowed) && !credentialStorageAvailable" id="provider-storage-help" class="agent-note">No está disponible la escritura de credenciales: el servidor necesita ITSM_AI_CREDENTIAL_KEY. No se genera ni se guarda esa clave desde esta pantalla.</p>
+        <p v-if="!loading && (globalAllowed || personalAllowed) && !credentialStorageAvailable" id="provider-storage-help" class="agent-note">No está disponible la escritura de credenciales: el servidor necesita ITSM_AI_CREDENTIAL_KEYS. No se genera ni se guarda esa clave desde esta pantalla.</p>
         <ul v-if="items.length" class="agent-instance-list">
           <li v-for="provider in items" :key="provider.id" class="agent-instance">
             <div><strong>{{ provider.name }}</strong> <span class="agent-tag">{{ provider.scope === 'global' ? 'Global' : 'Personal' }}</span> <span class="status-pill" :class="provider.enabled ? 'status--ok' : 'status--hold'">{{ provider.enabled ? 'Habilitado' : 'Deshabilitado' }}</span></div>
             <p class="agent-skill__meta">{{ provider.baseUrl }}</p>
             <p class="agent-skill__meta">Modelos: {{ provider.models.join(', ') || 'Sin modelos configurados' }}</p>
-            <p class="agent-skill__meta">{{ provider.credentialConfigured ? 'Credencial configurada' : 'Sin credencial configurada' }} · Pydantic AI</p>
+            <p class="agent-skill__meta">{{ credentialText(provider) }} · Pydantic AI</p>
+            <p v-if="checks[provider.id]" class="agent-skill__meta" role="status">{{ checkResultText(provider) }}</p>
             <div v-if="canEditProvider(provider)" class="agent-provider-actions">
               <button :id="'provider-edit-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Editar proveedor ' + provider.name" @click="editProvider(provider)">Editar</button>
+              <button :id="'provider-check-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy || (checks[provider.id] && checks[provider.id].pending)" :aria-label="'Comprobar proveedor ' + provider.name" @click="checkProvider(provider)">Comprobar</button>
               <button :id="'provider-delete-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Eliminar proveedor ' + provider.name" @click="pendingDeleteId = provider.id">Eliminar</button>
               <template v-if="pendingDeleteId === provider.id"><span>¿Eliminar {{ provider.name }}?</span><button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="removeProvider(provider)">Confirmar eliminación</button><button type="button" class="btn btn--ghost btn--small" @click="pendingDeleteId = ''">Conservar proveedor</button></template>
             </div>
@@ -2346,7 +2403,7 @@
         <form v-if="draft" id="provider-form" class="agent-editor agent-provider-form" :aria-describedby="error ? 'provider-error' : undefined" @submit.prevent="saveProvider">
           <h4 class="agent-panel__title">{{ draft.id ? 'Editar proveedor' : 'Nuevo proveedor' }} {{ draft.scope === 'global' ? 'global' : 'personal' }}</h4>
           <div class="field"><label class="field__label" for="provider-name">Nombre del proveedor</label><input id="provider-name" v-model="draft.name" class="input-shell" required :disabled="busy" maxlength="160"></div>
-          <div class="field"><label class="field__label" for="provider-url">Endpoint compatible con OpenAI</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? 'HTTPS público, sin credenciales en la URL, destinos privados ni redirecciones. El servidor valida el destino.' : 'URL administrada por el propietario de la instalación. Puede ser un endpoint de la red local.' }}</p></div>
+          <div class="field"><label class="field__label" for="provider-url">Endpoint compatible con OpenAI</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? 'HTTPS público, sin credenciales en la URL ni redirecciones. Solo se aceptan destinos privados que el despliegue haya autorizado. El servidor valida el destino.' : 'URL administrada por el propietario de la instalación. Puede ser un endpoint de la red local.' }}</p></div>
           <div class="field"><label class="field__label" for="provider-models">Modelos disponibles (uno por línea)</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">Identificadores exactos del proveedor. No se descubren ni se inventan modelos automáticamente.</p></div>
           <div class="field"><label class="field__label" for="provider-key">{{ draft.id ? 'Sustituir credencial (opcional)' : 'Credencial (opcional)' }}</label><input id="provider-key" v-model="draft.apiKey" type="password" class="input-shell" autocomplete="new-password" :disabled="busy || !credentialStorageAvailable" :aria-describedby="!credentialStorageAvailable ? 'provider-storage-help provider-key-help' : 'provider-key-help'"><p id="provider-key-help" class="field__hint">Solo escritura. No se muestra la credencial guardada. Déjalo vacío para conservarla al editar.</p></div>
           <label class="agent-checkbox"><input v-model="draft.enabled" type="checkbox" :disabled="busy"> Habilitado</label>
