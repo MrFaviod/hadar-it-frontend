@@ -70,7 +70,7 @@
       </template>
       <template v-else-if="widget === 'warranties'">
         <button type="button" v-for="row in model.warranties.slice(0,5)" :key="row.asset.id" class="noc-work noc-work--button" @click="open(row.asset)"><span><b>{{ row.asset.name }}</b><small>{{ row.asset.code || row.asset.id }}</small></span><strong>{{ row.days === 0 ? 'Hoy' : 'En '+row.days+' días' }}</strong><time>{{ day(row.until) }}</time></button>
-        <p v-if="!model.warranties.length" class="noc-empty">No hay garantías que venzan en los próximos 90 días para esta selección.</p><p class="noc-footnote">Solo se consideran fechas de cobertura registradas en las fichas.</p>
+        <p v-if="!model.warranties.length" class="noc-empty">No hay garantías que venzan dentro del plazo configurado para esta selección.</p><p class="noc-footnote">Solo se consideran fechas de cobertura registradas en las fichas.</p>
       </template>
       <template v-else-if="widget === 'inventory'">
         <div class="noc-inventory"><a href="#/inventario"><strong>{{ model.inventory.total }}</strong><span>Registros</span></a><a href="#/inventario"><strong>{{ model.inventory.active }}</strong><span>En inventario activo</span></a><a href="#/inventario"><strong>{{ model.inventory.unassigned }}</strong><span>Sin responsable</span></a></div>

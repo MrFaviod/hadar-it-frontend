@@ -7,7 +7,7 @@
     { id: 'infrastructure', label: 'Infraestructura', description: 'Estado por categoría o sede' },
     { id: 'activity', label: 'Actividad y logs', description: 'Eventos operativos y del inventario', wide: true },
     { id: 'maintenance', label: 'Mantenimiento pendiente', description: 'Próximas revisiones y vencimientos' },
-    { id: 'warranties', label: 'Garantías por vencer', description: 'Cobertura de los próximos 90 días' },
+    { id: 'warranties', label: 'Garantías por vencer', description: 'Cobertura dentro del plazo configurado' },
     { id: 'inventory', label: 'Resumen del inventario', description: 'Activos, asignaciones y contexto' },
     { id: 'latency', label: 'Tendencia de latencia', description: 'Métricas adicionales con datos', wide: true },
     { id: 'incidents', label: 'Incidencias activas', description: 'Intervenciones abiertas y su equipo', wide: true }
