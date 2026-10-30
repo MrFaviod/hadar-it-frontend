@@ -144,6 +144,7 @@
   <link rel="stylesheet" href="assets/css/app.css">
   <link rel="stylesheet" href="assets/css/views.css">
   <link rel="stylesheet" href="assets/css/config.css">
+<link rel="stylesheet" href="assets/css/extensions.css">
   <link rel="stylesheet" href="assets/css/assets-admin.css">
   <link rel="stylesheet" href="assets/css/inventory.css">
   <link rel="stylesheet" href="assets/css/people.css">
@@ -287,51 +288,71 @@
           <div class="sidebar__section">
             <p class="sidebar__label">Espacio de trabajo</p>
             <nav class="sidebar__nav" aria-label="Secciones">
-              <a v-if="can('assets.view')" class="nav-link" href="#/panel" :class="{ 'is-active': route.name === 'panel' }"
-                 :aria-current="route.name === 'panel' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="activity"></app-icon>
-                <span>Panel</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/inventario" :class="{ 'is-active': route.name === 'inventory' || route.name === 'detail' }"
-                 :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="inventory"></app-icon>
-                <span>Inventario</span>
-                <span class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/conversacion" :class="{ 'is-active': route.name === 'conversation' }"
-                 :aria-current="route.name === 'conversation' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="send"></app-icon>
-                <span>Conversación</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/mantenimiento"
-                 :class="{ 'is-active': route.name === 'maintenance' || route.name === 'incident' }"
-                 :aria-current="route.name === 'maintenance' || route.name === 'incident' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="refresh"></app-icon>
-                <span>Mantenimiento</span>
-                <span v-if="maintenanceOverdueCount" class="nav-link__count nav-link__count--alert">{{ maintenanceOverdueCount }}</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/supervision"
-                 :class="{ 'is-active': route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' }"
-                 :aria-current="route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="gauge"></app-icon>
-                <span>Supervisión</span>
-                <span v-if="monitorAlertCount" class="nav-link__count nav-link__count--alert">{{ monitorAlertCount }}</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/infra/mapa"
-                 :class="{ 'is-active': route.name === 'map' || route.name === 'graph' }"
-                 :aria-current="route.name === 'map' || route.name === 'graph' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="map-pin"></app-icon>
-                <span>Infraestructura</span>
-              </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/datos/importar"
-                 :class="{ 'is-active': route.name === 'datos' }"
-                 :aria-current="route.name === 'datos' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="upload"></app-icon>
-                <span>Datos</span>
-              </a>
-              <a v-if="can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>Reportes</span></a>
-              <a v-if="can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>Garantías</span></a>
-              <a v-if="can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>Etiquetas</span></a>
+              <composition-nav-item :app="$root" target="nav.panel" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.panel') && can('assets.view')" class="nav-link" href="#/panel" :class="{ 'is-active': route.name === 'panel' }"
+                   :aria-current="route.name === 'panel' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="activity"></app-icon>
+                  <span>Panel</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.inventory" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.inventory') && can('assets.view')" class="nav-link" href="#/inventario" :class="{ 'is-active': route.name === 'inventory' || route.name === 'detail' }"
+                   :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="inventory"></app-icon>
+                  <span>Inventario</span>
+                  <span class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.conversation" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.conversation') && can('assets.view')" class="nav-link" href="#/conversacion" :class="{ 'is-active': route.name === 'conversation' }"
+                   :aria-current="route.name === 'conversation' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="send"></app-icon>
+                  <span>Conversación</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.maintenance" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.maintenance') && can('assets.view')" class="nav-link" href="#/mantenimiento"
+                   :class="{ 'is-active': route.name === 'maintenance' || route.name === 'incident' }"
+                   :aria-current="route.name === 'maintenance' || route.name === 'incident' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="refresh"></app-icon>
+                  <span>Mantenimiento</span>
+                  <span v-if="maintenanceOverdueCount" class="nav-link__count nav-link__count--alert">{{ maintenanceOverdueCount }}</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.monitoring" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.monitoring') && can('assets.view')" class="nav-link" href="#/supervision"
+                   :class="{ 'is-active': route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' }"
+                   :aria-current="route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="gauge"></app-icon>
+                  <span>Supervisión</span>
+                  <span v-if="monitorAlertCount" class="nav-link__count nav-link__count--alert">{{ monitorAlertCount }}</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.infrastructure" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.infrastructure') && can('assets.view')" class="nav-link" href="#/infra/mapa"
+                   :class="{ 'is-active': route.name === 'map' || route.name === 'graph' }"
+                   :aria-current="route.name === 'map' || route.name === 'graph' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="map-pin"></app-icon>
+                  <span>Infraestructura</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.datos" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.datos') && can('assets.view')" class="nav-link" href="#/datos/importar"
+                   :class="{ 'is-active': route.name === 'datos' }"
+                   :aria-current="route.name === 'datos' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="upload"></app-icon>
+                  <span>Datos</span>
+                </a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.reports" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.reports') && can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>Reportes</span></a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.warranties" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.warranties') && can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>Garantías</span></a>
+              </composition-nav-item>
+              <composition-nav-item :app="$root" target="nav.labels" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.labels') && can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>Etiquetas</span></a>
+              </composition-nav-item>
               <template v-if="extensionPageLinks.length">
                 <p class="nav-group-label">Extensiones</p>
                 <a v-for="link in extensionPageLinks" :key="link.key" class="nav-link" :href="link.href"
@@ -342,12 +363,15 @@
                   <span>{{ link.label }}</span>
                 </a>
               </template>
-              <a v-if="can('people.view')" class="nav-link" href="#/personas" :class="{ 'is-active': route.name === 'people' || route.name === 'person' }"
-                 :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="user"></app-icon>
-                <span>Personas</span>
-                <span v-if="organization.peopleTotals.loaded" class="nav-link__count">{{ organization.peopleTotals.total }}</span>
-              </a>
+              <composition-nav-additions :app="$root"></composition-nav-additions>
+              <composition-nav-item :app="$root" target="nav.people" :permitted="can('people.view')">
+                <a v-if="!uiNavHidden('nav.people') && can('people.view')" class="nav-link" href="#/personas" :class="{ 'is-active': route.name === 'people' || route.name === 'person' }"
+                   :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
+                  <app-icon name="user"></app-icon>
+                  <span>Personas</span>
+                  <span v-if="organization.peopleTotals.loaded" class="nav-link__count">{{ organization.peopleTotals.total }}</span>
+                </a>
+              </composition-nav-item>
               <a v-if="can('users.view')" class="nav-link" href="#/usuarios" :class="{ 'is-active': route.name === 'users' || route.name === 'user' }" :aria-current="route.name === 'users' || route.name === 'user' ? 'page' : null" @click="closeSidebar">
                 <app-icon name="user"></app-icon><span>Usuarios</span><span class="nav-link__count">{{ security.users.length }}</span>
               </a>
@@ -356,7 +380,9 @@
                 <app-icon name="sliders"></app-icon>
                 <span>Configuración</span>
               </a>
-              <a v-if="can('assets.view')" class="nav-link" href="#/ayuda" :class="{ 'is-active': route.name === 'help' }" :aria-current="route.name === 'help' ? 'page' : null" @click="closeSidebar"><app-icon name="file-text"></app-icon><span>Ayuda</span></a>
+              <composition-nav-item :app="$root" target="nav.help" :permitted="can('assets.view')">
+                <a v-if="!uiNavHidden('nav.help') && can('assets.view')" class="nav-link" href="#/ayuda" :class="{ 'is-active': route.name === 'help' }" :aria-current="route.name === 'help' ? 'page' : null" @click="closeSidebar"><app-icon name="file-text"></app-icon><span>Ayuda</span></a>
+              </composition-nav-item>
             </nav>
           </div>
 
@@ -450,6 +476,7 @@
           <asset-conversation v-if="authenticated && can('assets.view')" :key="activeUserId" :app="$root"></asset-conversation>
           <transition name="page" mode="out-in">
             <div class="page-host" :key="route.name + ':' + (route.assetId || '') + ':' + (route.personId || '') + ':' + (route.userId || '') + ':' + (route.name === 'datos' ? '' : (route.section || ''))">
+              <composition-boundary :app="$root" :target="uiRouteTarget">
               <!-- Inventario -->
               <section v-if="route.name === 'denied'" class="page access-denied" aria-labelledby="access-denied-title">
                 <p class="eyebrow">Permisos</p><h1 id="access-denied-title">Acceso denegado</h1>
@@ -1620,42 +1647,45 @@
                     </p>
                   </div>
                   <div class="detail-head__actions">
-                    <button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
+                    <composition-slot :app="$root" target="asset.action.edit" :permitted="can('assets.edit') && !currentAsset.retired" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
                       <app-icon name="pencil"></app-icon> Editar activo
-                    </button>
-                    <button v-if="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="assign-asset" @click="openAssignAsset(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.assign" :permitted="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" :context="{ asset: currentAsset }"><button v-if="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="assign-asset" @click="openAssignAsset(currentAsset)">
                       <app-icon name="user"></app-icon> {{ currentAsset.responsiblePersonId ? 'Reasignar responsable' : 'Asignar responsable' }}
-                    </button>
-                    <button v-if="serverAssetMode && can('assets.assign') && currentAsset.responsiblePersonId" type="button" class="btn btn--ghost" data-od-id="return-asset" @click="removeAssignment(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.return" :permitted="serverAssetMode && can('assets.assign') && !!currentAsset.responsiblePersonId" :context="{ asset: currentAsset }"><button v-if="serverAssetMode && can('assets.assign') && currentAsset.responsiblePersonId" type="button" class="btn btn--ghost" data-od-id="return-asset" @click="removeAssignment(currentAsset)">
                       <app-icon name="close"></app-icon> Quitar responsable
-                    </button>
-                    <button v-if="can('assets.edit') && currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="transfer-asset" @click="openOrganizationTransfer(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.transfer" :permitted="can('assets.edit') && !!currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="transfer-asset" @click="openOrganizationTransfer(currentAsset)">
                       <app-icon name="arrow-right"></app-icon> Trasladar
-                    </button>
-                    <a v-if="currentAsset.serverAsset" class="btn btn--ghost" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.ask" :permitted="!!currentAsset.serverAsset" :context="{ asset: currentAsset }"><a v-if="currentAsset.serverAsset" class="btn btn--ghost" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
                       <app-icon name="send"></app-icon> Consultar sobre este activo
-                    </a>
-                    <button v-if="can('assets.edit') && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="duplicateAsset(currentAsset)">
+                    </a></composition-slot>
+                    <!-- Duplicar y restaurar existen dos veces (servidor y prototipo).
+                         Cada instancia recibe la condición del núcleo que corresponde a su contexto,
+                         de forma mutuamente excluyente, así que la extensión renderiza un solo nodo. -->
+                    <composition-slot :app="$root" target="asset.action.duplicate" :permitted="can('assets.edit') && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="duplicateAsset(currentAsset)">
                       <app-icon name="copy"></app-icon> Duplicar
-                    </button>
-                    <button v-if="can('assets.edit') && !currentAsset.retired && !serverAssetMode" type="button" class="btn btn--ghost" data-od-id="change-status" @click="openStatusDialog(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.change-status" :permitted="can('assets.edit') && !currentAsset.retired && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !currentAsset.retired && !serverAssetMode" type="button" class="btn btn--ghost" data-od-id="change-status" @click="openStatusDialog(currentAsset)">
                       <app-icon name="activity"></app-icon> Cambiar estado
-                    </button>
-                    <button v-if="can('assets.edit') && currentAsset.retired && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="restoreAsset(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.restore" :permitted="can('assets.edit') && !!currentAsset.retired && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && currentAsset.retired && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="restoreAsset(currentAsset)">
                       <app-icon name="restore"></app-icon> Restaurar
-                    </button>
-                    <button v-if="can('assets.edit') && serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="cloneInventoryAsset(currentAsset)">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.duplicate" :permitted="can('assets.edit') && serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="cloneInventoryAsset(currentAsset)">
                       <app-icon name="copy"></app-icon> Duplicar
-                    </button>
-                    <button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--ghost" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--ghost" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
                       <app-icon name="package"></app-icon> Archivar
-                    </button>
-                    <button v-if="!inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="openInventoryLifecycle(currentAsset, 'restore')">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.restore" :permitted="!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="openInventoryLifecycle(currentAsset, 'restore')">
                       <app-icon name="restore"></app-icon> Restaurar
-                    </button>
-                    <button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--ghost" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
+                    </button></composition-slot>
+                    <composition-slot :app="$root" target="asset.action.retire" :permitted="!inventoryLifecycleAllowed('retire', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--ghost" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
                       <app-icon name="archive"></app-icon> Dar de baja
-                    </button>
+                    </button></composition-slot>
                   </div>
                 </header>
 
@@ -1888,18 +1918,18 @@
                     </div>
                   </section>
 
-                  <asset-warranty-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel>
-                  <phase6-attachments v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></phase6-attachments>
-                  <asset-qr-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
+                  <composition-slot :app="$root" target="asset.panel.warranty" :permitted="can('assets.view')" :context="{ asset: currentAsset }"><asset-warranty-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel></composition-slot>
+                  <composition-slot :app="$root" target="asset.panel.attachments" :permitted="serverAssetMode && can('assets.view')" :context="{ asset: currentAsset }"><phase6-attachments v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></phase6-attachments></composition-slot>
+                  <composition-slot :app="$root" target="asset.panel.qr" :permitted="serverAssetMode && can('assets.view')" :context="{ asset: currentAsset }"><asset-qr-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel></composition-slot>
 
-                  <asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
-                  <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations>
+                  <composition-slot :app="$root" target="asset.panel.relations" :permitted="can('assets.view') && (!serverAssetMode || serverOrganizationMode)" :context="{ asset: currentAsset }"><asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
+                  <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations></composition-slot>
 
-                  <asset-maintenance-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel>
-                  <asset-monitoring-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel>
+                  <composition-slot :app="$root" target="asset.panel.maintenance" :permitted="serverAssetMode && can('assets.view')" :context="{ asset: currentAsset }"><asset-maintenance-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-maintenance-panel></composition-slot>
+                  <composition-slot :app="$root" target="asset.panel.monitoring" :permitted="can('assets.view')" :context="{ asset: currentAsset }"><asset-monitoring-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-monitoring-panel></composition-slot>
                   <extension-asset-panels :app="$root" :asset="currentAsset"></extension-asset-panels>
 
-                  <section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
+                  <composition-slot :app="$root" target="asset.panel.history" :permitted="serverAssetMode" :context="{ asset: currentAsset }"><section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
                     <header class="panel-head">
                       <div>
                         <p class="eyebrow">Trazabilidad</p>
@@ -1942,11 +1972,11 @@
                     </ol>
                     <p v-else class="config-note">El servidor no registra eventos para este activo.</p>
                     <button v-if="inventoryHistoryHasMore" type="button" class="btn btn--ghost btn--small" @click="inventoryHistoryNextPage()">Ver más eventos</button>
-                  </section>
+                  </section></composition-slot>
 
                   <asset-movements v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-movements>
 
-                  <asset-history v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-history>
+                  <composition-slot :app="$root" target="asset.panel.history" :permitted="!serverAssetMode" :context="{ asset: currentAsset }"><asset-history v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-history></composition-slot>
 
                   <section v-if="serverAssetMode" class="operations-panel" aria-labelledby="operations-title">
                     <header class="panel-head">
@@ -1960,18 +1990,20 @@
                       <article class="operations-card">
                         <h3>Archivar conserva el registro</h3>
                         <p>Archivar deja el activo fuera del inventario operativo y conserva su ficha y su historial. Puedes restaurarlo cuando lo necesites.</p>
-                        <button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'archive')">Archivar activo</button>
-                        <button v-else-if="inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'restore')">Restaurar activo</button>
+                        <!-- Acciones principales: asset.action.archive se compone en la barra superior.
+                             Esta tarjeta comparte ocultación, pero no duplica sustituciones ni añadidos. -->
+                        <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :substitute="false" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'archive')">Archivar activo</button></composition-slot>
+                        <composition-slot :app="$root" target="asset.action.restore" :permitted="serverAssetMode && !!inventoryLifecycleAllowed('archive', currentAsset) && !!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="inventoryLifecycleAllowed('archive', currentAsset) && inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'restore')">Restaurar activo</button></composition-slot>
                       </article>
                       <article class="operations-card operations-card--danger">
                         <h3>Eliminación definitiva</h3>
                         <p v-if="!inventoryPurgePolicy()">El servidor no informó su política de eliminación, así que la acción no se ofrece desde el navegador.</p>
                         <p v-else-if="inventoryPurgePolicy().environment === 'production'">En producción exige el permiso {{ inventoryPurgePolicy().permission }}, archivar antes, escribir el ID permanente y el motivo.</p>
                         <p v-else>En desarrollo se confirma con un paso explícito. El servidor sigue comprobando el permiso y el motivo.</p>
-                        <button v-if="!inventoryLifecycleAllowed('purge', currentAsset)" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openInventoryLifecycle(currentAsset, 'purge')">
+                        <composition-slot :app="$root" target="asset.action.purge" :permitted="serverAssetMode && !inventoryLifecycleAllowed('purge', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('purge', currentAsset)" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openInventoryLifecycle(currentAsset, 'purge')">
                           <app-icon name="trash"></app-icon> Eliminar activo
                         </button>
-                        <span v-else-if="inventoryPurgePolicy()" class="cell-muted">Requiere el permiso {{ inventoryPurgePolicy().permission }} y que el activo cumpla las condiciones del servidor.</span>
+                        <span v-else-if="inventoryPurgePolicy()" class="cell-muted">Requiere el permiso {{ inventoryPurgePolicy().permission }} y que el activo cumpla las condiciones del servidor.</span></composition-slot>
                       </article>
                     </div>
                   </section>
@@ -1993,10 +2025,10 @@
                       <article class="operations-card operations-card--danger">
                         <h3>Eliminación definitiva</h3>
                         <p>{{ assetAdmin.operations.mode === 'production' ? 'En producción exige escribir el ID permanente y el motivo de la eliminación.' : 'En desarrollo se confirma con un solo paso. Cambia el modo en Configuración para protegerla.' }}</p>
-                        <button v-if="can('assets.edit')" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openDeleteAsset(currentAsset)">
+                        <composition-slot :app="$root" target="asset.action.delete" :permitted="!serverAssetMode && can('assets.edit')" :context="{ asset: currentAsset }"><button v-if="can('assets.edit')" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openDeleteAsset(currentAsset)">
                           <app-icon name="trash"></app-icon> Eliminar activo
                         </button>
-                        <span v-else class="cell-muted">Requiere permiso de edición de activos.</span>
+                        <span v-else class="cell-muted">Requiere permiso de edición de activos.</span></composition-slot>
                       </article>
                     </div>
                   </section>
@@ -2018,6 +2050,8 @@
                   <button type="button" class="btn btn--secondary" @click="loadInventoryDetail(route.assetId)">Reintentar</button>
                 </div>
               </section>
+              </composition-boundary>
+              <composition-widgets v-if="route.name === 'panel'" :app="$root"></composition-widgets>
             </div>
           </transition>
         </main>
@@ -2921,6 +2955,7 @@
   <script src="assets/js/agent-integrations.js"></script>
   <script src="assets/js/system-operations.js"></script>
   <script src="assets/js/conversation.js"></script>
+  <script src="assets/js/ui-composition.js"></script>
   <script src="assets/js/extensions.js"></script>
   <script src="assets/js/help.js"></script>
   <script src="assets/js/app.js"></script>

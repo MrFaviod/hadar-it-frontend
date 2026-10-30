@@ -1,0 +1,42 @@
+
+/* Runtime UI composition. The wrappers are layout-transparent so core grids,
+   toolbars and page containers keep their existing flow. */
+.ui-composition-boundary,
+.ui-composition-slot {
+  display: contents;
+}
+
+.ui-composition-fallback {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 16px 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border, #d8dee8);
+  border-radius: 12px;
+  background: var(--surface-muted, #f4f7fb);
+  color: var(--text-muted, #4a5568);
+}
+
+.ui-composition-fallback p {
+  margin: 0;
+}
+
+.ui-composition-additions,
+.ui-composition-widgets,
+.ui-composition-nav-additions {
+  display: grid;
+  gap: 16px;
+}
+
+.ui-composition-nav-additions {
+  gap: 4px;
+}
+
+.ui-composition-nav-entry {
+  min-height: 44px;
+}
+
+.ui-composition-entry {
+  min-width: 0;
+}

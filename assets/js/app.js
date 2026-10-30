@@ -83,6 +83,9 @@
   // The shared parser predates the IA and system sections. Each feature keeps
   // its own narrow override and this seam composes them without forking routes.
   const RouteMethods = {
+    uiNavHidden(target) {
+      return !!(this.uiProjection && this.uiProjection.hidden[target]);
+    },
     parseRoute() {
       const parsed = window.AssetMethods.parseRoute.call(this);
       const agentRoute = (window.AssetAgentViews && window.AssetAgentViews.routeOverride(parsed, window.location.hash)) || parsed;
@@ -107,6 +110,7 @@
       ExtensionPage: window.AssetExtensions.components.ExtensionPage,
       ExtensionAssetPanels: window.AssetExtensions.components.ExtensionAssetPanels,
       ExtensionReview: window.AssetExtensions.components.ExtensionReview,
+      ...(window.UIComposition ? window.UIComposition.components : {}),
       SearchPalette: window.AssetSearchViews.SearchPalette,
       SearchSettings: window.AssetSearchViews.SearchSettings,
       WorkspaceShortcuts: window.AssetWorkspaceViews.WorkspaceShortcuts,
@@ -521,6 +525,32 @@
       },
       monitorAlertCount() {
         return this.monitoringActiveAlertCount || 0;
+      },
+      uiProjection() {
+        return window.AssetExtensions && typeof window.AssetExtensions.compositionFor === 'function'
+          ? window.AssetExtensions.compositionFor(this)
+          : { additions: {}, hidden: {}, replacement: {}, ignored: [], candidates: [] };
+      },
+      // Route-bound composition target. Protected administration routes such
+      // as users, security, extension management and system return an empty
+      // target, so their core surfaces are never suppressible.
+      uiRouteTarget() {
+        const route = this.route || {};
+        const pages = {
+          panel: 'page.panel', inventory: 'page.inventory', conversation: 'page.conversation',
+          maintenance: 'page.maintenance', incident: 'page.incident', monitoring: 'page.monitoring',
+          map: 'page.map', graph: 'page.graph', datos: 'page.datos', reports: 'page.reports',
+          warranties: 'page.warranties', labels: 'page.labels', people: 'page.people',
+          person: 'page.person', detail: 'page.detail', reportAsset: 'page.reportAsset',
+          monitorDevice: 'page.monitorDevice', monitorAlert: 'page.monitorAlert',
+          notifications: 'page.notifications', help: 'page.help'
+        };
+        if (route.name === 'config') {
+          const target = 'config.' + (route.section || '');
+          return window.UIComposition && window.UIComposition.isKnownTarget(target) ? target : '';
+        }
+        const target = pages[route.name] || '';
+        return window.UIComposition && window.UIComposition.isKnownTarget(target) ? target : '';
       },
       pageLabel() {
         if (this.route.name === 'help') return 'Ayuda';
