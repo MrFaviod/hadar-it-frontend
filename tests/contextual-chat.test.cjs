@@ -98,6 +98,13 @@ async function fill(ui, id, value) {
   input.listeners.input({ target: input });
   await ui.settle();
 }
+async function choose(ui, id, value) {
+  const node = control(ui, id);
+  const change = (node.listeners && node.listeners.change) || (node.props && node.props.onChange);
+  node.value = value;
+  await change({ target: node });
+  await ui.settle();
+}
 async function open(ui) {
   await control(ui, 'conversation-opener').props.onClick({ currentTarget: control(ui, 'conversation-opener') });
   await ui.settle();
@@ -325,6 +332,8 @@ test('authorized personal provider writes explicit models and write-only credent
   await control(ui, 'provider-new-personal').props.onClick();
   await fill(ui, 'provider-name', 'Mi proveedor');
   await fill(ui, 'provider-url', 'https://personal.example/v1');
+  assert.equal(control(ui, 'provider-model-selection').props.value, 'auto', 'new providers discover their models by default');
+  await choose(ui, 'provider-model-selection', 'manual');
   await fill(ui, 'provider-models', 'exact-model-a\nexact-model-b');
   assert.equal(control(ui, 'provider-key').props.type, 'password');
   await fill(ui, 'provider-key', 'fixture-secret-not-readback');
@@ -332,7 +341,7 @@ test('authorized personal provider writes explicit models and write-only credent
   await ui.settle();
   const saved = ui.calls.find(call => call.path === '/agent/providers' && call.method === 'POST');
   assert.ok(saved, text(ui.mounted.root) + '\n' + ui.errors.map(error => error.stack).join('\n'));
-  assert.deepEqual(saved.body, { name: 'Mi proveedor', scope: 'personal', baseUrl: 'https://personal.example/v1', models: ['exact-model-a', 'exact-model-b'], enabled: true, apiKey: 'fixture-secret-not-readback' });
+  assert.deepEqual(saved.body, { name: 'Mi proveedor', scope: 'personal', baseUrl: 'https://personal.example/v1', modelSelection: 'manual', models: ['exact-model-a', 'exact-model-b'], enabled: true, apiKey: 'fixture-secret-not-readback' });
   assert.equal(saved.headers['X-CSRF-Token'], 'fixture-csrf');
   assert.doesNotMatch(text(ui.mounted.root), /fixture-secret-not-readback/);
   assert.equal(find(ui.mounted.root, node => node.props && node.props.id === 'provider-key'), null);
@@ -349,6 +358,7 @@ test('global authority stays separate and missing credential storage is a factua
   assert.match(text(ui.mounted.root), /ITSM_AI_CREDENTIAL_KEY/);
   await fill(ui, 'provider-name', 'Global');
   await fill(ui, 'provider-url', 'http://operator-lan/v1');
+  await choose(ui, 'provider-model-selection', 'manual');
   await fill(ui, 'provider-models', 'operator-model');
   await control(ui, 'provider-form').props.onSubmit({ preventDefault() {} });
   await ui.settle();

@@ -72,6 +72,20 @@
     timeout: 'El endpoint no respondió a tiempo.',
     request_failed: 'No se pudo solicitar la comprobación.'
   };
+  const PROVIDER_CAPABILITY_FIELDS = ['image', 'file'];
+  function normalizeCapabilities(raw) {
+    const result = {};
+    if (!raw || typeof raw !== 'object') return result;
+    Object.keys(raw).forEach(id => {
+      const entry = raw[id] && typeof raw[id] === 'object' ? raw[id] : {};
+      result[id] = {
+        image: typeof entry.image === 'boolean' ? entry.image : null,
+        file: typeof entry.file === 'boolean' ? entry.file : null,
+        source: text(entry.source, 'unknown')
+      };
+    });
+    return result;
+  }
   const QUOTA_PRECISION_LABELS = { measured: 'Medido', estimated: 'Estimado', unavailable: 'No disponible' };
   const QUOTA_SOURCE_LABELS = { provider: 'Proveedor', engine: 'Motor', estimate: 'Estimación', none: 'Sin fuente', legacy: 'Legado' };
   const QUOTA_STATE_LABELS = { settled: 'Liquidado', unresolved: 'Sin resolver', pending: 'Pendiente', released: 'Liberado', legacy: 'Legado sin atribuir' };
@@ -2256,6 +2270,9 @@
           this.checks = Object.assign({}, this.checks, {
             [provider.id]: { ok: outcome.ok === true, code: text(outcome.code), modelCount: outcome.modelCount }
           });
+          // Discovery is refreshed server-side by the check. Reload even on
+          // failure so the list reflects its current closed status and models.
+          await this.loadProviders();
           return outcome.ok === true;
         } catch (error) {
           if (!this.current(epoch)) return false;
@@ -2280,6 +2297,10 @@
           this.items = payload.items.map(item => ({
             id: text(item.id), name: text(item.name), scope: item.scope, baseUrl: text(item.baseUrl),
             models: Array.isArray(item.models) ? item.models.map(model => text(model)) : [],
+            modelSelection: item.modelSelection === 'manual' ? 'manual' : 'auto',
+            discoveredCount: Array.isArray(item.discoveredModels) ? item.discoveredModels.length : 0,
+            capabilities: normalizeCapabilities(item.modelCapabilities),
+            discovery: item.discovery && typeof item.discovery === 'object' ? { code: text(item.discovery.code), count: Number(item.discovery.count) || 0 } : { code: '', count: 0 },
             credentialConfigured: item.credentialConfigured === true, credentialStatus: text(item.credentialStatus),
             enabled: item.enabled !== false
           }));
@@ -2296,25 +2317,58 @@
       },
       newProvider(scope) {
         if (this.busy || (scope === 'global' ? !this.globalAllowed : scope !== 'personal' || !this.personalAllowed)) return false;
-        this.draft = { id: '', name: '', scope, baseUrl: '', modelsText: '', apiKey: '', enabled: true };
+        this.draft = { id: '', name: '', scope, baseUrl: '', modelSelection: 'auto', modelsText: '', marks: {}, apiKey: '', enabled: true };
         this.error = '';
         this.notice = '';
         return true;
       },
       editProvider(provider) {
         if (this.busy || !this.canEditProvider(provider)) return false;
-        this.draft = { id: provider.id, name: provider.name, scope: provider.scope, baseUrl: provider.baseUrl, modelsText: provider.models.join('\n'), apiKey: '', enabled: provider.enabled };
+        const marks = {};
+        Object.keys(provider.capabilities).forEach(model => {
+          const capability = provider.capabilities[model];
+          if (capability.source === 'owner') marks[model] = { image: capability.image, file: capability.file };
+        });
+        this.draft = { id: provider.id, name: provider.name, scope: provider.scope, baseUrl: provider.baseUrl, modelSelection: provider.modelSelection, modelsText: provider.models.join('\n'), models: provider.models.slice(), marks, capabilities: provider.capabilities, apiKey: '', enabled: provider.enabled };
         this.error = '';
         this.notice = '';
         return true;
       },
       cancelProviderEdit() { this.draft = null; this.error = ''; },
+      discoveryText(provider) {
+        if (!provider.discovery.code) return provider.modelSelection === 'manual' ? 'Modelos elegidos a mano.' : 'Modelos pendientes de descubrir: usa Comprobar.';
+        if (provider.discovery.code !== 'ok') return 'No se pudieron descubrir los modelos: ' + (PROVIDER_CHECK_LABELS[provider.discovery.code] || 'respuesta no válida.');
+        return (provider.modelSelection === 'manual' ? 'Modelos elegidos a mano entre ' : 'Modelos descubiertos automáticamente: ') + provider.discovery.count + (provider.modelSelection === 'manual' ? ' descubiertos.' : '');
+      },
+      capabilityModels(provider, field, value) {
+        return provider.models.filter(id => provider.capabilities[id] && provider.capabilities[id][field] === value);
+      },
+      unknownCapabilityModels(provider) {
+        return provider.models.filter(id => !provider.capabilities[id] || (provider.capabilities[id].image === null && provider.capabilities[id].file === null));
+      },
+      capabilityValue(model, field) {
+        const draft = this.draft;
+        if (!draft) return '';
+        const mark = draft.marks[model];
+        if (mark && field in mark) return mark[field] === null ? '' : String(mark[field]);
+        const known = draft.capabilities && draft.capabilities[model];
+        return known && known.source === 'owner' && typeof known[field] === 'boolean' ? String(known[field]) : '';
+      },
+      setCapability(model, field, value) {
+        const draft = this.draft;
+        if (!draft || !PROVIDER_CAPABILITY_FIELDS.includes(field)) return;
+        const flag = value === 'true' ? true : (value === 'false' ? false : null);
+        const current = Object.assign({}, draft.marks[model] || {});
+        current[field] = flag;
+        draft.marks = Object.assign({}, draft.marks, { [model]: current });
+      },
       async saveProvider() {
         const draft = this.draft;
         if (!draft || this.busy || !this.canEditProvider(draft)) return false;
+        const manual = draft.modelSelection === 'manual';
         const models = draft.modelsText.split(/\r?\n/).map(model => model.trim()).filter(Boolean);
-        if (!draft.name.trim() || !draft.baseUrl.trim() || !models.length) {
-          this.error = 'Indica el nombre, el endpoint y al menos un modelo explícito.';
+        if (!draft.name.trim() || !draft.baseUrl.trim() || (manual && !models.length)) {
+          this.error = manual ? 'Indica el nombre, el endpoint y al menos un modelo.' : 'Indica el nombre y el endpoint.';
           return false;
         }
         if (draft.apiKey && !this.credentialStorageAvailable) {
@@ -2322,7 +2376,17 @@
           draft.apiKey = '';
           return false;
         }
-        const body = { name: draft.name.trim(), scope: draft.scope, baseUrl: draft.baseUrl.trim(), models, enabled: draft.enabled };
+        const body = { name: draft.name.trim(), scope: draft.scope, baseUrl: draft.baseUrl.trim(), modelSelection: manual ? 'manual' : 'auto' };
+        if (manual) body.models = models;
+        body.enabled = draft.enabled;
+        // Only owner marks that were changed in this form are sent; provider
+        // reported capabilities stay authoritative until the owner overrides.
+        const marks = {};
+        Object.keys(draft.marks).forEach(model => {
+          const mark = draft.marks[model];
+          marks[model] = { image: 'image' in mark ? mark.image : null, file: 'file' in mark ? mark.file : null };
+        });
+        if (Object.keys(marks).length) body.modelCapabilities = marks;
         if (draft.apiKey) body.apiKey = draft.apiKey;
         const epoch = this.epoch;
         const controller = new AbortController();
@@ -2334,7 +2398,7 @@
           if (!this.current(epoch)) return false;
           this.draft = null;
           this.busy = false;
-          this.notice = 'Proveedor guardado. Sus modelos se ofrecen a través de Pydantic AI.';
+          this.notice = manual ? 'Proveedor guardado con los modelos indicados.' : 'Proveedor guardado. Sus modelos se descubren desde el endpoint.';
           await this.loadProviders();
           this.$emit('changed');
           return true;
@@ -2392,7 +2456,11 @@
           <li v-for="provider in items" :key="provider.id" class="agent-instance">
             <div><strong>{{ provider.name }}</strong> <span class="agent-tag">{{ provider.scope === 'global' ? 'Global' : 'Personal' }}</span> <span class="status-pill" :class="provider.enabled ? 'status--ok' : 'status--hold'">{{ provider.enabled ? 'Habilitado' : 'Deshabilitado' }}</span></div>
             <p class="agent-skill__meta">{{ provider.baseUrl }}</p>
-            <p class="agent-skill__meta">Modelos: {{ provider.models.join(', ') || 'Sin modelos configurados' }}</p>
+            <p class="agent-skill__meta">Modelos: {{ provider.models.join(', ') || 'Sin modelos disponibles' }}</p>
+            <p class="agent-skill__meta">{{ discoveryText(provider) }}</p>
+            <p v-if="capabilityModels(provider, 'image', true).length" class="agent-skill__meta">Acepta imágenes: {{ capabilityModels(provider, 'image', true).join(', ') }}</p>
+            <p v-if="capabilityModels(provider, 'file', true).length" class="agent-skill__meta">Acepta PDF: {{ capabilityModels(provider, 'file', true).join(', ') }}</p>
+            <p v-if="unknownCapabilityModels(provider).length" class="agent-skill__meta">Capacidad multimodal sin informar: {{ unknownCapabilityModels(provider).join(', ') }}</p>
             <p class="agent-skill__meta">{{ credentialText(provider) }} · Pydantic AI</p>
             <p v-if="checks[provider.id]" class="agent-skill__meta" role="status">{{ checkResultText(provider) }}</p>
             <div v-if="canEditProvider(provider)" class="agent-provider-actions">
@@ -2407,7 +2475,14 @@
           <h4 class="agent-panel__title">{{ draft.id ? 'Editar proveedor' : 'Nuevo proveedor' }} {{ draft.scope === 'global' ? 'global' : 'personal' }}</h4>
           <div class="field"><label class="field__label" for="provider-name">Nombre del proveedor</label><input id="provider-name" v-model="draft.name" class="input-shell" required :disabled="busy" maxlength="160"></div>
           <div class="field"><label class="field__label" for="provider-url">Endpoint compatible con OpenAI</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? 'HTTPS público, sin credenciales en la URL ni redirecciones. Solo se aceptan destinos privados que el despliegue haya autorizado. El servidor valida el destino.' : 'URL administrada por el propietario de la instalación. Puede ser un endpoint de la red local.' }}</p></div>
-          <div class="field"><label class="field__label" for="provider-models">Modelos disponibles (uno por línea)</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">Identificadores exactos del proveedor. No se descubren ni se inventan modelos automáticamente.</p></div>
+          <div class="field"><label class="field__label" for="provider-model-selection">Modelos</label><select id="provider-model-selection" class="input-shell" :value="draft.modelSelection" :disabled="busy" aria-describedby="provider-model-selection-help" @change="draft.modelSelection = $event.target.value"><option value="auto">Descubrir automáticamente</option><option value="manual">Elegir a mano</option></select><p id="provider-model-selection-help" class="field__hint">{{ draft.modelSelection === 'auto' ? 'El servidor consulta la lista de modelos del endpoint al guardar y al comprobar.' : 'Si el endpoint informa sus modelos, solo se aceptan identificadores de esa lista.' }}</p></div>
+          <div v-if="draft.modelSelection === 'manual'" class="field"><label class="field__label" for="provider-models">Modelos ofrecidos (uno por línea)</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">Identificadores exactos del proveedor.</p></div>
+          <fieldset v-if="draft.id && draft.models && draft.models.length" class="field"><legend class="field__label">Entradas multimodales</legend><p class="field__hint">Si el proveedor no informa qué acepta un modelo, márcalo a mano. Sin marca no se le envían imágenes ni PDF.</p>
+            <div v-for="(model, index) in draft.models" :key="model" class="agent-provider-actions"><span>{{ model }}</span>
+              <label :for="'provider-capability-image-' + index">Imágenes</label><select :id="'provider-capability-image-' + index" class="input-shell" :value="capabilityValue(model, 'image')" :disabled="busy" @change="setCapability(model, 'image', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].image !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].image ? 'Sí, según el proveedor' : 'No, según el proveedor') : 'Sin informar' }}</option><option value="true">Sí</option><option value="false">No</option></select>
+              <label :for="'provider-capability-file-' + index">PDF</label><select :id="'provider-capability-file-' + index" class="input-shell" :value="capabilityValue(model, 'file')" :disabled="busy" @change="setCapability(model, 'file', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].file !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].file ? 'Sí, según el proveedor' : 'No, según el proveedor') : 'Sin informar' }}</option><option value="true">Sí</option><option value="false">No</option></select>
+            </div>
+          </fieldset>
           <div class="field"><label class="field__label" for="provider-key">{{ draft.id ? 'Sustituir credencial (opcional)' : 'Credencial (opcional)' }}</label><input id="provider-key" v-model="draft.apiKey" type="password" class="input-shell" autocomplete="new-password" :disabled="busy || !credentialStorageAvailable" :aria-describedby="!credentialStorageAvailable ? 'provider-storage-help provider-key-help' : 'provider-key-help'"><p id="provider-key-help" class="field__hint">Solo escritura. No se muestra la credencial guardada. Déjalo vacío para conservarla al editar.</p></div>
           <label class="agent-checkbox"><input v-model="draft.enabled" type="checkbox" :disabled="busy"> Habilitado</label>
           <div class="agent-provider-actions"><button type="submit" class="btn btn--primary" :disabled="busy">{{ busy ? 'Guardando…' : 'Guardar proveedor' }}</button><button type="button" class="btn btn--secondary" :disabled="busy" @click="cancelProviderEdit">Cancelar</button></div>

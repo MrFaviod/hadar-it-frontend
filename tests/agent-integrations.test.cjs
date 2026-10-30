@@ -1602,3 +1602,99 @@ test('owners can check a stored key without ever seeing it again', async () => {
   await ok.settle();
   assert.match(nodeText(ok.mount.root), /Conexión correcta: el proveedor ofrece 3 modelos/);
 });
+
+test('new providers discover models automatically and owners mark multimodal capability per model', async () => {
+  const discovered = {
+    id: PERSONAL_PROVIDER_ID,
+    name: 'OpenRouter personal',
+    scope: 'personal',
+    baseUrl: 'https://openrouter.example/api/v1',
+    models: ['vision-model', 'text-model'],
+    modelSelection: 'auto',
+    discoveredModels: [{ id: 'vision-model', inputModalities: ['text', 'image'] }, { id: 'text-model', inputModalities: null }],
+    modelCapabilities: {
+      'vision-model': { image: true, file: false, source: 'provider' },
+      'text-model': { image: null, file: null, source: 'unknown' }
+    },
+    discovery: { code: 'ok', checkedAt: '2026-10-27T12:00:00Z', count: 2 },
+    enabled: true,
+    credentialConfigured: true,
+    credentialStatus: 'primary'
+  };
+  const ui = surface({
+    component: 'AgentProvidersPanel',
+    providers: { items: [discovered], canManageGlobal: false, canManagePersonal: true, credentialStorageAvailable: true },
+    can: () => true
+  });
+  await ui.settle();
+  const text = nodeText(ui.mount.root);
+  assert.match(text, /Modelos descubiertos automáticamente: 2/);
+  assert.match(text, /Acepta imágenes: vision-model/);
+  assert.match(text, /Capacidad multimodal sin informar: text-model/);
+
+  const panel = findNode(ui.mount.root, node => node.props && node.props.id === 'provider-new-personal');
+  await panel.props.onClick();
+  await ui.settle();
+  const selection = findNode(ui.mount.root, node => node.props && node.props.id === 'provider-model-selection');
+  assert.equal(selection.props.value, 'auto');
+  assert.equal(Boolean(findNode(ui.mount.root, node => node.props && node.props.id === 'provider-models')), false, 'auto mode asks for no model list');
+  const vm = ui.vm;
+  vm.draft.name = 'Nuevo';
+  vm.draft.baseUrl = 'https://nuevo.example/v1';
+  assert.equal(await vm.saveProvider(), true);
+  const created = ui.calls.find(call => call.path === '/agent/providers' && call.method === 'POST');
+  assert.equal(JSON.stringify(created.body), JSON.stringify({ name: 'Nuevo', scope: 'personal', baseUrl: 'https://nuevo.example/v1', modelSelection: 'auto', enabled: true }));
+
+  assert.equal(vm.editProvider(vm.items[0]), true);
+  await ui.settle();
+  const mark = findNode(ui.mount.root, node => node.props && node.props.id === 'provider-capability-image-1');
+  assert.ok(mark, 'each offered model has an image capability control');
+  assert.equal(mark.props.value, '');
+  vm.setCapability('text-model', 'image', 'true');
+  vm.setCapability('text-model', 'file', 'false');
+  assert.equal(await vm.saveProvider(), true);
+  const patched = ui.calls.filter(call => call.path === '/agent/providers/' + PERSONAL_PROVIDER_ID && call.method === 'PATCH').pop();
+  assert.equal(JSON.stringify(patched.body.modelCapabilities), JSON.stringify({ 'text-model': { image: true, file: false } }));
+  assert.equal(patched.body.modelSelection, 'auto');
+  assert.equal('models' in patched.body, false, 'auto mode never sends a stale list');
+});
+
+test('a failed discovery is reported with its closed reason and never blocks the provider', async () => {
+  const failing = {
+    id: PERSONAL_PROVIDER_ID, name: 'Sin modelos', scope: 'personal', baseUrl: 'https://x.example/v1',
+    models: [], modelSelection: 'auto', discoveredModels: [], modelCapabilities: {},
+    discovery: { code: 'unauthorized', checkedAt: '2026-10-27T12:00:00Z', count: 0 },
+    enabled: true, credentialConfigured: true, credentialStatus: 'primary'
+  };
+  const ui = surface({ component: 'AgentProvidersPanel', providers: { items: [failing], canManageGlobal: false, canManagePersonal: true, credentialStorageAvailable: true }, can: () => true });
+  await ui.settle();
+  assert.match(nodeText(ui.mount.root), /No se pudieron descubrir los modelos: El proveedor rechazó la credencial/);
+});
+
+test('checking a provider refreshes its discovered models in the list', async () => {
+  const before = { id: PERSONAL_PROVIDER_ID, name: 'P', scope: 'personal', baseUrl: 'https://x.example/v1', models: [], modelSelection: 'auto', discoveredModels: [], modelCapabilities: {}, discovery: { code: 'timeout', checkedAt: null, count: 0 }, enabled: true, credentialConfigured: true, credentialStatus: 'primary' };
+  const after = Object.assign({}, before, { models: ['m1'], discoveredModels: [{ id: 'm1', inputModalities: null }], discovery: { code: 'ok', checkedAt: '2026-10-27T12:00:00Z', count: 1 } });
+  const ui = surface({
+    component: 'AgentProvidersPanel',
+    providers: { items: [before], canManageGlobal: false, canManagePersonal: true, credentialStorageAvailable: true },
+    providerCheck: { ok: true, code: 'ok', modelCount: 1, checkedAt: '2026-10-27T12:00:00Z', provider: after },
+    can: () => true
+  });
+  await ui.settle();
+  ui.state.providers = { items: [after], canManageGlobal: false, canManagePersonal: true, credentialStorageAvailable: true };
+  assert.equal(await ui.vm.checkProvider(ui.vm.items[0]), true);
+  await ui.settle();
+  assert.match(nodeText(ui.mount.root), /Modelos: m1/);
+  assert.match(nodeText(ui.mount.root), /Conexión correcta: el proveedor ofrece 1 modelos/);
+});
+
+test('editing one model capability preserves existing owner marks for other models', async () => {
+  const provider = { id: PERSONAL_PROVIDER_ID, name: 'P', scope: 'personal', baseUrl: 'https://x.example/v1', models: ['a', 'b'], modelSelection: 'auto', discoveredModels: [], modelCapabilities: { a: { image: true, file: false, source: 'owner' }, b: { image: null, file: null, source: 'unknown' } }, discovery: { code: 'ok', count: 2 }, enabled: true, credentialConfigured: true, credentialStatus: 'primary' };
+  const ui = surface({ component: 'AgentProvidersPanel', providers: { items: [provider], canManageGlobal: false, canManagePersonal: true, credentialStorageAvailable: true }, can: () => true });
+  await ui.settle();
+  ui.vm.editProvider(ui.vm.items[0]);
+  ui.vm.setCapability('b', 'file', 'true');
+  await ui.vm.saveProvider();
+  const patch = ui.calls.find(call => call.method === 'PATCH' && call.path === '/agent/providers/' + PERSONAL_PROVIDER_ID);
+  assert.deepEqual(plain(patch.body.modelCapabilities), { a: { image: true, file: false }, b: { image: null, file: true } });
+});
