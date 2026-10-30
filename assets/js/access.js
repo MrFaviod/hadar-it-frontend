@@ -645,7 +645,49 @@
     const state = vm.__assetAccess;
     if (state) { state.stopped = true; state.controller.abort(); if (state.timer) window.clearTimeout(state.timer); }
   }
+  // A presentation-only component: server deadline is authoritative; no identity
+  // or countdown is persisted in browser storage. Existing Options API is retained.
+  const DemoCountdown = {
+    data() { return { remainingSeconds: null, sampledAt: 0, ticks: 0, timer: null, stopped: false, controller: new AbortController() }; },
+    computed: {
+      label() {
+        if (this.remainingSeconds === null) return 'Próximo reinicio no disponible';
+        const seconds = Math.max(0, Math.ceil(this.remainingSeconds));
+        if (seconds === 0) return 'Reinicio pendiente';
+        return 'Reinicio en ' + Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+      }
+    },
+    methods: {
+      tick() {
+        if (this.stopped) return;
+        this.ticks += 1;
+        if (this.ticks >= 15) { this.ticks = 0; this.refresh(); return; }
+        if (this.remainingSeconds !== null) this.remainingSeconds = Math.max(0, this.remainingSeconds - 1);
+        this.timer = window.setTimeout(() => this.tick(), 1000);
+      },
+      async refresh() {
+        try {
+          const response = await window.fetch('/api/v1/demo/status', { credentials: 'same-origin', cache: 'no-store', signal: this.controller.signal });
+          if (!response.ok) throw new Error('demo status unavailable');
+          const status = await response.json();
+          if (this.stopped) return;
+          const remaining = (Date.parse(status.nextResetAt) - Date.parse(status.serverTime)) / 1000;
+          this.remainingSeconds = status.enabled === true && Number.isFinite(remaining) ? Math.max(0, remaining) : null;
+          this.sampledAt = Date.now();
+        } catch (_) { if (!this.stopped) this.remainingSeconds = null; }
+        if (!this.stopped) this.timer = window.setTimeout(() => this.tick(), 1000);
+      }
+    },
+    mounted() { this.refresh(); },
+    beforeUnmount() {
+      this.stopped = true;
+      this.controller.abort();
+      if (this.timer !== null) window.clearTimeout(this.timer);
+    },
+    template: '<span class="demo-countdown" role="timer" aria-live="off">{{ label }}</span>'
+  };
   window.AssetAccess = {
+    DemoCountdown,
     catalog: CATALOG,
     data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], demoMode: false, csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
     computed, methods, start, stop, guardMethods, request, stream, setExtensionPermissions

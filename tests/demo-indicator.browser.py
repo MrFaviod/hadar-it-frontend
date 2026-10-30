@@ -31,6 +31,7 @@ no agent/provider calls, no external targets.
 from __future__ import annotations
 
 import json
+import re
 import os
 import signal
 import socket
@@ -363,7 +364,9 @@ def check_matrix(page, label: str, notice_expected: bool, shots: Path) -> list[s
                 expect(notice).to_have_count(1)
                 expect(notice).to_be_visible()
                 text = notice.inner_text().strip()
-                assert text == NOTICE_TEXT, text
+                assert text.startswith(NOTICE_TEXT), text
+                timer = notice.get_by_role("timer")
+                expect(timer).to_have_text(re.compile(r"Reinicio en \d+:\d{2}"))
                 box = notice.bounding_box()
                 assert box and box["width"] > 0 and box["height"] > 0, box
                 assert box["x"] >= -0.5 and box["y"] >= -0.5, box
@@ -417,6 +420,7 @@ def scenario_marked(shots: Path) -> list[str]:
         demo_dir = SCRATCH / "marked"
         env = dict(CLEAN_ENV)
         env["ITSM_BOOTSTRAP_PASSWORD"] = DEMO_PASSWORD
+        env["RELEASE_MODE"] = "demo"
         stdout = run_command(
             [str(PYTHON), "-m", "itsm.demo", "init", "--directory", str(demo_dir),
              "--username", DEMO_USERNAME],
@@ -434,6 +438,7 @@ def scenario_marked(shots: Path) -> list[str]:
 
         api_env = isolated_state("marked")
         api_env["ITSM_DATABASE_URL"] = payload["databaseUrl"]
+        api_env["RELEASE_MODE"] = "demo"
         base, ports = start_servers(owner, "marked", api_env)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
@@ -464,6 +469,7 @@ def scenario_ordinary(shots: Path) -> list[str]:
         database = database_dir / "ordinary.db"
         api_env = isolated_state("ordinary")
         api_env["ITSM_DATABASE_URL"] = "sqlite+pysqlite:///" + str(database)
+        api_env["RELEASE_MODE"] = "prod"
         cli_env = dict(api_env)
         cli_env["ITSM_BOOTSTRAP_PASSWORD"] = DEMO_PASSWORD
         run_command([str(PYTHON), "-m", "alembic", "upgrade", "head"], cli_env, "alembic upgrade head")

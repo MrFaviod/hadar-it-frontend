@@ -103,6 +103,7 @@
     components: {
       HelpPage: window.AssetHelp.HelpPage,
       AppIcon: window.AppIcon,
+      DemoCountdown: window.AssetAccess.DemoCountdown,
       ItsmTable: window.ItsmTable,
       ItsmField: window.ItsmField,
       ItsmStatus: window.ItsmStatus,
