@@ -504,6 +504,9 @@
       quotaSelectedFunding() {
         const instance = this.agentActiveInstance;
         if (!instance) return '';
+        if (instance.quota && instance.quota.mode === 'managed' && typeof this.managedProviderId === 'string') {
+          return this.managedProviderId ? 'personal' : 'company';
+        }
         const scope = text(instance.providerScope) || text(instance.funding);
         if (scope === 'personal') return 'personal';
         if (scope === 'company' || scope === 'global') return 'company';

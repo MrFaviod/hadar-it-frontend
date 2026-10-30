@@ -95,6 +95,9 @@
         sessionId: '',
         sessionInstanceId: '',
         sessionModel: '',
+        sessionProviderId: '',
+        managedProviderId: '',
+        chatProviders: [],
         streaming: false,
         streamingIndex: -1,
         tools: [],
@@ -127,6 +130,32 @@
       },
       useAgentSessions() {
         return !this.legacyFallback && this.agentEnginesAvailable;
+      },
+      // Managed engines spend through the ITSM gateway, so the person may pick
+      // one of their own enabled providers per conversation; an empty value
+      // keeps the instance's organization provider and its daily budget.
+      agentManagedActive() {
+        const instance = this.agentActiveInstance;
+        return !!(instance && instance.quota && instance.quota.mode === 'managed');
+      },
+      agentProviderOptions() {
+        if (!this.agentManagedActive) return [];
+        return [{ value: '', label: 'Proveedor de la organización', models: [] }].concat(
+          this.chatProviders.map(provider => ({ value: provider.id, label: provider.name + ' · Tu clave', models: provider.models }))
+        );
+      },
+      agentProviderSelectorVisible() {
+        return this.agentProviderOptions.length > 1;
+      },
+      agentSelectedProvider() {
+        if (!this.agentManagedActive || !this.managedProviderId) return null;
+        return this.agentProviderOptions.find(option => option.value === this.managedProviderId) || null;
+      },
+      agentModels() {
+        const provider = this.agentSelectedProvider;
+        if (provider) return provider.models.map(id => ({ id, name: id, provider: provider.label, free: null }));
+        const instance = this.agentActiveInstance;
+        return instance && Array.isArray(instance.models) ? instance.models.filter(model => model && typeof model.id === 'string') : [];
       },
       engineReady() {
         if (this.legacyFallback) return true;
@@ -415,7 +444,22 @@
         }
         this.legacyFallback = false;
         if (!this.sessionsLoading) void this.loadSavedSessions();
+        if (this.agentInstanceList.some(instance => instance && instance.quota && instance.quota.mode === 'managed')) void this.loadChatProviders(epoch);
         return true;
+      },
+      // Only the caller's own enabled personal providers are offered; the
+      // server lists them owner-filtered and never returns key material.
+      async loadChatProviders(epoch) {
+        try {
+          const payload = await window.AssetAgentApi.providers(this.app);
+          if (!this.isCurrent(epoch)) return;
+          const items = payload && Array.isArray(payload.items) ? payload.items : [];
+          this.chatProviders = items
+            .filter(item => item && item.scope === 'personal' && item.enabled !== false && typeof item.id === 'string' && Array.isArray(item.models) && item.models.length)
+            .map(item => ({ id: item.id, name: String(item.name || item.id), models: item.models.filter(model => typeof model === 'string' && model) }));
+        } catch (_) {
+          if (this.isCurrent(epoch)) this.chatProviders = [];
+        }
       },
       contextAssetId() {
         const id = this.selectedAssetId;
@@ -588,7 +632,8 @@
           this.sessionModel = (patched && patched.model) || model;
           return;
         }
-        await this.persistAgentPreference(instance.id, model);
+        const providerId = this.agentManagedActive ? this.managedProviderId : '';
+        if (!providerId) await this.persistAgentPreference(instance.id, model);
         if (!this.isCurrent(epoch)) return;
         if (signal && signal.aborted) {
           const aborted = new Error('Cancelada');
@@ -596,6 +641,7 @@
           throw aborted;
         }
         const body = { instanceId: instance.id, model };
+        if (providerId) body.providerId = providerId;
         if (context.length) body.context = context;
         if (assetId) body.assetId = assetId;
         const session = await window.AssetAgentApi.createSession(this.app, body, { signal });
@@ -604,11 +650,13 @@
         this.sessionId = session.id;
         this.sessionInstanceId = session.instanceId || instance.id;
         this.sessionModel = session.model || model;
+        this.sessionProviderId = session.providerId || providerId;
       },
       startNewSession() {
         this.sessionId = '';
         this.sessionInstanceId = '';
         this.sessionModel = '';
+        this.sessionProviderId = '';
         this.tools = [];
         this.usage = null;
         this.actions = [];
@@ -656,6 +704,42 @@
         if (!applied) this.agentResetSelection(event, this.agentPreference.instanceId);
         return applied;
       },
+      async changeProvider(event) {
+        const value = typeof event === 'string' ? event : (event && event.target ? event.target.value : '');
+        const instance = this.agentActiveInstance;
+        const option = this.agentProviderOptions.find(item => item.value === value);
+        if (!instance || !option || this.busy || this.resuming || this.selecting || this.sessionRunning) {
+          this.agentResetSelection(event, this.managedProviderId);
+          return false;
+        }
+        const model = option.value ? (option.models[0] || '') : this.agentDefaultModel(instance);
+        const epoch = this.epoch;
+        const controller = new AbortController();
+        this.request = controller;
+        this.selecting = true;
+        this.agentSelectionNotice = '';
+        this.error = '';
+        try {
+          let applied = model;
+          if (this.sessionId) {
+            const patched = await window.AssetAgentApi.patchSession(this.app, this.sessionId, { providerId: option.value || null }, { signal: controller.signal });
+            if (!this.isCurrent(epoch)) return false;
+            applied = (patched && patched.model) || model;
+            this.sessionModel = applied;
+            this.sessionProviderId = option.value;
+          }
+          this.managedProviderId = option.value;
+          this.agentPreference = { instanceId: instance.id, model: applied };
+          if (!option.value) await this.persistAgentPreference(instance.id, applied);
+          return true;
+        } catch (error) {
+          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.error = error.status === 401 ? EXPIRED : (error.serverMessage || error.message || 'No se pudo cambiar el proveedor.');
+          this.agentResetSelection(event, this.managedProviderId);
+          return false;
+        } finally {
+          if (this.isCurrent(epoch)) { this.selecting = false; this.request = null; }
+        }
+      },
       async changeSelection(instance, model) {
         if (this.busy || this.resuming || this.selecting || this.sessionRunning) return false;
         if (this.sessionId && !model) {
@@ -675,9 +759,13 @@
             if (!this.isCurrent(epoch)) return false;
             this.sessionInstanceId = instance.id;
             this.sessionModel = (patched && patched.model) || model;
+            if (patched && 'providerId' in patched) this.sessionProviderId = patched.providerId || '';
           }
+          // Another instance starts again on its organization provider, as the
+          // server does when a PATCH moves the session without a providerId.
+          if (instance.id !== this.agentPreference.instanceId) this.managedProviderId = '';
           this.agentPreference = { instanceId: instance.id, model };
-          await this.persistAgentPreference(instance.id, model);
+          if (!this.managedProviderId) await this.persistAgentPreference(instance.id, model);
           if (!this.isCurrent(epoch)) return false;
           if (!model) this.agentSelectionNotice = 'La instancia seleccionada no anunció modelos. Revisa su conexión o elige otro motor antes de conversar.';
           return true;
@@ -751,6 +839,10 @@
         if (typeof payload.approvalPending === 'boolean') this.approvalPending = payload.approvalPending;
         if (typeof payload.model === 'string') this.sessionModel = payload.model;
         if (typeof payload.instanceId === 'string') this.sessionInstanceId = payload.instanceId;
+        if (typeof payload.providerId === 'string' || payload.providerId === null) {
+          this.sessionProviderId = payload.providerId || '';
+          this.managedProviderId = this.sessionProviderId;
+        }
         if (payload.status === 'running') this.streamStatus = 'El servidor indica una ejecución en curso.';
         this.sessionRunning = payload.status === 'running';
       },
@@ -945,6 +1037,12 @@
       '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
       '        </select>',
       '      </div>',
+      '      <div v-if="agentProviderSelectorVisible" class="conversation__field">',
+      '        <label class="conversation__label" for="conversation-provider">Proveedor</label>',
+      '        <select id="conversation-provider" class="conversation__select" aria-describedby="conversation-provider-help" :value="managedProviderId" :disabled="busy || selecting || resuming || sessionRunning" @change="changeProvider($event)">',
+      '          <option v-for="option in agentProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>',
+      '        </select>',
+      '      </div>',
       '      <div class="conversation__field">',
       '        <label class="conversation__label" for="conversation-model">Modelo</label>',
       '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length" @change="changeModel($event.target.value)">',
@@ -953,6 +1051,7 @@
       '        </select>',
       '      </div>',
       '    </div>',
+      '    <p v-if="agentProviderSelectorVisible" id="conversation-provider-help" class="conversation__help">El proveedor de la organización usa el presupuesto diario de la empresa. Tu clave no consume el presupuesto de la empresa: su consumo se registra aparte.</p>',
       '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">Cambiar de perfil conserva los mensajes ITSM de esta conversación y reinicia solo la sesión nativa del motor. No cambia el perfil global de Hermes.</p>',
       '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" aria-label="Errores de descubrimiento de motores">',
       '      <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',

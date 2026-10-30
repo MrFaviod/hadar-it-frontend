@@ -418,6 +418,9 @@ function sessionSurface(config) {
       if (state.deferUsage) await new Promise((resolve) => { state.releaseUsage = resolve; });
       return jsonResponse(state.usage);
     }
+    if (path === '/agent/providers') {
+      return jsonResponse(state.providers || { items: [], canManageGlobal: false, canManagePersonal: true });
+    }
     if (path === '/agent/preferences' && method === 'PUT') {
       state.preference = body;
       return jsonResponse(body);
@@ -425,7 +428,7 @@ function sessionSurface(config) {
     if (path === '/agent/sessions' && method === 'POST') {
       state.createCount += 1;
       return jsonResponse(
-        { id: 'sess-' + state.createCount, instanceId: body.instanceId, model: body.model, messages: [] },
+        { id: 'sess-' + state.createCount, instanceId: body.instanceId, model: body.model, providerId: body.providerId || null, messages: [] },
         201
       );
     }
@@ -435,7 +438,8 @@ function sessionSurface(config) {
       if (state.patchError) {
         return jsonResponse({ error: { code: 'unavailable', message: state.patchError.message } }, state.patchError.status);
       }
-      return jsonResponse({ id: path.split('/').pop(), instanceId: body.instanceId || ENGINE_ID, model: body.model });
+      const patchedModel = body.model || (body.providerId ? 'personal-model' : (body.providerId === null ? 'opencode/free-a' : undefined));
+      return jsonResponse({ id: path.split('/').pop(), instanceId: body.instanceId || ENGINE_ID, model: patchedModel, providerId: body.providerId === undefined ? null : body.providerId });
     }
     if (/^\/agent\/sessions\/[^/]+$/.test(path) && method === 'GET') {
       return jsonResponse(
@@ -1089,7 +1093,7 @@ test('the chat shows both quota accounts without assuming company funding', asyn
     usage: usagePayload({
       funding: {
         company: quotaBalance({ consumedTokens: 111 }),
-        personal: quotaBalance({ consumedTokens: 999, limitTokens: null, availableTokens: null })
+        personal: quotaBalance({ consumedTokens: 999, limitTokens: null, availableTokens: null, limitSource: 'record_only' })
       }
     })
   });
@@ -1097,8 +1101,8 @@ test('the chat shows both quota accounts without assuming company funding', asyn
   assert.equal(personal.vm.quotaSelectedFunding, 'personal');
   assert.equal(personal.vm.quotaSelectedBalance.consumed, 999);
   assert.equal(personal.vm.quotaSelectedBalance.limit, null);
-  assert.equal(personal.vm.quotaLimitText(personal.vm.quotaSelectedBalance), 'Ilimitado');
-  assert.match(personal.vm.quotaSelectedNotice, /personal/i);
+  assert.equal(personal.vm.quotaLimitText(personal.vm.quotaSelectedBalance), 'Sin límite diario');
+  assert.match(personal.vm.quotaSelectedNotice, /tu propia clave/i);
   const text = vnodeText(personal.mount.root);
   assert.match(text, /Contexto actual/);
   assert.match(text, /999/);
@@ -1328,4 +1332,44 @@ test('malformed candidate review data never becomes an actionable approval link'
   vm.applyDone({ results: [{ type: 'extension_review', candidateId: '../admin', digest: 'bad' }] });
   assert.equal(findById(mount.root, 'conversation-extension-reviews'), null);
   assert.equal(vm.results.length, 0);
+});
+
+test('a managed engine can switch between the global provider and the user own key', async () => {
+  const PERSONAL = '33333333-4444-4555-8666-777777777777';
+  const engines = enginesPayload();
+  const opencode = engines.instances.find(item => item.id === ENGINE_ID);
+  opencode.quota = { mode: 'managed', enforcement: 'admission_only', reason: '', directException: false };
+  const surface = sessionSurface({
+    engines,
+    preference: { instanceId: ENGINE_ID, model: 'opencode/free-a' },
+    providers: {
+      items: [
+        { id: PERSONAL, name: 'Mi OpenRouter', scope: 'personal', enabled: true, models: ['personal-model'], credentialConfigured: true },
+        { id: '44444444-5555-4666-8777-888888888888', name: 'Otro global', scope: 'global', enabled: true, models: ['g'], credentialConfigured: true },
+        { id: '55555555-6666-4777-8888-999999999999', name: 'Personal apagado', scope: 'personal', enabled: false, models: ['x'], credentialConfigured: true }
+      ],
+      canManageGlobal: false,
+      canManagePersonal: true
+    }
+  });
+  await surface.settle();
+  const options = surface.vm.agentProviderOptions.map(option => option.value);
+  assert.equal(JSON.stringify(options), JSON.stringify(['', PERSONAL]), 'only the instance global provider and the user enabled personal providers');
+
+  assert.equal(await surface.vm.changeProvider(PERSONAL), true);
+  assert.equal(JSON.stringify(surface.vm.agentModels.map(model => model.id)), '["personal-model"]');
+  surface.vm.draft = 'Hola';
+  assert.equal(await surface.vm.send(), true);
+  const created = surface.calls.find(call => call.path === '/agent/sessions' && call.method === 'POST');
+  assert.equal(JSON.stringify(created.body), JSON.stringify({ instanceId: ENGINE_ID, model: 'personal-model', providerId: PERSONAL }));
+  assert.equal(surface.vm.quotaSelectedFunding, 'personal');
+  await surface.settle();
+
+  assert.equal(await surface.vm.changeProvider(''), true);
+  const patch = surface.calls.filter(call => /^\/agent\/sessions\/[^/]+$/.test(call.path) && call.method === 'PATCH').pop();
+  assert.equal(JSON.stringify(patch.body), '{"providerId":null}');
+  assert.equal(surface.vm.sessionProviderId, '');
+  assert.equal(surface.vm.quotaSelectedFunding, 'company');
+  assert.equal(surface.vm.agentPreference.model, 'opencode/free-a');
+  assert.match(vnodeText(surface.mount.root), /Tu clave no consume el presupuesto de la empresa/);
 });
