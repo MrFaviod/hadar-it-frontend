@@ -54,7 +54,7 @@
   // recomputes totals the server already produced.
   const QUOTA_BASE = '/agent/usage';
   const QUOTA_FUNDING_LABELS = { company: 'Empresa', personal: 'Personal' };
-  const QUOTA_LIMIT_SOURCE_LABELS = { override: 'Excepción del usuario', policy: 'Política del servidor', default: 'Valor predeterminado', legacy_config: 'Configuración heredada' };
+  const QUOTA_LIMIT_SOURCE_LABELS = { override: 'Excepción del usuario', policy: 'Política del servidor', default: 'Valor predeterminado', legacy_config: 'Configuración heredada', record_only: 'Solo registro', not_applicable: 'No aplica' };
   const QUOTA_PRECISION_LABELS = { measured: 'Medido', estimated: 'Estimado', unavailable: 'No disponible' };
   const QUOTA_SOURCE_LABELS = { provider: 'Proveedor', engine: 'Motor', estimate: 'Estimación', none: 'Sin fuente', legacy: 'Legado' };
   const QUOTA_STATE_LABELS = { settled: 'Liquidado', unresolved: 'Sin resolver', pending: 'Pendiente', released: 'Liberado', legacy: 'Legado sin atribuir' };
@@ -83,6 +83,7 @@
     return {
       limit,
       unlimited: limit === null,
+      recordOnly: raw.limitSource === 'record_only',
       limitSource: text(raw.limitSource),
       consumed,
       reserved: optional('reservedTokens'),
@@ -118,24 +119,19 @@
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
     const limit = value => value === null ? null : quotaToken(value);
     const companyKnown = quotaHas(payload, 'companyDailyLimit');
-    const personalKnown = quotaHas(payload, 'personalDailyLimit');
     const companyDailyLimit = companyKnown ? limit(payload.companyDailyLimit) : null;
-    const personalDailyLimit = personalKnown ? limit(payload.personalDailyLimit) : null;
-    if ((companyKnown && payload.companyDailyLimit !== null && companyDailyLimit === null) ||
-        (personalKnown && payload.personalDailyLimit !== null && personalDailyLimit === null)) return null;
+    if (companyKnown && payload.companyDailyLimit !== null && companyDailyLimit === null) return null;
     return {
       companyKnown,
-      personalKnown,
-      available: companyKnown && personalKnown,
+      available: companyKnown,
       companyDailyLimit,
       companyLimitSource: text(payload.companyLimitSource),
-      personalDailyLimit,
       timezone: text(payload.timezone),
       pendingTimezone: text(payload.pendingTimezone),
       pendingEffectiveDay: text(payload.pendingEffectiveDay),
       overrides: Array.isArray(payload.overrides) ? payload.overrides.filter(item => item && typeof item === 'object' && text(item.userId)).map(item => ({
         userId: text(item.userId),
-        scope: item.scope === 'personal' ? 'personal' : 'company',
+        scope: 'company',
         dailyLimit: item.dailyLimit === null ? null : quotaToken(item.dailyLimit),
         updatedAt: text(item.updatedAt)
       })) : [],
@@ -145,7 +141,7 @@
 
   function normalizeQuotaOverrides(payload) {
     if (!payload || !Array.isArray(payload.overrides)) return null;
-    return normalizeQuotaPolicy({ companyDailyLimit: null, personalDailyLimit: null, overrides: payload.overrides }).overrides;
+    return normalizeQuotaPolicy({ companyDailyLimit: null, overrides: payload.overrides.filter(item => item && item.scope !== 'personal') }).overrides;
   }
 
   function normalizeQuotaReport(payload) {
@@ -501,7 +497,7 @@
       quotaSelectedNotice() {
         if (!this.agentActiveInstance) return '';
         if (this.quotaSelectedFunding === 'personal') {
-          return 'La instancia seleccionada usa financiación personal; su consumo no se descuenta del presupuesto de la empresa.';
+          return 'La instancia seleccionada usa tu propia clave: el consumo se registra, pero no se descuenta ni se limita con el presupuesto de la empresa.';
         }
         if (this.quotaSelectedFunding === 'company') {
           return 'La instancia seleccionada usa financiación de la empresa.';
@@ -528,11 +524,13 @@
       quotaLimitSourceLabel(source) { return QUOTA_LIMIT_SOURCE_LABELS[source] || 'Origen no informado'; },
       quotaLimitText(balance) {
         if (!balance) return 'No disponible';
+        if (balance.recordOnly) return 'Sin límite diario';
         if (balance.unlimited) return 'Ilimitado';
         return formatTokens(balance.limit) + ' tokens' + (balance.limit === 0 ? ' · sin admisión' : '');
       },
       quotaAvailableText(balance) {
         if (!balance) return 'No disponible';
+        if (balance.recordOnly) return 'No aplica: se usa tu propia clave';
         if (balance.unlimited) return 'Ilimitado';
         if (!balance.availableKnown || balance.available === null) return 'No disponible';
         return formatTokens(balance.available) + ' tokens';
@@ -2636,8 +2634,6 @@
         this.quotaDraft = {
           companyMode: policy.companyKnown ? (policy.companyDailyLimit === null ? 'unlimited' : 'limited') : 'unknown',
           companyLimit: policy.companyKnown && policy.companyDailyLimit !== null ? String(policy.companyDailyLimit) : '',
-          personalMode: policy.personalKnown ? (policy.personalDailyLimit === null ? 'unlimited' : 'limited') : 'unknown',
-          personalLimit: policy.personalKnown && policy.personalDailyLimit !== null ? String(policy.personalDailyLimit) : '',
           timezone: policy.timezone
         };
         if (!this.quotaOverrideUser || (this.canBrowseQuotaUsers && this.quotaUserOptions.length &&
@@ -2710,21 +2706,20 @@
         try {
           const body = {};
           const limits = [
-            ['company', 'companyMode', 'companyLimit', 'companyDailyLimit'],
-            ['personal', 'personalMode', 'personalLimit', 'personalDailyLimit']
+            ['company', 'companyMode', 'companyLimit', 'companyDailyLimit']
           ];
-          for (const [label, modeKey, limitKey, bodyKey] of limits) {
+          for (const [, modeKey, limitKey, bodyKey] of limits) {
             if (this.quotaDraft[modeKey] === 'unlimited') {
               if (this.quotaPolicy[bodyKey] !== null) body[bodyKey] = null;
             } else if (this.quotaDraft[modeKey] === 'limited') {
               const parsed = this.parseQuotaLimit(this.quotaDraft[limitKey]);
               if (parsed === undefined) {
-                this.quotaPolicyError = 'El límite diario ' + (label === 'company' ? 'de la empresa' : 'personal') + ' debe ser un entero mayor o igual que cero.';
+                this.quotaPolicyError = 'El límite diario de la empresa debe ser un entero mayor o igual que cero.';
                 return false;
               }
               if (parsed !== this.quotaPolicy[bodyKey]) body[bodyKey] = parsed;
             } else {
-              this.quotaPolicyError = 'Indica si el límite diario ' + (label === 'company' ? 'de la empresa' : 'personal') + ' es ilimitado o tiene un valor.';
+              this.quotaPolicyError = 'Indica si el límite diario de la empresa es ilimitado o tiene un valor.';
               return false;
             }
           }
@@ -2794,7 +2789,7 @@
             : 'Escribe un UUID de usuario válido; el nombre de usuario no es un identificador.';
           return false;
         }
-        const scope = this.quotaOverrideScope === 'personal' ? 'personal' : 'company';
+        const scope = 'company';
         if (this.quotaOverrideMode === 'inherit') {
           if (!this.quotaOverrideRecord) {
             this.quotaOverrideError = 'El usuario ya hereda el valor predeterminado; no hay excepción que eliminar.';
@@ -3223,14 +3218,14 @@
             <header class="agent-panel__head">
               <div>
                 <h3 id="quota-policy-title" class="agent-panel__title">Cuota diaria de IA</h3>
-                <p class="agent-panel__sub">Empresa y cuenta personal se limitan por separado. El navegador no reinicia el día ni convierte un límite nulo en cero; el servidor aplica la zona horaria y conserva las retenciones hasta reconciliarlas.</p>
+                <p class="agent-panel__sub">El límite diario solo controla los proveedores globales de la organización. El consumo con proveedores personales se registra, pero no tiene límite diario: lo paga cada persona con su propia clave. El navegador no reinicia el día ni convierte un límite nulo en cero; el servidor aplica la zona horaria y conserva las retenciones hasta reconciliarlas.</p>
               </div>
               <button type="button" class="btn btn--ghost btn--small" :disabled="quotaPolicyLoading || quotaPolicyBusy" @click="loadQuotaPolicy">{{ quotaPolicyLoading ? 'Consultando…' : 'Actualizar política' }}</button>
             </header>
             <p v-if="quotaPolicyLoading" class="agent-note" role="status">Consultando la política de cuota…</p>
             <p v-if="quotaPolicyError" class="agent-note agent-note--error" role="alert">{{ quotaPolicyError }}</p>
             <p v-if="quotaPolicyNotice" class="agent-note" role="status">{{ quotaPolicyNotice }}</p>
-            <p v-if="quotaPolicy && !quotaPolicy.available" class="agent-note agent-note--warn">El servidor no devolvió ambos límites. La política se muestra como no disponible y no se puede guardar.</p>
+            <p v-if="quotaPolicy && !quotaPolicy.available" class="agent-note agent-note--warn">El servidor no devolvió el límite de la empresa. La política se muestra como no disponible y no se puede guardar.</p>
             <form v-if="quotaPolicy && quotaPolicy.available" class="agent-quota-form" @submit.prevent="saveQuotaPolicy">
               <fieldset class="agent-quota-fieldset">
                 <legend>Límite diario de la empresa</legend>
@@ -3240,16 +3235,6 @@
                   <label class="field__label" for="quota-company-limit">Tokens por día</label>
                   <input id="quota-company-limit" v-model="quotaDraft.companyLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaPolicyBusy || quotaDraft.companyMode !== 'limited'" aria-describedby="quota-company-help">
                   <p id="quota-company-help" class="field__hint">0 bloquea nuevas ejecuciones; no es lo mismo que ilimitado. Valor actual: {{ quotaLimitText(quotaPolicy.companyDailyLimit, quotaPolicy.companyKnown) }} ({{ quotaLimitSourceLabel(quotaPolicy.companyLimitSource) }}).</p>
-                </div>
-              </fieldset>
-              <fieldset class="agent-quota-fieldset">
-                <legend>Límite diario personal</legend>
-                <label class="agent-check"><input v-model="quotaDraft.personalMode" type="radio" value="limited" :disabled="quotaPolicyBusy"> Límite diario</label>
-                <label class="agent-check"><input v-model="quotaDraft.personalMode" type="radio" value="unlimited" :disabled="quotaPolicyBusy"> Ilimitado (sin límite)</label>
-                <div class="field">
-                  <label class="field__label" for="quota-personal-limit">Tokens por día</label>
-                  <input id="quota-personal-limit" v-model="quotaDraft.personalLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaPolicyBusy || quotaDraft.personalMode !== 'limited'" aria-describedby="quota-personal-help">
-                  <p id="quota-personal-help" class="field__hint">El saldo personal no se descuenta del presupuesto de la empresa. Valor actual: {{ quotaLimitText(quotaPolicy.personalDailyLimit, quotaPolicy.personalKnown) }}.</p>
                 </div>
               </fieldset>
               <div class="field">
@@ -3265,7 +3250,7 @@
 
             <section class="agent-quota-block" aria-labelledby="quota-overrides-title">
               <h4 id="quota-overrides-title">Excepciones por usuario</h4>
-              <p class="agent-panel__sub">Una excepción reemplaza solo el valor predeterminado de la financiación elegida. Quitarla devuelve la cuenta al valor heredado; ilimitado explícito es una excepción distinta.</p>
+              <p class="agent-panel__sub">Una excepción reemplaza el límite diario de la empresa para una persona; no afecta su consumo con claves propias. Quitarla devuelve la cuenta al valor heredado; ilimitado explícito es una excepción distinta.</p>
               <div class="agent-quota-form">
                 <div class="field">
                   <label class="field__label" for="quota-override-user">Usuario real</label>
@@ -3276,13 +3261,6 @@
                     <input id="quota-override-user" v-model="quotaOverrideUser" type="text" class="input-shell" :disabled="quotaOverrideBusy" aria-describedby="quota-override-user-help" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" spellcheck="false">
                     <p id="quota-override-user-help" class="field__hint">UUID de la cuenta. El nombre de usuario no identifica una cuenta. La lista de cuentas requiere el permiso users.view.</p>
                   </template>
-                </div>
-                <div class="field">
-                  <label class="field__label" for="quota-override-scope">Financiación</label>
-                  <select id="quota-override-scope" v-model="quotaOverrideScope" class="input-shell" :disabled="quotaOverrideBusy" @change="onQuotaOverrideTargetChanged">
-                    <option value="company">Empresa</option>
-                    <option value="personal">Personal</option>
-                  </select>
                 </div>
                 <fieldset class="agent-quota-fieldset">
                   <legend>Valor de la excepción</legend>

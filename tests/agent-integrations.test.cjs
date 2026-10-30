@@ -176,9 +176,9 @@ function providersPayload(overrides) {
 function quotaPolicyPayload(overrides) {
   return Object.assign({
     companyDailyLimit: 50000,
-    personalDailyLimit: 10000,
+    personalDailyLimit: null,
     companyLimitSource: 'default',
-    personalLimitSource: 'default',
+    personalLimitSource: 'not_applicable',
     timezone: 'America/Mexico_City',
     pendingTimezone: '',
     pendingEffectiveDay: '',
@@ -1131,8 +1131,7 @@ test('quota administration requires system.providers on a human account', async 
 test('policy distinguishes zero from unlimited, saves both defaults and cancels only a pending timezone', async () => {
   const ui = surface({
     policy: quotaPolicyPayload({
-      companyDailyLimit: 50000,
-      personalDailyLimit: 0,
+      companyDailyLimit: 0,
       pendingTimezone: 'Europe/Madrid',
       pendingEffectiveDay: '2026-10-28'
     })
@@ -1140,8 +1139,8 @@ test('policy distinguishes zero from unlimited, saves both defaults and cancels 
   await ui.settle();
   assert.equal(ui.vm.canManageQuota, true);
   assert.equal(ui.vm.quotaDraft.companyMode, 'limited');
-  assert.equal(ui.vm.quotaDraft.personalMode, 'limited');
-  assert.equal(ui.vm.quotaDraft.personalLimit, '0');
+  assert.equal(Boolean(findNode(ui.mount.root, node => node.props && node.props.id === 'quota-personal-limit')), false);
+  assert.match(nodeText(ui.mount.root), /El consumo con proveedores personales se registra, pero no tiene límite diario/);
   assert.equal(ui.vm.quotaLimitText(null, true), 'Ilimitado');
   assert.equal(ui.vm.quotaLimitText(0, true), '0 tokens · sin admisión');
   const text = nodeText(ui.mount.root);
@@ -1205,11 +1204,12 @@ test('overrides separate inherit, explicit zero and explicit unlimited for a rea
   const manual = surface({ can: permission => permission === 'system.providers' });
   await manual.settle();
   manual.vm.quotaOverrideUser = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
-  manual.vm.quotaOverrideScope = 'personal';
   manual.vm.quotaOverrideMode = 'unlimited';
   assert.equal(manual.vm.quotaOverrideInputValid, true);
   assert.equal(await manual.vm.saveQuotaOverride(), true);
-  assert.deepEqual(plain(manual.state.overrideSave.body), { dailyLimit: null, scope: 'personal' });
+  assert.deepEqual(plain(manual.state.overrideSave.body), { dailyLimit: null, scope: 'company' });
+  assert.equal(Boolean(findNode(manual.mount.root, node => node.props && node.props.id === 'quota-override-scope')), false,
+    'personal funding has no overrides to choose');
   manual.vm.quotaOverrideUser = 'ana';
   assert.equal(manual.vm.quotaOverrideInputValid, false);
 });
@@ -1478,21 +1478,18 @@ test('a saved managed provider is not announced as unavailable while its options
 });
 
 test('rendered policy number inputs save numeric defaults including explicit zero', async () => {
-  const ui = surface({ policy: quotaPolicyPayload({ companyDailyLimit: 50000, personalDailyLimit: 1000 }) });
+  const ui = surface({ policy: quotaPolicyPayload({ companyDailyLimit: 50000 }) });
   await ui.settle();
-  await enterNativeValue(ui, 'quota-company-limit', '100');
-  await enterNativeValue(ui, 'quota-personal-limit', '0');
-  assert.equal(ui.vm.quotaDraft.companyLimit, 100);
-  assert.equal(ui.vm.quotaDraft.personalLimit, 0);
+  await enterNativeValue(ui, 'quota-company-limit', '0');
+  assert.equal(ui.vm.quotaDraft.companyLimit, 0);
 
   const form = findNode(ui.mount.root, node => node.tag === 'form' && findNode(node, child => child.props && child.props.id === 'quota-company-limit'));
   await form.props.onSubmit({ preventDefault() {} });
   await ui.settle();
   const save = ui.calls.find(call => call.path === '/agent/usage/policy' && call.method === 'PUT');
   assert.ok(save, 'submitting valid native number values reaches the policy endpoint');
-  assert.deepEqual(plain(save.body), { companyDailyLimit: 100, personalDailyLimit: 0 });
-  assert.equal(ui.state.policy.companyDailyLimit, 100);
-  assert.equal(ui.state.policy.personalDailyLimit, 0);
+  assert.deepEqual(plain(save.body), { companyDailyLimit: 0 }, 'personal limits are never sent');
+  assert.equal(ui.state.policy.companyDailyLimit, 0);
   assert.equal(ui.vm.quotaPolicyError, '');
 });
 
@@ -1566,4 +1563,14 @@ test('report provider scope stays distinct from company or personal funding', as
   assert.equal(nodeText(cells[1][5]), 'Personal');
   assert.equal(nodeText(cells[2][2]), 'Unknown provider · Ámbito no informado');
   assert.equal(nodeText(cells[2][5]), 'Empresa');
+});
+
+test('personal balance is recorded without a daily limit and never offers a remaining amount', async () => {
+  const personal = quotaBalance({ limitTokens: null, availableTokens: null, limitSource: 'record_only', consumedTokens: 4200 });
+  const ui = surface({ usage: usagePayload({ funding: { company: quotaBalance(), personal } }) });
+  await ui.settle();
+  const text = nodeText(ui.mount.root);
+  assert.match(text, /Límite: Sin límite diario · Solo registro/);
+  assert.match(text, /Disponible: No aplica: se usa tu propia clave/);
+  assert.doesNotMatch(text, /Límite diario personal/);
 });
