@@ -460,6 +460,26 @@
     streamMessage(vm, id, body, options) {
       return window.AssetAccess.stream(vm, '/agent/sessions/' + encodeURIComponent(id) + '/messages', Object.assign({ method: 'POST', body }, options || {}));
     },
+    // Chat attachment bytes travel as the raw request body with the shared
+    // cookie/CSRF transport; the server sniffs the real type and owns the id.
+    uploadSessionAttachment(vm, id, filename, bytes, options) {
+      const query = '?filename=' + encodeURIComponent(String(filename || ''));
+      return window.AssetAccess.request(vm, '/agent/sessions/' + encodeURIComponent(id) + '/attachments' + query, Object.assign({ method: 'POST', body: bytes }, options || {}));
+    },
+    deleteSessionAttachment(vm, id, attachmentId, options) {
+      return window.AssetAccess.request(
+        vm,
+        '/agent/sessions/' + encodeURIComponent(id) + '/attachments/' + encodeURIComponent(attachmentId),
+        Object.assign({ method: 'DELETE' }, options || {})
+      );
+    },
+    assetAttachments(vm, assetId, options) {
+      return window.AssetAccess.request(
+        vm,
+        '/assets/' + encodeURIComponent(assetId) + '/attachments?limit=50&offset=0',
+        options || {}
+      );
+    },
     integrations(vm, options) {
       return window.AssetAccess.request(vm, '/agent/integrations', options || {});
     },

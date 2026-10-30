@@ -12,6 +12,15 @@
   // accidental paste never becomes a multi-megabyte request.
   const MAX_TURNS = 20;
   const MAX_MESSAGE = 2000;
+  // Server bounds for chat attachments: the browser mirrors them as an early
+  // guard, while the API keeps the final word on size, type and count.
+  const MAX_ATTACHMENTS = 4;
+  const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+  const MAX_SESSION_ATTACHMENTS = 20;
+  const ATTACHMENT_KIND_LABELS = { image: 'Imagen', file: 'PDF o documento', text: 'Texto' };
+  const IMAGE_NAME_RE = /\.(png|jpe?g|webp|gif)$/i;
+  const PDF_NAME_RE = /\.pdf$/i;
+  const TEXT_NAME_RE = /\.(txt|csv)$/i;
   const UNAVAILABLE = 'El agente no está disponible: el servidor no tiene un modelo configurado.';
   const EXPIRED = 'La sesión no está disponible. Inicia sesión de nuevo.';
   const MAX_MESSAGE_ERROR = 'El mensaje supera los ' + MAX_MESSAGE + ' caracteres.';
@@ -56,6 +65,33 @@
 
   function isPermanentId(value) {
     return typeof value === 'string' && UUID_RE.test(value);
+  }
+
+  // The server owns the real file name; the browser only displays its base
+  // name so a stored path or control character never reaches the transcript.
+  function safeFilename(value) {
+    const raw = typeof value === 'string' ? value : '';
+    const base = raw.split(/[\\/]/).pop() || '';
+    return base.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200);
+  }
+
+  function attachmentKindFor(filename) {
+    const name = typeof filename === 'string' ? filename : '';
+    if (IMAGE_NAME_RE.test(name)) return 'image';
+    if (PDF_NAME_RE.test(name)) return 'file';
+    if (TEXT_NAME_RE.test(name)) return 'text';
+    return '';
+  }
+
+  function attachmentBytes(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }
+
+  function bytesText(size) {
+    if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MiB';
+    if (size >= 1024) return Math.ceil(size / 1024) + ' KiB';
+    return size + ' B';
   }
 
   function numericOrNull(value) {
@@ -119,6 +155,17 @@
         selecting: false,
         sessionRunning: false,
         retainedAsset: null,
+        attachments: [],
+        attachmentBusy: false,
+        attachmentError: '',
+        sessionAttachmentCount: 0,
+        assetAttachments: [],
+        assetAttachmentsLoading: false,
+        assetAttachmentsLoaded: false,
+        assetAttachmentsError: '',
+        assetAttachmentsTotal: 0,
+        assetAttachmentsHasMore: false,
+        selectedAssetAttachmentIds: []
       };
     },
     computed: {
@@ -140,8 +187,13 @@
       },
       agentProviderOptions() {
         if (!this.agentManagedActive) return [];
-        return [{ value: '', label: 'Proveedor de la organización', models: [] }].concat(
-          this.chatProviders.map(provider => ({ value: provider.id, label: provider.name + ' · Tu clave', models: provider.models }))
+        return [{ value: '', label: 'Proveedor de la organización', models: [], capabilities: {} }].concat(
+          this.chatProviders.map(provider => ({
+            value: provider.id,
+            label: provider.name + ' · Tu clave',
+            models: provider.models,
+            capabilities: provider.capabilities || {}
+          }))
         );
       },
       agentProviderSelectorVisible() {
@@ -153,9 +205,71 @@
       },
       agentModels() {
         const provider = this.agentSelectedProvider;
-        if (provider) return provider.models.map(id => ({ id, name: id, provider: provider.label, free: null }));
+        if (provider) {
+          return provider.models.map(id => ({
+            id,
+            name: id,
+            provider: provider.label,
+            free: null,
+            inputs: (provider.capabilities && provider.capabilities[id]) || { image: false, file: false }
+          }));
+        }
         const instance = this.agentActiveInstance;
         return instance && Array.isArray(instance.models) ? instance.models.filter(model => model && typeof model.id === 'string') : [];
+      },
+      /* What the selected engine and model may receive. Support is only the
+       * explicit server flag: no engine name or version is guessed here, and a
+       * missing flag fails closed. UTF-8 text needs the flag alone; images and
+       * PDFs also need the model's own image/file mark. */
+      chatAttachmentSupport() {
+        const instance = this.agentActiveInstance;
+        if (!this.useAgentSessions || !instance || instance.attachmentsSupported !== true) {
+          return { supported: false, image: false, file: false, text: false };
+        }
+        const inputs = this.agentModelInputs;
+        return { supported: true, image: inputs.image === true, file: inputs.file === true, text: true };
+      },
+      agentModelInputs() {
+        const model = typeof this.agentPreference.model === 'string' ? this.agentPreference.model : '';
+        if (!model) return { image: false, file: false };
+        const provider = this.agentSelectedProvider;
+        if (provider) {
+          const mark = provider.capabilities && provider.capabilities[model];
+          return { image: !!(mark && mark.image === true), file: !!(mark && mark.file === true) };
+        }
+        const instance = this.agentActiveInstance;
+        const entry = instance && Array.isArray(instance.models)
+          ? instance.models.find(candidate => candidate && candidate.id === model)
+          : null;
+        const inputs = entry && entry.inputs && typeof entry.inputs === 'object' ? entry.inputs : null;
+        return { image: !!(inputs && inputs.image === true), file: !!(inputs && inputs.file === true) };
+      },
+      canAttachFiles() {
+        return this.chatAttachmentSupport.supported;
+      },
+      attachmentAccept() {
+        const support = this.chatAttachmentSupport;
+        if (!support.supported) return '';
+        const parts = [];
+        if (support.image) parts.push('.png', '.jpg', '.jpeg', '.webp', '.gif', 'image/png', 'image/jpeg', 'image/webp', 'image/gif');
+        if (support.file) parts.push('.pdf', 'application/pdf');
+        parts.push('.txt', '.csv', 'text/plain', 'text/csv');
+        return parts.join(',');
+      },
+      attachmentHelp() {
+        const support = this.chatAttachmentSupport;
+        if (!support.supported) return '';
+        const formats = [];
+        if (support.image) formats.push('imágenes PNG, JPEG, WebP o GIF');
+        if (support.file) formats.push('PDF');
+        formats.push('texto o CSV');
+        return 'Hasta ' + MAX_ATTACHMENTS + ' archivos de 4 MiB por mensaje: ' + formats.join(', ') + '.';
+      },
+      hasPendingAttachments() {
+        return this.attachments.length > 0 || this.selectedAssetAttachmentIds.length > 0;
+      },
+      attachmentsFull() {
+        return this.attachments.length >= MAX_ATTACHMENTS;
       },
       engineReady() {
         if (this.legacyFallback) return true;
@@ -163,7 +277,10 @@
         return !!(this.agentActiveInstance && this.agentPreference.model);
       },
       canSend() {
-        return !this.busy && !this.resuming && !this.selecting && !this.sessionRunning && this.draft.trim().length > 0 && this.engineReady;
+        const hasText = this.draft.trim().length > 0;
+        const hasFiles = this.useAgentSessions && this.attachments.length > 0;
+        return !this.busy && !this.resuming && !this.selecting && !this.sessionRunning &&
+          !this.attachmentBusy && (hasText || hasFiles) && this.engineReady;
       },
       canCancel() {
         return !!this.busy || this.sessionRunning;
@@ -240,6 +357,11 @@
           this.selectedAssetId = value;
           void this.loadRouteAsset();
         }
+      },
+      selectedAssetId() {
+        // Asset attachments belong to one asset; changing the selection never
+        // carries the previous asset's list or checked ids into the new one.
+        this.clearAssetAttachments();
       }
     },
     created() {
@@ -399,6 +521,11 @@
         this.selecting = false;
         this.sessionRunning = false;
         this.retainedAsset = null;
+        this.clearAttachments();
+        this.clearAssetAttachments();
+        this.attachmentBusy = false;
+        this.attachmentError = '';
+        this.sessionAttachmentCount = 0;
         this.cancelRequest();
         this.messages = [];
         this.draft = '';
@@ -456,7 +583,14 @@
           const items = payload && Array.isArray(payload.items) ? payload.items : [];
           this.chatProviders = items
             .filter(item => item && item.scope === 'personal' && item.enabled !== false && typeof item.id === 'string' && Array.isArray(item.models) && item.models.length)
-            .map(item => ({ id: item.id, name: String(item.name || item.id), models: item.models.filter(model => typeof model === 'string' && model) }));
+            .map(item => ({
+              id: item.id,
+              name: String(item.name || item.id),
+              models: item.models.filter(model => typeof model === 'string' && model),
+              // Owner/provider modality marks travel with the offered models so
+              // the chat never guesses what the selected model accepts.
+              capabilities: this.normalizeModelCapabilities(item.modelCapabilities)
+            }));
         } catch (_) {
           if (this.isCurrent(epoch)) this.chatProviders = [];
         }
@@ -466,6 +600,219 @@
         if (!isPermanentId(id)) return '';
         const known = this.assetContextOptions.some((asset) => asset.id === id);
         return known ? id : '';
+      },
+      normalizeModelCapabilities(raw) {
+        const result = {};
+        if (!raw || typeof raw !== 'object') return result;
+        Object.keys(raw).forEach(id => {
+          const entry = raw[id] && typeof raw[id] === 'object' ? raw[id] : {};
+          // Only an explicit true admits the modality; null stays unknown.
+          result[id] = { image: entry.image === true, file: entry.file === true };
+        });
+        return result;
+      },
+      pendingAttachmentIds() {
+        return this.attachments.map(item => item.id);
+      },
+      attachmentKindLabel(kind) {
+        return ATTACHMENT_KIND_LABELS[kind] || 'Archivo';
+      },
+      attachmentSizeText(size) {
+        return bytesText(attachmentBytes(size));
+      },
+      mapAttachments(list) {
+        return (Array.isArray(list) ? list : [])
+          .filter(item => item && typeof item.id === 'string' && item.id)
+          .map(item => ({
+            id: item.id,
+            filename: safeFilename(item.filename),
+            mediaType: typeof item.mediaType === 'string' ? item.mediaType : '',
+            kind: ['image', 'file', 'text'].includes(item.kind) ? item.kind : 'file',
+            size: attachmentBytes(item.size)
+          }));
+      },
+      mapMessageAttachments(list) {
+        return this.mapAttachments(list);
+      },
+      attachmentErrorMessage(error) {
+        const code = error && (error.code || '');
+        if (code === 'model_modality_unsupported') return 'El modelo seleccionado no admite ese tipo de adjunto.';
+        if (code === 'engine_attachments_unsupported') return 'El motor seleccionado no admite adjuntos en el chat.';
+        if (error && error.status === 401) return EXPIRED;
+        return (error && (error.serverMessage || error.message)) || 'No se pudo adjuntar el archivo.';
+      },
+      clearAttachments() {
+        this.attachments = [];
+      },
+      clearAssetAttachments() {
+        this.assetAttachments = [];
+        this.assetAttachmentsLoading = false;
+        this.assetAttachmentsLoaded = false;
+        this.assetAttachmentsError = '';
+        this.assetAttachmentsTotal = 0;
+        this.assetAttachmentsHasMore = false;
+        this.selectedAssetAttachmentIds = [];
+      },
+      // Validates the whole selection before any byte leaves the browser, so a
+      // rejected batch never leaves a half-populated message.
+      attachmentBatchError(files) {
+        if (this.attachments.length + files.length > MAX_ATTACHMENTS) {
+          return 'Puedes adjuntar hasta ' + MAX_ATTACHMENTS + ' archivos por mensaje.';
+        }
+        if (this.sessionAttachmentCount + files.length > MAX_SESSION_ATTACHMENTS) {
+          return 'Esta conversación admite hasta ' + MAX_SESSION_ATTACHMENTS + ' adjuntos.';
+        }
+        const support = this.chatAttachmentSupport;
+        let total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0);
+        for (const file of files) {
+          const size = attachmentBytes(file && file.size);
+          if (size > MAX_ATTACHMENT_BYTES) return 'Cada archivo debe pesar 4 MiB o menos.';
+          total += size;
+          const kind = attachmentKindFor(file && file.name);
+          if (kind === 'image' && !support.image) return 'El modelo seleccionado no admite imágenes.';
+          if (kind === 'file' && !support.file) return 'El modelo seleccionado no admite PDF ni documentos.';
+        }
+        if (total > MAX_ATTACHMENT_BYTES) return 'Los adjuntos de un mensaje no pueden superar 4 MiB en total.';
+        return '';
+      },
+      async attachFiles(event) {
+        if (!this.chatAttachmentSupport.supported) return false;
+        const input = event && event.target ? event.target : null;
+        const files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+        if (input) {
+          // Clearing the native value lets the same file be chosen again after
+          // an error; the pending list, not the control, is the authority.
+          try { input.value = ''; } catch (_) { /* read-only fixture control */ }
+        }
+        if (!files.length) return false;
+        if (this.busy || this.attachmentBusy || this.resuming || this.selecting || this.sessionRunning) return false;
+        if (!this.engineReady) {
+          this.attachmentError = NO_MODEL;
+          return false;
+        }
+        const batchError = this.attachmentBatchError(files);
+        if (batchError) {
+          this.attachmentError = batchError;
+          return false;
+        }
+        this.attachmentError = '';
+        let stored = 0;
+        for (const file of files) {
+          if (await this.storeAttachment(file)) stored += 1;
+          if (this.attachmentError) break;
+        }
+        return stored > 0;
+      },
+      async storeAttachment(file) {
+        const filename = safeFilename(file && file.name);
+        if (!filename) {
+          this.attachmentError = 'Selecciona un archivo con nombre.';
+          return false;
+        }
+        const epoch = this.epoch;
+        this.attachmentBusy = true;
+        try {
+          const bytes = await file.arrayBuffer();
+          if (!this.isCurrent(epoch)) return false;
+          if (!(await this.ensureAttachmentSession(epoch))) return false;
+          if (!this.isCurrent(epoch)) return false;
+          const payload = await window.AssetAgentApi.uploadSessionAttachment(this.app, this.sessionId, filename, bytes);
+          if (!this.isCurrent(epoch)) return false;
+          const item = this.mapAttachments([payload])[0];
+          if (!item) throw new Error('El servidor no devolvió el adjunto creado.');
+          this.attachments = this.attachments.concat([item]);
+          this.sessionAttachmentCount += 1;
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          if (error && error.name === 'AbortError') return false;
+          this.attachmentError = this.attachmentErrorMessage(error);
+          return false;
+        } finally {
+          if (this.isCurrent(epoch)) this.attachmentBusy = false;
+        }
+      },
+      // Attachments are session scoped, so an upload first obtains the same
+      // server session the message would use. A created session is reused by
+      // the later send instead of creating a second one.
+      async ensureAttachmentSession(epoch) {
+        if (this.sessionId) return true;
+        const instance = this.agentActiveInstance;
+        const model = this.agentPreference.model;
+        if (!instance || instance.enabled === false) {
+          this.attachmentError = NO_ENGINE;
+          return false;
+        }
+        if (!model) {
+          this.attachmentError = NO_MODEL;
+          return false;
+        }
+        try {
+          await this.ensureSession(instance, model, this.history(), this.contextAssetId(), epoch);
+          return !!this.sessionId && this.isCurrent(epoch);
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          this.attachmentError = this.attachmentErrorMessage(error);
+          return false;
+        }
+      },
+      async removeAttachment(id) {
+        const target = this.attachments.find(item => item.id === id);
+        if (!target || !this.sessionId || this.busy || this.attachmentBusy) return false;
+        const epoch = this.epoch;
+        try {
+          await window.AssetAgentApi.deleteSessionAttachment(this.app, this.sessionId, id);
+          if (!this.isCurrent(epoch)) return false;
+          this.attachments = this.attachments.filter(item => item.id !== id);
+          this.sessionAttachmentCount = Math.max(0, this.sessionAttachmentCount - 1);
+          if (!this.attachments.length) this.attachmentError = '';
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          this.attachmentError = this.attachmentErrorMessage(error);
+          return false;
+        }
+      },
+      // Existing asset attachments are only listed after the explicit load the
+      // person asks for, and only ids the server returned can be referenced.
+      async loadAssetAttachments() {
+        const assetId = this.contextAssetId();
+        if (!assetId || this.assetAttachmentsLoading) return false;
+        const epoch = this.epoch;
+        this.assetAttachmentsLoading = true;
+        this.assetAttachmentsError = '';
+        try {
+          const payload = await window.AssetAgentApi.assetAttachments(this.app, assetId);
+          if (!this.isCurrent(epoch) || assetId !== this.contextAssetId()) return false;
+          this.assetAttachments = this.mapAttachments(payload && payload.items);
+          const total = Number(payload && payload.total);
+          this.assetAttachmentsTotal = Number.isFinite(total) && total >= 0 ? total : this.assetAttachments.length;
+          this.assetAttachmentsHasMore = payload && payload.hasMore === true;
+          this.assetAttachmentsLoaded = true;
+          this.selectedAssetAttachmentIds = this.selectedAssetAttachmentIds.filter(id =>
+            this.assetAttachments.some(item => item.id === id));
+          return true;
+        } catch (error) {
+          if (!this.isCurrent(epoch)) return false;
+          if (error && error.name === 'AbortError') return false;
+          this.assetAttachmentsError = error && error.status === 401
+            ? EXPIRED
+            : ((error && (error.serverMessage || error.message)) || 'No se pudieron consultar los adjuntos del activo.');
+          return false;
+        } finally {
+          if (this.isCurrent(epoch)) this.assetAttachmentsLoading = false;
+        }
+      },
+      toggleAssetAttachment(id, event) {
+        const value = typeof id === 'string' ? id : '';
+        if (!value || !this.assetAttachments.some(item => item.id === value)) return false;
+        const target = event && event.target ? event.target : null;
+        const checked = target && typeof target.checked === 'boolean'
+          ? target.checked
+          : !this.selectedAssetAttachmentIds.includes(value);
+        const others = this.selectedAssetAttachmentIds.filter(item => item !== value);
+        this.selectedAssetAttachmentIds = checked ? others.concat([value]) : others;
+        return true;
       },
       mapActions(list) {
         return (Array.isArray(list) ? list : [])
@@ -492,11 +839,13 @@
       },
       async send() {
         const message = this.draft.trim();
-        if (!message || this.busy || this.resuming || this.selecting || this.sessionRunning || this.disposed) return false;
+        const attachmentIds = this.useAgentSessions ? this.pendingAttachmentIds() : [];
+        if ((!message && !attachmentIds.length) || this.busy || this.resuming || this.selecting || this.sessionRunning || this.disposed) return false;
         if (!this.app.authenticated) {
           this.error = EXPIRED;
           return false;
         }
+        if (this.attachmentBusy) return false;
         if (message.length > MAX_MESSAGE) {
           this.error = MAX_MESSAGE_ERROR;
           return false;
@@ -558,6 +907,9 @@
           return false;
         }
         const assetId = this.contextAssetId();
+        const attachmentIds = this.pendingAttachmentIds();
+        const assetAttachmentIds = this.selectedAssetAttachmentIds.slice();
+        const sentAttachments = this.attachments.slice();
         this.error = '';
         this.retryable = false;
         this.streamStatus = '';
@@ -577,6 +929,8 @@
         const controller = typeof AbortController === 'function' ? new AbortController() : null;
         this.request = controller;
         let done = false;
+        let received = false;
+        let userIndex = -1;
         try {
           await this.ensureSession(instance, model, this.history(), assetId, epoch, controller ? controller.signal : undefined);
           if (!this.isCurrent(epoch)) return false;
@@ -584,15 +938,22 @@
             this.streamStatus = 'Solicitud cancelada.';
             return false;
           }
-          this.messages.push({ role: 'user', content: message });
+          this.messages.push({ role: 'user', content: message, attachments: sentAttachments });
+          userIndex = this.messages.length - 1;
           this.draft = '';
+          this.attachments = [];
+          this.attachmentError = '';
+          this.selectedAssetAttachmentIds = [];
           this.streaming = true;
           const body = { message };
+          if (attachmentIds.length) body.attachmentIds = attachmentIds;
+          if (assetAttachmentIds.length) body.assetAttachmentIds = assetAttachmentIds;
           if (assetId) body.assetId = assetId;
           const frames = window.AssetAgentApi.streamMessage(this.app, this.sessionId, body, {
             signal: controller ? controller.signal : undefined
           });
           for await (const event of frames) {
+            received = true;
             if (!this.isCurrent(epoch)) return false;
             if (this.applyAgentEvent(event)) {
               done = true;
@@ -606,6 +967,15 @@
         } catch (error) {
           if (!this.isCurrent(epoch)) return false;
           if (error && error.name === 'AbortError') return false;
+          // A rejection before the run started leaves nothing sent: restore the
+          // exact draft and pending attachment rows so a retry is explicit and
+          // never replayed automatically.
+          if (!received) {
+            if (this.messages[userIndex] && this.messages[userIndex].role === 'user') this.messages.splice(userIndex, 1);
+            if (!this.draft) this.draft = message;
+            this.attachments = sentAttachments;
+            this.selectedAssetAttachmentIds = assetAttachmentIds;
+          }
           if (error && error.status === 401) this.error = EXPIRED;
           else if (error && (error.status === 503 || error.status === 429)) this.error = error.serverMessage || error.message;
           else if (error && error.status === 409) this.error = (error.serverMessage || error.message) + ' La ejecución anterior sigue activa; puedes cancelarla o reconectar sin reenviar el mensaje.';
@@ -663,6 +1033,11 @@
         this.results = [];
         this.approvalPending = false;
         this.sessionRunning = false;
+        // Uploads belong to the server session that is being left behind.
+        this.clearAttachments();
+        this.clearAssetAttachments();
+        this.attachmentError = '';
+        this.sessionAttachmentCount = 0;
       },
       async changeEngine(instanceId) {
         const instance = this.agentInstanceList.find(item => item.id === instanceId && item.enabled !== false);
@@ -712,6 +1087,12 @@
           this.agentResetSelection(event, this.managedProviderId);
           return false;
         }
+        if (this.hasPendingAttachments) {
+          // A provider may change the model and its modality marks; the person
+          // decides first whether the pending files still belong to this turn.
+          this.agentResetSelection(event, this.managedProviderId);
+          return false;
+        }
         const model = option.value ? (option.models[0] || '') : this.agentDefaultModel(instance);
         const epoch = this.epoch;
         const controller = new AbortController();
@@ -742,6 +1123,9 @@
       },
       async changeSelection(instance, model) {
         if (this.busy || this.resuming || this.selecting || this.sessionRunning) return false;
+        // Pending attachments keep the conversation on the engine, model and
+        // session that accepted them until the person sends or removes them.
+        if (this.hasPendingAttachments) return false;
         if (this.sessionId && !model) {
           this.agentSelectionNotice = 'La instancia seleccionada no anunció modelos. La conversación actual no ha cambiado.';
           return false;
@@ -832,7 +1216,13 @@
         if (Array.isArray(payload.messages)) {
           this.messages = payload.messages
             .filter((message) => message && (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string')
-            .map((message) => ({ role: message.role, content: message.content }));
+            .map((message) => ({
+              role: message.role,
+              content: message.content,
+              // Only the server's metadata is kept for display; bytes and URLs
+              // never travel through the transcript or the history sent back.
+              attachments: this.mapMessageAttachments(message.attachments)
+            }));
         }
         if (Array.isArray(payload.actions)) this.actions = this.mapActions(payload.actions);
         if (Array.isArray(payload.results)) this.results = this.mapResults(payload.results);
@@ -1009,7 +1399,7 @@
       '  <div class="conversation__body">',
       '  <div v-if="useAgentSessions" class="conversation__field">',
       '    <label class="conversation__label" for="conversation-session">Tus conversaciones</label>',
-      '    <select id="conversation-session" class="conversation__select" :value="sessionId" :disabled="busy || selecting || resuming || sessionsLoading" @change="resumeSession($event.target.value)">',
+      '    <select id="conversation-session" class="conversation__select" :value="sessionId" :disabled="busy || selecting || resuming || sessionsLoading || hasPendingAttachments" @change="resumeSession($event.target.value)">',
       '      <option value="">Nueva conversación</option>',
       '      <option v-if="sessionId && !savedSessions.some(item => item.id === sessionId)" :value="sessionId">Conversación actual</option>',
       '      <option v-for="session in savedSessions" :key="session.id" :value="session.id">{{ savedSessionLabel(session) }}</option>',
@@ -1027,30 +1417,31 @@
       '    <div v-if="agentInstanceList.length" class="conversation__engine-grid">',
       '      <div class="conversation__field">',
       '        <label class="conversation__label" for="conversation-engine">Motor</label>',
-      '        <select id="conversation-engine" class="conversation__select" :value="agentEngineValue" :disabled="busy || selecting || resuming || sessionRunning" @change="changeEngineChoice($event)">',
+      '        <select id="conversation-engine" class="conversation__select" :value="agentEngineValue" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeEngineChoice($event)">',
       '          <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? \' · Deshabilitada\' : \'\' }}</option>',
       '        </select>',
       '      </div>',
       '      <div v-if="agentProfileSelectorVisible" class="conversation__field">',
       '        <label class="conversation__label" for="conversation-profile">Perfil</label>',
-      '        <select id="conversation-profile" class="conversation__select" aria-describedby="conversation-profile-help" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning" @change="changeProfile($event)">',
+      '        <select id="conversation-profile" class="conversation__select" aria-describedby="conversation-profile-help" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProfile($event)">',
       '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
       '        </select>',
       '      </div>',
       '      <div v-if="agentProviderSelectorVisible" class="conversation__field">',
       '        <label class="conversation__label" for="conversation-provider">Proveedor</label>',
-      '        <select id="conversation-provider" class="conversation__select" aria-describedby="conversation-provider-help" :value="managedProviderId" :disabled="busy || selecting || resuming || sessionRunning" @change="changeProvider($event)">',
+      '        <select id="conversation-provider" class="conversation__select" aria-describedby="conversation-provider-help" :value="managedProviderId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProvider($event)">',
       '          <option v-for="option in agentProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>',
       '        </select>',
       '      </div>',
       '      <div class="conversation__field">',
       '        <label class="conversation__label" for="conversation-model">Modelo</label>',
-      '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length" @change="changeModel($event.target.value)">',
+      '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
       '          <option v-if="!agentModels.length" value="">Sin modelos anunciados</option>',
       '          <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
       '        </select>',
       '      </div>',
       '    </div>',
+      '    <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">Quita los adjuntos pendientes o envíalos para cambiar de conversación, motor, proveedor o modelo.</p>',
       '    <p v-if="agentProviderSelectorVisible" id="conversation-provider-help" class="conversation__help">El proveedor de la organización usa el presupuesto diario de la empresa. Tu clave no consume el presupuesto de la empresa: su consumo se registra aparte.</p>',
       '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">Cambiar de perfil conserva los mensajes ITSM de esta conversación y reinicia solo la sesión nativa del motor. No cambia el perfil global de Hermes.</p>',
       '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" aria-label="Errores de descubrimiento de motores">',
@@ -1092,6 +1483,12 @@
       '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
       '      <p class="conversation__role">{{ message.role === \'user\' ? \'Tú\' : \'Agente\' }}</p>',
       '      <p class="conversation__text">{{ message.content }}<span v-if="message.streaming" class="conversation__streaming" aria-hidden="true">…</span></p>',
+      '      <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" aria-label="Adjuntos del mensaje">',
+      '        <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
+      '          <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
+      '          <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment.size) }}</span>',
+      '        </li>',
+      '      </ul>',
       '    </article>',
       '    <p v-if="busy && !streaming" class="conversation__pending" role="status">Preparando la sesión del motor…</p>',
       '    <p v-if="streaming" class="conversation__pending" role="status">Recibiendo la respuesta del agente…</p>',
@@ -1153,11 +1550,41 @@
       '    </select>',
       '    <p class="conversation__help">Se envía solo el identificador permanente del activo que elijas de la lista.</p>',
       '  </div>',
+      '  <div v-if="canAttachFiles && contextAssetId()" class="conversation__context conversation__asset-attachments">',
+      '    <label class="conversation__label" for="conversation-load-asset-attachments">Adjuntos del activo</label>',
+      '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" aria-describedby="conversation-asset-attachments-help" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? \'Consultando…\' : \'Cargar adjuntos del activo\' }}</button>',
+      '    <p id="conversation-asset-attachments-help" class="conversation__help">Se listan solo cuando lo pides. El servidor comprueba tus permisos y vuelve a leer cada archivo que elijas.</p>',
+      '    <p v-if="assetAttachmentsError" class="conversation__error" role="alert">{{ assetAttachmentsError }}</p>',
+      '    <p v-if="assetAttachmentsLoaded" class="conversation__meta">Examinados {{ assetAttachments.length }} de {{ assetAttachmentsTotal }}<template v-if="assetAttachmentsHasMore"> · hay más adjuntos sin listar</template>.</p>',
+      '    <p v-if="assetAttachmentsLoaded && !assetAttachments.length" class="conversation__help" role="status">El activo no tiene adjuntos.</p>',
+      '    <ul v-if="assetAttachments.length" class="conversation__attachment-list" aria-label="Adjuntos disponibles del activo">',
+      '      <li v-for="item in assetAttachments" :key="item.id" class="conversation__attachment">',
+      '        <input :id="\'conversation-asset-attachment-\' + item.id" type="checkbox" :checked="selectedAssetAttachmentIds.includes(item.id)" :disabled="busy" @change="toggleAssetAttachment(item.id, $event)">',
+      '        <label :for="\'conversation-asset-attachment-\' + item.id" class="conversation__attachment-name">{{ item.filename }}</label>',
+      '        <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item.size) }}</span>',
+      '      </li>',
+      '    </ul>',
+      '  </div>',
       '  </div>',
       '  <form class="conversation__form" @submit.prevent="send">',
       '    <label class="conversation__label" for="conversation-input">Mensaje</label>',
       '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" aria-describedby="conversation-help" placeholder="Ej.: Muéstrame los servidores de Matriz"></textarea>',
       '    <p id="conversation-help" class="conversation__help">El agente pide los datos que falten antes de cambiar un activo.</p>',
+      '    <div v-if="canAttachFiles" class="conversation__attachments">',
+      '      <label class="conversation__label" for="conversation-attachment">Adjuntos</label>',
+      '      <input id="conversation-attachment" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" @change="attachFiles($event)">',
+      '      <p id="conversation-attachment-help" class="conversation__help">{{ attachmentHelp }}</p>',
+      '      <p v-if="attachmentBusy" class="conversation__help" role="status">Subiendo adjunto…</p>',
+      '      <p v-if="attachmentError" class="conversation__error" role="alert">{{ attachmentError }}</p>',
+      '      <ul v-if="attachments.length" class="conversation__attachment-list" aria-label="Adjuntos pendientes">',
+      '        <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
+      '          <span class="conversation__attachment-name">{{ item.filename }}</span>',
+      '          <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item.size) }}</span>',
+      '          <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="\'Quitar \' + item.filename" @click="removeAttachment(item.id)">Quitar</button>',
+      '        </li>',
+      '      </ul>',
+      '      <p v-if="sessionAttachmentCount" class="conversation__meta">Adjuntos en esta conversación: {{ sessionAttachmentCount }} de 20.</p>',
+      '    </div>',
       '    <div class="conversation__form-actions">',
       '      <button type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
       '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? \'Cancelando…\' : \'Cancelar\' }}</button>',

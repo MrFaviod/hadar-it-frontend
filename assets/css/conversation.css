@@ -453,3 +453,56 @@
   gap: 6px;
   padding: 12px;
 }
+
+.conversation__attachments {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.conversation__attachments input[type="file"] {
+  max-width: 100%;
+  min-height: 44px;
+  font: inherit;
+  color: var(--text);
+}
+
+.conversation__attachment-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation__attachment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.conversation__attachment-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation__attachment input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+
+.conversation__attachment .btn {
+  margin-left: auto;
+}
+
+.conversation__attachment-list + .conversation__meta,
+.conversation__attachments .conversation__meta {
+  margin: 0;
+}
