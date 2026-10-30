@@ -263,13 +263,16 @@
         if (support.image) formats.push('imágenes PNG, JPEG, WebP o GIF');
         if (support.file) formats.push('PDF');
         formats.push('texto o CSV');
-        return 'Hasta ' + MAX_ATTACHMENTS + ' archivos de 4 MiB por mensaje: ' + formats.join(', ') + '.';
+        return 'Hasta ' + MAX_ATTACHMENTS + ' archivos de 4 MiB en total por mensaje: ' + formats.join(', ') + '.';
       },
       hasPendingAttachments() {
         return this.attachments.length > 0 || this.selectedAssetAttachmentIds.length > 0;
       },
       attachmentsFull() {
-        return this.attachments.length >= MAX_ATTACHMENTS;
+        return this.combinedAttachmentCount >= MAX_ATTACHMENTS;
+      },
+      combinedAttachmentCount() {
+        return this.attachments.length + this.selectedAssetAttachmentIds.length;
       },
       engineReady() {
         if (this.legacyFallback) return true;
@@ -278,7 +281,7 @@
       },
       canSend() {
         const hasText = this.draft.trim().length > 0;
-        const hasFiles = this.useAgentSessions && this.attachments.length > 0;
+        const hasFiles = this.useAgentSessions && (this.attachments.length > 0 || this.selectedAssetAttachmentIds.length > 0);
         return !this.busy && !this.resuming && !this.selecting && !this.sessionRunning &&
           !this.attachmentBusy && (hasText || hasFiles) && this.engineReady;
       },
@@ -617,19 +620,36 @@
       attachmentKindLabel(kind) {
         return ATTACHMENT_KIND_LABELS[kind] || 'Archivo';
       },
-      attachmentSizeText(size) {
-        return bytesText(attachmentBytes(size));
+      attachmentSizeText(item) {
+        if (!item || item.sizeKnown === false) return 'Tamaño no informado';
+        return bytesText(attachmentBytes(item.size));
+      },
+      selectedAssetAttachmentBytes() {
+        const rows = this.assetAttachments.filter(item => this.selectedAssetAttachmentIds.includes(item.id));
+        let bytes = 0;
+        for (const row of rows) {
+          if (row.sizeKnown === false) return null;
+          bytes += attachmentBytes(row.size);
+        }
+        return bytes;
       },
       mapAttachments(list) {
         return (Array.isArray(list) ? list : [])
           .filter(item => item && typeof item.id === 'string' && item.id)
-          .map(item => ({
-            id: item.id,
-            filename: safeFilename(item.filename),
-            mediaType: typeof item.mediaType === 'string' ? item.mediaType : '',
-            kind: ['image', 'file', 'text'].includes(item.kind) ? item.kind : 'file',
-            size: attachmentBytes(item.size)
-          }));
+          .map(item => {
+            const rawSize = Number(item.size);
+            const sizeKnown = item.size !== null && item.size !== '' && Number.isFinite(rawSize) && rawSize >= 0;
+            return {
+              id: item.id,
+              filename: safeFilename(item.filename),
+              mediaType: typeof item.mediaType === 'string' ? item.mediaType : '',
+              kind: ['image', 'file', 'text'].includes(item.kind) ? item.kind : 'file',
+              // A size the server did not report is unknown, never zero: the
+              // shared message budget cannot be verified without it.
+              size: sizeKnown ? rawSize : 0,
+              sizeKnown
+            };
+          });
       },
       mapMessageAttachments(list) {
         return this.mapAttachments(list);
@@ -656,14 +676,18 @@
       // Validates the whole selection before any byte leaves the browser, so a
       // rejected batch never leaves a half-populated message.
       attachmentBatchError(files) {
-        if (this.attachments.length + files.length > MAX_ATTACHMENTS) {
+        const selectedBytes = this.selectedAssetAttachmentBytes();
+        if (selectedBytes === null) {
+          return 'El servidor no informó el tamaño de un adjunto del activo, así que no se puede verificar el límite de 4 MiB.';
+        }
+        if (this.combinedAttachmentCount + files.length > MAX_ATTACHMENTS) {
           return 'Puedes adjuntar hasta ' + MAX_ATTACHMENTS + ' archivos por mensaje.';
         }
         if (this.sessionAttachmentCount + files.length > MAX_SESSION_ATTACHMENTS) {
           return 'Esta conversación admite hasta ' + MAX_SESSION_ATTACHMENTS + ' adjuntos.';
         }
         const support = this.chatAttachmentSupport;
-        let total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0);
+        let total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0) + selectedBytes;
         for (const file of files) {
           const size = attachmentBytes(file && file.size);
           if (size > MAX_ATTACHMENT_BYTES) return 'Cada archivo debe pesar 4 MiB o menos.';
@@ -805,13 +829,35 @@
       },
       toggleAssetAttachment(id, event) {
         const value = typeof id === 'string' ? id : '';
-        if (!value || !this.assetAttachments.some(item => item.id === value)) return false;
+        const row = this.assetAttachments.find(item => item.id === value);
+        if (!row) return false;
         const target = event && event.target ? event.target : null;
         const checked = target && typeof target.checked === 'boolean'
           ? target.checked
           : !this.selectedAssetAttachmentIds.includes(value);
-        const others = this.selectedAssetAttachmentIds.filter(item => item !== value);
-        this.selectedAssetAttachmentIds = checked ? others.concat([value]) : others;
+        if (!checked) {
+          this.selectedAssetAttachmentIds = this.selectedAssetAttachmentIds.filter(item => item !== value);
+          this.attachmentError = '';
+          return true;
+        }
+        if (this.selectedAssetAttachmentIds.includes(value)) return true;
+        if (row.sizeKnown === false) {
+          this.attachmentError = 'El servidor no informó el tamaño de este adjunto, así que no se puede verificar el límite de 4 MiB.';
+          return false;
+        }
+        if (this.combinedAttachmentCount + 1 > MAX_ATTACHMENTS) {
+          this.attachmentError = 'Puedes adjuntar hasta ' + MAX_ATTACHMENTS + ' archivos por mensaje.';
+          return false;
+        }
+        const selectedBytes = this.selectedAssetAttachmentBytes() || 0;
+        const total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0) +
+          selectedBytes + attachmentBytes(row.size);
+        if (total > MAX_ATTACHMENT_BYTES) {
+          this.attachmentError = 'Los adjuntos de un mensaje no pueden superar 4 MiB en total.';
+          return false;
+        }
+        this.selectedAssetAttachmentIds = this.selectedAssetAttachmentIds.concat([value]);
+        this.attachmentError = '';
         return true;
       },
       mapActions(list) {
@@ -840,7 +886,9 @@
       async send() {
         const message = this.draft.trim();
         const attachmentIds = this.useAgentSessions ? this.pendingAttachmentIds() : [];
-        if ((!message && !attachmentIds.length) || this.busy || this.resuming || this.selecting || this.sessionRunning || this.disposed) return false;
+        const assetAttachmentIds = this.useAgentSessions ? this.selectedAssetAttachmentIds : [];
+        const hasContent = !!message || attachmentIds.length > 0 || assetAttachmentIds.length > 0;
+        if (!hasContent || this.busy || this.resuming || this.selecting || this.sessionRunning || this.disposed) return false;
         if (!this.app.authenticated) {
           this.error = EXPIRED;
           return false;
@@ -1486,7 +1534,7 @@
       '      <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" aria-label="Adjuntos del mensaje">',
       '        <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
       '          <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
-      '          <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment.size) }}</span>',
+      '          <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment) }}</span>',
       '        </li>',
       '      </ul>',
       '    </article>',
@@ -1561,12 +1609,12 @@
       '      <li v-for="item in assetAttachments" :key="item.id" class="conversation__attachment">',
       '        <input :id="\'conversation-asset-attachment-\' + item.id" type="checkbox" :checked="selectedAssetAttachmentIds.includes(item.id)" :disabled="busy" @change="toggleAssetAttachment(item.id, $event)">',
       '        <label :for="\'conversation-asset-attachment-\' + item.id" class="conversation__attachment-name">{{ item.filename }}</label>',
-      '        <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item.size) }}</span>',
+      '        <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
       '      </li>',
       '    </ul>',
       '  </div>',
       '  </div>',
-      '  <form class="conversation__form" @submit.prevent="send">',
+      '  <form id="conversation-form" class="conversation__form" @submit.prevent="send">',
       '    <label class="conversation__label" for="conversation-input">Mensaje</label>',
       '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" aria-describedby="conversation-help" placeholder="Ej.: Muéstrame los servidores de Matriz"></textarea>',
       '    <p id="conversation-help" class="conversation__help">El agente pide los datos que falten antes de cambiar un activo.</p>',
@@ -1579,14 +1627,14 @@
       '      <ul v-if="attachments.length" class="conversation__attachment-list" aria-label="Adjuntos pendientes">',
       '        <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
       '          <span class="conversation__attachment-name">{{ item.filename }}</span>',
-      '          <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item.size) }}</span>',
+      '          <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
       '          <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="\'Quitar \' + item.filename" @click="removeAttachment(item.id)">Quitar</button>',
       '        </li>',
       '      </ul>',
       '      <p v-if="sessionAttachmentCount" class="conversation__meta">Adjuntos en esta conversación: {{ sessionAttachmentCount }} de 20.</p>',
       '    </div>',
       '    <div class="conversation__form-actions">',
-      '      <button type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
+      '      <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
       '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? \'Cancelando…\' : \'Cancelar\' }}</button>',
       '    </div>',
       '  </form>',

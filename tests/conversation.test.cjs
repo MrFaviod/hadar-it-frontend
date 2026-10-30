@@ -1491,7 +1491,8 @@ test('a chosen file uploads its raw bytes with the session CSRF token and stays 
     filename: 'datos.csv',
     mediaType: 'text/plain',
     kind: 'text',
-    size: TEXT_BYTES.byteLength
+    size: TEXT_BYTES.byteLength,
+    sizeKnown: true
   });
   assert.equal(surface.vm.sessionAttachmentCount, 1);
   assert.match(vnodeText(surface.mount.root), /datos\.csv/);
@@ -1767,6 +1768,115 @@ test('a rejected send keeps the draft and attachments for an explicit retry with
   assert.equal(vm.draft, 'Analiza el CSV');
   assert.equal(vm.attachments.length, 1);
   assert.equal(surface.calls.filter((call) => /\/messages$/.test(call.path)).length, 1);
+});
+
+test('an asset-attachment-only message is sent from the rendered form', async () => {
+  const surface = sessionSurface({
+    engines: attachmentPayload(),
+    assetAttachments: { items: [{ id: ASSET_ATTACHMENT_ID, filename: 'manual.pdf', kind: 'file', size: 1024 }], hasMore: false, total: 1 }
+  });
+  await surface.settle();
+  const vm = surface.vm;
+  surface.app.inventory.items = [{ id: ASSET_ID, serverAsset: true, name: 'Servidor', quickCode: 'SRV-1' }];
+  vm.selectedAssetId = ASSET_ID;
+  await surface.settle();
+  await clickHandler(findById(surface.mount.root, 'conversation-load-asset-attachments'))();
+  await surface.settle();
+  await changeHandler(findById(surface.mount.root, 'conversation-asset-attachment-' + ASSET_ATTACHMENT_ID))({ target: { checked: true } });
+  await surface.settle();
+
+  assert.equal(vm.draft, '');
+  assert.equal(vm.canSend, true, 'a checked asset attachment is message content on its own');
+  const submit = findById(surface.mount.root, 'conversation-send');
+  assert.ok(submit, 'the rendered send control exists');
+  assert.equal(submit.props.disabled, false, 'the rendered send control is enabled for the asset-only turn');
+
+  const form = findById(surface.mount.root, 'conversation-form');
+  assert.equal(typeof form.props.onSubmit, 'function', 'the rendered form submits through its own handler');
+  await form.props.onSubmit({ preventDefault() {} });
+  await surface.settle();
+
+  const streamed = surface.calls.filter((call) => /\/messages$/.test(call.path)).pop();
+  assert.equal(streamed.body.message, '');
+  assert.equal(JSON.stringify(streamed.body.assetAttachmentIds), JSON.stringify([ASSET_ATTACHMENT_ID]));
+  assert.equal('attachmentIds' in streamed.body, false, 'no chat upload id is invented for an asset attachment');
+  assert.equal(vm.selectedAssetAttachmentIds.length, 0);
+});
+
+test('chat and asset attachments share the four-file and four-megabyte message bounds', async () => {
+  const MIB = 1024 * 1024;
+  const surface = sessionSurface({
+    engines: attachmentPayload(),
+    assetAttachments: {
+      items: [
+        { id: ASSET_ATTACHMENT_ID, filename: 'pesado.pdf', kind: 'file', size: 3 * MIB },
+        { id: ASSET_ATTACHMENT_B_ID, filename: 'justo.pdf', kind: 'file', size: 1 * MIB },
+        { id: 'cccccccc-dddd-4eee-8fff-000000000000', filename: 'extra.txt', kind: 'text', size: 1 }
+      ],
+      hasMore: false,
+      total: 3
+    }
+  });
+  await surface.settle();
+  const vm = surface.vm;
+  surface.app.inventory.items = [{ id: ASSET_ID, serverAsset: true, name: 'Servidor', quickCode: 'SRV-1' }];
+  vm.selectedAssetId = ASSET_ID;
+  await surface.settle();
+  await clickHandler(findById(surface.mount.root, 'conversation-load-asset-attachments'))();
+  await surface.settle();
+
+  const choose = async (id, checked) => {
+    await changeHandler(findById(surface.mount.root, 'conversation-asset-attachment-' + id))({ target: { checked } });
+    await surface.settle();
+  };
+
+  await choose(ASSET_ATTACHMENT_ID, true);
+  await choose(ASSET_ATTACHMENT_B_ID, true);
+  assert.equal(vm.selectedAssetAttachmentIds.length, 2, 'two attachments adding up to exactly 4 MiB are accepted');
+  assert.equal(vm.attachmentError, '');
+
+  await choose('cccccccc-dddd-4eee-8fff-000000000000', true);
+  assert.equal(vm.selectedAssetAttachmentIds.length, 2, 'a selection over the shared byte budget is refused');
+  assert.match(vm.attachmentError, /4 MiB/);
+
+  const uploads = () => surface.calls.filter((call) => call.method === 'POST' && /\/attachments\?/.test(call.path)).length;
+  assert.equal(await vm.attachFiles({ target: { files: [chatFile('nota.txt')], value: '' } }), false);
+  assert.match(vm.attachmentError, /4 MiB/);
+  assert.equal(uploads(), 0, 'no upload leaves the browser when the combined budget is already spent');
+
+  await choose(ASSET_ATTACHMENT_B_ID, false);
+  assert.equal(await vm.attachFiles({ target: { files: [chatFile('a.txt'), chatFile('b.txt'), chatFile('c.txt')], value: '' } }), true);
+  assert.equal(vm.attachments.length, 3);
+
+  await choose(ASSET_ATTACHMENT_B_ID, true);
+  assert.equal(vm.selectedAssetAttachmentIds.length, 1, 'the combined four-file bound rejects the fifth row');
+  assert.match(vm.attachmentError, /4 archivos/);
+
+  assert.equal(await vm.attachFiles({ target: { files: [chatFile('d.txt')], value: '' } }), false);
+  assert.match(vm.attachmentError, /4 archivos/);
+  assert.equal(uploads(), 3);
+});
+
+test('an asset attachment without a server size is never selected or counted as zero', async () => {
+  const surface = sessionSurface({
+    engines: attachmentPayload(),
+    assetAttachments: { items: [{ id: ASSET_ATTACHMENT_ID, filename: 'sin-tamano.pdf', kind: 'file' }], hasMore: false, total: 1 }
+  });
+  await surface.settle();
+  const vm = surface.vm;
+  surface.app.inventory.items = [{ id: ASSET_ID, serverAsset: true, name: 'Servidor', quickCode: 'SRV-1' }];
+  vm.selectedAssetId = ASSET_ID;
+  await surface.settle();
+  await clickHandler(findById(surface.mount.root, 'conversation-load-asset-attachments'))();
+  await surface.settle();
+
+  await changeHandler(findById(surface.mount.root, 'conversation-asset-attachment-' + ASSET_ATTACHMENT_ID))({ target: { checked: true } });
+  await surface.settle();
+
+  assert.equal(vm.selectedAssetAttachmentIds.length, 0);
+  assert.match(vm.attachmentError, /no informó el tamaño/i);
+  assert.equal(vm.canSend, false, 'an unverifiable attachment cannot become the only content');
+  assert.match(vnodeText(surface.mount.root), /Tamaño no informado/);
 });
 
 test('a personal provider admits an image only for the model the owner marked', async () => {
