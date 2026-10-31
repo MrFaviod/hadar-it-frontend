@@ -969,9 +969,11 @@
         return permission ? permission.label : code;
       },
       detailTrustNotice() {
-        if (this.detail && this.detail.trust && this.detail.trust.statement) return this.detail.trust.statement;
-        const runtime = this.detail && this.detail.manifest && this.detail.manifest.runtime;
-        if (runtime === 'sandboxed') return 'El código del frontend se ejecuta en un marco aislado sin acceso a la sesión, al DOM del host ni a su almacenamiento. Las operaciones pasan por el host y sus permisos.';
+        // The server statement is an English technical record; the reviewer
+        // reads the Spanish description of the same runtime.
+        const trust = this.detail && isPlainObject(this.detail.trust) ? this.detail.trust : {};
+        const runtime = text(trust.runtime) || (this.detail && this.detail.manifest && this.detail.manifest.runtime);
+        if (runtime === 'sandboxed') return 'El código del servidor corre en un proceso restringido, sin red, sin secretos y sin acceso a la base del núcleo; cada efecto sobre el núcleo pasa por una capacidad autorizada del host. El código visual corre en un marco aislado sin acceso a la sesión, al DOM del host ni a su almacenamiento.';
         return 'Las vistas declarativas no ejecutan código del módulo en esta página: el host las dibuja con sus componentes.';
       },
       runtimeLabel(runtime) {
@@ -996,21 +998,27 @@
       statusFacts(item) {
         const entry = this.status.byId[item.id] || {};
         const data = entry.data || {};
-        const storage = isPlainObject(data.storage) ? data.storage : {};
         const events = isPlainObject(data.events) ? data.events : {};
         const sandbox = isPlainObject(data.sandbox) ? data.sandbox : {};
-        const size = Number.isInteger(storage.sizeBytes) ? this.formatBytes(storage.sizeBytes) : 'No informado';
+        const size = Number.isInteger(data.dataSizeBytes) ? this.formatBytes(data.dataSizeBytes) : 'No informado';
         const schema = Number.isInteger(data.schemaVersion) ? data.schemaVersion : item.schemaVersion;
-        const stalled = Array.isArray(events.stalled) ? events.stalled.length : events.stalled;
+        const cursor = Number.isInteger(events.cursor) ? events.cursor : data.eventCursor;
+        const stalled = events.stalled === true || events.state === 'stalled' || data.stalled === true;
+        let eventsLabel = 'No informado';
+        if (stalled) {
+          eventsLabel = 'Detenidos' + (Number.isInteger(cursor) ? ' en ' + cursor : '') + (text(events.lastError) ? ' · ' + text(events.lastError) : '');
+        } else if (Number.isInteger(cursor)) {
+          eventsLabel = 'Al día · cursor ' + cursor;
+        }
         const sandboxLabel = sandbox.available === true
-          ? 'Disponible'
+          ? 'Disponible' + (Number.isInteger(sandbox.landlockAbi) ? ' · Landlock ABI ' + sandbox.landlockAbi : '')
           : sandbox.available === false
-            ? 'No disponible' + (text(sandbox.reason) ? ' · ' + text(sandbox.reason) : '')
+            ? 'No disponible' + (text(sandbox.detail) ? ' · ' + text(sandbox.detail) : '')
             : 'No informado';
         return [
           { label: 'Almacenamiento', value: 'Base SQLite propia · ' + size },
           { label: 'Esquema de datos', value: Number.isInteger(schema) ? String(schema) : 'No informado' },
-          { label: 'Eventos detenidos', value: Number.isInteger(stalled) ? String(stalled) : 'No informado' },
+          { label: 'Eventos', value: eventsLabel },
           { label: 'Entorno restringido', value: sandboxLabel }
         ];
       },
@@ -1334,8 +1342,8 @@
         <div class="form-note extension-trust" role="note">
           <app-icon name="shield"></app-icon>
           <div>
-            <strong>Nativas de confianza no significa código hostil aislado.</strong>
-            <p>El código aprobado se ejecuta dentro del proceso del host con los permisos del servidor. La validación se ejecuta en un contenedor aislado antes de la aprobación, pero el módulo instalado no es un sandbox. Revisa el digest, los permisos, las migraciones y el historial antes de aprobar.</p>
+            <strong>Cada extensión queda aislada del núcleo.</strong>
+            <p>Las vistas declarativas no ejecutan código del módulo en esta página. El código visual propio corre en un marco aislado sin acceso a tu sesión. El código del servidor corre en un proceso restringido, sin red, sin secretos y sin acceso a la base del núcleo, y guarda sus datos en una base SQLite propia. Los cambios en activos e incidentes pasan por los servicios públicos con tus permisos. Revisa el digest, los permisos, las migraciones y el historial antes de aprobar.</p>
           </div>
         </div>
 

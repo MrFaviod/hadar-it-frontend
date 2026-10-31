@@ -55,9 +55,10 @@ function candidateDetail(overrides) {
       required: true
     },
     trust: {
-      model: 'trusted-native',
-      sandboxed: false,
-      statement: 'Código aprobado dentro del host; no es un sandbox.'
+      model: 'sandboxed-process',
+      sandboxed: true,
+      runtime: 'sandboxed',
+      statement: 'not review copy: English server record'
     },
     currentVersion: '1.1.0',
     currentRevision: 7,
@@ -299,7 +300,7 @@ test('review refuses approval without validation and explains the server trust n
     throw new Error('unexpected ' + requestPath);
   });
   await review.instance.reviewLoad();
-  assert.match(review.instance.detailTrustNotice(), /no es un sandbox/i);
+  assert.match(review.instance.detailTrustNotice(), /proceso restringido/);
   review.instance.askApprove();
   assert.equal(review.instance.confirm.open, false);
   assert.match(review.instance.action.error, /validación/i);
@@ -323,7 +324,8 @@ test('review displays canonical host permission, migration and trust metadata', 
   review.setHandler((path) => Promise.resolve(path.endsWith('/candidates') ? { items: [] } : candidateDetail()));
   await review.instance.reviewLoad();
   assert.equal(review.instance.permissionLabel('ext_demo.page'), 'Ver página');
-  assert.equal(review.instance.detailTrustNotice(), review.instance.detail.trust.statement);
+  assert.match(review.instance.detailTrustNotice(), /proceso restringido/);
+  assert.notEqual(review.instance.detailTrustNotice(), review.instance.detail.trust.statement);
   assert.deepEqual(review.instance.detail.permissionDelta.core, ['assets.view']);
   assert.equal(review.instance.detail.migrationPlan.steps[0].handler, 'm2');
 });
@@ -355,7 +357,7 @@ test('rendered human review shows exact digest, permission additions, migrations
   const textOf = (node) => [node.text || '', ...(node.children || []).map(textOf)].join(' ');
   const text = textOf(mounted.root);
   for (const expected of [digest('c'), 'ext_demo.page', 'Ver página', 'Abre la página.', 'assets.view', 'm2',
-    'Código aprobado dentro del host; no es un sandbox.', 'Panel demo', 'inspect', 'records', 'periodic', 'registry', 'itsm-extension-validator:1', 'docker']) {
+    'proceso restringido', 'Panel demo', 'inspect', 'records', 'periodic', 'registry', 'itsm-extension-validator:1', 'docker']) {
     assert.ok(text.includes(expected), 'review renders ' + expected);
   }
   assert.ok(!text.includes('not review copy'));
@@ -374,4 +376,36 @@ test('candidate detail and approval responses cannot repopulate a logged-out rev
   detail.resolve(candidateDetail());
   assert.equal(await request, false);
   assert.equal(review.instance.review.detail, null);
+});
+
+test('status facts read the backend status contract exactly', () => {
+  const review = createReview();
+  const item = installedItem();
+  review.instance.status.byId.demo = {
+    loaded: true,
+    data: {
+      id: 'demo', status: 'ready', enabled: true, version: '1.2.0', schemaVersion: 3, runtime: 'sandboxed',
+      dataSizeBytes: 2 * 1024 * 1024, eventCursor: 41, stalled: true,
+      events: { consumer: 'extension:demo', cursor: 41, stalled: true, lastError: 'handler_failed', attempts: 5, retryAfter: null, state: 'stalled' },
+      sandbox: { available: false, landlockAbi: 3, arch: 'x86_64', detail: 'landlock ABI 3 < 4' }
+    }
+  };
+  const facts = Object.fromEntries(review.instance.statusFacts(item).map((fact) => [fact.label, fact.value]));
+  assert.equal(facts['Almacenamiento'], 'Base SQLite propia · 2.0 MB');
+  assert.equal(facts['Esquema de datos'], '3');
+  assert.equal(facts['Eventos'], 'Detenidos en 41 · handler_failed');
+  assert.equal(facts['Entorno restringido'], 'No disponible · landlock ABI 3 < 4');
+  Object.assign(review.instance.status.byId.demo.data, { eventCursor: 7, stalled: false });
+  review.instance.status.byId.demo.data.events = { cursor: 7, stalled: false, lastError: null, state: 'active' };
+  review.instance.status.byId.demo.data.sandbox = { available: true, landlockAbi: 10, arch: 'x86_64', detail: 'ok' };
+  const active = Object.fromEntries(review.instance.statusFacts(item).map((fact) => [fact.label, fact.value]));
+  assert.equal(active['Eventos'], 'Al día · cursor 7');
+  assert.equal(active['Entorno restringido'], 'Disponible · Landlock ABI 10');
+});
+
+test('review page trust copy describes the v2 isolation model, not in-process code', () => {
+  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'assets/js/extensions.js'), 'utf8');
+  assert.doesNotMatch(source, /dentro del proceso del host con los permisos del servidor/);
+  assert.match(source, /proceso restringido/);
+  assert.match(source, /base SQLite propia/i);
 });
