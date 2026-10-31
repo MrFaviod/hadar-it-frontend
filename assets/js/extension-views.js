@@ -332,11 +332,16 @@
         return args;
       },
       asRows(result) {
-        if (Array.isArray(result)) return result;
-        if (!result || typeof result !== 'object') return [];
-        if (Array.isArray(result.items)) return result.items;
-        if (Array.isArray(result.records)) return result.records;
-        return [];
+        let rows = [];
+        if (Array.isArray(result)) rows = result;
+        else if (result && typeof result === 'object') {
+          if (Array.isArray(result.items)) rows = result.items;
+          else if (Array.isArray(result.records)) rows = result.records;
+        }
+        // Module store records arrive as {id, version, data}; columns name data fields.
+        return rows.map((row) => (isPlainObject(row) && isPlainObject(row.data) && typeof row.id === 'string'
+          ? Object.assign({}, row.data, { id: row.id, version: row.version })
+          : row));
       },
       async load() {
         if (!this.sdk) {

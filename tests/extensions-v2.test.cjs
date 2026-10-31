@@ -187,6 +187,36 @@ test('a declarative list sends the asset id inside filters', async () => {
   view.unmount();
 });
 
+test('a table renders module store records {id, version, data} by their data fields', async () => {
+  const { c, app, requests, errors, mount, settle } = fixture();
+  c.fetch = async (url, init) => {
+    requests.push({ url: String(url), body: init && init.body });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: [{ id: 'rec-1', version: 2, data: { key: 'LIC-STORE', expires: '2026-03-15', perpetual: false } }],
+        total: 1
+      })
+    };
+  };
+  activate(c, app, [item()]);
+  const view = mount('ExtensionView', {
+    app,
+    item: app.extensions.items[0],
+    view: app.extensions.items[0].pages[0].view,
+    asset: { id: ASSET_ID }
+  });
+  await settle();
+  assert.equal(requests.length, 1);
+  const rendered = content(view.root);
+  assert.match(rendered, /LIC-STORE/);
+  assert.match(rendered, /No/);
+  assert.match(rendered, /Mostrando 1–1 de 1/);
+  assert.equal(errors.length, 0);
+  view.unmount();
+});
+
 test('table pagination requests the next page and formats dates with the host locale', async () => {
   const { c, app, requests, mount, settle } = fixture();
   activate(c, app, [item()]);
