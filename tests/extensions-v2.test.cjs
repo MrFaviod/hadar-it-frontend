@@ -281,6 +281,26 @@ test('a declarative put form sends the asset id inside the data object and refre
   view.unmount();
 });
 
+test('a save in a separate form panel refreshes the module tables on the same page', async () => {
+  const { c, app, requests, mount, settle } = fixture();
+  activate(c, app, [item()]);
+  const operations = app.extensions.items[0].operations;
+  const tablePanel = mount('ExtensionView', { app, item: app.extensions.items[0], view: c.ExtensionViews.normalizeView(tableView({ form: undefined }), operations).value, asset: { id: ASSET_ID } });
+  const formPanel = mount('ExtensionView', { app, item: app.extensions.items[0], view: c.ExtensionViews.normalizeView(formView(), operations).value, asset: { id: ASSET_ID } });
+  await settle();
+  assert.equal(requests.length, 1, 'only the table loads on mount');
+  const formInstance = formPanel.instance.$refs.form;
+  assert.ok(formInstance, 'the form panel exposes its form');
+  formInstance.values.key = 'LIC-OTHER';
+  await formInstance.submit();
+  await settle();
+  assert.equal(requests[1].url, '/extensions/license/invoke/create_license');
+  assert.equal(requests.length, 3, 'the separate table panel reloads after the save');
+  assert.equal(requests[2].url, '/extensions/license/invoke/list_licenses');
+  tablePanel.unmount();
+  formPanel.unmount();
+});
+
 test('a handler table receives the asset id as a top-level argument', async () => {
   const { c, app, requests, mount, settle } = fixture();
   const handlerManifest = manifest({

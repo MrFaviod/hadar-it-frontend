@@ -20,6 +20,23 @@
     error: 'La extensión no declara una vista válida.'
   };
 
+  // Tables of one extension reload together after any of its forms saves, even
+  // when the form lives in a different panel of the same page.
+  const savedListeners = new Map();
+  function onExtensionSaved(extensionId, listener) {
+    if (!savedListeners.has(extensionId)) savedListeners.set(extensionId, new Set());
+    savedListeners.get(extensionId).add(listener);
+    return () => {
+      const listeners = savedListeners.get(extensionId);
+      if (!listeners) return;
+      listeners.delete(listener);
+      if (!listeners.size) savedListeners.delete(extensionId);
+    };
+  }
+  function notifyExtensionSaved(extensionId) {
+    Array.from(savedListeners.get(extensionId) || []).forEach((listener) => listener());
+  }
+
   function isPlainObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
   }
@@ -314,9 +331,11 @@
     },
     mounted() {
       this.load();
+      this.stopSaved = onExtensionSaved(this.item && this.item.id, () => this.reload());
     },
     beforeUnmount() {
       this.epoch += 1;
+      if (this.stopSaved) this.stopSaved();
     },
     methods: {
       args() {
@@ -512,6 +531,7 @@
           this.busy = false;
           this.message = 'El servidor guardó el registro.';
           this.$emit('saved', result);
+          notifyExtensionSaved(this.item && this.item.id);
           return true;
         } catch (error) {
           if (epoch !== this.epoch) return false;
@@ -724,12 +744,6 @@
       view: { type: Object, default: null },
       asset: { type: Object, default: null }
     },
-    methods: {
-      reloadTable() {
-        const table = this.$refs.table;
-        if (table && typeof table.reload === 'function') table.reload();
-      }
-    },
     template: `
       <div class="extension-view">
         <template v-if="view && view.kind === 'table'">
@@ -747,11 +761,11 @@
             :item="item"
             :view="view.form"
             :asset="asset"
-            @saved="reloadTable"
           ></extension-form>
         </template>
         <extension-form
           v-else-if="view && view.kind === 'form'"
+          ref="form"
           :app="app"
           :item="item"
           :view="view"
