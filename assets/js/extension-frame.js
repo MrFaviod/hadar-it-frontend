@@ -14,7 +14,7 @@
   const MIN_HEIGHT = 160;
   const MAX_HEIGHT = 2400;
   const DIGEST_RE = /^[a-f0-9]{64}$/;
-  const FRONTEND_PATH_RE = /^\/api\/v1\/extensions\/[a-z0-9][a-z0-9-]{0,63}\/frontend\.js$/;
+  const FRONTEND_PATH_RE = /^\/api\/v1\/extensions\/([a-z0-9][a-z0-9-]{0,63})\/frontend\.js$/;
   const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
   const THEME_KEYS = [
     '--bg', '--paper', '--text', '--muted', '--border', '--surface-muted',
@@ -220,6 +220,7 @@
     }
     var sdk = {
       id: init.extensionId,
+      assetId: init.assetId || null,
       request: request,
       navigate: navigate,
       can: function (permission) {
@@ -228,7 +229,7 @@
     };
     var app = Vue.createApp({
       render: function () {
-        return Vue.h(component, { sdk: sdk, asset: init.asset, permissions: init.permissions });
+        return Vue.h(component, { sdk: sdk, assetId: init.assetId || null, permissions: init.permissions });
       }
     });
     app.component('ItsmTable', KitTable);
@@ -300,8 +301,12 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  function validatedFrontendUrl(raw) {
+  function validatedFrontendUrl(raw, expected) {
     if (typeof raw !== 'string' || !raw) throw new Error('La extensión no publica un módulo de frontend válido.');
+    const binding = isPlainObject(expected) ? expected : {};
+    const expectedId = text(binding.id);
+    const expectedDigest = text(binding.digest);
+    if (!expectedId || !DIGEST_RE.test(expectedDigest)) throw new Error('La ruta del módulo de frontend no está ligada a una extensión aprobada.');
     let parsed;
     try {
       parsed = new URL(raw, window.location.origin);
@@ -309,8 +314,12 @@
       throw new Error('La ruta del módulo de frontend no es válida.');
     }
     if (parsed.origin !== window.location.origin) throw new Error('El módulo de frontend debe servirse desde la misma origen del host.');
-    if (!FRONTEND_PATH_RE.test(parsed.pathname)) throw new Error('La ruta del módulo de frontend no es la declarada por el host.');
-    if (!DIGEST_RE.test(parsed.searchParams.get('digest') || '')) throw new Error('La firma digest del módulo de frontend no es válida.');
+    const pathMatch = FRONTEND_PATH_RE.exec(parsed.pathname);
+    if (!pathMatch) throw new Error('La ruta del módulo de frontend no es la declarada por el host.');
+    if (pathMatch[1] !== expectedId) throw new Error('La ruta del módulo de frontend no corresponde a esta extensión.');
+    const digest = parsed.searchParams.get('digest') || '';
+    if (!DIGEST_RE.test(digest)) throw new Error('La firma digest del módulo de frontend no es válida.');
+    if (digest !== expectedDigest) throw new Error('La firma digest del módulo de frontend no corresponde a esta extensión.');
     return parsed.href;
   }
 
@@ -324,7 +333,7 @@
 
   async function loadSources(options) {
     const source = options || {};
-    const moduleUrl = validatedFrontendUrl(source.frontendUrl);
+    const moduleUrl = validatedFrontendUrl(source.frontendUrl, { id: source.extensionId, digest: source.digest });
     const fetchText = typeof source.fetchText === 'function'
       ? source.fetchText
       : (url, limit) => fetchTextDefault(url, limit);
@@ -341,15 +350,6 @@
     return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height));
   }
 
-  function cloneAsset(asset) {
-    if (!asset || typeof asset !== 'object') return null;
-    try {
-      return JSON.parse(JSON.stringify(asset));
-    } catch (_) {
-      return null;
-    }
-  }
-
   function messageError(error) {
     const message = error && typeof error.message === 'string' && error.message
       ? error.message
@@ -364,8 +364,11 @@
     const item = config.item || {};
     const operations = new Set((item.operations || []).map((operation) => operation && operation.name).filter(Boolean));
     const pages = new Set((item.pages || []).map((page) => page && page.id).filter(Boolean));
-    const asset = cloneAsset(config.asset);
-    const state = { ready: false, disposed: false, pending: new Map() };
+    // Only the asset identifier travels to the frame. The record itself is
+    // fetched by the module through its own declared, permission-checked
+    // operations, so a document that replaces this one learns nothing.
+    const assetId = text(config.assetId) || text(config.asset && config.asset.id);
+    const state = { ready: false, disposed: false, pending: new Map(), guest: null, loads: 0 };
 
     function contentWindow() {
       try {
@@ -376,6 +379,7 @@
     }
 
     function post(payload) {
+      if (state.disposed) return false;
       const target = contentWindow();
       if (!target || typeof target.postMessage !== 'function') return false;
       try {
@@ -386,12 +390,28 @@
       }
     }
 
+    // A frame that navigates away is terminal: the host stops answering so a
+    // foreign document never receives another payload or operation result.
+    function terminate() {
+      if (state.disposed) return false;
+      state.disposed = true;
+      state.pending.clear();
+      if (typeof config.onTerminated === 'function') {
+        try {
+          config.onTerminated();
+        } catch (_) {
+          /* the host can still dispose the frame */
+        }
+      }
+      return false;
+    }
+
     function initPayload() {
       return {
         type: 'itsm:init',
         extensionId: text(item.id),
         component: text(config.component),
-        asset,
+        assetId,
         permissions: Array.isArray(config.permissions) ? config.permissions.slice(0, 60) : [],
         theme: typeof config.getTheme === 'function' ? config.getTheme() : {}
       };
@@ -458,10 +478,13 @@
       if (state.disposed || !event) return false;
       const source = contentWindow();
       if (!source || event.source !== source) return false;
+      if (state.guest !== null && (event.source !== state.guest || source !== state.guest)) return terminate();
       const data = event.data;
       if (!isPlainObject(data) || typeof data.type !== 'string') return false;
       if (data.type === 'itsm:ready') {
+        if (state.ready) return false;
         state.ready = true;
+        state.guest = source;
         post(initPayload());
         post(themePayload());
         return true;
@@ -472,6 +495,16 @@
       return false;
     }
 
+    // The host calls this on every iframe `load` event. The first load raised
+    // after readiness is the srcdoc document the host itself created; any later
+    // load means the module moved the frame to another document.
+    function frameLoaded() {
+      if (state.disposed || !state.ready) return false;
+      state.loads += 1;
+      if (state.loads === 1) return true;
+      return terminate();
+    }
+
     return {
       frame,
       item,
@@ -479,6 +512,7 @@
       get sdk() { return config.sdk; },
       set sdk(value) { config.sdk = value; },
       handleMessage,
+      frameLoaded,
       sendTheme() {
         if (state.disposed) return false;
         return post(themePayload());

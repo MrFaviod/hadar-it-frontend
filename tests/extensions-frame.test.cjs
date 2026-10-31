@@ -41,7 +41,7 @@ function fixture(options) {
     frame,
     item,
     component: 'LicensePanel',
-    asset: { id: 'a-1', name: 'Servidor', nested: { tags: ['produccion'] } },
+    asset: { id: 'a-1', name: 'Servidor', serial: 'SN-SECRET-1', nested: { tags: ['produccion'] } },
     permissions: ['ext_license.read'],
     getTheme: () => ({ '--paper': '#ffffff' }),
     onHeight: (height) => sizes.push(height),
@@ -59,6 +59,19 @@ function fixture(options) {
 
 function event(frame, data, source) {
   return { source: source === undefined ? frame.contentWindow : source, data };
+}
+
+function messageFrom(source, data) {
+  return { source, data };
+}
+
+function guestWindow() {
+  return {
+    received: [],
+    postMessage(payload, origin) {
+      this.received.push({ payload, origin });
+    }
+  };
 }
 
 test('bridge announces the exact sandbox and CSP the host builds', () => {
@@ -112,7 +125,7 @@ test('ready answers with init and theme for this extension only', () => {
   assert.equal(posts[0].payload.type, 'itsm:init');
   assert.equal(posts[0].payload.extensionId, EXTENSION_ID);
   assert.equal(posts[0].payload.component, 'LicensePanel');
-  assert.deepEqual(plain(posts[0].payload.asset), { id: 'a-1', name: 'Servidor', nested: { tags: ['produccion'] } });
+  assert.equal(posts[0].payload.assetId, 'a-1');
   assert.deepEqual(plain(posts[0].payload.permissions), ['ext_license.read']);
   assert.equal(posts[1].payload.type, 'itsm:theme');
   assert.deepEqual(plain(posts[1].payload.theme), { '--paper': '#ffffff' });
@@ -192,14 +205,94 @@ test('loadSources revalidates the same-origin digest URL before fetching', async
     fetched.push({ url, init });
     return { ok: true, status: 200, text: async () => 'module' };
   };
-  const good = 'https://itsm.example/api/v1/extensions/license/frontend.js?digest=' + digest('b');
-  const sources = await sandbox.window.ExtensionFrame.loadSources({ frontendUrl: good });
+  const approved = digest('b');
+  const good = 'https://itsm.example/api/v1/extensions/license/frontend.js?digest=' + approved;
+  const sources = await sandbox.window.ExtensionFrame.loadSources({ frontendUrl: good, extensionId: 'license', digest: approved });
   assert.equal(sources.moduleSource, 'module');
   assert.match(fetched[0].url, /\/assets\/vendor\/vue\.global\.prod\.js$/);
   assert.equal(fetched[1].init.credentials, 'same-origin');
   assert.equal(fetched[1].init.redirect, 'error');
 
-  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://evil.example/api/v1/extensions/license/frontend.js?digest=' + digest('b') }), /misma origen|same-origin/i);
-  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://itsm.example/api/v1/extensions/license/frontend.js?digest=short' }), /digest|firma/i);
-  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://itsm.example/api/v1/assets/frontend.js?digest=' + digest('b') }), /ruta|path/i);
+  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://evil.example/api/v1/extensions/license/frontend.js?digest=' + approved, extensionId: 'license', digest: approved }), /misma origen|same-origin/i);
+  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://itsm.example/api/v1/extensions/license/frontend.js?digest=short', extensionId: 'license', digest: approved }), /digest|firma/i);
+  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://itsm.example/api/v1/assets/frontend.js?digest=' + approved, extensionId: 'license', digest: approved }), /ruta|path/i);
+  await assert.rejects(() => sandbox.window.ExtensionFrame.loadSources({ frontendUrl: 'https://itsm.example/api/v1/extensions/other/frontend.js?digest=' + approved, extensionId: 'license', digest: approved }), /extensión|extension/i);
+});
+
+test('R3-F5: the init payload carries the asset id but never asset data', () => {
+  const { bridge, frame, posts } = fixture();
+  bridge.handleMessage(event(frame, { type: 'itsm:ready' }));
+  const init = posts.find((entry) => entry.payload.type === 'itsm:init');
+  assert.ok(init, 'the frame receives its init payload');
+  assert.equal(init.payload.assetId, 'a-1');
+  assert.equal('asset' in init.payload, false, 'asset data must be fetched through declared operations');
+  assert.doesNotMatch(JSON.stringify(init.payload), /SN-SECRET-1|Servidor/);
+});
+
+test('R3-F5: a second itsm:ready never receives another init', () => {
+  const { bridge, frame, posts } = fixture();
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), true);
+  assert.equal(posts.filter((entry) => entry.payload.type === 'itsm:init').length, 1);
+  posts.length = 0;
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), false);
+  assert.equal(posts.length, 0, 'no second init, theme or any other payload');
+});
+
+test('R3-F5: a frame that changes document terminates the bridge', () => {
+  let terminated = 0;
+  const { bridge, frame, posts, requests } = fixture({ onTerminated: () => { terminated += 1; } });
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), true);
+  posts.length = 0;
+  const attacker = guestWindow();
+  frame.contentWindow = attacker;
+  assert.equal(bridge.handleMessage(messageFrom(attacker, { type: 'itsm:ready' })), false);
+  assert.equal(bridge.state.disposed, true, 'a navigated frame is terminal');
+  assert.equal(terminated, 1, 'the host is told the view was closed');
+  assert.equal(attacker.received.length, 0);
+  assert.equal(bridge.handleMessage(messageFrom(attacker, { type: 'itsm:request', id: 'r1', operation: 'list_licenses' })), false);
+  assert.equal(requests.length, 0, 'a navigated document cannot invoke operations');
+  assert.equal(bridge.sendTheme(), false);
+  assert.equal(bridge.sendInit(), false);
+  assert.equal(posts.length, 0);
+});
+
+test('R3-F5: a document load after the initial frame document terminates the bridge', () => {
+  let terminated = 0;
+  const { bridge, frame, posts, requests } = fixture({ onTerminated: () => { terminated += 1; } });
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), true);
+  assert.equal(bridge.frameLoaded(), true, 'the initial srcdoc document is not a navigation');
+  posts.length = 0;
+  assert.equal(bridge.frameLoaded(), false);
+  assert.equal(bridge.state.disposed, true, 'frame self-navigation is terminal');
+  assert.equal(terminated, 1, 'the host is told the view was closed');
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:request', id: 'r1', operation: 'list_licenses' })), false);
+  assert.equal(requests.length, 0);
+  assert.equal(posts.length, 0);
+});
+
+test('R3-F8: the frontend URL validator binds the path and digest to this extension', () => {
+  const sandbox = env();
+  const approved = digest('c');
+  const good = `/api/v1/extensions/license/frontend.js?digest=${approved}`;
+  assert.match(sandbox.window.ExtensionFrame.validatedFrontendUrl(good, { id: 'license', digest: approved }), /extensions\/license\/frontend\.js/);
+  for (const bad of [
+    `https://evil.example/api/v1/extensions/license/frontend.js?digest=${approved}`,
+    `//evil.example/api/v1/extensions/license/frontend.js?digest=${approved}`,
+    '/api/v1/extensions/license/frontend.js',
+    '/api/v1/extensions/license/frontend.js?digest=abc',
+    '/api/v1/extensions/license/frontend.js?digest=' + 'A'.repeat(64)
+  ]) {
+    assert.throws(() => sandbox.window.ExtensionFrame.validatedFrontendUrl(bad, { id: 'license', digest: approved }), Error, bad);
+  }
+  assert.throws(
+    () => sandbox.window.ExtensionFrame.validatedFrontendUrl(`/api/v1/extensions/other/frontend.js?digest=${approved}`, { id: 'license', digest: approved }),
+    /extensión|extension/i,
+    'a URL for another extension must not pass'
+  );
+  assert.throws(
+    () => sandbox.window.ExtensionFrame.validatedFrontendUrl(good, { id: 'license', digest: digest('d') }),
+    /digest|firma/i,
+    'the digest must match the one the item declares'
+  );
+  assert.throws(() => sandbox.window.ExtensionFrame.validatedFrontendUrl(good), /extensión|extension/i, 'an unbound call is refused');
 });

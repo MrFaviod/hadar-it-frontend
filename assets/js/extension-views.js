@@ -656,6 +656,13 @@
       onHeight(height) {
         this.height = height;
       },
+      onFrameLoad() {
+        if (this._bridge) this._bridge.frameLoaded();
+      },
+      onTerminated() {
+        this.status = 'error';
+        this.error = 'La vista aislada se cerró: el marco dejó de mostrar el documento aprobado y el host dejó de responder.';
+      },
       onMessage(event) {
         if (this._bridge) this._bridge.handleMessage(event);
       },
@@ -666,7 +673,11 @@
           return;
         }
         try {
-          const sources = await window.ExtensionFrame.loadSources({ frontendUrl: this.item.frontendUrl });
+          const sources = await window.ExtensionFrame.loadSources({
+            frontendUrl: this.item.frontendUrl,
+            extensionId: this.item.id,
+            digest: this.item.digest
+          });
           this.srcdoc = window.ExtensionFrame.buildDocument({
             extensionId: this.item.id,
             component: this.view.component,
@@ -701,11 +712,12 @@
           frame: this.$refs.frame,
           item: this.item,
           component: this.view.component,
-          asset: this.asset,
+          assetId: this.asset && this.asset.id ? String(this.asset.id) : '',
           permissions,
           sdk: this.sdk,
           getTheme: () => window.ExtensionFrame.themeTokens(window),
           onHeight: this.onHeight,
+          onTerminated: () => this.onTerminated(),
           navigate: (page) => {
             if (window.AssetExtensions && typeof window.AssetExtensions.frameNavigate === 'function') {
               window.AssetExtensions.frameNavigate(this.app, this.item, page);
@@ -726,6 +738,7 @@
           :srcdoc="srcdoc"
           referrerpolicy="no-referrer"
           :style="{ height: height + 'px' }"
+          @load="onFrameLoad"
         ></iframe>
       </div>
     `
