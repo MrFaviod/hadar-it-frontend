@@ -8,7 +8,9 @@
   const OPERATION_RE = /^[a-z][a-z0-9_]{0,63}$/;
   const COMPONENT_RE = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
   const INPUTS = ['text', 'textarea', 'number', 'date', 'select', 'checkbox'];
-  const FORMATS = ['text', 'date', 'datetime', 'boolean'];
+  const FORMATS = ['text', 'date', 'date-time', 'number', 'boolean'];
+  // Declarative operation kinds whose arguments the server validates itself.
+  const DECLARATIVE_KINDS = ['list', 'get', 'put', 'delete'];
   const MAX_COLUMNS = 12;
   const MAX_FIELDS = 30;
   const MAX_OPTIONS = 50;
@@ -29,6 +31,25 @@
   function labelOf(value, fallback) {
     const label = text(value).trim();
     return label && label.length <= 80 ? label : fallback;
+  }
+
+  function operationIndex(operations) {
+    if (!Array.isArray(operations)) return null;
+    const index = new Map();
+    operations.forEach((entry) => {
+      if (typeof entry === 'string') {
+        index.set(entry, 'handler');
+        return;
+      }
+      if (!entry || typeof entry.name !== 'string') return;
+      index.set(entry.name, typeof entry.kind === 'string' && entry.kind ? entry.kind : 'handler');
+    });
+    return index;
+  }
+
+  function operationKindOf(index, name) {
+    const kind = index ? index.get(name) : 'handler';
+    return DECLARATIVE_KINDS.indexOf(kind) === -1 ? 'handler' : kind;
   }
 
   function operationName(value, declared, kind) {
@@ -115,6 +136,7 @@
     if (!isPlainObject(raw)) return { ok: false, error: 'El formulario declarado no es un objeto.' };
     const operation = operationName(raw.operation, declared, 'formulario');
     if (!operation.ok) return operation;
+    const operationKind = operationKindOf(declared, operation.value);
     const fields = normalizeFields(raw.fields);
     if (!fields.ok) return fields;
     let assetField = '';
@@ -126,7 +148,7 @@
     }
     return {
       ok: true,
-      value: { kind: 'form', operation: operation.value, fields: fields.value, assetField }
+      value: { kind: 'form', operation: operation.value, operationKind, fields: fields.value, assetField }
     };
   }
 
@@ -134,6 +156,7 @@
     if (!isPlainObject(raw)) return { ok: false, error: 'La tabla declarada no es un objeto.' };
     const operation = operationName(raw.operation, declared, 'tabla');
     if (!operation.ok) return operation;
+    const operationKind = operationKindOf(declared, operation.value);
     const columns = normalizeColumns(raw.columns);
     if (!columns.ok) return columns;
     let filterAsset = '';
@@ -149,7 +172,10 @@
       if (!normalized.ok) return normalized;
       form = normalized.value;
     }
-    return { ok: true, value: { kind: 'table', operation: operation.value, columns: columns.value, filterAsset, form } };
+    return {
+      ok: true,
+      value: { kind: 'table', operation: operation.value, operationKind, columns: columns.value, filterAsset, form }
+    };
   }
 
   function normalizeIsolated(raw) {
@@ -171,9 +197,7 @@
   // names are still validated, but membership is enforced later by the server.
   function normalizeView(raw, operations) {
     if (!isPlainObject(raw)) return EMPTY;
-    const declared = Array.isArray(operations)
-      ? new Set(operations.map((entry) => (typeof entry === 'string' ? entry : entry && entry.name)).filter(Boolean))
-      : null;
+    const declared = operationIndex(operations);
     const kinds = ['table', 'form', 'isolated'].filter((kind) => raw[kind] !== undefined);
     if (kinds.length !== 1) {
       return { ok: false, error: 'La vista debe declarar exactamente un tipo: tabla, formulario o aislada.' };
@@ -201,11 +225,21 @@
     }
   }
 
+  function formatNumber(value) {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
+    try {
+      return new Intl.NumberFormat('es-ES').format(value);
+    } catch (_) {
+      return String(value);
+    }
+  }
+
   function formatValue(value, format) {
     if (value === null || value === undefined || value === '') return '—';
     if (format === 'boolean') return value ? 'Sí' : 'No';
     if (format === 'date') return formatDate(value, { dateStyle: 'medium' });
-    if (format === 'datetime') return formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
+    if (format === 'date-time') return formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
+    if (format === 'number') return formatNumber(value);
     if (Array.isArray(value)) return value.map((entry) => formatValue(entry, 'text')).join(', ');
     if (typeof value === 'object') return '—';
     return String(value);
@@ -287,7 +321,14 @@
     methods: {
       args() {
         const args = { limit: this.limit, offset: this.offset };
-        if (this.view.filterAsset && this.filterValue) args[this.view.filterAsset] = this.filterValue;
+        if (!this.view.filterAsset || !this.filterValue) return args;
+        // A declarative list validates filters on the server; a handler receives
+        // its declared parameter as a top-level argument.
+        if (this.view.operationKind === 'list') {
+          args.filters = { [this.view.filterAsset]: this.filterValue };
+        } else {
+          args[this.view.filterAsset] = this.filterValue;
+        }
         return args;
       },
       asRows(result) {
@@ -433,18 +474,21 @@
         return Object.keys(errors).length === 0;
       },
       payload() {
-        const payload = {};
+        const values = {};
         this.fields.forEach((field) => {
           const value = this.values[field.field];
           if (field.input === 'checkbox') {
-            payload[field.field] = value === true;
+            values[field.field] = value === true;
             return;
           }
           if (String(value === null || value === undefined ? '' : value).trim() === '') return;
-          payload[field.field] = field.input === 'number' ? Number(value) : value;
+          values[field.field] = field.input === 'number' ? Number(value) : value;
         });
-        if (this.view.assetField && this.assetId) payload[this.view.assetField] = this.assetId;
-        return payload;
+        if (this.view.assetField && this.assetId) values[this.view.assetField] = this.assetId;
+        // A declarative put validates the record itself, so the declared fields
+        // and the asset reference travel together inside `data`.
+        if (this.view.operationKind === 'put') return { data: values };
+        return values;
       },
       async submit() {
         if (this.busy) return false;

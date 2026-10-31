@@ -124,7 +124,7 @@ test('declarative pages and asset panels render host views without module script
   const manifest = {
     sdkVersion: 2, id: 'registry', name: 'Registro', version: '2.0.0', schemaVersion: 1, runtime: 'declarative',
     capabilities: [], permissions: [{ code: 'ext_registry.read', label: 'Leer', description: 'Consulta el registro.' }],
-    operations: [{ name: 'list_records', description: 'Lista registros', permission: 'ext_registry.read', mutation: false }],
+    operations: [{ name: 'list_records', description: 'Lista registros', permission: 'ext_registry.read', mutation: false, kind: 'list', collection: 'records' }],
     frontend: {
       pages: [{ id: 'records', label: 'Registros', permission: 'ext_registry.read', view }],
       assetPanels: [{ id: 'summary', label: 'Resumen', permission: 'ext_registry.read', view }]
@@ -137,7 +137,7 @@ test('declarative pages and asset panels render host views without module script
   await tick();
   assert.match(content(mounted.root), /Registro canónico/);
   assert.equal(requests.length, 2, 'page and panel each load their own table');
-  assert.deepEqual(requests[1].body, { limit: 10, offset: 0, assetId: 'A-10' });
+  assert.deepEqual(requests[1].body, { limit: 10, offset: 0, filters: { assetId: 'A-10' } });
   assert.equal(nodes(mounted.root, (node) => node.tag === 'script').length, 0, 'no module script for sdk v2');
   assert.equal(mounted.errors.length, 0);
   c.AssetExtensions.stop(app);

@@ -165,7 +165,7 @@ test('v2 discovery keeps declarative items, marks SDK 1 as requires_upgrade and 
   assert.equal(app.extensions.error, '');
 });
 
-test('declarative table asks its own operation with limit, offset and the current asset id', async () => {
+test('a declarative list sends the asset id inside filters', async () => {
   const { c, app, requests, errors, mount, settle } = fixture();
   activate(c, app, [item()]);
   const view = mount('ExtensionView', {
@@ -178,7 +178,7 @@ test('declarative table asks its own operation with limit, offset and the curren
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, '/extensions/license/invoke/list_licenses');
   assert.equal(requests[0].method, 'POST');
-  assert.deepEqual(requests[0].body, { limit: 10, offset: 0, assetId: ASSET_ID });
+  assert.deepEqual(requests[0].body, { limit: 10, offset: 0, filters: { assetId: ASSET_ID } });
   const rendered = content(view.root);
   assert.match(rendered, /LIC-001/);
   assert.match(rendered, /Sí/);
@@ -201,7 +201,7 @@ test('table pagination requests the next page and formats dates with the host lo
   next.props.onClick();
   await settle();
   assert.equal(requests.length, 2);
-  assert.deepEqual(requests[1].body, { limit: 10, offset: 10, assetId: ASSET_ID });
+  assert.deepEqual(requests[1].body, { limit: 10, offset: 10, filters: { assetId: ASSET_ID } });
   view.unmount();
 });
 
@@ -231,7 +231,7 @@ test('form validates required fields before invoking the operation', async () =>
   view.unmount();
 });
 
-test('form sends the declared payload with the asset id and refreshes its sibling table', async () => {
+test('a declarative put form sends the asset id inside the data object and refreshes its sibling table', async () => {
   const { c, app, requests, mount, settle } = fixture();
   activate(c, app, [item()]);
   const view = mount('ExtensionView', { app, item: app.extensions.items[0], view: c.ExtensionViews.normalizeView(tableView(), app.extensions.items[0].operations).value, asset: { id: ASSET_ID } });
@@ -245,10 +245,115 @@ test('form sends the declared payload with the asset id and refreshes its siblin
   await settle();
   assert.equal(requests.length, 3, 'create plus the table refresh');
   assert.equal(requests[1].url, '/extensions/license/invoke/create_license');
-  assert.deepEqual(requests[1].body, { key: 'LIC-NEW', seats: 4, assetId: ASSET_ID });
+  assert.deepEqual(requests[1].body, { data: { key: 'LIC-NEW', seats: 4, assetId: ASSET_ID } });
   assert.equal(requests[2].url, '/extensions/license/invoke/list_licenses');
   assert.match(content(view.root), /El servidor guardó el registro/);
   view.unmount();
+});
+
+test('a handler table receives the asset id as a top-level argument', async () => {
+  const { c, app, requests, mount, settle } = fixture();
+  const handlerManifest = manifest({
+    operations: [
+      { name: 'list_licenses', description: 'Lista licencias', permission: READ, kind: 'handler' },
+      { name: 'create_license', description: 'Crea una licencia', permission: WRITE, mutation: true, kind: 'put', collection: 'licenses' }
+    ],
+    frontend: {
+      pages: [{ id: 'licencias', label: 'Licencias', permission: READ, view: tableView() }],
+      assetPanels: [],
+      widgets: [],
+      actions: []
+    }
+  });
+  activate(c, app, [item({ manifest: handlerManifest })]);
+  const view = mount('ExtensionView', {
+    app,
+    item: app.extensions.items[0],
+    view: app.extensions.items[0].pages[0].view,
+    asset: { id: ASSET_ID }
+  });
+  await settle();
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].body, { limit: 10, offset: 0, assetId: ASSET_ID });
+  view.unmount();
+});
+
+test('column formats follow the JSON Schema spelling and numbers use the host locale', () => {
+  const { c, app } = fixture();
+  activate(c, app, [item()]);
+  const operations = app.extensions.items[0].operations;
+  const accepted = c.ExtensionViews.normalizeView({
+    table: {
+      operation: 'list_licenses',
+      columns: [
+        { field: 'seats', label: 'Puestos', format: 'number' },
+        { field: 'expiresOn', label: 'Vence', format: 'date-time' },
+        { field: 'perpetual', label: 'Perpetua', format: 'boolean' },
+        { field: 'key', label: 'Clave', format: 'text' }
+      ]
+    }
+  }, operations);
+  assert.equal(accepted.ok, true);
+  assert.deepEqual(Array.from(accepted.value.columns, (column) => column.format), ['number', 'date-time', 'boolean', 'text']);
+  assert.equal(c.ExtensionViews.formatValue(1234.5, 'number'), new Intl.NumberFormat('es-ES').format(1234.5));
+  assert.equal(c.ExtensionViews.formatValue('sin dato', 'number'), 'sin dato', 'non-numbers fall back to text');
+  assert.equal(
+    c.ExtensionViews.formatValue('2026-03-15T08:30:00Z', 'date-time'),
+    new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-03-15T08:30:00Z'))
+  );
+  const rejected = c.ExtensionViews.normalizeView({
+    table: { operation: 'list_licenses', columns: [{ field: 'expires', label: 'Vence', format: 'datetime' }] }
+  }, operations);
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.error, /formato/);
+});
+
+test('the license reference page and asset panel normalize as declared', () => {
+  const { c, app } = fixture();
+  const reference = manifest({
+    id: 'software-licenses',
+    name: 'Licencias de software',
+    operations: [
+      { name: 'list_assignments', description: 'Lista asignaciones', permission: READ, kind: 'handler' },
+      { name: 'list_licenses', description: 'Lista licencias', permission: READ, kind: 'list', collection: 'licenses' }
+    ],
+    frontend: {
+      pages: [{
+        id: 'licencias',
+        label: 'Licencias',
+        permission: READ,
+        view: { table: { operation: 'list_licenses', columns: [{ field: 'seats', label: 'Puestos', format: 'number' }] } }
+      }],
+      assetPanels: [{
+        id: 'asset-licenses',
+        label: 'Licencias',
+        permission: READ,
+        view: {
+          table: {
+            operation: 'list_assignments',
+            columns: [
+              { field: 'licenseId', label: 'Licencia' },
+              { field: 'referenceState', label: 'Estado' },
+              { field: 'orphaned', label: 'Huérfana', format: 'boolean' }
+            ],
+            filterAsset: 'asset_id'
+          }
+        }
+      }],
+      widgets: [],
+      actions: []
+    }
+  });
+  activate(c, app, [item({ manifest: reference })]);
+  const stored = app.extensions.items[0];
+  assert.equal(stored.invalid, '');
+  assert.equal(stored.pages[0].view.columns[0].format, 'number');
+  const panel = stored.assetPanels[0].view;
+  assert.equal(panel.kind, 'table');
+  assert.equal(panel.operation, 'list_assignments');
+  assert.equal(panel.filterAsset, 'asset_id');
+  assert.equal(panel.operationKind, 'handler');
+  assert.deepEqual(Array.from(panel.columns, (column) => column.format), ['text', 'text', 'boolean']);
 });
 
 test('form shows the server error message and keeps the entered values', async () => {

@@ -200,7 +200,7 @@ test('asset slots pass the asset context to the declared view, which filters by 
     '<composition-slot :app="app" target="asset.panel.warranty" :asset="{ id: \'A-77\' }"><p class="core">CORE</p></composition-slot>');
   await settle(created);
   assert.equal(requests.length, 1);
-  assert.deepEqual(requests[0].body, { limit: 10, offset: 0, assetId: 'A-77' });
+  assert.deepEqual(requests[0].body, { limit: 10, offset: 0, filters: { assetId: 'A-77' } });
   mounted.unmount();
 });
 

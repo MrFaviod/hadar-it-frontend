@@ -7,6 +7,7 @@
   const COMPONENT_RE = /^[A-Za-z][A-Za-z0-9]*$/;
   const PAGE_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
   const OPERATION_RE = /^[a-z][a-z0-9_]*$/;
+  const OPERATION_KINDS = ['handler', 'list', 'get', 'put', 'delete'];
   const PERMISSION_RE = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/;
   const MAX_CONTRIBUTIONS = 50;
 
@@ -235,8 +236,16 @@
       addError(errors, 'La operación "' + name + '" necesita un permiso.');
       return null;
     }
+    // The view switch between declarative arguments (`filters`, `data`) and a
+    // handler call depends on this kind, so an unknown one is rejected.
+    const kind = raw.kind === undefined || raw.kind === '' ? 'handler' : text(raw.kind);
+    if (OPERATION_KINDS.indexOf(kind) === -1) {
+      addError(errors, 'La operación "' + name + '" declara un tipo no válido.');
+      return null;
+    }
     return {
       name,
+      kind,
       description: text(raw.description).slice(0, 500),
       permission,
       mutation: raw.mutation === true,
