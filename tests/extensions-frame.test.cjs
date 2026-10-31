@@ -270,6 +270,18 @@ test('R3-F5: a document load after the initial frame document terminates the bri
   assert.equal(posts.length, 0);
 });
 
+test('R3-F5: the first document load stays open even when it beats itsm:ready', () => {
+  let terminated = 0;
+  const { bridge, frame, posts } = fixture({ onTerminated: () => { terminated += 1; } });
+  assert.equal(bridge.frameLoaded(), true, 'the srcdoc load can arrive before the ready message');
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), true, 'the approved document still completes the handshake');
+  assert.equal(posts.filter((entry) => entry.payload.type === 'itsm:init').length, 1);
+  assert.equal(bridge.state.disposed, false);
+  assert.equal(bridge.frameLoaded(), false, 'a later load is a navigation');
+  assert.equal(bridge.state.disposed, true);
+  assert.equal(terminated, 1);
+});
+
 test('R3-F8: the frontend URL validator binds the path and digest to this extension', () => {
   const sandbox = env();
   const approved = digest('c');

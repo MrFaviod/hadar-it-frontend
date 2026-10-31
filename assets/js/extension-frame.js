@@ -499,7 +499,7 @@
     // after readiness is the srcdoc document the host itself created; any later
     // load means the module moved the frame to another document.
     function frameLoaded() {
-      if (state.disposed || !state.ready) return false;
+      if (state.disposed) return false;
       state.loads += 1;
       if (state.loads === 1) return true;
       return terminate();
