@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const SDK_VERSION = 1;
+  const SDK_VERSION = 2;
   const DIGEST_RE = /^[a-f0-9]{64}$/;
   const EXTENSION_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
   const COMPONENT_RE = /^[A-Za-z][A-Za-z0-9]*$/;
@@ -12,12 +12,18 @@
 
   const runtime = {
     app: null,
-    reserved: new Set(['appicon', 'modalshell', 'itsmtable', 'itsmfield', 'itsmstatus', 'itsmerror']),
-    definitions: new Map(),
-    pending: new Map(),
-    scripts: new Map(),
     epoch: 0,
     revision: 0
+  };
+
+  // Capabilities are host services the backend grants to the module. The
+  // frontend only describes them; it never enforces them.
+  const CAPABILITY_LABELS = {
+    'assets.read': 'Leer activos a través de los servicios públicos del núcleo.',
+    'assets.write': 'Crear, actualizar y archivar activos con las reglas del servidor.',
+    'incidents.read': 'Consultar incidentes autorizados.',
+    'incidents.write': 'Crear incidentes por las operaciones declaradas.',
+    'notify': 'Enviar notificaciones por el servicio del host.'
   };
 
   function text(value) {
@@ -88,29 +94,13 @@
     vm.dashboard.extensionComposition = { hiddenWidgets, replacedWidgets };
   }
 
-  // A replacement component that cannot render must not leave the core surface
-  // suppressed. The failure is recorded per declaration; `project` then ignores
-  // that declaration and the overlay is republished, which restores the core
-  // widget and navigation link. Any later successful sync clears the record.
-  function compositionFailure(vm, entry) {
-    if (!vm || !entry || !entry.extensionId || !entry.contributionId) return false;
-    const state = ensureState(vm);
-    const failures = state.compositionFailures || (state.compositionFailures = {});
-    const key = entry.extensionId + ':' + entry.contributionId;
-    if (failures[key]) return true;
-    failures[key] = true;
-    emit(vm);
-    return true;
-  }
-
   function compositionFor(vm) {
     if (!vm || !window.UIComposition || typeof window.UIComposition.project !== 'function') {
       return { additions: {}, hidden: {}, replacement: {}, ignored: [], candidates: [] };
     }
     const state = ensureState(vm);
     const can = typeof vm.can === 'function' ? vm.can.bind(vm) : null;
-    const failures = state.compositionFailures;
-    return window.UIComposition.project(state.items, can, componentFor, failures && typeof failures === 'object' ? failures : null);
+    return window.UIComposition.project(state.items, can);
   }
 
   function componentKey(name) {
@@ -121,14 +111,13 @@
     if (message && errors.indexOf(message) === -1) errors.push(message);
   }
 
-  function normalizeContribution(raw, kind, errors, seen) {
+  function normalizeContribution(raw, kind, errors, seen, operations) {
     if (!isPlainObject(raw)) {
       addError(errors, 'Una contribución de ' + kind + ' no es un objeto válido.');
       return null;
     }
     const id = text(raw.id);
     const label = text(raw.label);
-    const component = text(raw.component);
     const permission = text(raw.permission);
     if (!PAGE_ID_RE.test(id) || id.length > 64) {
       addError(errors, 'La contribución ' + kind + ' tiene un id no válido.');
@@ -143,25 +132,70 @@
       addError(errors, 'La contribución "' + id + '" necesita una etiqueta breve.');
       return null;
     }
-    if (!COMPONENT_RE.test(component) || component.length > 64) {
-      addError(errors, 'La contribución "' + id + '" declara un componente no válido.');
-      return null;
-    }
-    if (componentKey(component) && runtime.reserved.has(componentKey(component))) {
-      addError(errors, 'El componente "' + component + '" usa un nombre reservado del núcleo.');
-      return null;
-    }
     if (!PERMISSION_RE.test(permission) || permission.length > 160) {
       addError(errors, 'La contribución "' + id + '" necesita un permiso del servidor.');
+      return null;
+    }
+    const checked = window.ExtensionViews && typeof window.ExtensionViews.normalizeView === 'function'
+      ? window.ExtensionViews.normalizeView(raw.view, operations)
+      : { ok: false, error: 'El host no admite vistas declarativas.' };
+    if (!checked.ok) {
+      addError(errors, 'La contribución "' + id + '" no declara una vista válida. ' + checked.error);
       return null;
     }
     return {
       id,
       label,
-      component,
       permission,
-      icon: text(raw.icon) || (kind === 'page' ? 'package' : 'box')
+      icon: text(raw.icon) || (kind === 'page' ? 'package' : 'box'),
+      view: checked.value
     };
+  }
+
+  function normalizeAction(raw, errors, seen, operations) {
+    if (!isPlainObject(raw)) {
+      addError(errors, 'La extensión declara una acción no válida.');
+      return null;
+    }
+    const id = text(raw.id);
+    const label = text(raw.label);
+    const permission = text(raw.permission);
+    const operation = text(raw.operation);
+    if (!PAGE_ID_RE.test(id) || id.length > 64) {
+      addError(errors, 'La acción de activo tiene un id no válido.');
+      return null;
+    }
+    if (seen.has(id)) {
+      addError(errors, 'La acción de activo repite el id "' + id + '".');
+      return null;
+    }
+    seen.add(id);
+    if (!label || label.length > 80) {
+      addError(errors, 'La acción "' + id + '" necesita una etiqueta breve.');
+      return null;
+    }
+    if (!PERMISSION_RE.test(permission) || permission.length > 160) {
+      addError(errors, 'La acción "' + id + '" necesita un permiso del servidor.');
+      return null;
+    }
+    if (text(raw.target) !== 'asset.action') {
+      addError(errors, 'La acción "' + id + '" solo puede apuntar al contrato asset.action.');
+      return null;
+    }
+    if (!OPERATION_RE.test(operation) || !operations.some((entry) => entry.name === operation)) {
+      addError(errors, 'La acción "' + id + '" necesita una operación declarada.');
+      return null;
+    }
+    let confirm = '';
+    if (raw.confirm !== undefined) {
+      confirm = typeof raw.confirm === 'string' ? text(raw.confirm) : text(raw.confirm && raw.confirm.message);
+      if (!confirm) {
+        addError(errors, 'La confirmación de la acción "' + id + '" no es válida.');
+        return null;
+      }
+      confirm = confirm.slice(0, 300);
+    }
+    return { id, label, permission, operation, target: 'asset.action', confirm, icon: text(raw.icon) || 'bolt' };
   }
 
   function normalizePermission(raw, errors) {
@@ -261,7 +295,7 @@
 
     const operations = [];
     const operationNames = new Set();
-    list(raw.operations).forEach((entry) => {
+    list(raw.operations).concat(list(manifest && manifest.operations)).forEach((entry) => {
       const operation = normalizeOperation(entry, errors);
       if (operation && !operationNames.has(operation.name)) {
         operationNames.add(operation.name);
@@ -269,61 +303,90 @@
       }
     });
 
-    const pages = [];
-    const assetPanels = [];
-    const frontend = isPlainObject(manifest && manifest.frontend) ? manifest.frontend : {};
     if (manifest && manifest.frontend !== undefined && !isPlainObject(manifest.frontend)) {
       addError(errors, 'El manifiesto declara un frontend no válido.');
     }
-    if (isPlainObject(manifest && manifest.frontend) && frontend.entry !== undefined && frontend.entry !== 'frontend.js') {
-      addError(errors, 'El manifiesto debe apuntar a frontend.js.');
+    const frontend = isPlainObject(manifest && manifest.frontend) ? manifest.frontend : {};
+    const runtimeName = text(manifest && manifest.runtime);
+    if (runtimeName !== 'declarative' && runtimeName !== 'sandboxed') {
+      addError(errors, 'El manifiesto debe declarar runtime "declarative" o "sandboxed".');
     }
+    const requiresUpgrade = text(raw.status) === 'requires_upgrade' || raw.requiresUpgrade === true ||
+      !!(manifest && Number.isInteger(manifest.sdkVersion) && manifest.sdkVersion < SDK_VERSION);
+    if (frontend.entry !== undefined && runtimeName === 'declarative') {
+      addError(errors, 'Una extensión declarativa no puede publicar código de frontend.');
+    }
+    const capabilities = [];
+    list(manifest && manifest.capabilities).forEach((entry) => {
+      if (typeof entry !== 'string' || !CAPABILITY_LABELS[entry]) {
+        addError(errors, 'El manifiesto declara una capacidad no reconocida.');
+        return;
+      }
+      if (capabilities.indexOf(entry) === -1) capabilities.push(entry);
+    });
+    let storage = null;
+    if (manifest && manifest.storage !== undefined) {
+      if (!isPlainObject(manifest.storage) || text(manifest.storage.engine) !== 'sqlite') {
+        addError(errors, 'El manifiesto solo puede declarar almacenamiento SQLite propio.');
+      } else {
+        storage = { engine: 'sqlite' };
+      }
+    }
+
+    const pages = [];
+    const assetPanels = [];
+    const widgets = [];
     const pageIds = new Set();
     list(frontend.pages).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
-      const page = normalizeContribution(entry, 'page', errors, pageIds);
+      const page = normalizeContribution(entry, 'page', errors, pageIds, operations);
       if (page) pages.push(page);
     });
     if (list(frontend.pages).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas páginas.');
     const panelIds = new Set();
     list(frontend.assetPanels).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
-      const panel = normalizeContribution(entry, 'assetPanel', errors, panelIds);
+      const panel = normalizeContribution(entry, 'assetPanel', errors, panelIds, operations);
       if (panel) assetPanels.push(panel);
     });
     if (list(frontend.assetPanels).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados paneles de activo.');
+    const widgetIds = new Set();
+    list(frontend.widgets).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
+      const widget = normalizeContribution(entry, 'widget', errors, widgetIds, operations);
+      if (widget) widgets.push(widget);
+    });
+    if (list(frontend.widgets).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados widgets.');
+    const actions = [];
+    const actionIds = new Set();
+    list(frontend.actions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
+      const action = normalizeAction(entry, errors, actionIds, operations);
+      if (action) actions.push(action);
+    });
+    if (list(frontend.actions).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas acciones.');
 
-    // Optional SDK v1 UI composition. Entries are validated against the exact
-    // shipped catalogue; one malformed or unknown entry is ignored at runtime
-    // so the core surfaces and the rest of the module keep working.
     const contributions = [];
     const ignoredContributions = [];
-    const contributionIds = new Set(pages.concat(assetPanels).map((entry) => entry.id));
-    list(frontend.contributions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
-      const checked = window.UIComposition && typeof window.UIComposition.normalize === 'function'
-        ? window.UIComposition.normalize(entry, { permissions, operations }, contributionIds)
-        : { ok: false, error: 'El host no admite composición de interfaz.' };
-      if (checked.ok) {
-        contributionIds.add(checked.value.id);
-        contributions.push(checked.value);
-      } else {
-        ignoredContributions.push({ raw: entry, error: checked.error });
-      }
-    });
-    if (list(frontend.contributions).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas contribuciones de interfaz.');
+    if (list(frontend.contributions).length) {
+      const seen = new Set();
+      list(frontend.contributions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
+        const checked = window.UIComposition && typeof window.UIComposition.normalize === 'function'
+          ? window.UIComposition.normalize(entry, { id, manifest, permissions, operations }, seen)
+          : { ok: false, error: 'El host no admite composición de la interfaz.' };
+        if (checked.ok) {
+          seen.add(checked.value.id);
+          contributions.push(checked.value);
+        } else {
+          ignoredContributions.push({ error: checked.error });
+        }
+      });
+    }
 
-    const declaredComponents = [];
-    pages.concat(assetPanels, contributions).forEach((entry) => {
-      if (entry.component && declaredComponents.indexOf(entry.component) === -1) declaredComponents.push(entry.component);
-    });
-    if (declaredComponents.length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados componentes.');
-
+    // Only an isolated view needs module code, and that code is fetched by the
+    // host and inlined into a sandboxed frame. No host script is ever created.
+    const isolated = pages.concat(assetPanels, widgets).some((entry) => entry.view.kind === 'isolated');
     let frontendUrl = '';
-    if (enabled && declaredComponents.length) {
-      try {
-        frontendUrl = frontendUrlFor(raw.frontendUrl, id, digest);
-      } catch (error) {
-        addError(errors, error.message);
+    if (isolated) {
+      if (runtimeName !== 'sandboxed') {
+        addError(errors, 'Solo una extensión con runtime "sandboxed" puede declarar vistas aisladas.');
       }
-    } else if (enabled && raw.frontendUrl) {
       try {
         frontendUrl = frontendUrlFor(raw.frontendUrl, id, digest);
       } catch (error) {
@@ -340,18 +403,23 @@
       version,
       revision,
       schemaVersion,
+      requiresUpgrade,
+      runtime: runtimeName,
+      capabilities,
+      storage,
       frontendUrl,
       operations,
       permissions,
       pages,
       assetPanels,
+      widgets,
+      actions,
       contributions,
       ignoredContributions,
-      declaredComponents,
       invalid,
       loadError: invalid,
       loading: false,
-      loaded: false
+      loaded: true
     };
   }
 
@@ -380,22 +448,7 @@
     }
   }
 
-  function unload(id) {
-    runtime.pending.delete(id);
-    const script = runtime.scripts.get(id);
-    if (script) {
-      if (script.node && typeof script.node.remove === 'function') script.node.remove();
-      runtime.scripts.delete(id);
-    }
-    runtime.definitions.forEach((claim, name) => {
-      if (claim.id === id) runtime.definitions.delete(name);
-    });
-  }
-
   function unloadAll(vm) {
-    Array.from(runtime.scripts.keys()).forEach((id) => unload(id));
-    runtime.pending.clear();
-    runtime.definitions.clear();
     const state = ensureState(vm);
     state.items = [];
     state.loading = false;
@@ -404,83 +457,9 @@
   }
 
   function isCurrentItem(vm, item) {
-    if (!vm || !vm.authenticated || !item || !item.enabled || item.invalid) return false;
+    if (!vm || !vm.authenticated || !item || !item.enabled || item.invalid || item.requiresUpgrade) return false;
     const state = ensureState(vm);
     return state.items.indexOf(item) !== -1;
-  }
-
-  function loadScript(vm, item) {
-    if (!item.enabled || item.invalid || !item.declaredComponents.length) return;
-    const existing = runtime.scripts.get(item.id);
-    if (existing && existing.digest === item.digest) return;
-    unload(item.id);
-    const pending = {
-      id: item.id,
-      digest: item.digest,
-      vm,
-      item,
-      identity: identityKey(vm),
-      components: new Map(),
-      errors: [],
-      names: new Set()
-    };
-    runtime.pending.set(item.id, pending);
-    const node = window.document.createElement('script');
-    node.src = item.frontendUrl;
-    node.async = true;
-    node.dataset.extensionId = item.id;
-    node.dataset.extensionDigest = item.digest;
-    node.onload = function () { commit(vm, pending, node); };
-    node.onerror = function () {
-      if (runtime.pending.get(item.id) !== pending || pending.identity !== identityKey(vm) || !isCurrentItem(vm, item)) return;
-      runtime.pending.delete(item.id);
-      item.loading = false;
-      item.loadError = 'No se pudo cargar el módulo de la extensión.';
-      runtime.scripts.delete(item.id);
-      emit(vm);
-    };
-    pending.node = node;
-    window.document.head.appendChild(node);
-    runtime.scripts.set(item.id, { digest: item.digest, node, url: item.frontendUrl });
-    item.loading = true;
-    item.loaded = false;
-    item.loadError = '';
-    emit(vm);
-  }
-
-  function commit(vm, pending, node) {
-    if (runtime.pending.get(pending.id) !== pending || pending.identity !== identityKey(vm) || !isCurrentItem(vm, pending.item)) {
-      if (node && typeof node.remove === 'function') node.remove();
-      return;
-    }
-    const item = pending.item;
-    pending.item.declaredComponents.forEach((name) => {
-      if (!pending.components.has(componentKey(name))) {
-        addError(pending.errors, 'El módulo no registró el componente "' + name + '".');
-      }
-    });
-    pending.components.forEach((claim, key) => {
-      const existing = runtime.definitions.get(key);
-      if (existing && existing.id !== pending.id) {
-        addError(pending.errors, 'El componente "' + claim.name + '" ya pertenece a otra extensión.');
-      }
-    });
-    runtime.pending.delete(pending.id);
-    item.loading = false;
-    if (pending.errors.length) {
-      item.loadError = pending.errors.join(' ');
-      emit(vm);
-      return;
-    }
-    pending.components.forEach((claim, key) => {
-      runtime.definitions.set(key, { id: pending.id, name: claim.name, definition: claim.definition });
-      if (runtime.app && typeof runtime.app.component === 'function') {
-        runtime.app.component(claim.name, claim.definition);
-      }
-    });
-    item.loaded = true;
-    item.loadError = '';
-    emit(vm);
   }
 
   function sync(vm, payload) {
@@ -491,26 +470,13 @@
       publishCatalog(vm);
       return false;
     }
-    const nextItems = list(payload.items).map((raw) => normalizeItem(raw));
-    const nextById = new Map(nextItems.map((item) => [item.id, item]));
-    state.items.forEach((current) => {
-      const next = nextById.get(current.id);
-      if (!next || !next.enabled || next.digest !== current.digest || next.invalid) unload(current.id);
-    });
-    const currentById = new Map(state.items.map((item) => [item.id, item]));
-    state.items = nextItems.map((next) => {
-      const current = currentById.get(next.id);
-      if (!current || current.digest !== next.digest || !current.enabled || !next.enabled || current.invalid || next.invalid) return next;
-      const lifecycle = { loaded: current.loaded, loading: current.loading, loadError: current.loadError };
-      Object.assign(current, next, lifecycle);
-      return current;
-    });
+    // SDK v2 never executes a module script in this page: the views are data
+    // and isolated code lives in a frame created by the host.
+    state.items = list(payload.items).map((raw) => normalizeItem(raw));
     state.error = '';
     state.loaded = true;
     state.identity = identityKey(vm);
-    state.compositionFailures = {};
     publishCatalog(vm);
-    state.items.forEach((item) => loadScript(vm, item));
     emit(vm);
     return true;
   }
@@ -520,11 +486,7 @@
     const state = ensureState(vm);
     const identity = identityKey(vm);
     if (!(options && options.force) && state.loaded && state.identity === identity) return true;
-    if (state.identity && state.identity !== identity) {
-      unloadAll(vm);
-      state.items = [];
-      state.loaded = false;
-    }
+    if (state.identity && state.identity !== identity) unloadAll(vm);
     const epoch = ++runtime.epoch;
     state.loading = true;
     state.error = '';
@@ -548,7 +510,6 @@
   function stop(vm) {
     runtime.epoch += 1;
     unloadAll(vm);
-    runtime.definitions.clear();
     const state = ensureState(vm);
     state.items = [];
     state.loading = false;
@@ -578,7 +539,7 @@
     const state = ensureState(vm);
     const links = [];
     state.items.forEach((item) => {
-      if (!item.enabled || item.invalid || item.loadError && !item.loaded) return;
+      if (!item.enabled || item.invalid || item.requiresUpgrade) return;
       item.pages.forEach((page) => {
         if (typeof vm.can !== 'function' || !vm.can(page.permission)) return;
         links.push({
@@ -600,24 +561,61 @@
     const state = ensureState(vm);
     const panels = [];
     state.items.forEach((item) => {
-      if (!item.enabled || item.invalid) return;
+      if (!item.enabled || item.invalid || item.requiresUpgrade) return;
       item.assetPanels.forEach((panel) => {
         if (typeof vm.can !== 'function' || !vm.can(panel.permission)) return;
-        panels.push({
-          key: item.id + ':' + panel.id,
-          item,
-          panel,
-          component: componentFor(panel.component),
-          sdk: item.loaded ? sdkFor(vm, item) : null
-        });
+        panels.push({ key: item.id + ':' + panel.id, item, panel });
       });
     });
     return panels;
   }
 
-  function componentFor(name) {
-    const claim = runtime.definitions.get(componentKey(name));
-    return claim ? claim.definition : null;
+  function widgetsFor(vm) {
+    if (!vm || !vm.authenticated) return [];
+    const state = ensureState(vm);
+    const widgets = [];
+    state.items.forEach((item) => {
+      if (!item.enabled || item.invalid || item.requiresUpgrade) return;
+      item.widgets.forEach((widget) => {
+        if (typeof vm.can !== 'function' || !vm.can(widget.permission)) return;
+        widgets.push({
+          key: item.id + ':' + widget.id,
+          item,
+          widget,
+          extensionName: text(item.manifest && item.manifest.name) || item.id
+        });
+      });
+    });
+    return widgets;
+  }
+
+  function actionsFor(vm, asset) {
+    if (!vm || !vm.authenticated || !asset || !asset.id) return [];
+    const state = ensureState(vm);
+    const actions = [];
+    state.items.forEach((item) => {
+      if (!item.enabled || item.invalid || item.requiresUpgrade) return;
+      item.actions.forEach((action) => {
+        if (typeof vm.can !== 'function' || !vm.can(action.permission)) return;
+        actions.push({ key: item.id + ':' + action.id, item, action });
+      });
+    });
+    return actions;
+  }
+
+  // Navigation requested by an isolated frame: own pages first, then core hash
+  // routes. Another extension's pages are rejected.
+  function frameNavigate(vm, item, page) {
+    if (!isCurrentItem(vm, item) || typeof page !== 'string' || !page) return false;
+    const own = item.pages.find((entry) => entry.id === page);
+    if (own) {
+      window.location.hash = pageLink(item.id, own);
+      return true;
+    }
+    if (page.charAt(0) !== '#' || page.indexOf('#/') !== 0 || /\s/.test(page)) return false;
+    if (page.indexOf('#/extensiones/') === 0 && page.indexOf('#/extensiones/' + encode(item.id) + '/') !== 0) return false;
+    window.location.hash = page;
+    return true;
   }
 
   function operationFor(item, name) {
@@ -625,14 +623,14 @@
   }
 
   function sdkFor(vm, item) {
-    if (!isCurrentItem(vm, item) || !item.loaded) return null;
+    if (!isCurrentItem(vm, item)) return null;
     const allowed = new Set(item.permissions.map((permission) => permission.code));
     item.operations.forEach((operation) => allowed.add(operation.permission));
     const sdk = {
       id: item.id,
       version: item.version,
       request(operationName, args) {
-        if (!isCurrentItem(vm, item) || !item.loaded) {
+        if (!isCurrentItem(vm, item)) {
           return Promise.reject(new Error('La extensión ya no está activa.'));
         }
         const operation = operationFor(item, operationName);
@@ -648,37 +646,36 @@
           method: 'POST',
           body: isPlainObject(args) ? args : {}
         }).then((response) => {
-          if (!isCurrentItem(vm, item) || !item.loaded || identity !== identityKey(vm)) {
+          if (!isCurrentItem(vm, item) || identity !== identityKey(vm)) {
             throw new Error('La extensión ya no está activa.');
           }
           return response;
         });
       },
       can(permission) {
-        if (!isCurrentItem(vm, item) || !item.loaded) return false;
+        if (!isCurrentItem(vm, item)) return false;
         if (typeof permission !== 'string' || !allowed.has(permission)) return false;
         return typeof vm.can === 'function' && !!vm.can(permission);
       },
       navigate(target) {
-        if (!isCurrentItem(vm, item) || !item.loaded) throw new Error('La extensión ya no está activa.');
+        if (!isCurrentItem(vm, item)) throw new Error('La extensión ya no está activa.');
         if (isPlainObject(target)) {
           const page = item.pages.find((entry) => entry.id === target.page);
           if (!page) throw new Error('La extensión no declara esa página.');
-          const hash = pageLink(item.id, page);
-          window.location.hash = hash;
-          return hash;
+          window.location.hash = pageLink(item.id, page);
+          return true;
         }
         const hash = text(target);
         if (!hash || hash.charAt(0) !== '#' || hash.indexOf('#/') !== 0 || hash.indexOf('\\') !== -1 || /\s/.test(hash)) {
-          throw new Error('La ruta de navegación no es válida.');
+          return false;
         }
-        if (/^#\/\/|^#\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(hash)) throw new Error('La ruta de navegación no es válida.');
+        if (/^#\/\/|^#\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(hash)) return false;
         if (hash.indexOf('#/extensiones/') === 0) {
           const own = '#/extensiones/' + encode(item.id) + '/';
-          if (hash.indexOf(own) !== 0) throw new Error('La ruta de otra extensión no está permitida.');
+          if (hash.indexOf(own) !== 0) return false;
         }
         window.location.hash = hash;
-        return hash;
+        return true;
       }
     };
     return Object.freeze(sdk);
@@ -710,6 +707,7 @@
 
   const ExtensionPage = {
     name: 'ExtensionPage',
+    components: window.ExtensionViews ? { ExtensionView: window.ExtensionViews.components.ExtensionView } : {},
     props: {
       app: { type: Object, required: true },
       extensionId: { type: String, default: '' },
@@ -718,7 +716,7 @@
     computed: {
       item() {
         const state = this.app.extensions || {};
-        return list(state.items).find((entry) => entry.id === this.extensionId && entry.enabled) || null;
+        return list(state.items).find((entry) => entry.id === this.extensionId) || null;
       },
       page() {
         if (!this.item) return null;
@@ -727,27 +725,29 @@
       allowed() {
         return !!(this.page && typeof this.app.can === 'function' && this.app.can(this.page.permission));
       },
-      pageComponent() {
-        return this.page ? componentFor(this.page.component) : null;
-      },
-      sdk() {
-        return this.item && this.allowed ? sdkFor(this.app, this.item) : null;
-      },
       title() {
         return this.page ? this.page.label : 'Extensión';
+      },
+      stateLabel() {
+        if (!this.item) return 'No disponible';
+        if (this.item.requiresUpgrade) return 'Requiere actualización';
+        return 'Activa';
+      },
+      stateClass() {
+        if (!this.item) return 'status--hold';
+        return this.item.requiresUpgrade ? 'status--warn' : 'status--ok';
       }
     },
     template: `
       <section class="page extension-page" aria-labelledby="extension-page-title">
         <header class="page-head">
           <div class="page-head__copy">
-            <p class="eyebrow"><span class="eyebrow__line"></span> Extensión nativa</p>
+            <p class="eyebrow"><span class="eyebrow__line"></span> Extensión</p>
             <h1 id="extension-page-title">{{ title }}</h1>
             <p>{{ item ? (item.manifest.name || item.id) : 'Módulo no instalado o no autorizado' }}</p>
           </div>
           <div class="page-head__meta" aria-label="Estado de la extensión">
-            <span v-if="item" class="status-pill status--ok">Activa</span>
-            <span v-else class="status-pill status--hold">No disponible</span>
+            <span class="status-pill" :class="stateClass">{{ stateLabel }}</span>
           </div>
         </header>
 
@@ -756,6 +756,16 @@
           <h2>Extensión no disponible</h2>
           <p>El servidor no ofrece esta extensión a tu sesión. Puede estar desactivada o retirada.</p>
           <a class="btn btn--secondary" href="#/panel">Volver al panel</a>
+        </div>
+        <div v-else-if="item.requiresUpgrade" class="config-empty" role="status">
+          <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
+          <h2>Requiere actualización</h2>
+          <p>Esta versión usa el SDK 1 y el host ya no ejecuta su código dentro de la página. Actualiza el paquete para volver a usar sus páginas; sus datos se conservan.</p>
+          <a class="btn btn--secondary" href="#/configuracion/extensiones">Revisar extensiones</a>
+        </div>
+        <div v-else-if="item.invalid" class="form-alert" role="alert">
+          <app-icon name="alert"></app-icon>
+          <div><strong>El paquete no es válido.</strong><p>{{ item.invalid }}</p></div>
         </div>
         <div v-else-if="!page" class="config-empty" role="status">
           <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
@@ -767,25 +777,14 @@
           <h2>Sin permiso para esta página</h2>
           <p>La extensión exige el permiso <code>{{ page.permission }}</code>. El servidor vuelve a comprobarlo en cada operación.</p>
         </div>
-        <p v-else-if="item.loading" class="config-note" role="status">
-          <app-icon name="refresh"></app-icon>
-          Cargando el módulo de {{ item.manifest.name || item.id }}…
-        </p>
-        <div v-else-if="item.loadError" class="form-alert" role="alert">
-          <app-icon name="alert"></app-icon>
-          <div><strong>El módulo no se pudo cargar.</strong><p>{{ item.loadError }}</p></div>
-        </div>
-        <p v-else-if="!pageComponent" class="config-note" role="status">
-          <app-icon name="info"></app-icon>
-          El módulo no expone el componente {{ page.component }}.
-        </p>
-        <component v-else :is="pageComponent" :sdk="sdk"></component>
+        <extension-view v-else :app="app" :item="item" :view="page.view"></extension-view>
       </section>
     `
   };
 
   const ExtensionAssetPanels = {
     name: 'ExtensionAssetPanels',
+    components: window.ExtensionViews ? { ExtensionView: window.ExtensionViews.components.ExtensionView } : {},
     props: {
       app: { type: Object, required: true },
       asset: { type: Object, default: null }
@@ -808,21 +807,22 @@
         <section v-for="entry in panels" :key="entry.key" class="panel extension-panel" :aria-labelledby="panelTitle(entry)">
           <header class="panel-head">
             <div>
-              <p class="eyebrow">Extensión nativa</p>
+              <p class="eyebrow">Extensión</p>
               <h2 :id="panelTitle(entry)">{{ entry.panel.label }}</h2>
               <p>{{ entry.item.manifest.name || entry.item.id }}</p>
             </div>
-            <span class="chip chip--muted">{{ entry.item.version }}</span>
+            <span v-if="entry.item.requiresUpgrade" class="status-pill status--warn">Requiere actualización</span>
+            <span v-else class="chip chip--muted">{{ entry.item.version }}</span>
           </header>
-          <div v-if="entry.item.loadError" class="form-alert" role="alert">
+          <p v-if="entry.item.requiresUpgrade" class="config-note" role="status">
             <app-icon name="alert"></app-icon>
-            <div><strong>El panel no se pudo cargar.</strong><p>{{ entry.item.loadError }}</p></div>
-          </div>
-          <p v-else-if="!entry.component || !entry.sdk" class="config-note" role="status">
-            <app-icon name="refresh"></app-icon>
-            Cargando el panel de la extensión…
+            Esta versión usa el SDK 1 y no se ejecuta en la página. Actualiza el paquete para recuperar el panel.
           </p>
-          <component v-else :is="entry.component" :sdk="entry.sdk" :asset="assetSnapshot"></component>
+          <div v-else-if="entry.item.invalid" class="form-alert" role="alert">
+            <app-icon name="alert"></app-icon>
+            <div><strong>El panel no es válido.</strong><p>{{ entry.item.invalid }}</p></div>
+          </div>
+          <extension-view v-else :app="app" :item="entry.item" :view="entry.panel.view" :asset="assetSnapshot"></extension-view>
         </section>
       </div>
     `
@@ -887,6 +887,9 @@
           message: '',
           error: ''
         },
+        status: {
+          byId: {}
+        },
         confirm: {
           open: false,
           busy: false,
@@ -897,7 +900,9 @@
           error: '',
           payload: null,
           itemId: '',
-          candidateId: ''
+          candidateId: '',
+          typedRequired: '',
+          typedValue: ''
         }
       };
     },
@@ -964,9 +969,66 @@
         return permission ? permission.label : code;
       },
       detailTrustNotice() {
-        return this.detail && this.detail.trust && this.detail.trust.statement
-          ? this.detail.trust.statement
-          : 'Código aprobado que se ejecuta dentro del host. No es un sandbox para código hostil.';
+        if (this.detail && this.detail.trust && this.detail.trust.statement) return this.detail.trust.statement;
+        const runtime = this.detail && this.detail.manifest && this.detail.manifest.runtime;
+        if (runtime === 'sandboxed') return 'El código del frontend se ejecuta en un marco aislado sin acceso a la sesión, al DOM del host ni a su almacenamiento. Las operaciones pasan por el host y sus permisos.';
+        return 'Las vistas declarativas no ejecutan código del módulo en esta página: el host las dibuja con sus componentes.';
+      },
+      runtimeLabel(runtime) {
+        if (runtime === 'sandboxed') return 'Código aislado';
+        if (runtime === 'declarative') return 'Declarativa';
+        return 'No informado';
+      },
+      capabilityLabel(code) {
+        return CAPABILITY_LABELS[code] || 'Capacidad no informada por el host.';
+      },
+      viewSummary(view) {
+        return window.ExtensionViews && typeof window.ExtensionViews.describeView === 'function'
+          ? window.ExtensionViews.describeView(view)
+          : 'Sin vista declarada.';
+      },
+      formatBytes(value) {
+        if (!Number.isInteger(value) || value < 0) return 'No informado';
+        if (value < 1024) return value + ' B';
+        if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
+        return (value / (1024 * 1024)).toFixed(1) + ' MB';
+      },
+      statusFacts(item) {
+        const entry = this.status.byId[item.id] || {};
+        const data = entry.data || {};
+        const storage = isPlainObject(data.storage) ? data.storage : {};
+        const events = isPlainObject(data.events) ? data.events : {};
+        const sandbox = isPlainObject(data.sandbox) ? data.sandbox : {};
+        const size = Number.isInteger(storage.sizeBytes) ? this.formatBytes(storage.sizeBytes) : 'No informado';
+        const schema = Number.isInteger(data.schemaVersion) ? data.schemaVersion : item.schemaVersion;
+        const stalled = Array.isArray(events.stalled) ? events.stalled.length : events.stalled;
+        const sandboxLabel = sandbox.available === true
+          ? 'Disponible'
+          : sandbox.available === false
+            ? 'No disponible' + (text(sandbox.reason) ? ' · ' + text(sandbox.reason) : '')
+            : 'No informado';
+        return [
+          { label: 'Almacenamiento', value: 'Base SQLite propia · ' + size },
+          { label: 'Esquema de datos', value: Number.isInteger(schema) ? String(schema) : 'No informado' },
+          { label: 'Eventos detenidos', value: Number.isInteger(stalled) ? String(stalled) : 'No informado' },
+          { label: 'Entorno restringido', value: sandboxLabel }
+        ];
+      },
+      async loadStatus(item) {
+        if (!item || !text(item.id)) return false;
+        const id = item.id;
+        const identity = identityKey(this.app);
+        const epoch = ++this.detailEpoch;
+        this.status.byId[id] = Object.assign({}, this.status.byId[id], { loading: true, error: '', loaded: false });
+        try {
+          const response = await window.AssetAccess.request(this.app, '/extensions/' + encode(id) + '/status');
+          if (epoch > 0 && identity !== identityKey(this.app)) return false;
+          this.status.byId[id] = { loading: false, loaded: true, error: '', data: isPlainObject(response) ? response : {} };
+          return true;
+        } catch (error) {
+          this.status.byId[id] = { loading: false, loaded: false, error: (error && (error.message || error.error)) || 'El servidor no informó el estado de la extensión.', data: null };
+          return false;
+        }
       },
       reviewFilterLabel(filter) {
         return filter === 'pending' ? 'Pendientes' : filter === 'installed' ? 'Instaladas' : filter === 'superseded' ? 'Reemplazadas' : 'Todas';
@@ -1033,14 +1095,21 @@
       installedForHistory() {
         return this.installedItems;
       },
-      canRollback(entry, item) {
-        if (!entry || !item || !this.detail || this.detail.rollbackCompatible !== true) return false;
-        if (!Number.isInteger(item.revision)) return false;
+      // A compatible package rolls back directly. An incompatible schema can
+      // still roll back by restoring the pre-upgrade snapshot, which the server
+      // demands with a typed confirmation and `restoreData: true`.
+      rollbackMode(entry, item) {
+        if (!entry || !item || !this.detail) return '';
+        if (!Number.isInteger(item.revision)) return '';
         const action = text(entry.action);
-        if (/submitted|validated|superseded|approved/.test(action)) return false;
+        if (/submitted|validated|superseded|approved/.test(action)) return '';
         const target = entry.detail || {};
-        if (!text(target.version) || !DIGEST_RE.test(text(target.digest))) return false;
-        return compareVersions(target.version, item.version) < 0;
+        if (!text(target.version) || !DIGEST_RE.test(text(target.digest))) return '';
+        if (compareVersions(target.version, item.version) >= 0) return '';
+        return this.detail.rollbackCompatible === true ? 'compatible' : 'restore';
+      },
+      canRollback(entry, item) {
+        return this.rollbackMode(entry, item) !== '';
       },
       historySummary(entry) {
         const detail = entry && entry.detail;
@@ -1090,7 +1159,9 @@
           error: '',
           payload: { digest: detail.digest, expectedVersion: detail.currentRevision },
           itemId: detail.extensionId,
-          candidateId: detail.id
+          candidateId: detail.id,
+          typedRequired: '',
+          typedValue: ''
         };
       },
       askToggle(item, enabled) {
@@ -1119,7 +1190,9 @@
           error: '',
           payload: { enabled: !!enabled, expectedVersion: item.revision },
           itemId: item.id,
-          candidateId: ''
+          candidateId: '',
+          typedRequired: '',
+          typedValue: ''
         };
       },
       askRollback(entry, item) {
@@ -1128,33 +1201,77 @@
           this.action.error = 'Solo un Superadmin humano puede aplicar un rollback.';
           return;
         }
-        if (!this.canRollback(entry, item)) {
-          this.action.error = 'Ese evento del historial no permite un rollback compatible con la versión activa.';
+        const mode = this.rollbackMode(entry, item);
+        if (!mode) {
+          this.action.error = 'Ese evento del historial no permite volver a una versión anterior.';
           return;
         }
         const target = entry.detail;
+        const restore = mode === 'restore';
         this.confirm = {
           open: true,
           busy: false,
           kind: 'rollback',
-          title: 'Volver a ' + target.version,
-          summary: 'El servidor comprobará que el paquete anterior sigue instalado y que su esquema es compatible con los datos actuales. Si no lo es, no cambia nada.',
-          confirmLabel: 'Aplicar rollback',
+          title: restore ? 'Volver a ' + target.version + ' restaurando los datos' : 'Volver a ' + target.version,
+          summary: restore
+            ? 'El esquema de datos actual no es compatible con esa versión. El servidor restaurará la copia previa a la actualización y descartará los cambios posteriores de la base propia de la extensión. Escribe el identificador para confirmarlo.'
+            : 'El servidor comprobará que el paquete anterior sigue instalado y que su esquema es compatible con los datos actuales. Si no lo es, no cambia nada.',
+          confirmLabel: restore ? 'Restaurar datos y volver' : 'Aplicar rollback',
           error: '',
-          payload: { version: target.version, digest: target.digest, expectedVersion: item.revision },
+          payload: restore
+            ? { version: target.version, digest: target.digest, expectedVersion: item.revision, restoreData: true }
+            : { version: target.version, digest: target.digest, expectedVersion: item.revision },
           itemId: item.id,
-          candidateId: this.detail ? this.detail.id : ''
+          candidateId: this.detail ? this.detail.id : '',
+          typedRequired: restore ? item.id : '',
+          typedValue: ''
+        };
+      },
+      askUninstall(item) {
+        this.resetAction();
+        if (!this.canManage) {
+          this.action.error = 'Solo un Superadmin humano puede desinstalar una extensión.';
+          return;
+        }
+        if (!item || !text(item.id)) {
+          this.action.error = 'El módulo no está identificado.';
+          return;
+        }
+        if (!Number.isInteger(item.revision)) {
+          this.action.error = 'El servidor no informó la revisión activa. Actualiza antes de desinstalar.';
+          return;
+        }
+        this.confirm = {
+          open: true,
+          busy: false,
+          kind: 'uninstall',
+          title: 'Desinstalar ' + (item.manifest && item.manifest.name || item.id),
+          summary: 'El servidor retira el paquete y su interfaz. La base SQLite propia de la extensión, sus archivos y su historial se conservan; volver a instalarla recupera esos datos.',
+          confirmLabel: 'Desinstalar extensión',
+          error: '',
+          payload: { expectedVersion: item.revision },
+          itemId: item.id,
+          candidateId: '',
+          typedRequired: '',
+          typedValue: ''
         };
       },
       async confirmRun() {
         if (!this.confirm.open || this.confirm.busy) return false;
         const kind = this.confirm.kind;
         const payload = this.confirm.payload;
+        if (this.confirm.typedRequired && this.confirm.typedValue !== this.confirm.typedRequired) {
+          this.confirm.error = 'Escribe el identificador exacto para confirmar la restauración.';
+          return false;
+        }
         let path = '';
         if (kind === 'approve') path = '/extensions/candidates/' + encode(this.confirm.candidateId) + '/approve';
         else if (kind === 'enable' || kind === 'disable') path = '/extensions/' + encode(this.confirm.itemId) + '/enabled';
+        else if (kind === 'uninstall') path = '/extensions/' + encode(this.confirm.itemId) + '/uninstall';
         else if (kind === 'rollback') path = '/extensions/' + encode(this.confirm.itemId) + '/rollback';
         else return false;
+        const body = Object.assign({}, payload || {});
+        if (kind === 'rollback' && body.restoreData === true) body.confirm = this.confirm.typedValue;
         const epoch = this.reviewEpoch;
         const identity = identityKey(this.app);
         this.confirm.busy = true;
@@ -1162,18 +1279,22 @@
         this.action.error = '';
         this.action.message = '';
         try {
-          await window.AssetAccess.request(this.app, path, { method: 'POST', body: payload });
+          await window.AssetAccess.request(this.app, path, { method: 'POST', body });
           if (epoch !== this.reviewEpoch || !this.app.authenticated || identity !== identityKey(this.app)) return false;
           this.confirm.busy = false;
           this.confirm.open = false;
           this.review.stale = false;
           this.action.message = kind === 'approve'
             ? 'El servidor confirmó la aprobación e instalación del paquete.'
-            : kind === 'rollback'
-              ? 'El servidor confirmó el rollback y la compatibilidad de los datos.'
-              : payload.enabled
-                ? 'El servidor confirmó la activación de la extensión.'
-                : 'El servidor confirmó la desactivación de la extensión.';
+            : kind === 'uninstall'
+              ? 'El servidor desinstaló la extensión y conservó sus datos.'
+              : kind === 'rollback'
+                ? (body.restoreData === true
+                  ? 'El servidor restauró la copia previa y volvió a la versión anterior.'
+                  : 'El servidor confirmó el rollback y la compatibilidad de los datos.')
+                : payload.enabled
+                  ? 'El servidor confirmó la activación de la extensión.'
+                  : 'El servidor confirmó la desactivación de la extensión.';
           if (typeof this.app.extensionsLoad === 'function') await this.app.extensionsLoad({ force: true });
           await this.reviewLoad();
           if (this.review.selectedId) await this.reviewDetail(this.review.selectedId);
@@ -1284,16 +1405,22 @@
                 <div><dt>Versión activa</dt><dd>{{ detail.currentVersion || 'Ninguna' }} · revisión {{ detail.currentRevision === null ? '—' : detail.currentRevision }}</dd></div>
                 <div><dt>Revisión del candidato</dt><dd>{{ detail.revision }}</dd></div>
                 <div><dt>Enviado</dt><dd>{{ detail.submittedBy || 'Sin identificar' }} · {{ formatDate(detail.submittedAt) }}</dd></div>
-                <div><dt>Rollback compatible</dt><dd>{{ detail.rollbackCompatible ? 'Sí, el servidor lo comprobará al aplicar' : 'No ofrecido por el servidor' }}</dd></div>
+                <div><dt>Ejecución</dt><dd>{{ runtimeLabel(detail.manifest.runtime) }}</dd></div>
+                <div><dt>Almacenamiento</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? 'Base SQLite propia' : 'Sin almacenamiento declarado' }}</dd></div>
+                <div><dt>Capacidades</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : 'Ninguna' }}</dd></div>
+                <div><dt>Rollback</dt><dd>{{ detail.rollbackCompatible ? 'Compatible con los datos actuales' : 'Requiere restaurar la copia de datos previa' }}</dd></div>
               </dl>
 
               <section class="extension-block" aria-labelledby="extension-trust-title">
                 <h4 id="extension-trust-title">Modelo de confianza</h4>
                 <p>{{ detailTrustNotice() }}</p>
                 <ul class="extension-checks">
-                  <li>Modelo: <strong>{{ detail.trust && detail.trust.model || 'no informado' }}</strong></li>
-                  <li>Sandbox del módulo instalado: <strong>{{ detail.trust && detail.trust.sandboxed === false ? 'no' : 'no informado' }}</strong></li>
-                  <li>La validación previa no limita el código aprobado dentro del host.</li>
+                  <li>Declarativa: las vistas son datos y el módulo no ejecuta código en la página.</li>
+                  <li>Código aislado: el frontend se ejecuta en un marco sin acceso a la sesión, al DOM del host ni a su almacenamiento.</li>
+                  <li>Servidor: el backend se ejecuta en un proceso restringido con las capacidades declaradas.</li>
+                </ul>
+                <ul v-if="(detail.manifest.capabilities || []).length" class="extension-checks">
+                  <li v-for="capability in detail.manifest.capabilities" :key="capability"><code>{{ capability }}</code> — {{ capabilityLabel(capability) }}</li>
                 </ul>
               </section>
 
@@ -1330,13 +1457,19 @@
               <section class="extension-block" aria-labelledby="extension-contributions-title">
                 <h4 id="extension-contributions-title">Aportaciones del paquete</h4>
                 <p class="cell-note">SDK {{ detail.manifest.sdkVersion }} · esquema {{ detail.manifest.schemaVersion }}. Estos son los recursos declarados del paquete exacto que estás revisando.</p>
-                <h5>Páginas y paneles de activos</h5>
+                <h5>Páginas, paneles y widgets</h5>
                 <ul class="extension-contributions">
                   <li v-for="page in detail.manifest.frontend && detail.manifest.frontend.pages || []" :key="'page-' + page.id">
-                    Página <strong>{{ page.label }}</strong> · <code>{{ page.id }}</code> · componente <code>{{ page.component }}</code> · permiso <code>{{ page.permission }}</code>
+                    Página <strong>{{ page.label }}</strong> · <code>{{ page.id }}</code> · {{ viewSummary(page.view) }} · permiso <code>{{ page.permission }}</code>
                   </li>
                   <li v-for="panel in detail.manifest.frontend && detail.manifest.frontend.assetPanels || []" :key="'panel-' + panel.id">
-                    Panel <strong>{{ panel.label }}</strong> · <code>{{ panel.id }}</code> · componente <code>{{ panel.component }}</code> · permiso <code>{{ panel.permission }}</code>
+                    Panel <strong>{{ panel.label }}</strong> · <code>{{ panel.id }}</code> · {{ viewSummary(panel.view) }} · permiso <code>{{ panel.permission }}</code>
+                  </li>
+                  <li v-for="widget in detail.manifest.frontend && detail.manifest.frontend.widgets || []" :key="'widget-' + widget.id">
+                    Widget <strong>{{ widget.label }}</strong> · <code>{{ widget.id }}</code> · {{ viewSummary(widget.view) }} · permiso <code>{{ widget.permission }}</code>
+                  </li>
+                  <li v-for="action in detail.manifest.frontend && detail.manifest.frontend.actions || []" :key="'action-' + action.id">
+                    Acción <strong>{{ action.label }}</strong> · <code>{{ action.id }}</code> · operación <code>{{ action.operation }}</code> · permiso <code>{{ action.permission }}</code>
                   </li>
                 </ul>
                 <h5>Operaciones</h5>
@@ -1395,7 +1528,7 @@
                     </div>
                     <button v-if="canRollback(entry, installedForDetail())" type="button" class="btn btn--secondary btn--small"
                             @click="askRollback(entry, installedForDetail())">
-                      Volver a {{ entry.detail.version }}
+                      {{ rollbackMode(entry, installedForDetail()) === 'restore' ? 'Volver a ' + entry.detail.version + ' restaurando datos' : 'Volver a ' + entry.detail.version }}
                     </button>
                   </li>
                 </ol>
@@ -1420,9 +1553,22 @@
                 <span class="mono extension-digest">{{ item.digest }}</span>
               </div>
               <div class="extension-installed__actions">
-                <span class="status-pill" :class="item.enabled ? 'status--ok' : 'status--hold'">{{ item.enabled ? 'Activa' : 'Desactivada' }}</span>
-                <button v-if="item.enabled" type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, false)">Desactivar</button>
-                <button v-else type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, true)">Activar</button>
+                <span v-if="item.requiresUpgrade" class="status-pill status--warn">Requiere actualización</span>
+                <span v-else class="status-pill" :class="item.enabled ? 'status--ok' : 'status--hold'">{{ item.enabled ? 'Activa' : 'Desactivada' }}</span>
+                <button v-if="item.requiresUpgrade" type="button" class="btn btn--secondary btn--small" @click="loadStatus(item)">Ver estado</button>
+                <template v-else>
+                  <button v-if="item.enabled" type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, false)">Desactivar</button>
+                  <button v-else type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, true)">Activar</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="loadStatus(item)">Ver estado</button>
+                  <button type="button" class="btn btn--ghost btn--small" :disabled="!Number.isInteger(item.revision)" @click="askUninstall(item)">Desinstalar</button>
+                </template>
+              </div>
+              <div v-if="status.byId[item.id] && (status.byId[item.id].loading || status.byId[item.id].loaded || status.byId[item.id].error)" class="extension-installed__status">
+                <p v-if="status.byId[item.id].loading" class="config-note" role="status">Consultando el estado de la extensión…</p>
+                <p v-else-if="status.byId[item.id].error" class="form-alert" role="alert"><app-icon name="alert"></app-icon> {{ status.byId[item.id].error }}</p>
+                <dl v-else class="extension-facts">
+                  <div v-for="fact in statusFacts(item)" :key="fact.label"><dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd></div>
+                </dl>
               </div>
             </li>
           </ul>
@@ -1436,6 +1582,13 @@
               <div v-if="confirm.payload.version"><dt>Versión destino</dt><dd>{{ confirm.payload.version }}</dd></div>
               <div><dt>Revisión esperada del servidor</dt><dd>{{ confirm.payload.expectedVersion === null ? 'Primera instalación' : 'Revisión ' + confirm.payload.expectedVersion }}</dd></div>
             </dl>
+            <div v-if="confirm.typedRequired" class="field">
+              <label for="extension-confirm-typed">Escribe <code>{{ confirm.typedRequired }}</code> para confirmar</label>
+              <div class="input-shell">
+                <input id="extension-confirm-typed" v-model="confirm.typedValue" type="text" autocomplete="off" spellcheck="false" :aria-describedby="'extension-confirm-typed-hint'">
+              </div>
+              <p id="extension-confirm-typed-hint" class="field__hint">La confirmación escrita es obligatoria para restaurar los datos.</p>
+            </div>
             <p v-if="confirm.error" class="form-alert" role="alert"><app-icon name="alert"></app-icon> {{ confirm.error }}</p>
           </div>
           <template #footer>
@@ -1452,63 +1605,20 @@
   window.ITSMExtensions = {
     sdkVersion: SDK_VERSION,
     trust: Object.freeze({
-      model: 'trusted-native',
-      approvedCodeRunsInHostProcess: true,
-      hostileCodeSandbox: false,
+      declarativeModuleCodeInHostPage: false,
+      isolatedModuleCode: 'sandboxed-frame',
+      isolatedFrameSessionAccess: false,
+      backendRunsInHostProcess: false,
       validationIsolated: true
     }),
     configure(options) {
       const config = options || {};
-      if (config.app && typeof config.app.component === 'function') runtime.app = config.app;
-      list(config.coreComponents).forEach((name) => {
-        if (name) runtime.reserved.add(componentKey(name));
-      });
-      if (runtime.app) {
-        runtime.definitions.forEach((claim) => runtime.app.component(claim.name, claim.definition));
-      }
+      if (config.app) runtime.app = config.app;
     },
-    register(id, definition) {
-      const extensionId = text(id);
-      const pending = runtime.pending.get(extensionId);
-      if (!pending) throw new Error('ITSMExtensions.register: la extensión "' + extensionId + '" no está cargando.');
-      if (!isCurrentItem(pending.vm, pending.item) || pending.identity !== identityKey(pending.vm)) {
-        throw new Error('ITSMExtensions.register: la carga de la extensión ya no está activa.');
-      }
-      if (window.document.currentScript && window.document.currentScript !== pending.node) {
-        throw new Error('ITSMExtensions.register: el script no corresponde a la carga activa.');
-      }
-      if (!isPlainObject(definition) || !isPlainObject(definition.components)) {
-        throw new Error('ITSMExtensions.register: se esperaba { components: { Nombre: definición } }.');
-      }
-      const names = Object.keys(definition.components);
-      if (!names.length) throw new Error('ITSMExtensions.register: no se declaró ningún componente.');
-      const accepted = [];
-      names.forEach((name) => {
-        const key = componentKey(name);
-        if (!COMPONENT_RE.test(name) || name.length > 64) {
-          pending.errors.push('El componente "' + name + '" no tiene un nombre válido.');
-          throw new Error('ITSMExtensions.register: nombre de componente no válido: ' + name);
-        }
-        if (runtime.reserved.has(key)) {
-          pending.errors.push('El componente "' + name + '" usa un nombre reservado del núcleo.');
-          throw new Error('ITSMExtensions.register: el componente "' + name + '" es un nombre reservado del núcleo.');
-        }
-        const claim = runtime.definitions.get(key);
-        if (claim && claim.id !== extensionId) {
-          pending.errors.push('El componente "' + name + '" ya pertenece a otra extensión.');
-          throw new Error('ITSMExtensions.register: el componente "' + name + '" ya está registrado por otra extensión.');
-        }
-        if (pending.components.has(key)) {
-          pending.errors.push('El componente "' + name + '" está duplicado.');
-          throw new Error('ITSMExtensions.register: el componente "' + name + '" está duplicado.');
-        }
-        if (!definition.components[name] || (typeof definition.components[name] !== 'object' && typeof definition.components[name] !== 'function')) {
-          throw new Error('ITSMExtensions.register: la definición de "' + name + '" no es válida.');
-        }
-        accepted.push({ key, name, definition: definition.components[name] });
-      });
-      accepted.forEach((entry) => pending.components.set(entry.key, entry));
-      return true;
+    // Kept for diagnostic compatibility only: SDK 2 has no same-origin module
+    // scripts, so a module cannot register host components here.
+    register() {
+      throw new Error('El SDK 2 no registra componentes en la página del host. Declara vistas en el manifiesto o usa una vista aislada.');
     }
   };
 
@@ -1525,10 +1635,11 @@
     stop,
     sync,
     routeOverride,
-    componentFor,
     sdkFor,
+    widgetsFor,
+    actionsFor,
+    frameNavigate,
     compositionFor,
-    compositionFailure,
     readonlyAsset,
     pageLink,
     pageLinks,
@@ -1550,6 +1661,7 @@
       ExtensionPage,
       ExtensionAssetPanels,
       ExtensionReview,
+      ...(window.ExtensionViews ? window.ExtensionViews.components : {}),
       ...(window.UIComposition ? window.UIComposition.components : {})
     }
   };

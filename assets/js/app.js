@@ -111,6 +111,7 @@
       ExtensionPage: window.AssetExtensions.components.ExtensionPage,
       ExtensionAssetPanels: window.AssetExtensions.components.ExtensionAssetPanels,
       ExtensionReview: window.AssetExtensions.components.ExtensionReview,
+      ...(window.ExtensionViews ? window.ExtensionViews.components : {}),
       ...(window.UIComposition ? window.UIComposition.components : {}),
       SearchPalette: window.AssetSearchViews.SearchPalette,
       SearchSettings: window.AssetSearchViews.SearchSettings,

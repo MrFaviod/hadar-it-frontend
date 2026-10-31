@@ -1648,6 +1648,7 @@
                     </p>
                   </div>
                   <div class="detail-head__actions">
+                    <extension-asset-actions v-if="currentAsset && currentAsset.id" :app="$root" :asset="currentAsset"></extension-asset-actions>
                     <composition-slot :app="$root" target="asset.action.edit" :permitted="can('assets.edit') && !currentAsset.retired" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
                       <app-icon name="pencil"></app-icon> Editar activo
                     </button></composition-slot>
@@ -2053,6 +2054,7 @@
               </section>
               </composition-boundary>
               <composition-widgets v-if="route.name === 'panel'" :app="$root"></composition-widgets>
+              <extension-widgets v-if="route.name === 'panel'" :app="$root"></extension-widgets>
             </div>
           </transition>
         </main>
@@ -2956,6 +2958,8 @@
   <script src="assets/js/agent-integrations.js"></script>
   <script src="assets/js/system-operations.js"></script>
   <script src="assets/js/conversation.js"></script>
+  <script src="assets/js/extension-frame.js"></script>
+  <script src="assets/js/extension-views.js"></script>
   <script src="assets/js/ui-composition.js"></script>
   <script src="assets/js/extensions.js"></script>
   <script src="assets/js/help.js"></script>

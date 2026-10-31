@@ -208,7 +208,7 @@
     computed: {
       controlId() { return this.id || this.generatedId; },
       safeType() {
-        return ['text', 'email', 'password', 'number', 'search', 'tel', 'url'].indexOf(this.type) !== -1 ? this.type : 'text';
+        return ['text', 'email', 'password', 'number', 'search', 'tel', 'url', 'date'].indexOf(this.type) !== -1 ? this.type : 'text';
       },
       describedBy() {
         if (this.error) return this.controlId + '-error';

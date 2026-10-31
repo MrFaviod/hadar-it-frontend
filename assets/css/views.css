@@ -2166,3 +2166,44 @@
     justify-content: center;
   }
 }
+
+/* SDK v2 declarative views and isolated frame. The host owns these styles; a
+   module never ships CSS into the page. */
+.extension-view { min-width: 0; }
+.extension-view + .extension-view { margin-top: 16px; }
+.extension-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.extension-pager__status {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.extension-form { display: grid; gap: 12px; margin-top: 16px; }
+.extension-form__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.extension-form__message { margin: 0; color: var(--teal-800, var(--text)); font-size: 0.9rem; }
+.extension-check { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; }
+.extension-check input { margin-top: 4px; }
+.extension-actions__status { margin: 0; flex-basis: 100%; font-size: 0.85rem; color: var(--text-muted); }
+.extension-frame {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.extension-frame iframe { display: block; width: 100%; border: 0; background: var(--paper); }
+.extension-installed__status { flex-basis: 100%; margin-top: 8px; }
+.extension-widgets { display: grid; gap: 16px; }
+.extension-widget .panel-head { margin-bottom: 8px; }
+
+@media (max-width: 640px) {
+  .extension-pager { align-items: stretch; }
+  .extension-pager .btn { flex: 1 1 140px; }
+}
