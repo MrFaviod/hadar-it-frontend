@@ -1,358 +1,223 @@
 'use strict';
-
+// SDK v2 host contract: discovery never executes module code, declarative views
+// are data, and the SDK only calls operations this extension declared.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createSandbox, evaluate, deferred, digest } = require('./extensions-support.cjs');
+const { createSandbox, evaluate, digest, deferred } = require('./extensions-support.cjs');
 
-const EXT_ID = 'demo';
-const PAGE_PERMISSION = 'ext_demo.page';
-const OP_PERMISSION = 'ext_demo.inspect';
+function plain(value) { return JSON.parse(JSON.stringify(value)); }
+
+const READ = 'ext_demo.read';
+const WRITE = 'ext_demo.write';
 
 function manifest(overrides) {
-  const base = {
-    id: EXT_ID,
-    name: 'Demo nativa',
-    version: '1.2.0',
-    sdkVersion: 1,
-    schemaVersion: 2,
+  return Object.assign({
+    id: 'demo',
+    name: 'Demo',
+    version: '2.0.0',
+    sdkVersion: 2,
+    schemaVersion: 1,
+    runtime: 'declarative',
+    capabilities: [],
+    storage: { engine: 'sqlite' },
     permissions: [
-      { code: PAGE_PERMISSION, label: 'Ver página', description: 'Abre la página de demo.' },
-      { code: OP_PERMISSION, label: 'Inspeccionar', description: 'Consulta datos de demo.' }
+      { code: READ, label: 'Leer demo', description: 'Consulta los registros de la demo.' },
+      { code: WRITE, label: 'Escribir demo', description: 'Crea registros en la demo.' }
     ],
     operations: [
-      { name: 'inspect', description: 'Consulta', permission: OP_PERMISSION, mutation: false, parameters: {} }
+      { name: 'list_records', description: 'Lista', permission: READ, mutation: false, kind: 'list', collection: 'records' },
+      { name: 'create_record', description: 'Crea', permission: WRITE, mutation: true, kind: 'put', collection: 'records' }
     ],
     frontend: {
-      entry: 'frontend.js',
-      pages: [{ id: 'panel', label: 'Panel demo', component: 'DemoPanel', permission: PAGE_PERMISSION, icon: 'package' }],
-      assetPanels: [{ id: 'ficha', label: 'Demo del activo', component: 'DemoAssetPanel', permission: PAGE_PERMISSION, icon: 'box' }]
+      pages: [{ id: 'records', label: 'Registros', permission: READ, view: { table: { operation: 'list_records', columns: [{ field: 'name', label: 'Nombre' }] } } }],
+      assetPanels: [{ id: 'summary', label: 'Resumen', permission: READ, view: { form: { operation: 'create_record', fields: [{ field: 'name', label: 'Nombre', input: 'text' }] } } }],
+      widgets: [{ id: 'count', label: 'Total', permission: READ, view: { table: { operation: 'list_records', columns: [{ field: 'name', label: 'Nombre' }] } } }],
+      actions: [{ id: 'add', label: 'Añadir registro', target: 'asset.action', permission: WRITE, operation: 'create_record' }]
     }
-  };
-  return Object.assign(base, overrides || {});
+  }, overrides || {});
 }
 
 function item(overrides) {
-  const id = (overrides && overrides.manifest && overrides.manifest.id) || EXT_ID;
-  const urlDigest = (overrides && overrides.digest) || digest('a');
-  const base = {
-    manifest: manifest(),
-    digest: urlDigest,
+  const value = Object.assign({}, overrides || {});
+  const manifestValue = value.manifest || manifest();
+  return Object.assign({
+    manifest: manifestValue,
+    digest: digest('a'),
     enabled: true,
-    version: '1.2.0',
-    revision: 4,
-    schemaVersion: 2,
-    frontendUrl: '/api/v1/extensions/' + id + '/frontend.js?digest=' + urlDigest,
-    operations: [{ name: 'inspect', description: 'Consulta', permission: OP_PERMISSION, mutation: false }]
-  };
-  return Object.assign(base, overrides || {});
+    version: manifestValue.version,
+    revision: 2,
+    schemaVersion: 1,
+    status: 'installed',
+    frontendUrl: null,
+    operations: manifestValue.operations
+  }, value, { manifest: manifestValue });
 }
 
-function activate(host) {
-  const script = host.document.head.children[0];
-  host.window.ITSMExtensions.register(EXT_ID, {
-    components: {
-      DemoPanel: { template: '<p>demo</p>' },
-      DemoAssetPanel: { template: '<p>activo</p>' }
-    }
-  });
-  script.onload();
-  return host.vm.extensions.items[0];
-}
-
-function createHost(options) {
-  const env = createSandbox();
-  const requests = [];
-  let handler = () => Promise.resolve({ sdkVersion: 1, items: [] });
-  env.window.AssetAccess = {
-    request(vm, requestPath, requestOptions) {
-      requests.push({ vm, path: requestPath, options: requestOptions });
-      return handler(vm, requestPath, requestOptions);
+function createHost(permissions) {
+  const sandbox = createSandbox();
+  const calls = [];
+  const catalog = [];
+  sandbox.window.location.origin = 'https://itsm.example';
+  sandbox.window.AssetAccess = {
+    request: async (vm, path, options) => {
+      calls.push({ path, options, vm });
+      return { items: [] };
     },
-    setExtensionPermissions(items) {
-      env.window.__catalog = Array.isArray(items) ? items.map((entry) => entry.id) : [];
-    }
+    setExtensionPermissions: (groups) => catalog.push(groups)
   };
-  evaluate(env, 'assets/js/extensions.js');
-  const service = env.window.AssetExtensions;
-  const state = service.data().extensions;
-  const vm = {
+  evaluate(sandbox, 'assets/js/extension-views.js');
+  evaluate(sandbox, 'assets/js/ui-composition.js');
+  evaluate(sandbox, 'assets/js/extensions.js');
+  const app = {
     authenticated: true,
     activeUserId: 'user-1',
-    csrfToken: 'csrf-1',
-    serverPermissions: [PAGE_PERMISSION, OP_PERMISSION, 'system.modules'],
-    route: { name: 'panel' },
-    extensions: state,
-    can(permission) { return this.serverPermissions.includes(permission); },
-    showToast() {}
+    serverPermissions: permissions || [READ, WRITE, 'system.modules'],
+    can(permission) { return this.serverPermissions.indexOf(permission) !== -1; }
   };
-  return {
-    env,
-    window: env.window,
-    document: env.window.document,
-    service,
-    vm,
-    requests,
-    setHandler(fn) { handler = fn; }
-  };
+  app.extensions = sandbox.window.AssetExtensions.data().extensions;
+  return { sandbox, window: sandbox.window, service: sandbox.window.AssetExtensions, app, calls, catalog };
 }
 
-test('extensions sync refuses unknown SDK versions and keeps no stale modules', async () => {
+function sync(host, items) {
+  return host.service.sync(host.app, { sdkVersion: 2, items: items || [item()] });
+}
+
+test('discovery rejects an incompatible SDK and never creates a module script', () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 2, items: [item()] });
-  assert.equal(host.window.ITSMExtensions.sdkVersion, 1);
-  assert.equal(host.vm.extensions.items.length, 0);
-  assert.match(host.vm.extensions.error, /SDK/);
-  assert.equal(host.document.head.children.length, 0);
+  assert.equal(host.service.sync(host.app, { sdkVersion: 1, items: [item()] }), false);
+  assert.match(host.app.extensions.error, /SDK incompatible/);
+  assert.equal(host.app.extensions.items.length, 0);
+
+  assert.equal(sync(host), true);
+  assert.equal(host.app.extensions.items.length, 1);
+  assert.equal(host.app.extensions.items[0].loaded, true);
+  assert.equal(host.window.document.head.children.length, 0, 'no script element was created');
+  assert.equal(host.window.ITSMExtensions.sdkVersion, 2);
 });
 
-test('extensions loads only exact same-origin digest-bound script URLs', () => {
+test('v1 modules stay visible as requires_upgrade and are never exposed as SDK or pages', () => {
   const host = createHost();
-  const badOrigin = item({ frontendUrl: 'https://evil.example/api/v1/extensions/demo/frontend.js?digest=' + digest() });
-  host.service.sync(host.vm, { sdkVersion: 1, items: [badOrigin] });
-  assert.equal(host.document.head.children.length, 0);
-  assert.match(host.vm.extensions.items[0].loadError, /origen/i);
-
-  const badDigest = item({ frontendUrl: '/api/v1/extensions/demo/frontend.js?digest=' + digest('b') });
-  host.service.sync(host.vm, { sdkVersion: 1, items: [badDigest] });
-  assert.equal(host.document.head.children.length, 0);
-  assert.match(host.vm.extensions.items[0].loadError, /digest/i);
-
-  const badPath = item({ frontendUrl: '/api/v1/extensions/other/frontend.js?digest=' + digest() });
-  host.service.sync(host.vm, { sdkVersion: 1, items: [badPath] });
-  assert.equal(host.document.head.children.length, 0);
-
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  assert.equal(host.document.head.children.length, 1);
-  assert.equal(
-    host.document.head.children[0].src,
-    'https://itsm.example/api/v1/extensions/demo/frontend.js?digest=' + digest()
-  );
+  const legacy = item({ manifest: manifest({ sdkVersion: 1 }), version: '1.0.0', status: 'requires_upgrade' });
+  assert.equal(sync(host, [legacy]), true);
+  const stored = host.app.extensions.items[0];
+  assert.equal(stored.requiresUpgrade, true);
+  assert.equal(host.service.sdkFor(host.app, stored), null);
+  assert.deepEqual(plain(host.service.pageLinks(host.app)), []);
+  assert.deepEqual(plain(host.service.panelsFor(host.app)), []);
+  assert.deepEqual(plain(host.service.widgetsFor(host.app)), []);
+  assert.deepEqual(plain(host.service.actionsFor(host.app, { id: 'a-1' })), []);
 });
 
-test('extension registration commits declared components only after the script loads', () => {
+test('a declarative module cannot publish code and an isolated view needs a sandboxed runtime', () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const script = host.document.head.children[0];
-  assert.equal(host.service.componentFor('DemoPanel'), null);
+  const withEntry = item({ manifest: manifest({ frontend: Object.assign(manifest().frontend, { entry: 'frontend.js' }) }) });
+  sync(host, [withEntry]);
+  assert.match(host.app.extensions.items[0].invalid, /no puede publicar código de frontend/);
 
-  host.window.ITSMExtensions.register(EXT_ID, {
-    components: {
-      DemoPanel: { template: '<p>demo</p>' },
-      DemoAssetPanel: { template: '<p>activo</p>' }
-    }
+  const isolatedDeclarative = item({ manifest: manifest({ frontend: { pages: [{ id: 'x', label: 'X', permission: READ, view: { isolated: { component: 'DemoPanel' } } }] } }) });
+  sync(host, [isolatedDeclarative]);
+  assert.match(host.app.extensions.items[0].invalid, /runtime "sandboxed"/);
+
+  const sandboxed = item({
+    manifest: manifest({ runtime: 'sandboxed', frontend: { pages: [{ id: 'x', label: 'X', permission: READ, view: { isolated: { component: 'DemoPanel' } } }] } }),
+    frontendUrl: 'https://itsm.example/api/v1/extensions/demo/frontend.js?digest=' + digest('a')
   });
-  assert.equal(host.service.componentFor('DemoPanel'), null, 'not committed before script load');
-  script.onload();
-  assert.deepEqual(host.service.componentFor('DemoPanel'), { template: '<p>demo</p>' });
-  assert.equal(host.vm.extensions.items[0].loaded, true);
-
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  assert.equal(host.document.head.children.length, 1, 'same digest is not loaded twice');
+  sync(host, [sandboxed]);
+  assert.equal(host.app.extensions.items[0].invalid, '');
+  assert.ok(host.app.extensions.items[0].frontendUrl);
 });
 
-test('registration cannot claim core or shared component names', () => {
+test('an unknown capability or another storage engine invalidates the manifest', () => {
   const host = createHost();
-  host.window.ITSMExtensions.configure({
-    app: null,
-    coreComponents: ['AppIcon', 'ModalShell', 'ItsmTable']
-  });
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  for (const name of ['AppIcon', 'appicon', 'ItsmTable', 'ModalShell']) {
-    assert.throws(
-      () => host.window.ITSMExtensions.register(EXT_ID, { components: { [name]: { template: '<b></b>' } } }),
-      /reservado|núcleo|core/i
-    );
-  }
-  assert.throws(
-    () => host.window.ITSMExtensions.register('other', { components: { Other: {} } }),
-    /no está cargando/i
-  );
+  sync(host, [item({ manifest: manifest({ capabilities: ['core_sql'] }) })]);
+  assert.match(host.app.extensions.items[0].invalid, /capacidad/);
+  sync(host, [item({ manifest: manifest({ storage: { engine: 'postgres' } }) })]);
+  assert.match(host.app.extensions.items[0].invalid, /SQLite/);
 });
 
-test('module SDK invokes only declared operations with the session and permission', async () => {
+test('the SDK invokes only declared operations with plain-object arguments and the caller permission', async () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const active = activate(host);
-  const sdk = host.service.sdkFor(host.vm, active);
-  assert.equal(Object.isFrozen(sdk), true);
-  assert.equal(sdk.id, EXT_ID);
-  assert.equal(sdk.version, '1.2.0');
-  assert.equal(sdk.can(OP_PERMISSION), true);
-  assert.equal(sdk.can('ext_demo.missing'), false);
+  sync(host);
+  const sdk = host.service.sdkFor(host.app, host.app.extensions.items[0]);
+  assert.ok(sdk);
+  assert.equal(sdk.id, 'demo');
+  assert.equal(sdk.version, '2.0.0');
+  assert.equal(sdk.can(READ), true);
+  assert.equal(sdk.can('assets.write'), false);
 
-  host.setHandler((_vm, requestPath, options) => {
-    assert.equal(requestPath, '/extensions/demo/invoke/inspect');
-    assert.equal(options.method, 'POST');
-    assert.deepEqual(options.body, { query: 'abc' });
-    return Promise.resolve({ ok: true });
-  });
-  assert.deepEqual(await sdk.request('inspect', { query: 'abc' }), { ok: true });
+  await sdk.request('list_records', { limit: 5 });
+  assert.equal(host.calls[0].path, '/extensions/demo/invoke/list_records');
+  assert.equal(host.calls[0].options.method, 'POST');
+  assert.deepEqual(host.calls[0].options.body, { limit: 5 });
+  await assert.rejects(() => sdk.request('drop_tables', {}), /no declara esa operación/);
+  await assert.rejects(() => sdk.request('list_records', [1]), /objeto/);
 
-  await assert.rejects(() => sdk.request('missing', {}), /no declara/i);
-  await assert.rejects(() => sdk.request('inspect', 'text'), /objeto/i);
-
-  host.vm.serverPermissions = [PAGE_PERMISSION];
-  await assert.rejects(() => sdk.request('inspect', {}), /permiso/i);
-  assert.equal(host.requests.filter((entry) => entry.path.includes('/invoke/')).length, 1);
+  host.app.serverPermissions = ['system.modules'];
+  await assert.rejects(() => sdk.request('list_records', {}), /No tienes permiso/);
+  assert.equal(host.calls.length, 1);
 });
 
-test('module navigation stays inside its pages and core hash routes', () => {
+test('navigation stays inside own pages and core hash routes', () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const active = activate(host);
-  const sdk = host.service.sdkFor(host.vm, active);
-
-  sdk.navigate({ page: 'panel' });
-  assert.equal(host.window.location.hash, '#/extensiones/demo/panel');
-  sdk.navigate('#/inventario');
-  assert.equal(host.window.location.hash, '#/inventario');
-  assert.throws(() => sdk.navigate({ page: 'missing' }), /página/i);
-  assert.throws(() => sdk.navigate('https://evil.example'), /ruta/i);
-  assert.throws(() => sdk.navigate('javascript:alert(1)'), /ruta/i);
-  assert.throws(() => sdk.navigate('#/extensiones/otra/panel'), /ruta/i);
+  sync(host);
+  const sdk = host.service.sdkFor(host.app, host.app.extensions.items[0]);
+  assert.equal(sdk.navigate({ page: 'records' }), true);
+  assert.equal(String(host.window.location.hash), '#/extensiones/demo/records');
+  assert.equal(sdk.navigate('#/inventario'), true);
+  assert.equal(String(host.window.location.hash), '#/inventario');
+  assert.equal(sdk.navigate('#/extensiones/otra/x'), false);
+  assert.equal(sdk.navigate('https://evil.example'), false);
 });
 
-test('disabling removes scripts, components and page links immediately', () => {
+test('a response that arrives after stop cannot revive the extension', async () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  activate(host);
-  assert.ok(host.service.componentFor('DemoPanel'));
-  assert.equal(host.service.pageLinks(host.vm).length, 1);
-
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item({ enabled: false, frontendUrl: null })] });
-  assert.equal(host.document.head.children.length, 0);
-  assert.equal(host.service.componentFor('DemoPanel'), null);
-  assert.equal(host.service.pageLinks(host.vm).length, 0);
-  assert.equal(host.vm.extensions.items[0].enabled, false);
+  sync(host);
+  const sdk = host.service.sdkFor(host.app, host.app.extensions.items[0]);
+  const pending = deferred();
+  host.window.AssetAccess.request = () => pending.promise;
+  const request = sdk.request('list_records', {});
+  host.service.stop(host.app);
+  pending.resolve({ items: [{ id: 'late' }] });
+  await assert.rejects(() => request, /ya no está activa/);
+  assert.equal(host.app.extensions.items.length, 0);
 });
 
-test('late discovery responses never overwrite the newest epoch or a logged-out session', async () => {
+test('readonly assets are deep-frozen copies, never the live host object', () => {
   const host = createHost();
-  const first = deferred();
-  const second = deferred();
-  let call = 0;
-  host.setHandler(() => {
-    call += 1;
-    return call === 1 ? first.promise : second.promise;
-  });
-
-  const firstLoad = host.service.load(host.vm, { force: true });
-  const secondLoad = host.service.load(host.vm, { force: true });
-  second.resolve({ sdkVersion: 1, items: [item()] });
-  await secondLoad;
-  first.resolve({ sdkVersion: 1, items: [item({ manifest: manifest({ id: 'stale', name: 'Vieja' }), frontendUrl: '/api/v1/extensions/stale/frontend.js?digest=' + digest() })] });
-  await firstLoad;
-
-  assert.equal(host.vm.extensions.items.length, 1);
-  assert.equal(host.vm.extensions.items[0].id, EXT_ID);
-
-  host.vm.authenticated = false;
-  host.service.stop(host.vm);
-  assert.equal(host.document.head.children.length, 0);
-  assert.equal(host.service.componentFor('DemoPanel'), null);
-  assert.equal(host.vm.extensions.items.length, 0);
-});
-
-test('stop aborts a script load and ignores its late registration', () => {
-  const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const script = host.document.head.children[0];
-  host.service.stop(host.vm);
-  assert.equal(script.parentNode, null);
-  script.onload();
-  assert.equal(host.service.componentFor('DemoPanel'), null);
-  assert.equal(host.vm.extensions.items.length, 0);
-});
-
-test('read-only asset context is a deep frozen copy', () => {
-  const host = createHost();
-  const source = { id: 'A-1', technical: { ip: '10.0.0.2' }, status: 'Activo' };
+  const source = { id: 'a-1', name: 'Servidor', nested: { tags: ['produccion'] } };
   const snapshot = host.service.readonlyAsset(source);
   assert.notEqual(snapshot, source);
-  assert.equal(Object.isFrozen(snapshot), true);
-  assert.equal(Object.isFrozen(snapshot.technical), true);
-  assert.throws(() => { snapshot.technical.ip = '10.0.0.9'; }, TypeError);
-  assert.equal(source.technical.ip, '10.0.0.2');
-  assert.equal(snapshot.technical.ip, '10.0.0.2');
+  assert.equal(snapshot.id, 'a-1');
+  assert.throws(() => { snapshot.name = 'otro'; }, (error) => error && error.name === 'TypeError');
+  assert.throws(() => { snapshot.nested.tags.push('x'); }, (error) => error && error.name === 'TypeError');
+  assert.equal(source.nested.tags.length, 1);
+  assert.equal(host.service.readonlyAsset(null), null);
 });
 
-test('discovery keeps disabled modules for superadmin catalog but never offers them to pages', () => {
+test('pages, panels, widgets and actions are filtered by the caller permission', () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item({ enabled: false, frontendUrl: null })] });
-  assert.equal(host.vm.extensions.items.length, 1);
-  assert.deepEqual(host.window.__catalog, ['extension:' + EXT_ID]);
-  assert.equal(host.service.pageLinks(host.vm).length, 0);
-  const group = host.service.permissionGroups(host.vm)[0];
-  assert.match(group.label, /inactiva/i);
+  sync(host);
+  assert.equal(host.service.pageLinks(host.app).length, 1);
+  assert.equal(host.service.pageLinks(host.app)[0].href, '#/extensiones/demo/records');
+  assert.equal(host.service.panelsFor(host.app).length, 1);
+  assert.equal(host.service.widgetsFor(host.app).length, 1);
+  assert.equal(host.service.actionsFor(host.app, { id: 'a-1' }).length, 1);
+  assert.deepEqual(plain(host.service.actionsFor(host.app, null)), []);
+
+  host.app.serverPermissions = ['system.modules'];
+  assert.deepEqual(plain(host.service.pageLinks(host.app)), []);
+  assert.deepEqual(plain(host.service.panelsFor(host.app)), []);
+  assert.deepEqual(plain(host.service.widgetsFor(host.app)), []);
+  assert.deepEqual(plain(host.service.actionsFor(host.app, { id: 'a-1' })), []);
 });
 
-test('sidebar computed exposes synced native pages and clears them on logout', () => {
+test('discovered permissions are published to the catalog, including inactive modules', () => {
   const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const links = host.service.computed.extensionPageLinks.call(host.vm);
-  assert.equal(links.length, 1);
-  assert.equal(links[0].href, '#/extensiones/demo/panel');
-  assert.equal(links[0].label, 'Panel demo');
-  host.vm.authenticated = false;
-  host.service.stop(host.vm);
-  assert.equal(host.service.computed.extensionPageLinks.call(host.vm).length, 0);
-});
-
-test('same digest refresh retains the loaded module and its live SDK', async () => {
-  const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const active = activate(host);
-  const sdk = host.service.sdkFor(host.vm, active);
-  host.setHandler((_vm, requestPath) => Promise.resolve(requestPath === '/extensions'
-    ? { sdkVersion: 1, items: [item({ revision: 5 })] }
-    : { records: ['preserved'] }));
-  await host.service.load(host.vm, { force: true });
-  assert.equal(host.vm.extensions.items[0], active);
-  assert.equal(active.loaded, true);
-  assert.equal(active.revision, 5);
-  assert.ok(host.service.sdkFor(host.vm, active));
-  assert.deepEqual(await sdk.request('inspect'), { records: ['preserved'] });
-  assert.equal(host.document.head.children.length, 1);
-});
-
-test('a same digest discovery refresh does not invalidate a pending script', async () => {
-  const host = createHost();
-  host.setHandler(() => Promise.resolve({ sdkVersion: 1, items: [item()] }));
-  await host.service.load(host.vm, { force: true });
-  const active = host.vm.extensions.items[0];
-  const script = host.document.head.children[0];
-  await host.service.load(host.vm, { force: true });
-  activate(host);
-  assert.equal(host.vm.extensions.items[0], active);
-  assert.equal(active.loaded, true);
-  assert.equal(script.parentNode, host.document.head);
-  assert.equal(host.document.head.children.length, 1);
-});
-
-test('digest replacement deactivates old SDKs and commits only the new module', async () => {
-  const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const active = activate(host);
-  const sdk = host.service.sdkFor(host.vm, active);
-  const previousScript = host.document.head.children[0];
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item({ digest: digest('b'), revision: 5 })] });
-  assert.equal(previousScript.parentNode, null);
-  assert.equal(host.service.componentFor('DemoPanel'), null);
-  await assert.rejects(() => sdk.request('inspect'), /activa/i);
-  assert.equal(sdk.can(OP_PERMISSION), false);
-  activate(host);
-  assert.equal(host.vm.extensions.items[0].digest, digest('b'));
-  assert.equal(host.vm.extensions.items[0].loaded, true);
-});
-
-test('a late operation response is discarded after disable or logout', async () => {
-  const host = createHost();
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item()] });
-  const active = activate(host);
-  const pending = deferred();
-  host.setHandler(() => pending.promise);
-  const request = host.service.sdkFor(host.vm, active).request('inspect');
-  host.service.sync(host.vm, { sdkVersion: 1, items: [item({ enabled: false, revision: 5 })] });
-  pending.resolve({ records: ['must not reach the removed page'] });
-  await assert.rejects(() => request, /activa|cancelada/i);
+  sync(host, [item(), item({ manifest: manifest({ id: 'off', name: 'Apagada' }), enabled: false })]);
+  const groups = plain(host.catalog[host.catalog.length - 1]);
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].id, 'extension:demo');
+  assert.equal(groups[0].inactive, false);
+  assert.equal(groups[1].inactive, true, 'a disabled module keeps its catalog readable but inactive');
+  assert.equal(groups[0].permissions.length, 2);
 });

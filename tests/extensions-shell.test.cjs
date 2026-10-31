@@ -101,43 +101,47 @@ test('native table, status and error wrappers render factual states', async () =
   table.unmount(); status.unmount(); error.unmount();
 });
 
-test('nested native contributions resolve actual global host wrappers after script completion', async () => {
+test('declarative pages and asset panels render host views without module scripts', async () => {
   const { c, app, tick } = setup();
-  const scriptDocument = createSandbox().window.document;
-  const createElement = c.document.createElement.bind(c.document);
-  c.document.head = scriptDocument.head;
-  c.document.createElement = (tag) => tag === 'script' ? scriptDocument.createElement(tag) : createElement(tag);
   c.location.origin = 'https://itsm.example';
-  const Page = c.AssetExtensions.components.ExtensionPage;
-  const Panels = c.AssetExtensions.components.ExtensionAssetPanels;
+  const requests = [];
+  c.fetch = async (url, init) => {
+    const target = String(url).replace(/^\/api\/v1/, '');
+    requests.push({ url: target, body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body });
+    return { ok: true, status: 200, json: async () => ({ items: [{ id: 'r-1', name: 'Registro canónico' }], total: 1, limit: 10, offset: 0 }) };
+  };
+  app.serverPermissions = (app.serverPermissions || []).concat(['ext_registry.read']);
   const mounted = mountThroughShell(c, {
-    components: { ExtensionPage: Page, ExtensionAssetPanels: Panels },
+    components: {
+      ExtensionPage: c.AssetExtensions.components.ExtensionPage,
+      ExtensionAssetPanels: c.AssetExtensions.components.ExtensionAssetPanels,
+      ExtensionView: c.ExtensionViews.components.ExtensionView
+    },
     props: ['app'],
     template: '<main><extension-page :app="app" extension-id="registry" page-id="records"></extension-page><extension-asset-panels :app="app" :asset="{id: \'A-10\'}"></extension-asset-panels></main>'
   }, { app });
+  const view = { table: { operation: 'list_records', columns: [{ field: 'name', label: 'Nombre' }], filterAsset: 'assetId' } };
   const manifest = {
-    sdkVersion: 1, id: 'registry', name: 'Registro', version: '1.0.0', schemaVersion: 1,
-    permissions: [{ code: 'ext_registry.read', label: 'Leer', description: 'Consulta el registro.' }],
-    frontend: { entry: 'frontend.js', pages: [{ id: 'records', label: 'Registros', component: 'RegistryPage', permission: 'ext_registry.read' }],
-      assetPanels: [{ id: 'summary', label: 'Resumen', component: 'RegistryAsset', permission: 'ext_registry.read' }] }
+    sdkVersion: 2, id: 'registry', name: 'Registro', version: '2.0.0', schemaVersion: 1, runtime: 'declarative',
+    capabilities: [], permissions: [{ code: 'ext_registry.read', label: 'Leer', description: 'Consulta el registro.' }],
+    operations: [{ name: 'list_records', description: 'Lista registros', permission: 'ext_registry.read', mutation: false }],
+    frontend: {
+      pages: [{ id: 'records', label: 'Registros', permission: 'ext_registry.read', view }],
+      assetPanels: [{ id: 'summary', label: 'Resumen', permission: 'ext_registry.read', view }]
+    }
   };
-  c.AssetExtensions.sync(app, { sdkVersion: 1, items: [{ manifest, digest: digest(), version: '1.0.0', revision: 1, enabled: true,
-    schemaVersion: 1, frontendUrl: '/api/v1/extensions/registry/frontend.js?digest=' + digest(), operations: [] }] });
+  c.AssetExtensions.sync(app, { sdkVersion: 2, items: [{ manifest, digest: digest(), version: '2.0.0', revision: 1, enabled: true,
+    schemaVersion: 1, status: 'installed', frontendUrl: null, operations: manifest.operations }] });
   await tick();
-  assert.match(content(mounted.root), /Cargando el módulo/);
-  c.ITSMExtensions.register('registry', { components: {
-    RegistryPage: { props: ['sdk'], template: '<itsm-table caption="Registro nativo" :rows="[{id: \'one\', name: \'Registro canónico\'}]" :columns="[{field: \'name\', label: \'Nombre\'}]"></itsm-table>' },
-    RegistryAsset: { props: ['asset', 'sdk'], template: '<div><p>Contexto {{ asset.id }}</p><itsm-status label="Vigente" tone="ok"></itsm-status></div>' }
-  } });
-  c.document.head.children[0].onload();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   await tick();
   assert.match(content(mounted.root), /Registro canónico/);
-  assert.match(content(mounted.root), /Contexto A-10/);
-  assert.match(content(mounted.root), /Vigente/);
-  assert.equal(nodes(mounted.root, (node) => node.tag === 'table' && node.props.class === 'asset-table').length, 1);
+  assert.equal(requests.length, 2, 'page and panel each load their own table');
+  assert.deepEqual(requests[1].body, { limit: 10, offset: 0, assetId: 'A-10' });
+  assert.equal(nodes(mounted.root, (node) => node.tag === 'script').length, 0, 'no module script for sdk v2');
   assert.equal(mounted.errors.length, 0);
   c.AssetExtensions.stop(app);
   await tick();
-  assert.doesNotMatch(content(mounted.root), /Registro canónico|Contexto A-10/);
+  assert.doesNotMatch(content(mounted.root), /Registro canónico/);
   mounted.unmount();
 });

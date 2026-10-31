@@ -22,7 +22,7 @@ function candidateDetail(overrides) {
       id: 'demo',
       name: 'Demo nativa',
       version: '1.2.0',
-      sdkVersion: 1,
+      sdkVersion: 2,
       schemaVersion: 2,
       permissions: [{ code: 'ext_demo.page', label: 'Ver página', description: 'Abre la página.' }],
       operations: [{ name: 'inspect', description: 'Consulta los registros', permission: 'ext_demo.page', mutation: false }],
@@ -34,7 +34,7 @@ function candidateDetail(overrides) {
     validation: {
       status: 'passed',
       digest: digest('c'),
-      sdkVersion: 1,
+      sdkVersion: 2,
       checks: [{ name: 'digest', status: 'passed', detail: 'Coincide' }],
       errors: [],
       container: { image: 'itsm-extension-validator:1', engine: 'docker', source: { content: 'not review copy' } },
@@ -85,7 +85,7 @@ function candidateDetail(overrides) {
 function installedItem(overrides) {
   const base = {
     id: 'demo',
-    manifest: { id: 'demo', name: 'Demo nativa', version: '1.2.0', sdkVersion: 1, schemaVersion: 2, permissions: [], operations: [] },
+    manifest: { id: 'demo', name: 'Demo nativa', version: '1.2.0', sdkVersion: 2, schemaVersion: 2, permissions: [], operations: [] },
     digest: digest('a'),
     enabled: true,
     version: '1.2.0',
@@ -293,7 +293,7 @@ test('review refuses approval without validation and explains the server trust n
     if (requestPath === '/extensions/candidates') return Promise.resolve({ items: [] });
     if (requestPath === '/extensions/candidates/cand-1') {
       return Promise.resolve(candidateDetail({
-        validation: { status: 'failed', digest: digest('c'), sdkVersion: 1, checks: [], errors: ['Fallo'], container: 'x', completedAt: '2026-10-20T10:01:00Z' }
+        validation: { status: 'failed', digest: digest('c'), sdkVersion: 2, checks: [], errors: ['Fallo'], container: 'x', completedAt: '2026-10-20T10:01:00Z' }
       }));
     }
     throw new Error('unexpected ' + requestPath);
@@ -331,7 +331,7 @@ test('review displays canonical host permission, migration and trust metadata', 
 test('passing validation must bind the exact candidate digest and SDK', async () => {
   const review = createReview();
   review.setHandler((path) => Promise.resolve(path.endsWith('/candidates') ? { items: [] } : candidateDetail({
-    validation: { status: 'passed', digest: digest('f'), sdkVersion: 1, checks: [], errors: [], container: 'fixed-validator', completedAt: '2026-10-20T10:01:00Z' }
+    validation: { status: 'passed', digest: digest('f'), sdkVersion: 2, checks: [], errors: [], container: 'fixed-validator', completedAt: '2026-10-20T10:01:00Z' }
   })));
   await review.instance.reviewLoad();
   review.instance.askApprove();
