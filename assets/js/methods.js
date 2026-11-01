@@ -306,11 +306,9 @@
       return this.assets.filter((asset) => asset.category === id).length;
     },
     formatCurrency(value) {
-      return new Intl.NumberFormat('es-ES', {
-        style: 'currency',
-        currency: 'EUR',
-        maximumFractionDigits: 0
-      }).format(Number(value) || 0);
+      return window.ItsmI18n
+        ? window.ItsmI18n.amount(value)
+        : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(value) || 0);
     },
     copyText(value, message) {
       const text = String(value || '');

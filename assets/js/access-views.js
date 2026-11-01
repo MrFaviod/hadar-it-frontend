@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
 
   const Vue = window.Vue;
   const ModalShell = window.ModalShell;
@@ -42,10 +49,9 @@
     if (!value) return 'Nunca';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
-    return new Intl.DateTimeFormat('es-ES', {
-      dateStyle: 'medium',
-      timeStyle: 'short'
-    }).format(date);
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' })
+      : new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
   function roleName(app, id) {
@@ -172,7 +178,7 @@
         const currentId = this.draft.personId || '';
         return list(this.app.people)
           .filter((person) => person.active || person.id === currentId)
-          .sort((a, b) => String(a.name).localeCompare(String(b.name), 'es', { sensitivity: 'base' }));
+          .sort((a, b) => compareText(a.name, b.name, { sensitivity: 'base' }));
       },
       editing() {
         return this.mode === 'edit';

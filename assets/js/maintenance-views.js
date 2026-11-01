@@ -33,7 +33,9 @@
 
   function money(value) {
     if (value === null || value === undefined || value === '') return '—';
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+    return window.ItsmI18n
+      ? window.ItsmI18n.amount(value, { maximumFractionDigits: 2 })
+      : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value) || 0);
   }
 
   function plural(count, one, many) {

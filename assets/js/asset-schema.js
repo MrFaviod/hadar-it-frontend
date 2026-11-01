@@ -432,13 +432,17 @@
   function formatDate(value) {
     const parsed = parseDate(value);
     if (!parsed) return '—';
-    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(parsed);
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(parsed, { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(parsed);
   }
 
   function formatDateTime(value) {
     const parsed = parseDate(value);
     if (!parsed) return '—';
-    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(parsed);
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(parsed, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(parsed);
   }
 
   function normalizeWarranty(value) {

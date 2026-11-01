@@ -236,7 +236,9 @@
     try {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return String(value);
-      return new Intl.DateTimeFormat('es-ES', options).format(date);
+      return window.ItsmI18n
+        ? window.ItsmI18n.formatDate(date, options)
+        : new Intl.DateTimeFormat('es-ES', options).format(date);
     } catch (_) {
       return String(value);
     }
@@ -245,7 +247,7 @@
   function formatNumber(value) {
     if (typeof value !== 'number' || !Number.isFinite(value)) return String(value);
     try {
-      return new Intl.NumberFormat('es-ES').format(value);
+      return window.ItsmI18n ? window.ItsmI18n.number(value) : new Intl.NumberFormat('es-ES').format(value);
     } catch (_) {
       return String(value);
     }

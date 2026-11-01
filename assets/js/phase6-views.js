@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
 
   /* Phase 6 workspace surfaces.
    *
@@ -231,7 +238,7 @@
             seen[key] = true;
           });
         });
-        return Object.keys(seen).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+        return Object.keys(seen).sort((a, b) => compareText(a, b, { sensitivity: 'base' }));
       },
       fieldChoices() {
         const choices = IMPORT_FIELDS.slice();

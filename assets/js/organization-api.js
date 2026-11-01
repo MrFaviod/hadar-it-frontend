@@ -2839,6 +2839,7 @@
         const date = new Date(raw);
         if (isNaN(date.getTime())) return raw;
         try {
+          if (window.ItsmI18n) return window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' });
           return new Intl.DateTimeFormat('es-PY', {
             dateStyle: 'medium', timeStyle: 'short'
           }).format(date);

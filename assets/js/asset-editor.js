@@ -69,6 +69,11 @@
       },
       locked() {
         return !!(this.real && this.app.assetFieldLocked && this.app.assetFieldLocked(this.fieldKey));
+      },
+      // The installation currency is a server format, never derived from the
+      // interface language.
+      currencyCode() {
+        return window.ItsmI18n ? window.ItsmI18n.currency : 'PYG';
       }
     },
     methods: {
@@ -120,7 +125,7 @@
 
         <span v-else-if="fieldKey === 'cost'" class="input-shell">
           <input :id="inputId" type="number" min="0" step="0.01" :value="draft.cost" :placeholder="placeholder" :aria-invalid="!!error" :aria-describedby="error ? errorId : null" @input="setText" />
-          <span class="input-suffix">EUR</span>
+          <span class="input-suffix">{{ currencyCode }}</span>
         </span>
 
         <span v-else class="input-shell">

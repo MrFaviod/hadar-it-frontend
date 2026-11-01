@@ -535,21 +535,27 @@
   }
 
   function formatNumber(value) {
-    return new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
+    return window.ItsmI18n
+      ? window.ItsmI18n.number(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
   }
 
   function formatDate(value) {
     if (!value) return '—';
     const parsed = Date.parse(value);
     if (!Number.isFinite(parsed)) return '—';
-    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(parsed));
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(parsed, { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(parsed));
   }
 
   function formatDateTime(value) {
     if (!value) return '—';
     const parsed = Date.parse(value);
     if (!Number.isFinite(parsed)) return '—';
-    return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(parsed));
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(parsed, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(parsed));
   }
 
   function formatBytes(bytes) {

@@ -957,7 +957,9 @@
         if (!value) return 'Sin fecha';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return String(value);
-        return new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+        return window.ItsmI18n
+          ? window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' })
+          : new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
       },
       shortDigest(value) {
         const digest = text(value);

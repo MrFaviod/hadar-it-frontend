@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
 
   /* Phase 6 workflows adapter.
    *
@@ -431,7 +438,7 @@
         };
         const items = this.phase6.profiles.items.filter((item) => item.id !== saved.id);
         items.push(saved);
-        items.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+        items.sort((a, b) => compareText(a.name, b.name, { sensitivity: 'base' }));
         this.phase6.profiles.items = items;
         this.phase6.profiles.loaded = true;
         return { ok: true };

@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
 
   const Store = window.AssetStore || {};
   const KEYS = Store.KEYS || {};
@@ -82,9 +89,9 @@
       return result;
     }, []);
     return rows.sort(function (a, b) {
-      const byLabel = a.label.localeCompare(b.label, 'es', { sensitivity: 'base' });
+      const byLabel = compareText(a.label, b.label, { sensitivity: 'base' });
       if (byLabel) return byLabel;
-      return a.other.name.localeCompare(b.other.name, 'es', { sensitivity: 'base' });
+      return compareText(a.other.name, b.other.name, { sensitivity: 'base' });
     });
   }
 
@@ -232,7 +239,7 @@
       const aUsed = used.has(a.id) ? 1 : 0;
       const bUsed = used.has(b.id) ? 1 : 0;
       if (aUsed !== bUsed) return aUsed - bUsed;
-      return a.label.localeCompare(b.label, 'es', { sensitivity: 'base' });
+      return compareText(a.label, b.label, { sensitivity: 'base' });
     });
   }
 
@@ -251,7 +258,7 @@
         return asset.id !== sourceId && !asset.retired && !taken.has(asset.id);
       })
       .sort(function (a, b) {
-        return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+        return compareText(a.name, b.name, { sensitivity: 'base' });
       });
   }
 

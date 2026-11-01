@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
 
   const Schema = window.AssetSchema;
   const Data = window.AssetOpsData;
@@ -14,11 +21,9 @@
   }
 
   function currency(value) {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: 'EUR',
-      maximumFractionDigits: 0
-    }).format(Number(value) || 0);
+    return window.ItsmI18n
+      ? window.ItsmI18n.amount(value)
+      : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(value) || 0);
   }
 
   function findById(list, id) {
@@ -581,7 +586,7 @@
       const name = entry.actor || 'Sistema';
       seen[name] = true;
     });
-    return Object.keys(seen).sort(function (a, b) { return a.localeCompare(b, 'es', { sensitivity: 'base' }); });
+    return Object.keys(seen).sort(function (a, b) { return compareText(a, b, { sensitivity: 'base' }); });
   }
 
   window.AssetOpsEngine = {
