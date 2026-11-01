@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-function load(){const c=vm.createContext({console,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,DataView,atob,btoa});c.window=c;for(const file of ['assets/js/appearance-engine.js','assets/js/appearance-package.js'])if(fs.existsSync(file))vm.runInContext(fs.readFileSync(file,'utf8'),c);assert.ok(c.AssetAppearancePackage,'portable ZIP codec available');return {P:c.AssetAppearancePackage,E:c.AssetAppearanceEngine};}
+const { bootAppearanceI18n } = require('./appearance-i18n.cjs');
+function load(){const c=vm.createContext({console,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,DataView,atob,btoa});c.window=c;bootAppearanceI18n(c);for(const file of ['assets/js/appearance-engine.js','assets/js/appearance-package.js'])if(fs.existsSync(file))vm.runInContext(fs.readFileSync(file,'utf8'),c);assert.ok(c.AssetAppearancePackage,'portable ZIP codec available');return {P:c.AssetAppearancePackage,E:c.AssetAppearanceEngine};}
 const image='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12"/></svg>');
 test('S4/S6 ZIP roundtrip includes manifest, all graphics and both color modes without external dependencies',async()=>{
  const {P,E}=load(),p=E.createState().active;p.name='Identidad técnica';for(const k of ['logo','logoDark','logoCompact','favicon'])p.branding[k]=image;

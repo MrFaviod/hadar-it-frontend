@@ -27,11 +27,11 @@
   // Capabilities are host services the backend grants to the module. The
   // frontend only describes them; it never enforces them.
   const CAPABILITY_LABELS = {
-    'assets.read': 'Leer activos a través de los servicios públicos del núcleo.',
-    'assets.write': 'Crear, actualizar y archivar activos con las reglas del servidor.',
-    'incidents.read': 'Consultar incidentes autorizados.',
-    'incidents.write': 'Crear incidentes por las operaciones declaradas.',
-    'notify': 'Enviar notificaciones por el servicio del host.'
+    'assets.read': 'ui.extensions.capability.assets_read',
+    'assets.write': 'ui.extensions.capability.assets_write',
+    'incidents.read': 'ui.extensions.capability.incidents_read',
+    'incidents.write': 'ui.extensions.capability.incidents_write',
+    'notify': 'ui.extensions.capability.notify'
   };
 
   function text(value) {
@@ -121,34 +121,34 @@
 
   function normalizeContribution(raw, kind, errors, seen, operations) {
     if (!isPlainObject(raw)) {
-      addError(errors, 'Una contribución de ' + kind + ' no es un objeto válido.');
+      addError(errors, tr('ui.extensions.error.contribution_object', { kind }));
       return null;
     }
     const id = text(raw.id);
     const label = text(raw.label);
     const permission = text(raw.permission);
     if (!PAGE_ID_RE.test(id) || id.length > 64) {
-      addError(errors, 'La contribución ' + kind + ' tiene un id no válido.');
+      addError(errors, tr('ui.extensions.error.contribution_id', { kind }));
       return null;
     }
     if (seen.has(id)) {
-      addError(errors, 'La contribución ' + kind + ' repite el id "' + id + '".');
+      addError(errors, tr('ui.extensions.error.contribution_duplicate', { kind, id }));
       return null;
     }
     seen.add(id);
     if (!label || label.length > 120) {
-      addError(errors, 'La contribución "' + id + '" necesita una etiqueta breve.');
+      addError(errors, tr('ui.extensions.error.contribution_label', { id }));
       return null;
     }
     if (!PERMISSION_RE.test(permission) || permission.length > 160) {
-      addError(errors, 'La contribución "' + id + '" necesita un permiso del servidor.');
+      addError(errors, tr('ui.extensions.error.contribution_permission', { id }));
       return null;
     }
     const checked = window.ExtensionViews && typeof window.ExtensionViews.normalizeView === 'function'
       ? window.ExtensionViews.normalizeView(raw.view, operations)
-      : { ok: false, error: 'El host no admite vistas declarativas.' };
+      : { ok: false, error: tr('ui.extensions.error.view_unsupported') };
     if (!checked.ok) {
-      addError(errors, 'La contribución "' + id + '" no declara una vista válida. ' + checked.error);
+      addError(errors, tr('ui.extensions.error.contribution_view', { id, reason: checked.error }));
       return null;
     }
     return {
@@ -162,7 +162,7 @@
 
   function normalizeAction(raw, errors, seen, operations) {
     if (!isPlainObject(raw)) {
-      addError(errors, 'La extensión declara una acción no válida.');
+      addError(errors, tr('ui.extensions.error.action_invalid'));
       return null;
     }
     const id = text(raw.id);
@@ -170,35 +170,35 @@
     const permission = text(raw.permission);
     const operation = text(raw.operation);
     if (!PAGE_ID_RE.test(id) || id.length > 64) {
-      addError(errors, 'La acción de activo tiene un id no válido.');
+      addError(errors, tr('ui.extensions.error.action_id'));
       return null;
     }
     if (seen.has(id)) {
-      addError(errors, 'La acción de activo repite el id "' + id + '".');
+      addError(errors, tr('ui.extensions.error.action_duplicate', { id }));
       return null;
     }
     seen.add(id);
     if (!label || label.length > 80) {
-      addError(errors, 'La acción "' + id + '" necesita una etiqueta breve.');
+      addError(errors, tr('ui.extensions.error.action_label', { id }));
       return null;
     }
     if (!PERMISSION_RE.test(permission) || permission.length > 160) {
-      addError(errors, 'La acción "' + id + '" necesita un permiso del servidor.');
+      addError(errors, tr('ui.extensions.error.action_permission', { id }));
       return null;
     }
     if (text(raw.target) !== 'asset.action') {
-      addError(errors, 'La acción "' + id + '" solo puede apuntar al contrato asset.action.');
+      addError(errors, tr('ui.extensions.error.action_target', { id }));
       return null;
     }
     if (!OPERATION_RE.test(operation) || !operations.some((entry) => entry.name === operation)) {
-      addError(errors, 'La acción "' + id + '" necesita una operación declarada.');
+      addError(errors, tr('ui.extensions.error.action_operation', { id }));
       return null;
     }
     let confirm = '';
     if (raw.confirm !== undefined) {
       confirm = typeof raw.confirm === 'string' ? text(raw.confirm) : text(raw.confirm && raw.confirm.message);
       if (!confirm) {
-        addError(errors, 'La confirmación de la acción "' + id + '" no es válida.');
+        addError(errors, tr('ui.extensions.error.action_confirm', { id }));
         return null;
       }
       confirm = confirm.slice(0, 300);
@@ -208,17 +208,17 @@
 
   function normalizePermission(raw, errors) {
     if (!isPlainObject(raw)) {
-      addError(errors, 'El manifiesto contiene un permiso no válido.');
+      addError(errors, tr('ui.extensions.error.permission_object'));
       return null;
     }
     const code = text(raw.code);
     const label = text(raw.label);
     if (!PERMISSION_RE.test(code) || code.length > 160) {
-      addError(errors, 'El manifiesto contiene un código de permiso no válido.');
+      addError(errors, tr('ui.extensions.error.permission_code'));
       return null;
     }
     if (!label || label.length > 160) {
-      addError(errors, 'El permiso "' + code + '" necesita una etiqueta.');
+      addError(errors, tr('ui.extensions.error.permission_label', { code }));
       return null;
     }
     return {
@@ -230,24 +230,24 @@
 
   function normalizeOperation(raw, errors) {
     if (!isPlainObject(raw)) {
-      addError(errors, 'La extensión declara una operación no válida.');
+      addError(errors, tr('ui.extensions.error.operation_object'));
       return null;
     }
     const name = text(raw.name);
     if (!OPERATION_RE.test(name) || name.length > 80) {
-      addError(errors, 'La extensión declara un nombre de operación no válido.');
+      addError(errors, tr('ui.extensions.error.operation_name'));
       return null;
     }
     const permission = text(raw.permission);
     if (!PERMISSION_RE.test(permission)) {
-      addError(errors, 'La operación "' + name + '" necesita un permiso.');
+      addError(errors, tr('ui.extensions.error.operation_permission', { name }));
       return null;
     }
     // The view switch between declarative arguments (`filters`, `data`) and a
     // handler call depends on this kind, so an unknown one is rejected.
     const kind = raw.kind === undefined || raw.kind === '' ? 'handler' : text(raw.kind);
     if (OPERATION_KINDS.indexOf(kind) === -1) {
-      addError(errors, 'La operación "' + name + '" declara un tipo no válido.');
+      addError(errors, tr('ui.extensions.error.operation_kind', { name }));
       return null;
     }
     return {
@@ -261,18 +261,18 @@
   }
 
   function frontendUrlFor(rawUrl, id, digest) {
-    if (typeof rawUrl !== 'string' || !rawUrl.trim()) throw new Error('El servidor no informó la URL del módulo.');
+    if (typeof rawUrl !== 'string' || !rawUrl.trim()) throw new Error(tr('ui.extensions.error.frontend_url_missing'));
     let url;
     try {
       url = new URL(rawUrl, window.location.origin);
     } catch (_) {
-      throw new Error('La URL del módulo no es válida.');
+      throw new Error(tr('ui.extensions.error.frontend_url_invalid'));
     }
-    if (url.origin !== window.location.origin) throw new Error('La URL del módulo debe ser del mismo origen.');
-    if (url.username || url.password || url.hash) throw new Error('La URL del módulo no puede incluir credenciales ni fragmentos.');
+    if (url.origin !== window.location.origin) throw new Error(tr('ui.extensions.error.frontend_url_origin'));
+    if (url.username || url.password || url.hash) throw new Error(tr('ui.extensions.error.frontend_url_credentials'));
     const expectedPath = '/api/v1/extensions/' + encode(id) + '/frontend.js';
-    if (url.pathname !== expectedPath) throw new Error('La URL del módulo no corresponde a la ruta autorizada.');
-    if (url.searchParams.get('digest') !== digest) throw new Error('La URL del módulo no coincide con el digest aprobado.');
+    if (url.pathname !== expectedPath) throw new Error(tr('ui.extensions.error.frontend_url_path'));
+    if (url.searchParams.get('digest') !== digest) throw new Error(tr('ui.extensions.error.frontend_url_digest'));
     return url.href;
   }
 
@@ -282,22 +282,22 @@
       return {
         id: '', manifest: null, digest: '', enabled: false, version: '', revision: null,
         schemaVersion: null, frontendUrl: '', operations: [], pages: [], assetPanels: [], contributions: [],
-        ignoredContributions: [], declaredComponents: [], invalid: 'El servidor devolvió un módulo no válido.', loadError: '', loading: false, loaded: false
+        ignoredContributions: [], declaredComponents: [], invalid: tr('ui.extensions.error.item_invalid'), loadError: '', loading: false, loaded: false
       };
     }
     const manifest = isPlainObject(raw.manifest) ? raw.manifest : null;
     const id = manifest ? text(manifest.id) : '';
-    if (!manifest) addError(errors, 'El módulo no incluye su manifiesto.');
-    if (!EXTENSION_ID_RE.test(id) || id.length > 64) addError(errors, 'El módulo tiene un id no válido.');
+    if (!manifest) addError(errors, tr('ui.extensions.error.manifest_missing'));
+    if (!EXTENSION_ID_RE.test(id) || id.length > 64) addError(errors, tr('ui.extensions.error.module_id'));
     const digest = text(raw.digest);
-    if (!DIGEST_RE.test(digest)) addError(errors, 'El módulo no está ligado a un digest SHA-256 válido.');
+    if (!DIGEST_RE.test(digest)) addError(errors, tr('ui.extensions.error.module_digest'));
     const revision = Number.isInteger(raw.revision) && raw.revision >= 0 ? raw.revision : null;
-    if (revision === null) addError(errors, 'El servidor no informó la revisión de instalación del módulo.');
+    if (revision === null) addError(errors, tr('ui.extensions.error.module_revision'));
     const enabled = raw.enabled === true;
     const version = text(raw.version);
-    if (!version) addError(errors, 'El módulo no informa su versión activa.');
+    if (!version) addError(errors, tr('ui.extensions.error.module_version'));
     const schemaVersion = Number.isInteger(raw.schemaVersion) ? raw.schemaVersion : null;
-    if (schemaVersion === null) addError(errors, 'El módulo no informa su versión de esquema.');
+    if (schemaVersion === null) addError(errors, tr('ui.extensions.error.module_schema'));
 
     const permissions = [];
     const permissionCodes = new Set();
@@ -320,22 +320,22 @@
     });
 
     if (manifest && manifest.frontend !== undefined && !isPlainObject(manifest.frontend)) {
-      addError(errors, 'El manifiesto declara un frontend no válido.');
+      addError(errors, tr('ui.extensions.error.frontend_invalid'));
     }
     const frontend = isPlainObject(manifest && manifest.frontend) ? manifest.frontend : {};
     const runtimeName = text(manifest && manifest.runtime);
     if (runtimeName !== 'declarative' && runtimeName !== 'sandboxed') {
-      addError(errors, 'El manifiesto debe declarar runtime "declarative" o "sandboxed".');
+      addError(errors, tr('ui.extensions.error.runtime_invalid'));
     }
     const requiresUpgrade = text(raw.status) === 'requires_upgrade' || raw.requiresUpgrade === true ||
       !!(manifest && Number.isInteger(manifest.sdkVersion) && manifest.sdkVersion < SDK_VERSION);
     if (frontend.entry !== undefined && runtimeName === 'declarative') {
-      addError(errors, 'Una extensión declarativa no puede publicar código de frontend.');
+      addError(errors, tr('ui.extensions.error.declarative_frontend'));
     }
     const capabilities = [];
     list(manifest && manifest.capabilities).forEach((entry) => {
       if (typeof entry !== 'string' || !CAPABILITY_LABELS[entry]) {
-        addError(errors, 'El manifiesto declara una capacidad no reconocida.');
+        addError(errors, tr('ui.extensions.error.capability_unrecognized'));
         return;
       }
       if (capabilities.indexOf(entry) === -1) capabilities.push(entry);
@@ -343,7 +343,7 @@
     let storage = null;
     if (manifest && manifest.storage !== undefined) {
       if (!isPlainObject(manifest.storage) || text(manifest.storage.engine) !== 'sqlite') {
-        addError(errors, 'El manifiesto solo puede declarar almacenamiento SQLite propio.');
+        addError(errors, tr('ui.extensions.error.storage_only_sqlite'));
       } else {
         storage = { engine: 'sqlite' };
       }
@@ -357,26 +357,26 @@
       const page = normalizeContribution(entry, 'page', errors, pageIds, operations);
       if (page) pages.push(page);
     });
-    if (list(frontend.pages).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas páginas.');
+    if (list(frontend.pages).length > MAX_CONTRIBUTIONS) addError(errors, tr('ui.extensions.error.too_many_pages'));
     const panelIds = new Set();
     list(frontend.assetPanels).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
       const panel = normalizeContribution(entry, 'assetPanel', errors, panelIds, operations);
       if (panel) assetPanels.push(panel);
     });
-    if (list(frontend.assetPanels).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados paneles de activo.');
+    if (list(frontend.assetPanels).length > MAX_CONTRIBUTIONS) addError(errors, tr('ui.extensions.error.too_many_panels'));
     const widgetIds = new Set();
     list(frontend.widgets).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
       const widget = normalizeContribution(entry, 'widget', errors, widgetIds, operations);
       if (widget) widgets.push(widget);
     });
-    if (list(frontend.widgets).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiados widgets.');
+    if (list(frontend.widgets).length > MAX_CONTRIBUTIONS) addError(errors, tr('ui.extensions.error.too_many_widgets'));
     const actions = [];
     const actionIds = new Set();
     list(frontend.actions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
       const action = normalizeAction(entry, errors, actionIds, operations);
       if (action) actions.push(action);
     });
-    if (list(frontend.actions).length > MAX_CONTRIBUTIONS) addError(errors, 'El módulo declara demasiadas acciones.');
+    if (list(frontend.actions).length > MAX_CONTRIBUTIONS) addError(errors, tr('ui.extensions.error.too_many_actions'));
 
     const contributions = [];
     const ignoredContributions = [];
@@ -385,7 +385,7 @@
       list(frontend.contributions).slice(0, MAX_CONTRIBUTIONS).forEach((entry) => {
         const checked = window.UIComposition && typeof window.UIComposition.normalize === 'function'
           ? window.UIComposition.normalize(entry, { id, manifest, permissions, operations }, seen)
-          : { ok: false, error: 'El host no admite composición de la interfaz.' };
+          : { ok: false, error: tr('ui.extensions.error.composition_unsupported') };
         if (checked.ok) {
           seen.add(checked.value.id);
           contributions.push(checked.value);
@@ -401,7 +401,7 @@
     let frontendUrl = '';
     if (isolated) {
       if (runtimeName !== 'sandboxed') {
-        addError(errors, 'Solo una extensión con runtime "sandboxed" puede declarar vistas aisladas.');
+        addError(errors, tr('ui.extensions.error.isolated_requires_sandbox'));
       }
       try {
         frontendUrl = frontendUrlFor(raw.frontendUrl, id, digest);
@@ -482,7 +482,7 @@
     const state = ensureState(vm);
     if (!payload || payload.sdkVersion !== SDK_VERSION) {
       unloadAll(vm);
-      state.error = 'El servidor usa una versión del SDK incompatible. No se cargó ninguna extensión.';
+      state.error = tr('ui.extensions.error.sdk_incompatible');
       publishCatalog(vm);
       return false;
     }
@@ -516,7 +516,7 @@
     } catch (error) {
       if (epoch !== runtime.epoch || !vm.authenticated) return false;
       state.loading = false;
-      state.error = (error && (error.message || error.error)) || 'No se pudieron consultar las extensiones.';
+      state.error = (error && (error.message || error.error)) || tr('ui.extensions.error.load_failed');
       state.loaded = false;
       publishCatalog(vm);
       return false;
@@ -647,15 +647,15 @@
       version: item.version,
       request(operationName, args) {
         if (!isCurrentItem(vm, item)) {
-          return Promise.reject(new Error('La extensión ya no está activa.'));
+          return Promise.reject(new Error(tr('ui.extensions.error.runtime_inactive')));
         }
         const operation = operationFor(item, operationName);
-        if (!operation) return Promise.reject(new Error('La extensión no declara esa operación.'));
+        if (!operation) return Promise.reject(new Error(tr('ui.extensions.error.operation_unknown')));
         if (args !== undefined && args !== null && (!isPlainObject(args))) {
-          return Promise.reject(new Error('Los argumentos de la operación deben ser un objeto.'));
+          return Promise.reject(new Error(tr('ui.extensions.error.operation_arguments')));
         }
         if (typeof vm.can !== 'function' || !vm.can(operation.permission)) {
-          return Promise.reject(new Error('No tienes permiso para esa operación.'));
+          return Promise.reject(new Error(tr('ui.extensions.error.operation_forbidden')));
         }
         const identity = identityKey(vm);
         return window.AssetAccess.request(vm, '/extensions/' + encode(item.id) + '/invoke/' + encode(operationName), {
@@ -663,7 +663,7 @@
           body: isPlainObject(args) ? args : {}
         }).then((response) => {
           if (!isCurrentItem(vm, item) || identity !== identityKey(vm)) {
-            throw new Error('La extensión ya no está activa.');
+            throw new Error(tr('ui.extensions.error.runtime_inactive'));
           }
           return response;
         });
@@ -674,10 +674,10 @@
         return typeof vm.can === 'function' && !!vm.can(permission);
       },
       navigate(target) {
-        if (!isCurrentItem(vm, item)) throw new Error('La extensión ya no está activa.');
+        if (!isCurrentItem(vm, item)) throw new Error(tr('ui.extensions.error.runtime_inactive'));
         if (isPlainObject(target)) {
           const page = item.pages.find((entry) => entry.id === target.page);
-          if (!page) throw new Error('La extensión no declara esa página.');
+          if (!page) throw new Error(tr('ui.extensions.error.page_not_declared'));
           window.location.hash = pageLink(item.id, page);
           return true;
         }
@@ -846,27 +846,35 @@
 
   function actionLabel(action) {
     const labels = {
-      'extension.submitted': 'Enviado para revisión',
-      'extension.validated': 'Validación completada',
-      'extension.approved': 'Aprobado',
-      'extension.installed': 'Instalado',
-      'extension.upgraded': 'Actualizado',
-      'extension.enabled': 'Activado',
-      'extension.disabled': 'Desactivado',
-      'extension.rolled_back': 'Rollback aplicado',
-      'extension.superseded': 'Reemplazado por otro candidato'
+      'extension.submitted': 'ui.extensions.event.submitted',
+      'extension.validated': 'ui.extensions.event.validated',
+      'extension.approved': 'ui.extensions.event.approved',
+      'extension.installed': 'ui.extensions.event.installed',
+      'extension.upgraded': 'ui.extensions.event.upgraded',
+      'extension.enabled': 'ui.extensions.event.enabled',
+      'extension.disabled': 'ui.extensions.event.disabled',
+      'extension.rolled_back': 'ui.extensions.event.rolled_back',
+      'extension.superseded': 'ui.extensions.event.superseded'
     };
-    return labels[action] || action || 'Evento';
+    return labels[action] ? tr(labels[action]) : (action || tr('ui.extensions.event.fallback'));
   }
 
   function candidateStateLabel(state) {
-    const labels = { pending: 'Pendiente', installed: 'Instalada', superseded: 'Reemplazada' };
-    return labels[state] || state || 'Desconocido';
+    const labels = {
+      pending: 'ui.extensions.state.pending',
+      installed: 'ui.extensions.state.installed',
+      superseded: 'ui.extensions.state.superseded'
+    };
+    return labels[state] ? tr(labels[state]) : (state || tr('ui.extensions.state.unknown'));
   }
 
   function validationStatusLabel(status) {
-    const labels = { passed: 'Correcta', failed: 'Con errores', missing: 'Sin informe' };
-    return labels[status] || status || 'Sin informe';
+    const labels = {
+      passed: 'ui.extensions.validation.passed',
+      failed: 'ui.extensions.validation.failed',
+      missing: 'ui.extensions.validation.report_missing'
+    };
+    return labels[status] ? tr(labels[status]) : (status || tr('ui.extensions.validation.report_missing'));
   }
 
   function compareVersions(left, right) {
@@ -961,16 +969,16 @@
     },
     methods: {
       formatDate(value) {
-        if (!value) return 'Sin fecha';
+        if (!value) return tr('ui.extensions.review.date_missing');
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return String(value);
         return window.ItsmI18n
           ? window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' })
-          : new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+          : new Intl.DateTimeFormat(window.ItsmI18n && window.ItsmI18n.activeLocale ? window.ItsmI18n.activeLocale : 'es', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
       },
       shortDigest(value) {
         const digest = text(value);
-        return digest ? digest.slice(0, 12) + '…' : 'Sin digest';
+        return digest ? digest.slice(0, 12) + '…' : tr('ui.extensions.review.digest_missing');
       },
       actionLabel,
       candidateStateLabel,
@@ -991,24 +999,24 @@
         // reads the Spanish description of the same runtime.
         const trust = this.detail && isPlainObject(this.detail.trust) ? this.detail.trust : {};
         const runtime = text(trust.runtime) || (this.detail && this.detail.manifest && this.detail.manifest.runtime);
-        if (runtime === 'sandboxed') return 'El código del servidor corre en un proceso restringido, sin red, sin secretos y sin acceso a la base del núcleo; cada efecto sobre el núcleo pasa por una capacidad autorizada del host. El código visual corre en un marco aislado sin acceso a la sesión, al DOM del host ni a su almacenamiento.';
-        return 'Las vistas declarativas no ejecutan código del módulo en esta página: el host las dibuja con sus componentes.';
+        if (runtime === 'sandboxed') return tr('ui.extensions.review.trust_sandboxed_detail');
+        return tr('ui.extensions.review.trust_declarative_detail');
       },
       runtimeLabel(runtime) {
-        if (runtime === 'sandboxed') return 'Código aislado';
-        if (runtime === 'declarative') return 'Declarativa';
-        return 'No informado';
+        if (runtime === 'sandboxed') return tr('ui.extensions.runtime.sandboxed');
+        if (runtime === 'declarative') return tr('ui.extensions.runtime.declarative');
+        return tr('ui.extensions.runtime.unknown');
       },
       capabilityLabel(code) {
-        return CAPABILITY_LABELS[code] || 'Capacidad no informada por el host.';
+        return CAPABILITY_LABELS[code] ? tr(CAPABILITY_LABELS[code]) : tr('ui.extensions.capability.unknown');
       },
       viewSummary(view) {
         return window.ExtensionViews && typeof window.ExtensionViews.describeView === 'function'
           ? window.ExtensionViews.describeView(view)
-          : 'Sin vista declarada.';
+          : tr('ui.extensions.review.view_missing');
       },
       formatBytes(value) {
-        if (!Number.isInteger(value) || value < 0) return 'No informado';
+        if (!Number.isInteger(value) || value < 0) return tr('ui.extensions.review.unreported');
         if (value < 1024) return value + ' B';
         if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
         return (value / (1024 * 1024)).toFixed(1) + ' MB';
@@ -1018,26 +1026,26 @@
         const data = entry.data || {};
         const events = isPlainObject(data.events) ? data.events : {};
         const sandbox = isPlainObject(data.sandbox) ? data.sandbox : {};
-        const size = Number.isInteger(data.dataSizeBytes) ? this.formatBytes(data.dataSizeBytes) : 'No informado';
+        const size = Number.isInteger(data.dataSizeBytes) ? this.formatBytes(data.dataSizeBytes) : tr('ui.extensions.review.unreported');
         const schema = Number.isInteger(data.schemaVersion) ? data.schemaVersion : item.schemaVersion;
         const cursor = Number.isInteger(events.cursor) ? events.cursor : data.eventCursor;
         const stalled = events.stalled === true || events.state === 'stalled' || data.stalled === true;
-        let eventsLabel = 'No informado';
+        let eventsLabel = tr('ui.extensions.review.unreported');
         if (stalled) {
-          eventsLabel = 'Detenidos' + (Number.isInteger(cursor) ? ' en ' + cursor : '') + (text(events.lastError) ? ' · ' + text(events.lastError) : '');
+          eventsLabel = tr('ui.extensions.events.stalled') + (Number.isInteger(cursor) ? tr('ui.extensions.events.stalled_at', { cursor }) : '') + (text(events.lastError) ? tr('ui.extensions.events.last_error', { error: text(events.lastError) }) : '');
         } else if (Number.isInteger(cursor)) {
-          eventsLabel = 'Al día · cursor ' + cursor;
+          eventsLabel = tr('ui.extensions.events.current', { cursor });
         }
         const sandboxLabel = sandbox.available === true
-          ? 'Disponible' + (Number.isInteger(sandbox.landlockAbi) ? ' · Landlock ABI ' + sandbox.landlockAbi : '')
+          ? tr('ui.extensions.sandbox.available') + (Number.isInteger(sandbox.landlockAbi) ? tr('ui.extensions.sandbox.landlock', { abi: sandbox.landlockAbi }) : '')
           : sandbox.available === false
-            ? 'No disponible' + (text(sandbox.detail) ? ' · ' + text(sandbox.detail) : '')
-            : 'No informado';
+            ? tr('ui.extensions.sandbox.unavailable') + (text(sandbox.detail) ? tr('ui.extensions.sandbox.detail', { detail: text(sandbox.detail) }) : '')
+            : tr('ui.extensions.review.unreported');
         return [
-          { label: 'Almacenamiento', value: 'Base SQLite propia · ' + size },
-          { label: 'Esquema de datos', value: Number.isInteger(schema) ? String(schema) : 'No informado' },
-          { label: 'Eventos', value: eventsLabel },
-          { label: 'Entorno restringido', value: sandboxLabel }
+          { label: tr('ui.extensions.status.storage'), value: tr('ui.extensions.status.storage_value', { size }) },
+          { label: tr('ui.extensions.status.schema'), value: Number.isInteger(schema) ? String(schema) : tr('ui.extensions.review.unreported') },
+          { label: tr('ui.extensions.status.events'), value: eventsLabel },
+          { label: tr('ui.extensions.status.sandbox'), value: sandboxLabel }
         ];
       },
       async loadStatus(item) {
@@ -1052,12 +1060,12 @@
           this.status.byId[id] = { loading: false, loaded: true, error: '', data: isPlainObject(response) ? response : {} };
           return true;
         } catch (error) {
-          this.status.byId[id] = { loading: false, loaded: false, error: (error && (error.message || error.error)) || 'El servidor no informó el estado de la extensión.', data: null };
+          this.status.byId[id] = { loading: false, loaded: false, error: (error && (error.message || error.error)) || tr('ui.extensions.error.status_failed'), data: null };
           return false;
         }
       },
       reviewFilterLabel(filter) {
-        return filter === 'pending' ? 'Pendientes' : filter === 'installed' ? 'Instaladas' : filter === 'superseded' ? 'Reemplazadas' : 'Todas';
+        return filter === 'pending' ? tr('ui.extensions.review.filter_pending') : filter === 'installed' ? tr('ui.extensions.review.filter_installed') : filter === 'superseded' ? tr('ui.extensions.review.filter_superseded') : tr('ui.extensions.review.filter_all');
       },
       async reviewLoad(options) {
         const identity = identityKey(this.app);
@@ -1078,7 +1086,7 @@
         } catch (error) {
           if (epoch !== this.reviewEpoch || !this.app.authenticated || identity !== identityKey(this.app)) return false;
           this.review.loading = false;
-          this.review.error = (error && (error.message || error.error)) || 'No se pudieron consultar los candidatos.';
+          this.review.error = (error && (error.message || error.error)) || tr('ui.extensions.review.candidates_failed');
           return false;
         }
       },
@@ -1100,7 +1108,7 @@
           if (epoch !== this.detailEpoch || !this.app.authenticated || identity !== identityKey(this.app)) return false;
           this.review.detailLoading = false;
           this.review.detail = null;
-          this.review.detailError = (error && (error.message || error.error)) || 'No se pudo consultar el candidato.';
+          this.review.detailError = (error && (error.message || error.error)) || tr('ui.extensions.candidate.detail_failed');
           return false;
         }
       },
@@ -1141,10 +1149,10 @@
         const detail = entry && entry.detail;
         if (!detail) return '';
         const parts = [];
-        if (detail.version) parts.push('versión ' + detail.version);
-        if (detail.enabled !== undefined) parts.push(detail.enabled ? 'activa' : 'desactivada');
-        if (Number.isInteger(detail.revision)) parts.push('revisión ' + detail.revision);
-        if (detail.fromVersion) parts.push('desde ' + detail.fromVersion);
+        if (detail.version) parts.push(tr('ui.extensions.history.version', { version: detail.version }));
+        if (detail.enabled !== undefined) parts.push(detail.enabled ? tr('ui.extensions.history.active') : tr('ui.extensions.history.inactive'));
+        if (Number.isInteger(detail.revision)) parts.push(tr('ui.extensions.history.revision', { revision: detail.revision }));
+        if (detail.fromVersion) parts.push(tr('ui.extensions.history.from', { version: detail.fromVersion }));
         return parts.join(' · ');
       },
       resetAction() {
@@ -1159,29 +1167,29 @@
       askApprove() {
         this.resetAction();
         if (!this.canManage) {
-          this.action.error = 'Solo un Superadmin humano puede aprobar extensiones.';
+          this.action.error = tr('ui.extensions.approve.superadmin_only');
           return;
         }
         const detail = this.detail;
         if (!detail || detail.state !== 'pending') {
-          this.action.error = 'Solo un candidato pendiente se puede aprobar.';
+          this.action.error = tr('ui.extensions.approve.pending_only');
           return;
         }
         if (!this.validationPassed()) {
-          this.action.error = 'La validación aislada del candidato no está aprobada.';
+          this.action.error = tr('ui.extensions.approve.validation_required');
           return;
         }
         if (detail.currentRevision !== null && !Number.isInteger(detail.currentRevision)) {
-          this.action.error = 'El servidor no informó la revisión activa. Actualiza antes de aprobar.';
+          this.action.error = tr('ui.extensions.error.revision_approve');
           return;
         }
         this.confirm = {
           open: true,
           busy: false,
           kind: 'approve',
-          title: 'Aprobar e instalar ' + detail.extensionId + ' ' + detail.version,
-          summary: 'Se instala exactamente el paquete con este digest. La aprobación también es la instalación; el servidor comprobará la revisión activa antes de confirmar.',
-          confirmLabel: 'Aprobar e instalar',
+          title: tr('ui.extensions.approve.title', { id: detail.extensionId, version: detail.version }),
+          summary: tr('ui.extensions.approve.summary'),
+          confirmLabel: tr('ui.extensions.approve.confirm'),
           error: '',
           payload: { digest: detail.digest, expectedVersion: detail.currentRevision },
           itemId: detail.extensionId,
@@ -1193,26 +1201,28 @@
       askToggle(item, enabled) {
         this.resetAction();
         if (!this.canManage) {
-          this.action.error = 'Solo un Superadmin humano puede cambiar el estado de una extensión.';
+          this.action.error = tr('ui.extensions.toggle.superadmin_only');
           return;
         }
         if (!item || !text(item.id)) {
-          this.action.error = 'El módulo no está identificado.';
+          this.action.error = tr('ui.extensions.error.module_unidentified');
           return;
         }
         if (!Number.isInteger(item.revision)) {
-          this.action.error = 'El servidor no informó la revisión activa. Actualiza antes de cambiar el estado.';
+          this.action.error = tr('ui.extensions.error.revision_toggle');
           return;
         }
         this.confirm = {
           open: true,
           busy: false,
           kind: enabled ? 'enable' : 'disable',
-          title: (enabled ? 'Activar ' : 'Desactivar ') + (item.manifest && item.manifest.name || item.id),
+          title: enabled
+            ? tr('ui.extensions.toggle.title_enable', { name: item.manifest && item.manifest.name || item.id })
+            : tr('ui.extensions.toggle.title_disable', { name: item.manifest && item.manifest.name || item.id }),
           summary: enabled
-            ? 'La interfaz y las operaciones vuelven a estar disponibles para quien tenga permisos. El servidor conserva los datos.'
-            : 'La interfaz se retira y las operaciones quedan bloqueadas. Los datos y el historial se conservan.',
-          confirmLabel: enabled ? 'Activar extensión' : 'Desactivar extensión',
+            ? tr('ui.extensions.toggle.summary_enable')
+            : tr('ui.extensions.toggle.summary_disable'),
+          confirmLabel: enabled ? tr('ui.extensions.toggle.confirm_enable') : tr('ui.extensions.toggle.confirm_disable'),
           error: '',
           payload: { enabled: !!enabled, expectedVersion: item.revision },
           itemId: item.id,
@@ -1224,12 +1234,12 @@
       askRollback(entry, item) {
         this.resetAction();
         if (!this.canManage) {
-          this.action.error = 'Solo un Superadmin humano puede aplicar un rollback.';
+          this.action.error = tr('ui.extensions.rollback.superadmin_only');
           return;
         }
         const mode = this.rollbackMode(entry, item);
         if (!mode) {
-          this.action.error = 'Ese evento del historial no permite volver a una versión anterior.';
+          this.action.error = tr('ui.extensions.rollback.unsupported');
           return;
         }
         const target = entry.detail;
@@ -1238,11 +1248,13 @@
           open: true,
           busy: false,
           kind: 'rollback',
-          title: restore ? 'Volver a ' + target.version + ' restaurando los datos' : 'Volver a ' + target.version,
+          title: restore
+            ? tr('ui.extensions.rollback.title_restore', { version: target.version })
+            : tr('ui.extensions.rollback.title', { version: target.version }),
           summary: restore
-            ? 'El esquema de datos actual no es compatible con esa versión. El servidor restaurará la copia previa a la actualización y descartará los cambios posteriores de la base propia de la extensión. Escribe el identificador para confirmarlo.'
-            : 'El servidor comprobará que el paquete anterior sigue instalado y que su esquema es compatible con los datos actuales. Si no lo es, no cambia nada.',
-          confirmLabel: restore ? 'Restaurar datos y volver' : 'Aplicar rollback',
+            ? tr('ui.extensions.rollback.summary_restore')
+            : tr('ui.extensions.rollback.summary'),
+          confirmLabel: restore ? tr('ui.extensions.rollback.confirm_restore') : tr('ui.extensions.rollback.confirm'),
           error: '',
           payload: restore
             ? { version: target.version, digest: target.digest, expectedVersion: item.revision, restoreData: true }
@@ -1256,24 +1268,24 @@
       askUninstall(item) {
         this.resetAction();
         if (!this.canManage) {
-          this.action.error = 'Solo un Superadmin humano puede desinstalar una extensión.';
+          this.action.error = tr('ui.extensions.uninstall.superadmin_only');
           return;
         }
         if (!item || !text(item.id)) {
-          this.action.error = 'El módulo no está identificado.';
+          this.action.error = tr('ui.extensions.error.module_unidentified');
           return;
         }
         if (!Number.isInteger(item.revision)) {
-          this.action.error = 'El servidor no informó la revisión activa. Actualiza antes de desinstalar.';
+          this.action.error = tr('ui.extensions.error.revision_uninstall');
           return;
         }
         this.confirm = {
           open: true,
           busy: false,
           kind: 'uninstall',
-          title: 'Desinstalar ' + (item.manifest && item.manifest.name || item.id),
-          summary: 'El servidor retira el paquete y su interfaz. La base SQLite propia de la extensión, sus archivos y su historial se conservan; volver a instalarla recupera esos datos.',
-          confirmLabel: 'Desinstalar extensión',
+          title: tr('ui.extensions.uninstall.title', { name: item.manifest && item.manifest.name || item.id }),
+          summary: tr('ui.extensions.uninstall.summary'),
+          confirmLabel: tr('ui.extensions.uninstall.confirm'),
           error: '',
           payload: { expectedVersion: item.revision },
           itemId: item.id,
@@ -1287,7 +1299,7 @@
         const kind = this.confirm.kind;
         const payload = this.confirm.payload;
         if (this.confirm.typedRequired && this.confirm.typedValue !== this.confirm.typedRequired) {
-          this.confirm.error = 'Escribe el identificador exacto para confirmar la restauración.';
+          this.confirm.error = tr('ui.extensions.confirm.typed_mismatch');
           return false;
         }
         let path = '';
@@ -1311,16 +1323,16 @@
           this.confirm.open = false;
           this.review.stale = false;
           this.action.message = kind === 'approve'
-            ? 'El servidor confirmó la aprobación e instalación del paquete.'
+            ? tr('ui.extensions.result.approved')
             : kind === 'uninstall'
-              ? 'El servidor desinstaló la extensión y conservó sus datos.'
+              ? tr('ui.extensions.result.uninstalled')
               : kind === 'rollback'
                 ? (body.restoreData === true
-                  ? 'El servidor restauró la copia previa y volvió a la versión anterior.'
-                  : 'El servidor confirmó el rollback y la compatibilidad de los datos.')
+                  ? tr('ui.extensions.result.restored')
+                  : tr('ui.extensions.result.rollback'))
                 : payload.enabled
-                  ? 'El servidor confirmó la activación de la extensión.'
-                  : 'El servidor confirmó la desactivación de la extensión.';
+                  ? tr('ui.extensions.result.enabled')
+                  : tr('ui.extensions.result.disabled');
           if (typeof this.app.extensionsLoad === 'function') await this.app.extensionsLoad({ force: true });
           await this.reviewLoad();
           if (this.review.selectedId) await this.reviewDetail(this.review.selectedId);
@@ -1328,11 +1340,11 @@
         } catch (error) {
           if (epoch !== this.reviewEpoch || !this.app.authenticated || identity !== identityKey(this.app)) return false;
           this.confirm.busy = false;
-          const message = (error && (error.message || error.error)) || 'El servidor rechazó la operación.';
+          const message = (error && (error.message || error.error)) || tr('ui.extensions.error.rejected');
           if (error && error.code === 'stale') {
             this.review.stale = true;
             this.confirm.open = false;
-            this.action.error = message || 'El catálogo cambió. Actualiza y revisa de nuevo antes de continuar.';
+            this.action.error = message || tr('ui.extensions.review.stale');
             if (typeof this.app.extensionsLoad === 'function') await this.app.extensionsLoad({ force: true });
             await this.reviewLoad();
             if (this.review.selectedId) await this.reviewDetail(this.review.selectedId);
@@ -1430,9 +1442,9 @@
                 <div><dt>{{ $t('ui.extensions.candidate.digest') }}</dt><dd class="mono extension-digest">{{ detail.digest }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.active_version') }}</dt><dd>{{ $t('ui.extensions.candidate.version_line', { version: detail.currentVersion || $t('ui.extensions.candidate.version_none'), revision: detail.currentRevision === null ? '—' : detail.currentRevision }) }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.revision') }}</dt><dd>{{ detail.revision }}</dd></div>
-                <div><dt>{{ $t('ui.extensions.candidate.submitted') }}</dt><dd>{{ detail.submittedBy || 'Sin identificar' }} · {{ formatDate(detail.submittedAt) }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.submitted') }}</dt><dd>{{ detail.submittedBy || $t('ui.extensions.candidate.unknown_submitter') }} · {{ formatDate(detail.submittedAt) }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.runtime') }}</dt><dd>{{ runtimeLabel(detail.manifest.runtime) }}</dd></div>
-                <div><dt>{{ $t('ui.extensions.candidate.storage') }}</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? 'Base SQLite propia' : 'Sin almacenamiento declarado' }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.storage') }}</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? $t('ui.extensions.candidate.storage_sqlite') : $t('ui.extensions.candidate.storage_none') }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.capabilities') }}</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : 'Ninguna' }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.rollback') }}</dt><dd>{{ detail.rollbackCompatible ? 'Compatible con los datos actuales' : 'Requiere restaurar la copia de datos previa' }}</dd></div>
               </dl>
@@ -1580,7 +1592,7 @@
               </div>
               <div class="extension-installed__actions">
                 <span v-if="item.requiresUpgrade" class="status-pill status--warn">{{ $t('ui.extensions.page.upgrade') }}</span>
-                <span v-else class="status-pill" :class="item.enabled ? 'status--ok' : 'status--hold'">{{ item.enabled ? 'Activa' : 'Desactivada' }}</span>
+                <span v-else class="status-pill" :class="item.enabled ? 'status--ok' : 'status--hold'">{{ item.enabled ? $t('ui.extensions.installed.state_active') : $t('ui.extensions.installed.state_disabled') }}</span>
                 <button v-if="item.requiresUpgrade" type="button" class="btn btn--secondary btn--small" @click="loadStatus(item)">{{ $t('ui.extensions.installed.status') }}</button>
                 <template v-else>
                   <button v-if="item.enabled" type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, false)">{{ $t('ui.extensions.installed.disable') }}</button>
@@ -1600,13 +1612,13 @@
           </ul>
         </section>
 
-        <modal-shell :open="confirm.open" :title="confirm.title" eyebrow="Confirmación humana" size="small" @close="closeConfirm">
+        <modal-shell :open="confirm.open" :title="confirm.title" :eyebrow="$t('ui.extensions.confirm.eyebrow')" size="small" @close="closeConfirm">
           <div class="extension-confirm">
             <p>{{ confirm.summary }}</p>
             <dl v-if="confirm.payload" class="extension-facts">
               <div v-if="confirm.payload.digest"><dt>{{ $t('ui.extensions.confirm.digest') }}</dt><dd class="mono extension-digest">{{ confirm.payload.digest }}</dd></div>
               <div v-if="confirm.payload.version"><dt>{{ $t('ui.extensions.confirm.target') }}</dt><dd>{{ confirm.payload.version }}</dd></div>
-              <div><dt>{{ $t('ui.extensions.confirm.revision') }}</dt><dd>{{ confirm.payload.expectedVersion === null ? 'Primera instalación' : 'Revisión ' + confirm.payload.expectedVersion }}</dd></div>
+              <div><dt>{{ $t('ui.extensions.confirm.revision') }}</dt><dd>{{ confirm.payload.expectedVersion === null ? $t('ui.extensions.confirm.first_install') : $t('ui.extensions.confirm.expected_revision', { revision: confirm.payload.expectedVersion }) }}</dd></div>
             </dl>
             <div v-if="confirm.typedRequired" class="field">
               <label for="extension-confirm-typed">{{ $t('ui.extensions.confirm.type_id', { id: confirm.typedRequired }) }}</label>
@@ -1620,7 +1632,7 @@
           <template #footer>
             <button type="button" class="btn btn--ghost" :disabled="confirm.busy" @click="closeConfirm">{{ $t('ui.common.cancel') }}</button>
             <button type="button" class="btn btn--primary" :disabled="confirm.busy" @click="confirmRun">
-              {{ confirm.busy ? 'Enviando…' : confirm.confirmLabel }}
+              {{ confirm.busy ? $t('ui.extensions.confirm.sending') : confirm.confirmLabel }}
             </button>
           </template>
         </modal-shell>
@@ -1644,7 +1656,7 @@
     // Kept for diagnostic compatibility only: SDK 2 has no same-origin module
     // scripts, so a module cannot register host components here.
     register() {
-      throw new Error('El SDK 2 no registra componentes en la página del host. Declara vistas en el manifiesto o usa una vista aislada.');
+      throw new Error(tr('ui.extensions.error.sdk_register_unsupported'));
     }
   };
 

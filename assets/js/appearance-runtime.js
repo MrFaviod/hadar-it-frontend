@@ -1,5 +1,10 @@
 (function () {
   'use strict';
+  function tr(key, params) {
+    const i18n = window.ItsmI18n;
+    if (!i18n || typeof i18n.t !== 'function') return key;
+    return i18n.t(key, params);
+  }
   const E = window.AssetAppearanceEngine;
   function userId(vm) { return vm.activeUserId || vm.currentUser?.id || ''; }
   function syncGeneral(vm, branding) {
@@ -45,7 +50,7 @@
       syncGeneral(this, preset.branding);
       this.syncAppearance();
       if (this.updateDocumentTitle) this.updateDocumentTitle();
-      this.showToast('Apariencia aplicada a toda la aplicación.');
+      this.showToast(window.ItsmI18n ? window.ItsmI18n.t('ui.appearance.runtime.applied') : '');
     },
     applyThemeMode(mode) {
       const preference = mode === 'light' || mode === 'dark' ? mode : 'system';
@@ -107,7 +112,7 @@
       if (window.AssetTheme && typeof window.AssetTheme.setScope === 'function') window.AssetTheme.setScope(this.authenticated ? userId(this) : null);
       if (!window.AssetAppearanceApi) return Promise.resolve(this.appearance);
       return window.AssetAppearanceApi.start(this).catch(error => {
-        if (this.showToast) this.showToast(error.message || 'No se pudo cargar la apariencia de la instalación.', 'error');
+        if (this.showToast) this.showToast(error.message || (window.ItsmI18n ? window.ItsmI18n.t('ui.appearance.runtime.load_failed') : ''), 'error');
         return this.appearance;
       });
     },

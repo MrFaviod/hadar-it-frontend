@@ -1,5 +1,10 @@
 (function () {
   'use strict';
+  function tr(key, params) {
+    const i18n = window.ItsmI18n;
+    if (!i18n || typeof i18n.t !== 'function') return key;
+    return i18n.t(key, params);
+  }
   const clone = value => JSON.parse(JSON.stringify(value));
   const GENERIC = {
     id: 'generic', name: 'Asset Manager', version: 1, description: 'Identidad original · Siempre disponible',
@@ -18,15 +23,15 @@
     return { presets: [generic, blue, forest], active, previous: null, userModes: {} };
   }
   function validate(preset) {
-    if (!preset || preset.version !== 1) throw new Error('Versión de preset incompatible.');
-    if (!String(preset.name || '').trim() || !String(preset.branding?.appName || '').trim() || !String(preset.branding?.organizationName || '').trim()) throw new Error('Completa el nombre del preset, la aplicación y la organización.');
+    if (!preset || preset.version !== 1) throw new Error(tr('ui.appearance.engine.preset_version'));
+    if (!String(preset.name || '').trim() || !String(preset.branding?.appName || '').trim() || !String(preset.branding?.organizationName || '').trim()) throw new Error(tr('ui.appearance.engine.identity_required'));
     for (const mode of ['light', 'dark']) for (const key of ['primary', 'secondary', 'accent']) {
-      if (!/^#[\da-f]{6}$/i.test(preset.colors?.[mode]?.[key] || '')) throw new Error('El color ' + key + ' del modo ' + (mode === 'light' ? 'claro' : 'oscuro') + ' no es válido. Usa seis dígitos hexadecimales.');
+      if (!/^#[\da-f]{6}$/i.test(preset.colors?.[mode]?.[key] || '')) throw new Error(tr('ui.appearance.engine.color_invalid', { key, mode: tr(mode === 'light' ? 'ui.appearance.mode.light' : 'ui.appearance.mode.dark') }));
     }
-    if (!preset.preferences || !['light', 'dark', 'system'].includes(preset.preferences.defaultMode) || typeof preset.preferences.compact !== 'boolean') throw new Error('El preset está incompleto: faltan preferencias válidas de apariencia.');
+    if (!preset.preferences || !['light', 'dark', 'system'].includes(preset.preferences.defaultMode) || typeof preset.preferences.compact !== 'boolean') throw new Error(tr('ui.appearance.engine.preferences_incomplete'));
     for (const key of ['logo', 'logoDark', 'logoCompact', 'favicon']) {
-      if (preset.branding[key] != null && typeof preset.branding[key] !== 'string') throw new Error('El recurso gráfico ' + key + ' no es válido.');
-      if (preset.branding[key] && !safeResource(preset.branding[key])) throw new Error('El recurso gráfico ' + key + ' no es seguro: usa una ruta interna o una imagen incrustada.');
+      if (preset.branding[key] != null && typeof preset.branding[key] !== 'string') throw new Error(tr('ui.appearance.engine.resource_invalid', { key }));
+      if (preset.branding[key] && !safeResource(preset.branding[key])) throw new Error(tr('ui.appearance.engine.resource_unsafe', { key }));
     }
     return preset;
   }

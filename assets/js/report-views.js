@@ -415,7 +415,7 @@
           return;
         }
         this.tab = 'jobs';
-        this.notice = 'Trabajo en cola. El documento aparecerá al completarse.';
+        this.notice = tr('ui.reports.notice_queued');
       },
       openJob(job) {
         this.tab = 'jobs';
@@ -599,18 +599,18 @@
                 <div class="doc-form-grid">
                   <label class="doc-field">{{ $t('ui.common.name') }}<input v-model="draft.name" maxlength="120"></label>
                   <label class="doc-field">{{ $t('ui.reports.field_description') }}<input v-model="draft.description" maxlength="240"></label>
-                  <label class="doc-field">Familia
+                  <label class="doc-field">{{ $t('ui.reports.field_family') }}
                     <select v-model="draft.family" @change="draftFamilyChanged">
                       <option v-for="family in familyOptions" :key="family.id" :value="family.id">{{ family.label }}</option>
                     </select>
                   </label>
-                  <label class="doc-field">Modo
+                  <label class="doc-field">{{ $t('ui.reports.field_mode') }}
                     <select v-model="draft.mode">
                       <option value="list">{{ $t('ui.reports.layout_list') }}</option>
                       <option value="sheet">{{ $t('ui.reports.layout_card') }}</option>
                     </select>
                   </label>
-                  <label class="doc-field">Papel
+                  <label class="doc-field">{{ $t('ui.reports.field_paper') }}
                     <select v-model="draft.format"><option value="A4">{{ $t('ui.reports.format_a4') }}</option><option value="Letter">{{ $t('ui.reports.format_letter') }}</option></select>
                   </label>
                 </div>
@@ -657,8 +657,8 @@
               </div>
               <div v-else class="doc-empty">
                 <app-icon name="file-text"></app-icon>
-                <h3>{{ previewState.loading ? 'Preparando la vista previa…' : 'Sin vista previa' }}</h3>
-                <p>{{ previewState.loading ? 'El servidor compone el documento con la misma plantilla que usará el PDF.' : 'Ajusta los filtros y pulsa «Actualizar vista previa».' }}</p>
+                <h3>{{ previewState.loading ? $t('ui.reports.preview_preparing') : $t('ui.reports.preview_empty') }}</h3>
+                <p>{{ previewState.loading ? $t('ui.reports.preview_loading_hint') : $t('ui.reports.preview_empty_hint') }}</p>
               </div>
 
               <p v-if="componentError" class="doc-error" role="alert">{{ componentError }}</p>
@@ -669,7 +669,7 @@
                   <p>{{ $t('ui.reports.generate_note') }}</p>
                 </div>
                 <button type="button" class="btn btn--primary" :disabled="!selectedCount || !draft || !canGenerate" data-od-id="generate-report" @click="generate">
-                  <app-icon name="file-text"></app-icon>Generar {{ outputLabel(output) }}
+                  <app-icon name="file-text"></app-icon>{{ $t('ui.reports.generate', { format: outputLabel(output) }) }}
                 </button>
               </footer>
             </div>
@@ -793,17 +793,17 @@
             const url = new URL(this.draft.baseUrl);
             if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol');
           } catch (_) {
-            this.fieldErrors.baseUrl = 'Introduce una URL http o https válida.';
+            this.fieldErrors.baseUrl = tr('ui.reports.error_base_url');
           }
         }
         ['primary', 'accent'].forEach((key) => {
-          if (!this.validColor(this.draft.branding[key])) this.fieldErrors[key] = 'Usa un color hexadecimal de seis dígitos.';
+          if (!this.validColor(this.draft.branding[key])) this.fieldErrors[key] = tr('ui.reports.error_color');
         });
         return !Object.keys(this.fieldErrors).length;
       },
       async save() {
         if (!this.canSave) {
-          this.error = 'No tienes permiso para cambiar la configuración de reportes.';
+          this.error = tr('ui.reports.error_forbidden');
           return;
         }
         if (!this.validate()) return;
@@ -820,7 +820,7 @@
         this.saved = true;
         this.reset();
         this.saved = true;
-        this.app.showToast('Configuración de reportes guardada.');
+        this.app.showToast(tr('ui.reports.saved_toast'));
       }
     },
     template: `
@@ -831,7 +831,7 @@
           <p>{{ $t('ui.reports.settings_lead') }}</p>
         </header>
         <form class="qr-settings-form" @submit.prevent="save">
-          <label class="doc-field">URL base de los reportes
+          <label class="doc-field">{{ $t('ui.reports.field_base_url') }}
             <input type="url" v-model="draft.baseUrl" maxlength="400" placeholder="https://activos.organizacion.example/">
             <small v-if="fieldErrors.baseUrl" class="doc-error">{{ fieldErrors.baseUrl }}</small>
           </label>
@@ -846,7 +846,7 @@
           <p class="doc-help">{{ $t('ui.reports.logo_note') }}</p>
           <p v-if="!canSave" class="doc-help">{{ $t('ui.reports.need_config') }}</p>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || state.saving">{{ state.saving ? 'Guardando…' : (saved ? 'Configuración guardada' : 'Guardar configuración') }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || state.saving">{{ state.saving ? $t('ui.common.saving') : (saved ? $t('ui.reports.saved') : $t('ui.reports.save_config')) }}</button>
         </form>
       </section>
     `

@@ -17,11 +17,45 @@ function stripNonContent(source) {
     .replace(/<style\b[\s\S]*?<\/style>/gi, ' ');
 }
 
+// Vue expressions and template-literal interpolations are code, not copy. They
+// can embed `<`, `>` or braces that would otherwise split a text node or survive
+// as if it were visible text, so they are removed before a literal is read.
+function stripDelimited(source, opening) {
+  let output = '';
+  let index = 0;
+  while (index < source.length) {
+    const start = source.indexOf(opening, index);
+    if (start < 0) { output += source.slice(index); break; }
+    let depth = 0;
+    let quote = '';
+    let cursor = start;
+    let closed = false;
+    for (; cursor < source.length; cursor += 1) {
+      const character = source[cursor];
+      if (quote) { if (character === quote) quote = ''; continue; }
+      if (character === "'" || character === '"' || character === '`') { quote = character; continue; }
+      if (character === '{') depth += 1;
+      else if (character === '}') {
+        depth -= 1;
+        if (depth <= 0) { closed = true; cursor += 1; break; }
+      }
+    }
+    if (!closed) { output += source.slice(start); break; }
+    output += source.slice(index, start) + ' ';
+    index = cursor;
+  }
+  return output;
+}
+
+function stripExpressions(markup) {
+  return stripDelimited(stripDelimited(markup, '{{'), '${');
+}
+
 function literalTextNodes(markup) {
   const found = [];
   const pattern = />([^<>]+)</g;
   let match;
-  while ((match = pattern.exec(markup))) {
+  while ((match = pattern.exec(stripExpressions(markup)))) {
     const value = match[1].replace(/\{\{[\s\S]*?\}\}/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').trim();
     if (value && LETTER.test(value)) found.push(value);
   }
@@ -30,6 +64,7 @@ function literalTextNodes(markup) {
 
 function literalAttributes(markup) {
   const found = [];
+  markup = stripExpressions(markup);
   for (const attribute of VISIBLE_ATTRIBUTES) {
     // Bound values (`:title`, `v-bind:title`) are dynamic and never counted.
     const pattern = new RegExp('(?<![:\\w-])' + attribute + '\\s*=\\s*"([^"]*)"', 'g');

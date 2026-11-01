@@ -280,7 +280,7 @@
           <div class="warranty-calculated"><span>{{ t('ui.warranty.editor_calculated') }}</span><strong>{{ previewExpiry(draft) || t('ui.warranty.editor_pick_purchase') }}</strong></div>
         </div>
         <label class="doc-field">Estado<select v-model="draft.status"><option value="active">{{ t('ui.warranty.status.active') }}</option><option value="claimed">{{ t('ui.warranty.status.claimed') }}</option><option value="cancelled">{{ t('ui.warranty.status.cancelled') }}</option><option value="unknown">{{ t('ui.warranty.status.unknown') }}</option></select></label>
-        <label class="doc-field">{{ t('ui.warranty.editor_note') }}<textarea v-model="draft.note" maxlength="2000" placeholder="Condiciones o referencias de la garantía"></textarea></label>
+        <label class="doc-field">{{ t('ui.warranty.editor_note') }}<textarea v-model="draft.note" maxlength="2000" :placeholder="t('ui.warranty.note_placeholder')"></textarea></label>
         <div class="warranty-receipts">
           <div class="doc-section-label"><strong>{{ t('ui.warranty.editor_receipt') }}</strong><label class="btn btn--secondary btn--small warranty-upload">{{ t('ui.warranty.editor_add_file') }}<input type="file" accept=".pdf,image/*" :disabled="receiptBusy" @change="uploadReceipt"></label></div>
           <p class="doc-help">{{ t('ui.warranty.editor_receipt_note') }}</p>
