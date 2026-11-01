@@ -228,7 +228,7 @@
     <section v-if="isPublicReport" class="login" aria-labelledby="public-report-title">
       <header class="login__chrome">
         <div class="login__brand">
-          <span>ITMS · Activos</span>
+          <span>{{ $t('ui.shell.public_brand') }}</span>
         </div>
         <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
                 :title="themeToggleLabel" @click="toggleTheme">
@@ -468,7 +468,7 @@
           </div>
 
           <div class="topbar__right">
-            <button type="button" class="universal-trigger" :aria-label="$t('ui.shell.search_aria', { app: appName })" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>{{ $t('ui.shell.search_trigger') }}</span><kbd>Ctrl K</kbd></button>
+            <button type="button" class="universal-trigger" :aria-label="$t('ui.shell.search_aria', { app: appName })" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>{{ $t('ui.shell.search_trigger') }}</span><kbd>{{ $t('ui.shell.search_shortcut') }}</kbd></button>
             <notification-bell :app="$root"></notification-bell>
             <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
                     :title="themeToggleLabel" @click="toggleTheme">
@@ -514,15 +514,15 @@
 
         <main id="main-content" class="main" tabindex="-1">
           <workspace-shortcuts :app="$root"></workspace-shortcuts>
-          <section v-if="workspaceCanSave" class="universal-filter-strip" aria-label="Filtros de la vista" data-od-id="shared-view-filters">
+          <section v-if="workspaceCanSave" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
             <div class="universal-filter-strip__controls">
-              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">Categoría</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">Todas las categorías</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
-              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">Sede</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">Todas las sedes</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-status">Estado del activo</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">Todos los estados</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-location">Ubicación</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">Todas las ubicaciones</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
-              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>Columnas</summary><div><label v-for="c in [{id:'model',label:'Tipo y modelo'},{id:'location',label:'Sede y ubicación'},{id:'assignee',label:'Responsable'},{id:'ip',label:'Dirección IP'},{id:'remote',label:'Acceso remoto'}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">{{ $t('ui.shell.filter_category') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_categories') }}</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">{{ $t('ui.shell.filter_site') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_sites') }}</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" for="shared-status">{{ $t('ui.shell.filter_status') }}</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" for="shared-location">{{ $t('ui.shell.filter_location') }}</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
+              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.shell.filter_column_model')},{id:'location',label:$t('ui.shell.filter_column_location')},{id:'assignee',label:$t('ui.shell.filter_column_assignee')},{id:'ip',label:$t('ui.shell.filter_column_ip')},{id:'remote',label:$t('ui.shell.filter_column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
             </div>
-            <div v-if="workspaceChips.length" class="universal-filter-strip__chips" aria-label="Filtros seleccionados"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="'Quitar filtro: '+chip.label" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">Restablecer filtros</button></div>
+            <div v-if="workspaceChips.length" class="universal-filter-strip__chips" :aria-label="$t('ui.shell.filter_chips_aria')"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.shell.filter_remove', { label: chip.label })" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">{{ $t('ui.shell.filter_reset') }}</button></div>
           </section>
 
           <asset-conversation v-if="authenticated && can('assets.view')" :key="activeUserId" :app="$root"></asset-conversation>
@@ -531,9 +531,9 @@
               <composition-boundary :app="$root" :target="uiRouteTarget">
               <!-- Inventario -->
               <section v-if="route.name === 'denied'" class="page access-denied" aria-labelledby="access-denied-title">
-                <p class="eyebrow">Permisos</p><h1 id="access-denied-title">Acceso denegado</h1>
-                <p>Tu rol no permite acceder a esta sección. Selecciona una opción disponible en el menú.</p>
-                <button type="button" class="btn btn--secondary" @click="logout">Cerrar sesión</button>
+                <p class="eyebrow">{{ $t('ui.shell.denied_eyebrow') }}</p><h1 id="access-denied-title">{{ $t('ui.page.denied') }}</h1>
+                <p>{{ $t('ui.shell.denied_body') }}</p>
+                <button type="button" class="btn btn--secondary" @click="logout">{{ $t('ui.shell.logout') }}</button>
               </section>
               <help-page v-else-if="route.name === 'help'" :app="$root"></help-page>
               <access-users v-else-if="route.name === 'users'" :app="$root"></access-users>
@@ -747,49 +747,49 @@
               <section v-else-if="route.name === 'people'" class="page people-page" aria-labelledby="people-title">
                 <header class="page-head">
                   <div class="page-head__copy">
-                    <p class="eyebrow"><span class="eyebrow__line"></span> Directorio</p>
-                    <h1 id="people-title">Personas</h1>
-                    <p class="page-head__lead">Responsables de activos y datos de contacto.</p>
+                    <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.people.eyebrow') }}</p>
+                    <h1 id="people-title">{{ $t('ui.people.title') }}</h1>
+                    <p class="page-head__lead">{{ $t('ui.people.lead') }}</p>
                   </div>
                   <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">
-                    <app-icon name="plus"></app-icon> Nueva persona
+                    <app-icon name="plus"></app-icon> {{ $t('ui.people.new') }}
                   </button>
                 </header>
 
-                <div class="stats-strip" role="list" aria-label="Indicadores de personas">
+                <div class="stats-strip" role="list" :aria-label="$t('ui.people.stats_aria')">
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="user"></app-icon></span>
-                    <div><span class="stat__value">{{ serverOrganizationMode ? organization.people.total : people.length }}</span><span class="stat__label">Personas registradas</span></div>
+                    <div><span class="stat__value">{{ serverOrganizationMode ? organization.people.total : people.length }}</span><span class="stat__label">{{ $t('ui.people.stat_total') }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="check"></app-icon></span>
-                    <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">Personas activas</span></div>
+                    <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">{{ $t('ui.people.stat_active') }}</span></div>
                   </div>
                   <div v-if="!serverOrganizationMode" class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
-                    <div><span class="stat__value">{{ peopleWithAssetsCount() }}</span><span class="stat__label">Con activos asignados</span></div>
+                    <div><span class="stat__value">{{ peopleWithAssetsCount() }}</span><span class="stat__label">{{ $t('ui.people.stat_with_assets') }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="building"></app-icon></span>
-                    <div><span class="stat__value">{{ departments.length }}</span><span class="stat__label">Departamentos</span></div>
+                    <div><span class="stat__value">{{ departments.length }}</span><span class="stat__label">{{ $t('ui.people.stat_departments') }}</span></div>
                   </div>
                 </div>
 
-                <div class="toolbar" aria-label="Filtros del directorio">
+                <div class="toolbar" :aria-label="$t('ui.people.filters_aria')">
                   <div class="search-field">
                     <app-icon name="search"></app-icon>
-                    <label class="sr-only" for="people-search">Buscar personas</label>
-                    <input id="people-search" v-model="prefs.people.search" type="search" placeholder="Buscar nombre, cargo o correo" autocomplete="off">
-                    <button v-if="prefs.people.search" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="prefs.people.search = ''">
+                    <label class="sr-only" for="people-search">{{ $t('ui.people.search_label') }}</label>
+                    <input id="people-search" v-model="prefs.people.search" type="search" :placeholder="$t('ui.people.search_placeholder')" autocomplete="off">
+                    <button v-if="prefs.people.search" class="search-clear" type="button" :aria-label="$t('ui.people.search_clear')" @click="prefs.people.search = ''">
                       <app-icon name="close"></app-icon>
                     </button>
                   </div>
 
                   <div class="select-field">
                     <app-icon name="building"></app-icon>
-                    <label class="sr-only" for="people-department-filter">Filtrar por departamento</label>
+                    <label class="sr-only" for="people-department-filter">{{ $t('ui.people.filter_department') }}</label>
                     <select id="people-department-filter" v-model="prefs.people.department">
-                      <option value="all">Todos los departamentos</option>
+                      <option value="all">{{ $t('ui.people.all_departments') }}</option>
                       <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.label }}</option>
                     </select>
                     <app-icon name="chevron-down"></app-icon>
@@ -797,9 +797,9 @@
 
                   <div class="select-field">
                     <app-icon name="map-pin"></app-icon>
-                    <label class="sr-only" for="people-site-filter">Filtrar por sede</label>
+                    <label class="sr-only" for="people-site-filter">{{ $t('ui.people.filter_site') }}</label>
                     <select id="people-site-filter" v-model="prefs.people.site">
-                      <option value="all">Todas las sedes</option>
+                      <option value="all">{{ $t('ui.people.all_sites') }}</option>
                       <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
                     </select>
                     <app-icon name="chevron-down"></app-icon>
@@ -807,67 +807,67 @@
 
                   <div class="select-field">
                     <app-icon name="activity"></app-icon>
-                    <label class="sr-only" for="people-status-filter">Filtrar por estado</label>
+                    <label class="sr-only" for="people-status-filter">{{ $t('ui.people.filter_status') }}</label>
                     <select id="people-status-filter" v-model="prefs.people.status">
-                      <option value="all">Todos los estados</option>
-                      <option value="active">Solo activas</option>
-                      <option value="inactive">Solo inactivas</option>
+                      <option value="all">{{ $t('ui.people.all_statuses') }}</option>
+                      <option value="active">{{ $t('ui.people.only_active') }}</option>
+                      <option value="inactive">{{ $t('ui.people.only_inactive') }}</option>
                     </select>
                     <app-icon name="chevron-down"></app-icon>
                   </div>
                 </div>
 
                 <div class="results-bar" aria-live="polite">
-                  <p><strong>{{ filteredPeople.length }}</strong> {{ filteredPeople.length === 1 ? 'persona encontrada' : 'personas encontradas' }}
+                  <p><strong>{{ filteredPeople.length }}</strong> {{ $t('ui.people.found_label', { count: filteredPeople.length }) }}
                     <span v-if="peopleFilterDescription">· {{ peopleFilterDescription }}</span>
                   </p>
                   <button v-if="peopleFilterCount" type="button" class="text-button text-button--quiet" @click="clearPeopleFilters">
-                    Limpiar filtros <span class="filter-count">{{ peopleFilterCount }}</span>
+                    {{ $t('ui.people.clear_filters') }} <span class="filter-count">{{ peopleFilterCount }}</span>
                   </button>
                 </div>
 
                 <p v-if="serverOrganizationMode && organization.people.error" class="form-error" role="alert">{{ organization.people.error }}</p>
-                <p v-if="serverOrganizationMode && organization.people.loading && !organization.people.loaded" class="cell-note" role="status">Cargando el directorio del servidor…</p>
+                <p v-if="serverOrganizationMode && organization.people.loading && !organization.people.loaded" class="cell-note" role="status">{{ $t('ui.people.loading') }}</p>
 
                 <div v-if="filteredPeople.length" class="table-panel people-table-panel">
                   <table class="asset-table people-table">
-                    <caption class="sr-only">Personas del directorio. Selecciona un nombre para abrir su ficha.</caption>
+                    <caption class="sr-only">{{ $t('ui.people.caption') }}</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Persona</th>
-                        <th scope="col">Cargo</th>
-                        <th scope="col">Departamento</th>
-                        <th scope="col">Sede</th>
-                        <th scope="col">Activos</th>
-                        <th scope="col">Estado</th>
-                        <th scope="col"><span class="sr-only">Acciones</span></th>
+                        <th scope="col">{{ $t('ui.people.col_person') }}</th>
+                        <th scope="col">{{ $t('ui.people.col_role') }}</th>
+                        <th scope="col">{{ $t('ui.people.col_department') }}</th>
+                        <th scope="col">{{ $t('ui.people.col_site') }}</th>
+                        <th scope="col">{{ $t('ui.people.col_assets') }}</th>
+                        <th scope="col">{{ $t('ui.people.col_status') }}</th>
+                        <th scope="col"><span class="sr-only">{{ $t('ui.people.col_actions') }}</span></th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="person in filteredPeople" :key="person.id" class="asset-row">
-                        <td data-label="Persona">
+                        <td :data-label="$t('ui.people.col_person')">
                           <div class="person-cell">
                             <span class="person-avatar" :class="{ 'is-inactive': !person.active }" aria-hidden="true">{{ personInitials(person.name) }}</span>
                             <span class="person-cell__text">
                               <a :href="'#/persona/' + person.id" class="asset-name">{{ person.name }}</a>
-                              <span class="cell-note">{{ person.email || 'Sin correo' }}</span>
+                              <span class="cell-note">{{ person.email || $t('ui.people.no_email') }}</span>
                             </span>
                           </div>
                         </td>
-                        <td data-label="Cargo"><span class="cell-strong">{{ person.role || 'Sin cargo' }}</span></td>
-                        <td data-label="Departamento"><span class="type-tag">{{ departmentLabel(person.departmentId) }}</span></td>
-                        <td data-label="Sede"><span class="cell-strong">{{ personSiteLabel(person.siteId) }}</span></td>
-                        <td data-label="Activos"><span class="person-assets-count">{{ personAssetCountLabel(person) }}</span></td>
-                        <td data-label="Estado">
+                        <td :data-label="$t('ui.people.col_role')"><span class="cell-strong">{{ person.role || $t('ui.people.no_role') }}</span></td>
+                        <td :data-label="$t('ui.people.col_department')"><span class="type-tag">{{ departmentLabel(person.departmentId) }}</span></td>
+                        <td :data-label="$t('ui.people.col_site')"><span class="cell-strong">{{ personSiteLabel(person.siteId) }}</span></td>
+                        <td :data-label="$t('ui.people.col_assets')"><span class="person-assets-count">{{ personAssetCountLabel(person) }}</span></td>
+                        <td :data-label="$t('ui.people.col_status')">
                           <span class="status-pill" :class="person.active ? 'status-pill--online' : 'status-pill--retired'">{{ personStatusLabel(person) }}</span>
                         </td>
-                        <td data-label="Acciones">
+                        <td :data-label="$t('ui.people.col_actions')">
                           <div class="quick-actions">
-                            <button v-if="can('people.edit')" type="button" class="quick-action" :aria-label="'Editar ' + person.name" title="Editar" @click="openPersonDialog(person)">
-                              <app-icon name="pencil"></app-icon><span>Editar</span>
+                            <button v-if="can('people.edit')" type="button" class="quick-action" :aria-label="$t('ui.people.edit_aria', { name: person.name })" :title="$t('ui.people.edit')" @click="openPersonDialog(person)">
+                              <app-icon name="pencil"></app-icon><span>{{ $t('ui.people.edit') }}</span>
                             </button>
-                            <button type="button" class="quick-action" :aria-label="'Ver ficha de ' + person.name" title="Ver ficha" @click="openPerson(person)">
-                              <app-icon name="arrow-right"></app-icon><span>Ficha</span>
+                            <button type="button" class="quick-action" :aria-label="$t('ui.people.open_record_aria', { name: person.name })" :title="$t('ui.people.open_record_title')" @click="openPerson(person)">
+                              <app-icon name="arrow-right"></app-icon><span>{{ $t('ui.people.open_record') }}</span>
                             </button>
                           </div>
                         </td>
@@ -876,10 +876,10 @@
                   </table>
                 </div>
 
-                <nav v-if="serverOrganizationMode && organization.people.total > organization.people.limit" class="pager" aria-label="Páginas del directorio">
-                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset === 0 || organization.people.loading" @click="prevOrganizationPeoplePage">Anteriores</button>
-                  <span class="cell-note mono">{{ organization.people.offset + 1 }}–{{ Math.min(organization.people.offset + organization.people.limit, organization.people.total) }} de {{ organization.people.total }}</span>
-                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset + organization.people.limit >= organization.people.total || organization.people.loading" @click="nextOrganizationPeoplePage">Siguientes</button>
+                <nav v-if="serverOrganizationMode && organization.people.total > organization.people.limit" class="pager" :aria-label="$t('ui.people.pager_aria')">
+                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset === 0 || organization.people.loading" @click="prevOrganizationPeoplePage">{{ $t('ui.people.prev') }}</button>
+                  <span class="cell-note mono">{{ organization.people.offset + 1 }}–{{ Math.min(organization.people.offset + organization.people.limit, organization.people.total) }} {{ $t('ui.people.range_of', { total: organization.people.total }) }}</span>
+                  <button type="button" class="btn btn--secondary btn--small" :disabled="organization.people.offset + organization.people.limit >= organization.people.total || organization.people.loading" @click="nextOrganizationPeoplePage">{{ $t('ui.people.next') }}</button>
                 </nav>
 
                 <div v-if="!filteredPeople.length && (!serverOrganizationMode || (organization.people.loaded && !organization.people.loading && !organization.people.error))" class="empty-state">
@@ -887,37 +887,37 @@
                   <!-- An empty page is a filtered result only when a filter is really active;
                        the canonical unfiltered totals decide whether the directory has records. -->
                   <template v-if="prefs.people.search.trim() || prefs.people.department !== 'all' || prefs.people.site !== 'all' || prefs.people.status !== 'all'">
-                    <h2>No hay personas con estos filtros</h2>
-                    <p>Ajusta la búsqueda o crea una persona nueva.</p>
+                    <h2>{{ $t('ui.people.empty_filtered_title') }}</h2>
+                    <p>{{ $t('ui.people.empty_filtered_body') }}</p>
                     <div class="empty-state__actions">
-                      <button type="button" class="btn btn--secondary" @click="clearPeopleFilters">Limpiar filtros</button>
-                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
+                      <button type="button" class="btn btn--secondary" @click="clearPeopleFilters">{{ $t('ui.people.clear_filters') }}</button>
+                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">{{ $t('ui.people.new') }}</button>
                     </div>
                   </template>
                   <template v-else-if="serverOrganizationMode && organization.peopleTotals.loaded && organization.peopleTotals.total === 0">
-                    <h2>Todavía no hay personas registradas</h2>
-                    <p>Crea la primera persona para empezar a asignarle activos.</p>
+                    <h2>{{ $t('ui.people.empty_none_title') }}</h2>
+                    <p>{{ $t('ui.people.empty_none_body') }}</p>
                     <div class="empty-state__actions">
-                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">Nueva persona</button>
+                      <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">{{ $t('ui.people.new') }}</button>
                     </div>
                   </template>
                   <template v-else>
-                    <h2>No hay personas para mostrar</h2>
-                    <p>El directorio no devolvió personas en esta consulta. Vuelve a intentarlo en unos segundos.</p>
+                    <h2>{{ $t('ui.people.empty_query_title') }}</h2>
+                    <p>{{ $t('ui.people.empty_query_body') }}</p>
                   </template>
                 </div>
               </section>
 
               <!-- Ficha de persona -->
               <section v-else-if="route.name === 'person' && currentPerson" class="page person-page" aria-labelledby="person-title">
-                <nav class="breadcrumbs" aria-label="Migas de pan">
-                  <a href="#/personas" @click.prevent="backToPeople">Personas</a>
+                <nav class="breadcrumbs" :aria-label="$t('ui.people.breadcrumb_aria')">
+                  <a href="#/personas" @click.prevent="backToPeople">{{ $t('ui.people.title') }}</a>
                   <app-icon name="chevron-right"></app-icon>
                   <span aria-current="page">{{ currentPerson.name }}</span>
                 </nav>
 
                 <button type="button" class="back-link" @click="backToPeople">
-                  <app-icon name="arrow-left"></app-icon> Volver al directorio
+                  <app-icon name="arrow-left"></app-icon> {{ $t('ui.people.back') }}
                 </button>
 
                 <header class="person-head">
@@ -928,51 +928,51 @@
                       <span class="status-pill" :class="currentPerson.active ? 'status-pill--online' : 'status-pill--retired'">{{ personStatusLabel(currentPerson) }}</span>
                     </div>
                     <h1 id="person-title">{{ currentPerson.name }}</h1>
-                    <p>{{ currentPerson.role || 'Sin cargo definido' }} · {{ personSiteLabel(currentPerson.siteId) }}</p>
+                    <p>{{ currentPerson.role || $t('ui.people.no_role_defined') }} · {{ personSiteLabel(currentPerson.siteId) }}</p>
                   </div>
                   <div class="person-head__actions">
                     <button v-if="can('people.edit')" type="button" class="btn btn--secondary" @click="openPersonDialog(currentPerson)">
-                      <app-icon name="pencil"></app-icon> Editar persona
+                      <app-icon name="pencil"></app-icon> {{ $t('ui.people.edit_person') }}
                     </button>
                     <button v-if="(currentPerson.active) && can('assets.assign')" type="button" class="btn btn--primary" @click="openAssignPerson(currentPerson)">
-                      <app-icon name="plus"></app-icon> Asignar activo
+                      <app-icon name="plus"></app-icon> {{ $t('ui.people.assign_asset') }}
                     </button>
                     <button v-if="!currentPerson.active && can('people.edit')" type="button" class="btn btn--primary" @click="setPersonActive(currentPerson, true)">
-                      <app-icon name="check"></app-icon> Reactivar persona
+                      <app-icon name="check"></app-icon> {{ $t('ui.people.reactivate') }}
                     </button>
                   </div>
                 </header>
 
                 <p v-if="!currentPerson.active" class="person-inactive-note" role="status">
                   <app-icon name="info"></app-icon>
-                  Esta persona está inactiva y conserva sus activos actuales, pero no puede recibir nuevas asignaciones.
+                  {{ $t('ui.people.inactive_note') }}
                 </p>
 
                 <div class="person-layout">
                   <section class="panel person-contact" aria-labelledby="person-contact-title">
                     <header class="panel__head">
-                      <div><span class="eyebrow">Contacto</span><h2 id="person-contact-title">Datos de la persona</h2></div>
+                      <div><span class="eyebrow">{{ $t('ui.people.contact_eyebrow') }}</span><h2 id="person-contact-title">{{ $t('ui.people.contact_title') }}</h2></div>
                     </header>
                     <dl class="person-facts">
                       <div>
-                        <dt>Correo</dt>
-                        <dd><a v-if="currentPerson.email" :href="'mailto:' + currentPerson.email">{{ currentPerson.email }}</a><span v-else class="cell-muted">Sin correo</span></dd>
+                        <dt>{{ $t('ui.people.email') }}</dt>
+                        <dd><a v-if="currentPerson.email" :href="'mailto:' + currentPerson.email">{{ currentPerson.email }}</a><span v-else class="cell-muted">{{ $t('ui.people.no_email') }}</span></dd>
                       </div>
                       <div>
-                        <dt>Teléfono</dt>
-                        <dd><a v-if="currentPerson.phone" :href="phoneHref(currentPerson.phone)">{{ currentPerson.phone }}</a><span v-else class="cell-muted">Sin teléfono</span></dd>
+                        <dt>{{ $t('ui.people.phone') }}</dt>
+                        <dd><a v-if="currentPerson.phone" :href="phoneHref(currentPerson.phone)">{{ currentPerson.phone }}</a><span v-else class="cell-muted">{{ $t('ui.people.no_phone') }}</span></dd>
                       </div>
                       <div>
-                        <dt>Departamento</dt>
+                        <dt>{{ $t('ui.people.col_department') }}</dt>
                         <dd>{{ departmentLabel(currentPerson.departmentId) }}</dd>
                       </div>
                       <div>
-                        <dt>Sede</dt>
+                        <dt>{{ $t('ui.people.col_site') }}</dt>
                         <dd>{{ personSiteLabel(currentPerson.siteId) }}</dd>
                       </div>
                       <div>
-                        <dt>Activos asignados</dt>
-                        <dd><strong>{{ personAssets.length }}</strong> {{ personAssets.length === 1 ? 'activo' : 'activos' }}</dd>
+                        <dt>{{ $t('ui.people.assigned_assets') }}</dt>
+                        <dd><strong>{{ personAssets.length }}</strong> {{ $t('ui.people.asset_word', { count: personAssets.length }) }}</dd>
                       </div>
                     </dl>
                   </section>
@@ -980,15 +980,15 @@
                   <section v-if="can('assets.view')" class="panel person-assets" aria-labelledby="person-assets-title">
                     <header class="panel__head person-assets__head">
                       <div>
-                        <span class="eyebrow">Equipos</span>
-                        <h2 id="person-assets-title">Activos a su cargo</h2>
+                        <span class="eyebrow">{{ $t('ui.people.assets_eyebrow') }}</span>
+                        <h2 id="person-assets-title">{{ $t('ui.people.assets_title') }}</h2>
                       </div>
-                      <div class="view-switch" role="group" aria-label="Forma de visualización de activos">
+                      <div class="view-switch" role="group" :aria-label="$t('ui.people.view_aria')">
                         <button type="button" :class="{ 'is-active': prefs.personAssetsView === 'table' }" :aria-pressed="prefs.personAssetsView === 'table'" @click="setPersonAssetsView('table')">
-                          <app-icon name="table"></app-icon><span>Tabla</span>
+                          <app-icon name="table"></app-icon><span>{{ $t('ui.people.view_table') }}</span>
                         </button>
                         <button type="button" :class="{ 'is-active': prefs.personAssetsView === 'cards' }" :aria-pressed="prefs.personAssetsView === 'cards'" @click="setPersonAssetsView('cards')">
-                          <app-icon name="grid"></app-icon><span>Tarjetas</span>
+                          <app-icon name="grid"></app-icon><span>{{ $t('ui.people.view_cards') }}</span>
                         </button>
                       </div>
                     </header>
@@ -998,32 +998,32 @@
                         <table class="asset-table">
                           <thead>
                             <tr>
-                              <th scope="col">Activo</th>
-                              <th scope="col">Tipo</th>
-                              <th scope="col">Sede</th>
-                              <th scope="col">IP</th>
-                              <th scope="col"><span class="sr-only">Acciones</span></th>
+                              <th scope="col">{{ $t('ui.people.col_asset') }}</th>
+                              <th scope="col">{{ $t('ui.people.col_type') }}</th>
+                              <th scope="col">{{ $t('ui.people.col_site') }}</th>
+                              <th scope="col">{{ $t('ui.people.col_ip') }}</th>
+                              <th scope="col"><span class="sr-only">{{ $t('ui.people.col_actions') }}</span></th>
                             </tr>
                           </thead>
                           <tbody>
                             <tr v-for="asset in personAssets" :key="asset.id" class="asset-row" @click="openAsset(asset)">
-                              <td data-label="Activo">
+                              <td :data-label="$t('ui.people.col_asset')">
                                 <a :href="'#/activo/' + asset.id" class="asset-name">{{ asset.name }}</a>
                                 <span class="asset-code mono">{{ asset.id }}</span>
                               </td>
-                              <td data-label="Tipo"><span class="type-tag">{{ asset.type }}</span></td>
-                              <td data-label="Sede"><span class="cell-strong">{{ siteLabel(asset.site) }}</span><span class="cell-note">{{ locationLabel(asset) }}</span></td>
-                              <td data-label="IP"><span class="mono cell-ip">{{ asset.ip || '—' }}</span></td>
-                              <td data-label="Acciones">
+                              <td :data-label="$t('ui.people.col_type')"><span class="type-tag">{{ asset.type }}</span></td>
+                              <td :data-label="$t('ui.people.col_site')"><span class="cell-strong">{{ siteLabel(asset.site) }}</span><span class="cell-note">{{ locationLabel(asset) }}</span></td>
+                              <td :data-label="$t('ui.people.col_ip')"><span class="mono cell-ip">{{ asset.ip || '—' }}</span></td>
+                              <td :data-label="$t('ui.people.col_actions')">
                                 <div class="quick-actions" @click.stop>
-                                  <button v-if="can('assets.assign')" type="button" class="quick-action" :aria-label="'Reasignar ' + asset.name" title="Reasignar" @click="openAssignAsset(asset)">
-                                    <app-icon name="user"></app-icon><span>Reasignar</span>
+                                  <button v-if="can('assets.assign')" type="button" class="quick-action" :aria-label="$t('ui.people.reassign_aria', { name: asset.name })" :title="$t('ui.people.reassign')" @click="openAssignAsset(asset)">
+                                    <app-icon name="user"></app-icon><span>{{ $t('ui.people.reassign') }}</span>
                                   </button>
-                                  <button v-if="can('assets.assign')" type="button" class="quick-action quick-action--danger" :aria-label="'Desasignar ' + asset.name" title="Desasignar" @click="removeAssignment(asset)">
-                                    <app-icon name="close"></app-icon><span>Desasignar</span>
+                                  <button v-if="can('assets.assign')" type="button" class="quick-action quick-action--danger" :aria-label="$t('ui.people.unassign_aria', { name: asset.name })" :title="$t('ui.people.unassign')" @click="removeAssignment(asset)">
+                                    <app-icon name="close"></app-icon><span>{{ $t('ui.people.unassign') }}</span>
                                   </button>
-                                  <button v-if="can('assets.edit') && !asset.retired" type="button" class="quick-action" :aria-label="'Trasladar ' + asset.name" title="Trasladar" @click="openOrganizationTransfer(asset)">
-                                    <app-icon name="arrow-right"></app-icon><span>Trasladar</span>
+                                  <button v-if="can('assets.edit') && !asset.retired" type="button" class="quick-action" :aria-label="$t('ui.people.move_aria', { name: asset.name })" :title="$t('ui.people.move')" @click="openOrganizationTransfer(asset)">
+                                    <app-icon name="arrow-right"></app-icon><span>{{ $t('ui.people.move') }}</span>
                                   </button>
                                 </div>
                               </td>
@@ -1043,12 +1043,12 @@
                             <p>{{ asset.brand }} {{ asset.model }}</p>
                             <div class="person-asset-card__meta">
                               <span><app-icon name="map-pin"></app-icon>{{ siteLabel(asset.site) }}</span>
-                              <span><app-icon name="activity"></app-icon>{{ asset.ip || 'Sin IP' }}</span>
+                              <span><app-icon name="activity"></app-icon>{{ asset.ip || $t('ui.people.no_ip') }}</span>
                             </div>
                             <div class="person-asset-card__actions">
-                              <button v-if="can('assets.assign')" type="button" class="text-button" @click="openAssignAsset(asset)"><app-icon name="user"></app-icon> Reasignar</button>
-                              <button v-if="can('assets.assign')" type="button" class="text-button text-button--danger" @click="removeAssignment(asset)"><app-icon name="close"></app-icon> Desasignar</button>
-                              <button v-if="can('assets.edit') && !asset.retired" type="button" class="text-button" @click="openOrganizationTransfer(asset)"><app-icon name="arrow-right"></app-icon> Trasladar</button>
+                              <button v-if="can('assets.assign')" type="button" class="text-button" @click="openAssignAsset(asset)"><app-icon name="user"></app-icon> {{ $t('ui.people.reassign') }}</button>
+                              <button v-if="can('assets.assign')" type="button" class="text-button text-button--danger" @click="removeAssignment(asset)"><app-icon name="close"></app-icon> {{ $t('ui.people.unassign') }}</button>
+                              <button v-if="can('assets.edit') && !asset.retired" type="button" class="text-button" @click="openOrganizationTransfer(asset)"><app-icon name="arrow-right"></app-icon> {{ $t('ui.people.move') }}</button>
                             </div>
                           </div>
                         </article>
@@ -1057,10 +1057,10 @@
 
                     <div v-else class="config-empty person-assets__empty">
                       <span class="config-empty__icon"><app-icon name="inventory"></app-icon></span>
-                      <h3>Sin activos asignados</h3>
-                      <p>Asigna un activo sin responsable para vincularlo a esta persona.</p>
+                      <h3>{{ $t('ui.people.empty_assets_title') }}</h3>
+                      <p>{{ $t('ui.people.empty_assets_body') }}</p>
                       <button v-if="(currentPerson.active) && can('assets.assign')" type="button" class="btn btn--primary btn--small" @click="openAssignPerson(currentPerson)">
-                        <app-icon name="plus"></app-icon> Asignar activo
+                        <app-icon name="plus"></app-icon> {{ $t('ui.people.assign_asset') }}
                       </button>
                     </div>
                   </section>
@@ -1069,8 +1069,8 @@
                 <section v-if="serverOrganizationMode" class="panel person-history" aria-labelledby="person-history-title">
                   <header class="panel__head">
                     <div>
-                      <h2 id="person-history-title">Historial de la persona</h2>
-                      <p>{{ organization.personHistory.total }} eventos registrados por el servidor.</p>
+                      <h2 id="person-history-title">{{ $t('ui.people.history_title') }}</h2>
+                      <p>{{ $t('ui.people.history_count', { count: organization.personHistory.total }) }}</p>
                     </div>
                   </header>
                   <p v-if="organization.personHistory.error" class="form-error" role="alert">{{ organization.personHistory.error }}</p>
@@ -1078,27 +1078,27 @@
                     <li v-for="item in organization.personHistory.items" :key="item.id" class="history-list__item">
                       <div>
                         <strong>{{ item.title }}</strong>
-                        <span class="cell-note">{{ item.actorUsername || 'Sistema' }} · {{ item.source }} · {{ formatServerTimestamp(item.recordedAt) }}</span>
-                        <span v-if="item.effectiveAt" class="cell-note">Efectivo: {{ formatServerTimestamp(item.effectiveAt) }}</span>
-                        <p v-if="item.reason" class="cell-note">Motivo: {{ item.reason }}</p>
-                        <p v-if="item.notes" class="cell-note">Notas: {{ item.notes }}</p>
+                        <span class="cell-note">{{ item.actorUsername || $t('ui.people.system_actor') }} · {{ item.source }} · {{ formatServerTimestamp(item.recordedAt) }}</span>
+                        <span v-if="item.effectiveAt" class="cell-note">{{ $t('ui.people.effective', { date: formatServerTimestamp(item.effectiveAt) }) }}</span>
+                        <p v-if="item.reason" class="cell-note">{{ $t('ui.people.reason', { reason: item.reason }) }}</p>
+                        <p v-if="item.notes" class="cell-note">{{ $t('ui.people.notes', { notes: item.notes }) }}</p>
                       </div>
                     </li>
                   </ol>
-                  <p v-else-if="!organization.personHistory.loading" class="cell-note">Sin eventos registrados.</p>
+                  <p v-else-if="!organization.personHistory.loading" class="cell-note">{{ $t('ui.people.history_empty') }}</p>
                   <button v-if="organizationHistoryHasMore(organization.personHistory)" type="button" class="btn btn--ghost btn--small" :disabled="organization.personHistory.loading" @click="organizationPersonHistoryNextPage">
-                    Cargar más eventos
+                    {{ $t('ui.people.history_more') }}
                   </button>
                 </section>
 
                 <section v-if="serverOrganizationMode && organizationDirectoryMode" class="panel person-history" aria-labelledby="person-assets-history-title">
                   <header class="panel__head">
                     <div>
-                      <h2 id="person-assets-history-title">Movimientos de sus activos</h2>
-                      <p>Asignaciones, devoluciones y traslados leídos del historial de cada activo.</p>
+                      <h2 id="person-assets-history-title">{{ $t('ui.people.moves_title') }}</h2>
+                      <p>{{ $t('ui.people.moves_lead') }}</p>
                     </div>
                   </header>
-                  <p v-if="organization.personAssetHistory.loading" class="config-note" role="status">Consultando el historial de activos…</p>
+                  <p v-if="organization.personAssetHistory.loading" class="config-note" role="status">{{ $t('ui.people.moves_loading') }}</p>
                   <p v-else-if="organization.personAssetHistory.error" class="form-error" role="alert">{{ organization.personAssetHistory.error }}</p>
                   <ol v-else-if="organization.personAssetHistory.items.length" class="history-list">
                     <li v-for="entry in organization.personAssetHistory.items" :key="entry.id" class="history-list__item">
@@ -1108,10 +1108,10 @@
                           <a :href="'#/activo/' + entry.assetId">{{ entry.assetName || entry.assetId }}</a>
                           <template v-if="entry.quickCode"> · <span class="mono">{{ entry.quickCode }}</span></template>
                         </span>
-                        <span class="cell-note">{{ entry.actorUsername || 'Sistema' }} · {{ entry.source || 'servidor' }} · {{ formatServerTimestamp(entry.recordedAt) }}</span>
-                        <span v-if="entry.effectiveAt" class="cell-note">Efectivo: {{ formatServerTimestamp(entry.effectiveAt) }}</span>
-                        <p v-if="entry.reason" class="cell-note">Motivo: {{ entry.reason }}</p>
-                        <p v-if="entry.notes" class="cell-note">Notas: {{ entry.notes }}</p>
+                        <span class="cell-note">{{ entry.actorUsername || $t('ui.people.system_actor') }} · {{ entry.source || $t('ui.people.source_server') }} · {{ formatServerTimestamp(entry.recordedAt) }}</span>
+                        <span v-if="entry.effectiveAt" class="cell-note">{{ $t('ui.people.effective', { date: formatServerTimestamp(entry.effectiveAt) }) }}</span>
+                        <p v-if="entry.reason" class="cell-note">{{ $t('ui.people.reason', { reason: entry.reason }) }}</p>
+                        <p v-if="entry.notes" class="cell-note">{{ $t('ui.people.notes', { notes: entry.notes }) }}</p>
                         <ul v-if="organizationHistoryChanges(entry).length" class="history-changes">
                           <li v-for="change in organizationHistoryChanges(entry)" :key="change.key">
                             <span class="cell-note">{{ change.label }}:</span>
@@ -1121,16 +1121,16 @@
                       </div>
                     </li>
                   </ol>
-                  <p v-else class="cell-note">El servidor no registra movimientos para los activos de esta persona.</p>
+                  <p v-else class="cell-note">{{ $t('ui.people.moves_empty') }}</p>
                 </section>
               </section>
 
               <section v-else-if="route.name === 'person' && serverOrganizationMode && !currentPerson" class="page person-page" aria-labelledby="person-missing-title">
-                <button type="button" class="back-link" @click="backToPeople"><app-icon name="arrow-left"></app-icon> Volver al directorio</button>
+                <button type="button" class="back-link" @click="backToPeople"><app-icon name="arrow-left"></app-icon> {{ $t('ui.people.back') }}</button>
                 <section class="panel config-empty">
                   <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
-                  <h1 id="person-missing-title">{{ organization.personDetail.loading ? 'Cargando la ficha…' : (organizationDenied ? 'Sin permiso para ver el directorio' : 'La ficha no está disponible') }}</h1>
-                  <p>{{ organizationDenied ? 'Tu cuenta no tiene el permiso para consultar personas.' : (organization.personDetail.error || 'El servidor no devolvió esta persona.') }}</p>
+                  <h1 id="person-missing-title">{{ organization.personDetail.loading ? $t('ui.people.missing_loading') : (organizationDenied ? $t('ui.people.missing_denied') : $t('ui.people.missing_unavailable')) }}</h1>
+                  <p>{{ organizationDenied ? $t('ui.people.missing_denied_body') : (organization.personDetail.error || $t('ui.people.missing_no_person')) }}</p>
                 </section>
               </section>
 
@@ -1138,19 +1138,19 @@
               <section v-else-if="route.name === 'config'" class="page config-page" aria-labelledby="config-title">
                 <header class="page-head config-page__head">
                   <div class="page-head__copy">
-                    <p class="eyebrow"><span class="eyebrow__line"></span> Ajustes del espacio</p>
-                    <h1 id="config-title">Configuración</h1>
-                    <p class="config-page__lead">Identidad, catálogo, equipo e integraciones.</p>
+                    <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.shell.config_eyebrow') }}</p>
+                    <h1 id="config-title">{{ $t('ui.page.settings') }}</h1>
+                    <p class="config-page__lead">{{ $t('ui.shell.config_lead') }}</p>
                   </div>
-                  <div v-if="!serverOrganizationMode" class="page-head__meta" aria-label="Resumen de configuración">
-                    <span class="mono">{{ categories.length }} categorías</span>
-                    <span>{{ sites.length }} sedes</span>
-                    <span>{{ people.length }} personas</span>
+                  <div v-if="!serverOrganizationMode" class="page-head__meta" :aria-label="$t('ui.shell.config_summary_aria')">
+                    <span class="mono">{{ $t('ui.shell.config_categories', { count: categories.length }) }}</span>
+                    <span>{{ $t('ui.shell.config_sites', { count: sites.length }) }}</span>
+                    <span>{{ $t('ui.shell.config_people', { count: people.length }) }}</span>
                   </div>
                 </header>
 
                 <div class="config-layout">
-                  <nav class="config-nav" aria-label="Secciones de configuración">
+                  <nav class="config-nav" :aria-label="$t('ui.shell.config_nav_aria')">
                     <a v-for="section in permittedConfigSections" :key="section.id" class="config-nav__item"
                        :href="'#/configuracion/' + section.id" :class="{ 'is-active': route.section === section.id }"
                        :aria-current="route.section === section.id ? 'page' : null" @click="closeSidebar">

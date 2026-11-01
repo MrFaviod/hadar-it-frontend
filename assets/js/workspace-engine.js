@@ -1,5 +1,8 @@
 (function(){
   'use strict';
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
   const clone=value=>JSON.parse(JSON.stringify(value));
   const ROUTES=['inventory','map','graph','panel','reports','maintenance'];
   function createState(){return {users:{},views:[],nextId:1,widgets:null,themeMode:'auto',shortcuts:[],loaded:false,loading:false,error:'',epoch:0,ownerId:''};}
@@ -9,18 +12,18 @@
   function visibleViews(state,id){return state.views.filter(v=>v.scope==='shared'||v.ownerId===String(id||''));}
   function validateView(draft,owner,views){
     const name=String(draft.name||'').trim(),existing=draft.id?(views||[]).find(v=>v.id===draft.id):null,fail=error=>({ok:false,error});
-    if(!name||name.length>70)return fail('Escribe un nombre de entre 1 y 70 caracteres.');
-    if(draft.id&&!existing)return fail('La vista ya no está disponible.');
-    if(existing&&existing.ownerId!==String(owner))return fail('Solo puedes actualizar tus propias vistas.');
-    if(!ROUTES.includes(draft.route))return fail('No hay una vista disponible para guardar.');
-    if(!draft.snapshot||typeof draft.snapshot!=='object'||Array.isArray(draft.snapshot))return fail('No hay una vista disponible para guardar.');
+    if(!name||name.length>70)return fail(tr('ui.workspace.error_name_range'));
+    if(draft.id&&!existing)return fail(tr('ui.workspace.error_missing'));
+    if(existing&&existing.ownerId!==String(owner))return fail(tr('ui.workspace.error_not_owner_update'));
+    if(!ROUTES.includes(draft.route))return fail(tr('ui.workspace.error_no_route'));
+    if(!draft.snapshot||typeof draft.snapshot!=='object'||Array.isArray(draft.snapshot))return fail(tr('ui.workspace.error_no_route'));
     let snapshot;
-    try{snapshot=clone(draft.snapshot);}catch(_){return fail('La vista no se puede serializar.');}
-    if(JSON.stringify(snapshot).length>20000)return fail('La vista contiene demasiados datos.');
+    try{snapshot=clone(draft.snapshot);}catch(_){return fail(tr('ui.workspace.error_serialize'));}
+    if(JSON.stringify(snapshot).length>20000)return fail(tr('ui.workspace.error_too_large'));
     return {ok:true,view:{id:existing?existing.id:'',name,scope:draft.scope==='shared'?'shared':'personal',ownerId:String(owner),route:draft.route,snapshot}};
   }
   function saveView(state,id,draft){const owner=String(id||''),checked=validateView(draft,owner,state.views);if(!checked.ok)return checked;const view={...checked.view,id:checked.view.id||'view-'+state.nextId},existing=view.id?state.views.find(v=>v.id===view.id):null;if(existing)state.views.splice(state.views.indexOf(existing),1,view);else{state.views.push(view);state.nextId++;}return {ok:true,view};}
-  function removeView(state,id,viewId){const v=state.views.find(v=>v.id===viewId);if(!v||v.ownerId!==String(id||''))return {ok:false,error:'Solo puedes eliminar tus propias vistas.'};state.views.splice(state.views.indexOf(v),1);Object.values(state.users).forEach(u=>{u.favorites=u.favorites.filter(f=>f.key!=='view:'+viewId);});return {ok:true};}
+  function removeView(state,id,viewId){const v=state.views.find(v=>v.id===viewId);if(!v||v.ownerId!==String(id||''))return {ok:false,error:tr('ui.workspace.error_not_owner_delete')};state.views.splice(state.views.indexOf(v),1);Object.values(state.users).forEach(u=>{u.favorites=u.favorites.filter(f=>f.key!=='view:'+viewId);});return {ok:true};}
   function rememberView(state,id,route,snapshot){user(state,id).lastViews[route]=clone(snapshot);}
   window.AssetWorkspace={clone,createState,user,toggleFavorite,isFavorite,visibleViews,validateView,saveView,removeView,rememberView,ROUTES};
 })();

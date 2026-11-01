@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+
+  // Visible copy resolves through the shipped runtime so a language switch
+  // re-renders the adapter messages without reloading the page.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
   const WIDGETS = ['availability', 'alerts', 'distribution', 'infrastructure', 'activity', 'maintenance', 'warranties', 'inventory', 'latency', 'incidents'];
   const DEFAULTS = ['availability', 'alerts', 'distribution', 'infrastructure', 'activity', 'maintenance', 'warranties', 'inventory'];
   const THEMES = ['light', 'dark', 'auto'];
@@ -21,14 +28,14 @@
   }
   function ownerOf(vm) { return String((vm && vm.currentUser && vm.currentUser.id) || (vm && vm.activeUserId) || ''); }
   function authenticated(vm) { return !!(vm && vm.authenticated && ownerOf(vm)); }
-  function message(error) { return (error && error.message) || 'No se pudo completar la solicitud.'; }
+  function message(error) { return (error && error.message) || tr('ui.shell.request_failed'); }
   // Writes capture the identity that requested them. A queued or in-flight
   // request must never read or mutate the next account's workspace.
   function sessionGuard(vm) {
     const state = stateFor(vm), session = state.sessionEpoch, owner = ownerOf(vm), signedIn = authenticated(vm);
     return () => session !== state.sessionEpoch || owner !== ownerOf(vm) || signedIn !== authenticated(vm);
   }
-  function sessionChanged() { return { ok: false, error: 'La sesión ha cambiado.' }; }
+  function sessionChanged() { return { ok: false, error: tr('ui.shell.session_changed') }; }
 
   function ensure(vm) {
     const state = stateFor(vm);
@@ -54,7 +61,7 @@
   }
 
   function request(vm, path, options) {
-    if (!window.AssetAccess || typeof window.AssetAccess.request !== 'function') return Promise.reject(new Error('Cliente de sesión no disponible.'));
+    if (!window.AssetAccess || typeof window.AssetAccess.request !== 'function') return Promise.reject(new Error(tr('ui.shell.session_client_missing')));
     return window.AssetAccess.request(vm, path, options);
   }
   function params(values) {
@@ -114,29 +121,29 @@
   }
 
   function normalizePatch(patch) {
-    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error('Cambios de espacio de trabajo no válidos.');
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) throw new Error(tr('ui.shell.patch_invalid'));
     const clean = {};
     for (const key of Object.keys(patch)) {
-      if (!['widgets', 'favorites', 'usage', 'lastViews', 'themeMode'].includes(key)) throw new Error('Campo de espacio de trabajo no válido: ' + key);
+      if (!['widgets', 'favorites', 'usage', 'lastViews', 'themeMode'].includes(key)) throw new Error(tr('ui.shell.patch_field_invalid', { field: key }));
     }
     if (patch.widgets !== undefined) {
-      if (!Array.isArray(patch.widgets) || patch.widgets.length > 50 || patch.widgets.some(id => typeof id !== 'string' || !WIDGETS.includes(id))) throw new Error('Distribución de widgets no válida.');
+      if (!Array.isArray(patch.widgets) || patch.widgets.length > 50 || patch.widgets.some(id => typeof id !== 'string' || !WIDGETS.includes(id))) throw new Error(tr('ui.shell.patch_widgets_invalid'));
       clean.widgets = patch.widgets.slice();
     }
     if (patch.favorites !== undefined) {
-      if (!Array.isArray(patch.favorites) || patch.favorites.length > 500) throw new Error('Favoritos no válidos.');
+      if (!Array.isArray(patch.favorites) || patch.favorites.length > 500) throw new Error(tr('ui.shell.patch_favorites_invalid'));
       clean.favorites = clone(patch.favorites);
     }
     if (patch.usage !== undefined) {
-      if (!patch.usage || typeof patch.usage !== 'object' || Array.isArray(patch.usage) || Object.keys(patch.usage).length > 500) throw new Error('Uso no válido.');
+      if (!patch.usage || typeof patch.usage !== 'object' || Array.isArray(patch.usage) || Object.keys(patch.usage).length > 500) throw new Error(tr('ui.shell.patch_usage_invalid'));
       clean.usage = clone(patch.usage);
     }
     if (patch.lastViews !== undefined) {
-      if (!patch.lastViews || typeof patch.lastViews !== 'object' || Array.isArray(patch.lastViews) || Object.keys(patch.lastViews).length > 30) throw new Error('Últimas vistas no válidas.');
+      if (!patch.lastViews || typeof patch.lastViews !== 'object' || Array.isArray(patch.lastViews) || Object.keys(patch.lastViews).length > 30) throw new Error(tr('ui.shell.patch_last_views_invalid'));
       clean.lastViews = clone(patch.lastViews);
     }
     if (patch.themeMode !== undefined) {
-      if (!THEMES.includes(patch.themeMode) && patch.themeMode !== 'system') throw new Error('Tema no válido.');
+      if (!THEMES.includes(patch.themeMode) && patch.themeMode !== 'system') throw new Error(tr('ui.shell.patch_theme_invalid'));
       clean.themeMode = mode(patch.themeMode);
     }
     return clean;
@@ -149,20 +156,20 @@
   }
   function patchState(vm, patch) {
     ensure(vm);
-    if (!authenticated(vm)) return Promise.reject(new Error('Sesión no autenticada.'));
+    if (!authenticated(vm)) return Promise.reject(new Error(tr('ui.shell.session_unauthenticated')));
     let clean;
     try { clean = normalizePatch(patch); } catch (error) { return Promise.reject(error); }
     const state = stateFor(vm);
     const stale = sessionGuard(vm);
     const version = ++state.writeVersion;
     const run = async () => {
-      if (stale()) throw new Error('La sesión ha cambiado.');
+      if (stale()) throw new Error(tr('ui.shell.session_changed'));
       const current = await request(vm, '/workspace/state');
-      if (stale()) throw new Error('La sesión ha cambiado.');
+      if (stale()) throw new Error(tr('ui.shell.session_changed'));
       const body = { ...pickState(current), ...clean };
       if (clean.lastViews) body.lastViews = { ...(current.lastViews || {}), ...clean.lastViews };
       const saved = await request(vm, '/workspace/state', { method: 'PUT', body });
-      if (stale()) throw new Error('La sesión ha cambiado.');
+      if (stale()) throw new Error(tr('ui.shell.session_changed'));
       if (version === state.writeVersion) hydrateWorkspace(vm, saved, { epoch: state.workspaceEpoch });
       return vm.workspaceState;
     };
@@ -234,7 +241,7 @@
     } catch (error) { return { ok: false, error: message(error) }; }
   }
   async function deleteShortcut(vm, id) {
-    if (!id) return { ok: false, error: 'El acceso ya no está disponible.' };
+    if (!id) return { ok: false, error: tr('ui.shell.shortcut_unavailable') };
     const stale = sessionGuard(vm);
     try {
       await request(vm, '/workspace/shortcuts/' + encodeURIComponent(id), { method: 'DELETE' });
@@ -260,7 +267,7 @@
     } catch (error) { return { ok: false, error: message(error) }; }
   }
   async function deleteView(vm, id) {
-    if (!id) return { ok: false, error: 'La vista ya no está disponible.' };
+    if (!id) return { ok: false, error: tr('ui.shell.view_unavailable') };
     const stale = sessionGuard(vm);
     try {
       await request(vm, '/workspace/views/' + encodeURIComponent(id), { method: 'DELETE' });
@@ -297,7 +304,7 @@
         const dto = await request(vm, path, { signal: controller.signal });
         if (epoch !== state.dashboardEpoch || session !== state.sessionEpoch || owner !== ownerOf(vm) || !authenticated(vm)) return null;
         const summary = normalizeSummary(dto);
-        vm.dashboard = { ...vm.dashboard, summary, meta: { loading: false, error: summary ? '' : 'El servicio no devolvió datos operativos.', loaded: !!summary, epoch, generatedAt: (summary && summary.generatedAt) || '' } };
+        vm.dashboard = { ...vm.dashboard, summary, meta: { loading: false, error: summary ? '' : tr('ui.shell.dashboard_no_data'), loaded: !!summary, epoch, generatedAt: (summary && summary.generatedAt) || '' } };
         return summary;
       } catch (error) {
         if (epoch !== state.dashboardEpoch || session !== state.sessionEpoch || owner !== ownerOf(vm) || (error && error.name === 'AbortError')) return null;
@@ -317,7 +324,7 @@
     state.searchEpoch += 1;
     const epoch = state.searchEpoch;
     abort(state.searchController); state.searchController = null;
-    if (!authenticated(vm)) throw new Error('Sesión no autenticada.');
+    if (!authenticated(vm)) throw new Error(tr('ui.shell.session_unauthenticated'));
     const engine = window.AssetSearch;
     const local = () => {
       const favorites = localUser(vm).favorites;
@@ -368,7 +375,7 @@
   }
   async function saveIntegrations(vm, draft) {
     ensure(vm);
-    if (!authenticated(vm)) return { ok: false, error: 'Sesión no autenticada.' };
+    if (!authenticated(vm)) return { ok: false, error: tr('ui.shell.session_unauthenticated') };
     const state = stateFor(vm);
     const session = state.sessionEpoch;
     const owner = ownerOf(vm);
@@ -381,16 +388,16 @@
       rmmUrl: text(draft && draft.rmmUrl !== undefined ? draft.rmmUrl : rmm.url).trim()
     };
     for (const pair of [['anydesk', body.anydeskUrl, body.anydeskEnabled], ['rmm', body.rmmUrl, body.rmmEnabled]]) {
-      if (pair[2] && !pair[1]) return { ok: false, error: 'Introduce la dirección de ' + (pair[0] === 'anydesk' ? 'AnyDesk' : 'Tactical RMM') + '.' };
+      if (pair[2] && !pair[1]) return { ok: false, error: tr('ui.shell.integration_url_required', { name: pair[0] === 'anydesk' ? 'AnyDesk' : 'Tactical RMM' }) };
       if (pair[1]) {
         let url;
-        try { url = new URL(pair[1]); } catch (_) { return { ok: false, error: 'Usa una dirección válida que empiece por http:// o https://.' }; }
-        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return { ok: false, error: 'Usa una dirección válida que empiece por http:// o https://.' };
+        try { url = new URL(pair[1]); } catch (_) { return { ok: false, error: tr('ui.shell.integration_url_invalid') }; }
+        if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return { ok: false, error: tr('ui.shell.integration_url_invalid') };
       }
     }
     try {
       const dto = await request(vm, '/workspace/integrations', { method: 'PUT', body });
-      if (session !== state.sessionEpoch || owner !== ownerOf(vm) || !authenticated(vm)) return { ok: false, error: 'La sesión ha cambiado.' };
+      if (session !== state.sessionEpoch || owner !== ownerOf(vm) || !authenticated(vm)) return { ok: false, error: tr('ui.shell.session_changed') };
       applyIntegrations(vm, dto);
       return { ok: true, integrations: vm.config.integrations };
     } catch (error) { return { ok: false, error: message(error) }; }

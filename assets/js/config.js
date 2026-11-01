@@ -3,6 +3,13 @@
 
   const Store = window.AssetStore;
 
+  // Visible copy resolves through the shipped runtime so a language switch
+  // re-renders the configuration dialogs without reloading the page.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   function blankConfirm() {
     return {
       open: false,
@@ -35,7 +42,7 @@
 
     persistConfig() {
       const saved = Store.writeJSON(window.localStorage, Store.KEYS.config, this.config);
-      if (!saved) this.showToast('No se pudo guardar la configuración en este navegador.', 'error');
+      if (!saved) this.showToast(tr('ui.config.persist_failed'), 'error');
       return saved;
     },
 
@@ -83,13 +90,13 @@
     },
 
     locationLabel(asset) {
-      if (!asset) return 'Sin ubicación';
+      if (!asset) return tr('ui.config.location_none');
       const site = this.config.sites.find((item) => item.id === asset.site);
       if (site && asset.locationId) {
         const location = site.locations.find((item) => item.id === asset.locationId);
         if (location) return location.label;
       }
-      return asset.location || 'Sin ubicación';
+      return asset.location || tr('ui.config.location_none');
     },
 
     siteLocationCount(siteId) {
@@ -135,16 +142,16 @@
     readImageFile(file, onLoad, onError) {
       if (!file) return;
       if (!/^image\/(png|jpe?g|webp|gif|svg\+xml)$/i.test(file.type)) {
-        onError('Usa una imagen PNG, JPG, WebP, GIF o SVG.');
+        onError(tr('ui.config.image_format'));
         return;
       }
       if (file.size > 1024 * 1024) {
-        onError('La imagen no puede superar 1 MB.');
+        onError(tr('ui.config.image_too_large'));
         return;
       }
       const reader = new FileReader();
       reader.onload = () => onLoad(String(reader.result || ''));
-      reader.onerror = () => onError('No se pudo leer la imagen. Inténtalo de nuevo.');
+      reader.onerror = () => onError(tr('ui.config.image_read_failed'));
       reader.readAsDataURL(file);
     },
 
@@ -201,13 +208,13 @@
       const errors = { label: '', description: '', image: '', general: '' };
 
       if (!label) {
-        errors.label = 'Introduce un nombre para la categoría.';
+        errors.label = tr('ui.config.category_name_required');
       } else if (label.length > 40) {
-        errors.label = 'Usa un máximo de 40 caracteres.';
+        errors.label = tr('ui.config.category_name_too_long');
       } else if (labelExists(this.config.categories, label, this.categoryDialog.id)) {
-        errors.label = 'Ya existe una categoría con ese nombre.';
+        errors.label = tr('ui.config.category_duplicate');
       }
-      if (description.length > 160) errors.description = 'La descripción no puede superar 160 caracteres.';
+      if (description.length > 160) errors.description = tr('ui.config.category_description_too_long');
       this.categoryErrors = errors;
       if (errors.label || errors.description) return;
 
@@ -221,7 +228,7 @@
       if (this.categoryDialog.mode === 'edit') {
         const category = this.config.categories.find((item) => item.id === this.categoryDialog.id);
         if (!category) {
-          this.categoryErrors.general = 'La categoría ya no está disponible.';
+          this.categoryErrors.general = tr('ui.config.category_unavailable');
           return;
         }
         Object.assign(category, data);
@@ -232,7 +239,7 @@
 
       if (!this.persistConfig()) return;
       this.categoryDialog.open = false;
-      this.showToast(this.categoryDialog.mode === 'edit' ? 'Categoría actualizada.' : 'Categoría creada.');
+      this.showToast(tr(this.categoryDialog.mode === 'edit' ? 'ui.config.category_updated' : 'ui.config.category_created'));
     },
 
     requestDeleteCategory(category) {
@@ -241,9 +248,9 @@
         this.confirmDialog = Object.assign(blankConfirm(), {
           open: true,
           kind: 'blocked-category',
-          title: 'Categoría en uso',
-          message: '“' + category.label + '” está asignada a ' + count + (count === 1 ? ' activo.' : ' activos.'),
-          detail: 'Reasigna esos activos a otra categoría antes de eliminarla.',
+          title: tr('ui.config.category_in_use_title'),
+          message: tr('ui.config.category_in_use_message', { label: category.label, count }),
+          detail: tr('ui.config.category_in_use_detail'),
           confirmLabel: ''
         });
         return;
@@ -251,10 +258,10 @@
       this.confirmDialog = Object.assign(blankConfirm(), {
         open: true,
         kind: 'delete-category',
-        title: 'Eliminar categoría',
-        message: '¿Eliminar “' + category.label + '”?',
-        detail: 'No hay activos asociados. Esta acción no se puede deshacer.',
-        confirmLabel: 'Eliminar categoría',
+        title: tr('ui.config.category_delete_title'),
+        message: tr('ui.config.category_delete_message', { label: category.label }),
+        detail: tr('ui.config.category_delete_detail'),
+        confirmLabel: tr('ui.config.category_delete_title'),
         categoryId: category.id
       });
     },
@@ -293,20 +300,20 @@
       const errors = { label: '', short: '', general: '' };
 
       if (!label) {
-        errors.label = 'Introduce un nombre para la sede.';
+        errors.label = tr('ui.config.site_name_required');
       } else if (label.length > 48) {
-        errors.label = 'Usa un máximo de 48 caracteres.';
+        errors.label = tr('ui.config.site_name_too_long');
       } else if (labelExists(this.config.sites, label, this.siteDialog.id)) {
-        errors.label = 'Ya existe una sede con ese nombre.';
+        errors.label = tr('ui.config.site_duplicate');
       }
-      if (short.length > 24) errors.short = 'Usa un máximo de 24 caracteres.';
+      if (short.length > 24) errors.short = tr('ui.config.short_too_long');
       this.siteErrors = errors;
       if (errors.label || errors.short) return;
 
       if (this.siteDialog.mode === 'edit') {
         const site = this.config.sites.find((item) => item.id === this.siteDialog.id);
         if (!site) {
-          this.siteErrors.general = 'La sede ya no está disponible.';
+          this.siteErrors.general = tr('ui.config.site_unavailable');
           return;
         }
         site.label = label;
@@ -318,7 +325,7 @@
 
       if (!this.persistConfig()) return;
       this.siteDialog.open = false;
-      this.showToast(this.siteDialog.mode === 'edit' ? 'Sede actualizada.' : 'Sede creada.');
+      this.showToast(tr(this.siteDialog.mode === 'edit' ? 'ui.config.site_updated' : 'ui.config.site_created'));
     },
 
     requestDeleteSite(site) {
@@ -332,14 +339,14 @@
       const peopleCount = this.people.filter((person) => person.siteId === site.id).length;
       if (count || peopleCount) {
         const pieces = [];
-        if (count) pieces.push(count + (count === 1 ? ' activo asignado' : ' activos asignados'));
-        if (peopleCount) pieces.push(peopleCount + (peopleCount === 1 ? ' persona asociada' : ' personas asociadas'));
+        if (count) pieces.push(tr('ui.config.site_in_use_assets', { count }));
+        if (peopleCount) pieces.push(tr('ui.config.site_in_use_people', { count: peopleCount }));
         this.confirmDialog = Object.assign(blankConfirm(), {
           open: true,
           kind: 'blocked-site',
-          title: 'Sede en uso',
-          message: '“' + site.label + '” tiene ' + pieces.join(' y ') + '.',
-          detail: 'Reasigna esos registros a otra sede antes de eliminarla.',
+          title: tr('ui.config.site_in_use_title'),
+          message: tr('ui.config.site_in_use_message', { label: site.label, records: pieces.join(' y ') }),
+          detail: tr('ui.config.site_in_use_detail'),
           confirmLabel: ''
         });
         return;
@@ -348,12 +355,12 @@
       this.confirmDialog = Object.assign(blankConfirm(), {
         open: true,
         kind: 'delete-site',
-        title: 'Eliminar sede',
-        message: '¿Eliminar “' + site.label + '”?',
+        title: tr('ui.config.site_delete_title'),
+        message: tr('ui.config.site_delete_message', { label: site.label }),
         detail: locationCount
-          ? 'También se eliminarán sus ' + locationCount + (locationCount === 1 ? ' ubicación.' : ' ubicaciones.')
-          : 'No tiene ubicaciones ni activos asociados. Esta acción no se puede deshacer.',
-        confirmLabel: 'Eliminar sede',
+          ? tr('ui.config.site_delete_locations', { count: locationCount })
+          : tr('ui.config.site_delete_detail'),
+        confirmLabel: tr('ui.config.site_delete_title'),
         siteId: site.id
       });
     },
@@ -390,15 +397,15 @@
       const label = this.locationDialog.label.trim();
       const errors = { label: '', general: '' };
       if (!site) {
-        this.locationErrors = { label: '', general: 'La sede ya no está disponible.' };
+        this.locationErrors = { label: '', general: tr('ui.config.site_unavailable') };
         return;
       }
       if (!label) {
-        errors.label = 'Introduce un nombre para la ubicación.';
+        errors.label = tr('ui.config.location_name_required');
       } else if (label.length > 48) {
-        errors.label = 'Usa un máximo de 48 caracteres.';
+        errors.label = tr('ui.config.location_name_too_long');
       } else if (labelExists(site.locations, label, this.locationDialog.id)) {
-        errors.label = 'Ya existe una ubicación con ese nombre en esta sede.';
+        errors.label = tr('ui.config.location_duplicate');
       }
       this.locationErrors = errors;
       if (errors.label) return;
@@ -406,7 +413,7 @@
       if (this.locationDialog.id) {
         const location = site.locations.find((item) => item.id === this.locationDialog.id);
         if (!location) {
-          this.locationErrors.general = 'La ubicación ya no está disponible.';
+          this.locationErrors.general = tr('ui.config.location_unavailable');
           return;
         }
         location.label = label;
@@ -416,7 +423,7 @@
 
       if (!this.persistConfig()) return;
       this.locationDialog.open = false;
-      this.showToast(this.locationDialog.id ? 'Ubicación actualizada.' : 'Ubicación creada.');
+      this.showToast(tr(this.locationDialog.id ? 'ui.config.location_updated' : 'ui.config.location_created'));
     },
 
     requestDeleteLocation(site, location) {
@@ -429,9 +436,9 @@
         this.confirmDialog = Object.assign(blankConfirm(), {
           open: true,
           kind: 'blocked-location',
-          title: 'Ubicación en uso',
-          message: '“' + location.label + '” tiene ' + count + (count === 1 ? ' activo asignado.' : ' activos asignados.'),
-          detail: 'Reasigna esos activos a otra ubicación antes de eliminarla.',
+          title: tr('ui.config.location_in_use_title'),
+          message: tr('ui.config.location_in_use_message', { label: location.label, count }),
+          detail: tr('ui.config.location_in_use_detail'),
           confirmLabel: ''
         });
         return;
@@ -439,10 +446,10 @@
       this.confirmDialog = Object.assign(blankConfirm(), {
         open: true,
         kind: 'delete-location',
-        title: 'Eliminar ubicación',
-        message: '¿Eliminar “' + location.label + '” de ' + site.label + '?',
-        detail: 'No tiene activos asociados. Esta acción no se puede deshacer.',
-        confirmLabel: 'Eliminar ubicación',
+        title: tr('ui.config.location_delete_title'),
+        message: tr('ui.config.location_delete_message', { label: location.label, site: site.label }),
+        detail: tr('ui.config.location_delete_detail'),
+        confirmLabel: tr('ui.config.location_delete_title'),
         siteId: site.id,
         locationId: location.id
       });
@@ -469,7 +476,7 @@
         if (this.prefs.category === this.confirmDialog.categoryId) this.prefs.category = 'all';
         if (!this.persistConfig()) return;
         this.closeConfirm();
-        this.showToast('Categoría eliminada.');
+        this.showToast(tr('ui.config.category_deleted'));
         return;
       }
       if (kind === 'delete-site') {
@@ -483,7 +490,7 @@
         if (this.prefs.people.site === this.confirmDialog.siteId) this.prefs.people.site = 'all';
         if (!this.persistConfig()) return;
         this.closeConfirm();
-        this.showToast('Sede eliminada.');
+        this.showToast(tr('ui.config.site_deleted'));
         return;
       }
       if (kind === 'delete-location') {
@@ -500,7 +507,7 @@
         site.locations.splice(index, 1);
         if (!this.persistConfig()) return;
         this.closeConfirm();
-        this.showToast('Ubicación eliminada.');
+        this.showToast(tr('ui.config.location_deleted'));
         return;
       }
       if (kind === 'delete-department') {
@@ -513,7 +520,7 @@
         if (this.prefs.people.department === this.confirmDialog.departmentId) this.prefs.people.department = 'all';
         if (!this.persistConfig()) return;
         this.closeConfirm();
-        this.showToast('Departamento eliminado.');
+        this.showToast(tr('ui.config.department_deleted'));
       }
     },
 
@@ -524,9 +531,9 @@
         const draft = this.integrationDraft[definition.id] || { enabled: false, url: '' };
         const url = (draft.url || '').trim();
         if (draft.enabled && !url) {
-          errors[definition.id] = 'Introduce la dirección de ' + definition.name + '.';
+          errors[definition.id] = tr('ui.config.integration_url_required', { name: definition.name });
         } else if (draft.enabled && url && !Store.isHttpUrl(url)) {
-          errors[definition.id] = 'Usa una dirección válida que empiece por http:// o https://.';
+          errors[definition.id] = tr('ui.config.integration_url_invalid');
         }
         next[definition.id] = { enabled: !!draft.enabled, url };
       });
@@ -537,11 +544,11 @@
         rmmEnabled: next.rmm.enabled, rmmUrl: next.rmm.url
       });
       if (!result || !result.ok) {
-        this.integrationErrors.general = result && result.error || 'No se pudieron guardar las integraciones.';
+        this.integrationErrors.general = result && result.error || tr('ui.config.integrations_save_failed');
         return;
       }
       this.integrationDraft = Store.clone(this.config.integrations);
-      this.showToast('Integraciones actualizadas.');
+      this.showToast(tr('ui.config.integrations_updated'));
     }
   };
 })();

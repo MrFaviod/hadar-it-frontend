@@ -2,6 +2,13 @@
   'use strict';
 
   const Store = window.AssetStore;
+
+  // Visible copy resolves through the shipped runtime so a language switch
+  // re-renders the directory without reloading the page.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
   const KEYS = Store.KEYS;
 
   function blankPerson() {
@@ -50,7 +57,7 @@
 
     departmentLabel(id) {
       const department = this.departments.find((item) => item.id === id);
-      return department ? department.label : 'Sin departamento';
+      return department ? department.label : tr('ui.people.department_none');
     },
 
     departmentPeopleCount(id) {
@@ -62,7 +69,7 @@
     },
 
     personSiteLabel(id) {
-      return this.siteLabel(id) || 'Sin sede';
+      return this.siteLabel(id) || tr('ui.people.site_none');
     },
 
     activePeopleCount() {
@@ -81,7 +88,7 @@
     },
 
     personStatusLabel(person) {
-      return person && person.active ? 'Activa' : 'Inactiva';
+      return person && person.active ? tr('ui.people.status_active') : tr('ui.people.status_inactive');
     },
 
     phoneHref(phone) {
@@ -131,7 +138,7 @@
       const peopleSaved = Store.writeJSON(window.localStorage, KEYS.people, this.people);
       const assignmentsSaved = Store.writeJSON(window.localStorage, KEYS.assignments, this.assignmentMap());
       if (!peopleSaved || !assignmentsSaved) {
-        this.showToast('No se pudieron guardar las personas en este navegador.', 'error');
+        this.showToast(tr('ui.people.persist_failed'), 'error');
         return false;
       }
       return true;
@@ -146,7 +153,7 @@
 
     persistAssignments() {
       const saved = Store.writeJSON(window.localStorage, KEYS.assignments, this.assignmentMap());
-      if (!saved) this.showToast('No se pudo guardar la asignación.', 'error');
+      if (!saved) this.showToast(tr('ui.people.assignment_save_failed'), 'error');
       return saved;
     },
 
@@ -201,14 +208,14 @@
     validatePersonField(field) {
       const dialog = this.personDialog;
       if (field === 'name') {
-        this.personErrors.name = dialog.name.trim() ? '' : 'Introduce el nombre de la persona.';
+        this.personErrors.name = dialog.name.trim() ? '' : tr('ui.people.name_required');
       } else if (field === 'email') {
         const email = dialog.email.trim();
-        this.personErrors.email = email && !isValidEmail(email) ? 'Introduce un correo válido.' : '';
+        this.personErrors.email = email && !isValidEmail(email) ? tr('ui.people.email_invalid') : '';
       } else if (field === 'role') {
-        this.personErrors.role = dialog.role.trim().length > 80 ? 'Usa un máximo de 80 caracteres.' : '';
+        this.personErrors.role = dialog.role.trim().length > 80 ? tr('ui.people.name_too_long') : '';
       } else if (field === 'phone') {
-        this.personErrors.phone = dialog.phone.trim().length > 40 ? 'Usa un máximo de 40 caracteres.' : '';
+        this.personErrors.phone = dialog.phone.trim().length > 40 ? tr('ui.people.phone_too_long') : '';
       }
       this.personErrors.general = '';
     },
@@ -222,19 +229,19 @@
       const errors = { name: '', role: '', departmentId: '', siteId: '', email: '', phone: '', general: '' };
 
       if (!name) {
-        errors.name = 'Introduce el nombre de la persona.';
+        errors.name = tr('ui.people.name_required');
       } else if (name.length > 80) {
-        errors.name = 'Usa un máximo de 80 caracteres.';
+        errors.name = tr('ui.people.name_too_long');
       }
-      if (role.length > 80) errors.role = 'Usa un máximo de 80 caracteres.';
-      if (email && !isValidEmail(email)) errors.email = 'Introduce un correo válido.';
-      if (email.length > 120) errors.email = 'Usa un máximo de 120 caracteres.';
-      if (phone.length > 40) errors.phone = 'Usa un máximo de 40 caracteres.';
+      if (role.length > 80) errors.role = tr('ui.people.name_too_long');
+      if (email && !isValidEmail(email)) errors.email = tr('ui.people.email_invalid');
+      if (email.length > 120) errors.email = tr('ui.people.email_too_long');
+      if (phone.length > 40) errors.phone = tr('ui.people.phone_too_long');
       if (dialog.departmentId && !this.departments.some((item) => item.id === dialog.departmentId)) {
-        errors.departmentId = 'El departamento ya no está disponible.';
+        errors.departmentId = tr('ui.people.department_unavailable');
       }
       if (dialog.siteId && !this.sites.some((item) => item.id === dialog.siteId)) {
-        errors.siteId = 'La sede ya no está disponible.';
+        errors.siteId = tr('ui.people.site_unavailable');
       }
       this.personErrors = errors;
       if (errors.name || errors.role || errors.email || errors.phone || errors.departmentId || errors.siteId) return;
@@ -252,7 +259,7 @@
       if (dialog.mode === 'edit') {
         const person = this.personById(dialog.id);
         if (!person) {
-          this.personErrors.general = 'La persona ya no está disponible.';
+          this.personErrors.general = tr('ui.people.person_unavailable');
           return;
         }
         Object.assign(person, data);
@@ -268,7 +275,7 @@
 
       if (!this.persistPeople()) return;
       this.personDialog.open = false;
-      this.showToast(dialog.mode === 'edit' ? 'Persona actualizada.' : 'Persona creada.');
+      this.showToast(tr(dialog.mode === 'edit' ? 'ui.people.person_updated' : 'ui.people.person_created'));
     },
 
     setPersonActive(person, active) {
@@ -278,7 +285,7 @@
         if (asset.assigneeId === person.id) asset.assignee = person.name;
       });
       if (this.persistPeople()) {
-        this.showToast(person.active ? 'Persona reactivada.' : 'Persona desactivada.');
+        this.showToast(tr(person.active ? 'ui.people.person_reactivated' : 'ui.people.person_deactivated'));
       }
     },
 
@@ -297,7 +304,7 @@
     openAssignPerson(person) {
       if (!person) return;
       if (!person.active) {
-        this.showToast('Reactiva la persona antes de asignarle activos.', 'error');
+        this.showToast(tr('ui.people.assign_inactive_person'), 'error');
         return;
       }
       this.assignDialog = {
@@ -330,49 +337,49 @@
       if (dialog.mode === 'person') {
         const asset = this.assets.find((item) => item.id === dialog.assetId);
         if (!asset) {
-          this.showToast('El activo ya no está disponible.', 'error');
+          this.showToast(tr('ui.people.asset_unavailable'), 'error');
           this.closeAssignDialog();
           return;
         }
         const person = this.personById(dialog.selectedId);
         if (dialog.selectedId && !person) {
-          this.showToast('La persona ya no está disponible.', 'error');
+          this.showToast(tr('ui.people.person_unavailable'), 'error');
           return;
         }
         if (person && !person.active && person.id !== asset.assigneeId) {
-          this.showToast('La persona seleccionada está inactiva.', 'error');
+          this.showToast(tr('ui.people.selected_person_inactive'), 'error');
           return;
         }
         asset.assigneeId = person ? person.id : '';
         asset.assignee = person ? person.name : '';
         if (!this.persistAssignments()) return;
         this.closeAssignDialog();
-        this.showToast(person ? 'Responsable actualizado.' : 'Activo sin responsable.');
+        this.showToast(tr(person ? 'ui.people.assignee_updated' : 'ui.people.asset_unassigned'));
         return;
       }
 
       const person = this.personById(dialog.personId);
       if (!person || !person.active) {
-        this.showToast('La persona ya no está disponible o está inactiva.', 'error');
+        this.showToast(tr('ui.people.person_unavailable_or_inactive'), 'error');
         return;
       }
       const asset = this.assets.find((item) => item.id === dialog.selectedId);
       if (!asset) {
-        this.showToast('Selecciona un activo para asignar.', 'error');
+        this.showToast(tr('ui.people.select_asset_required'), 'error');
         return;
       }
       asset.assigneeId = person.id;
       asset.assignee = person.name;
       if (!this.persistAssignments()) return;
       this.closeAssignDialog();
-      this.showToast('Activo asignado a ' + person.name + '.');
+      this.showToast(tr('ui.people.assigned_to', { name: person.name }));
     },
 
     removeAssignment(asset) {
       if (!asset) return;
       asset.assigneeId = '';
       asset.assignee = '';
-      if (this.persistAssignments()) this.showToast('Activo sin responsable.');
+      if (this.persistAssignments()) this.showToast(tr('ui.people.asset_unassigned'));
     },
 
     openDepartmentDialog(department) {
@@ -397,11 +404,11 @@
       const label = this.departmentDialog.label.trim();
       const errors = { label: '', general: '' };
       if (!label) {
-        errors.label = 'Introduce un nombre para el departamento.';
+        errors.label = tr('ui.people.department_name_required');
       } else if (label.length > 48) {
-        errors.label = 'Usa un máximo de 48 caracteres.';
+        errors.label = tr('ui.people.department_name_too_long');
       } else if (labelExists(this.departments, label, this.departmentDialog.id)) {
-        errors.label = 'Ya existe un departamento con ese nombre.';
+        errors.label = tr('ui.people.department_duplicate');
       }
       this.departmentErrors = errors;
       if (errors.label) return;
@@ -409,7 +416,7 @@
       if (this.departmentDialog.mode === 'edit') {
         const department = this.departments.find((item) => item.id === this.departmentDialog.id);
         if (!department) {
-          this.departmentErrors.general = 'El departamento ya no está disponible.';
+          this.departmentErrors.general = tr('ui.people.department_unavailable');
           return;
         }
         department.label = label;
@@ -419,7 +426,7 @@
 
       if (!this.persistConfig()) return;
       this.departmentDialog.open = false;
-      this.showToast(this.departmentDialog.mode === 'edit' ? 'Departamento actualizado.' : 'Departamento creado.');
+      this.showToast(tr(this.departmentDialog.mode === 'edit' ? 'ui.people.department_updated' : 'ui.people.department_created'));
     },
 
     requestDeleteDepartment(department) {
@@ -434,9 +441,9 @@
         this.confirmDialog = {
           open: true,
           kind: 'blocked-department',
-          title: 'Departamento en uso',
-          message: '“' + department.label + '” tiene ' + count + (count === 1 ? ' persona asociada.' : ' personas asociadas.'),
-          detail: 'Reasigna esas personas a otro departamento antes de eliminarlo.',
+          title: tr('ui.people.department_in_use_title'),
+          message: tr('ui.people.department_in_use_message', { label: department.label, count }),
+          detail: tr('ui.people.department_in_use_detail'),
           confirmLabel: '',
           categoryId: '',
           siteId: '',
@@ -448,10 +455,10 @@
       this.confirmDialog = {
         open: true,
         kind: 'delete-department',
-        title: 'Eliminar departamento',
-        message: '¿Eliminar “' + department.label + '”?',
-        detail: 'No tiene personas asociadas. Esta acción no se puede deshacer.',
-        confirmLabel: 'Eliminar departamento',
+        title: tr('ui.people.department_delete_title'),
+        message: tr('ui.people.department_delete_message', { label: department.label }),
+        detail: tr('ui.people.department_delete_detail'),
+        confirmLabel: tr('ui.people.department_delete_title'),
         categoryId: '',
         siteId: '',
         locationId: '',

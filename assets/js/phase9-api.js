@@ -1,5 +1,9 @@
 (function () {
   'use strict';
+  // Adapter copy is shown outside a mounted template: resolve it at call time.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
 
   /* Phase 9 reports adapter.
    *
@@ -517,7 +521,7 @@
 
       phase9SaveSettings(patch) {
         if (!this.requirePermission('config.general')) {
-          return Promise.resolve({ ok: false, error: 'No tienes permiso para cambiar la configuración de reportes.' });
+          return Promise.resolve({ ok: false, error: tr('ui.reports.error_config_permission') });
         }
         const state = this.phase9;
         const current = state.settings;
@@ -746,7 +750,7 @@
         }
         const reference = documentRef && typeof documentRef === 'object' ? documentRef : {};
         const id = text(reference.id);
-        if (!id) return Promise.resolve({ ok: false, error: 'El documento no está disponible.' });
+        if (!id) return Promise.resolve({ ok: false, error: tr('ui.reports.error_document_unavailable') });
         const path = wirePath(reference.downloadUrl, BASE + '/documents/' + encodeURIComponent(id) + '/download');
         const token = this.phase9Token();
         this.phase9.download.id = id;
@@ -791,12 +795,12 @@
 
       phase9CreateShare(assetId, fields, expiresInDays) {
         if (!this.requirePermission('reports.share')) {
-          return Promise.resolve({ ok: false, error: 'No tienes permiso para compartir reportes públicamente.' });
+          return Promise.resolve({ ok: false, error: tr('ui.reports.error_share_permission') });
         }
         const selected = (Array.isArray(fields) ? fields : [])
           .map(text)
           .filter(function (key) { return PUBLIC_FIELDS.indexOf(key) !== -1; });
-        if (!selected.length) return Promise.resolve({ ok: false, error: 'Selecciona al menos un campo público.' });
+        if (!selected.length) return Promise.resolve({ ok: false, error: tr('ui.reports.error_public_field') });
         const state = this.phase9;
         const share = state.share;
         const token = this.phase9Token();
@@ -826,7 +830,7 @@
 
       phase9RevokeShare(shareId) {
         if (!this.requirePermission('reports.share')) {
-          return Promise.resolve({ ok: false, error: 'No tienes permiso para revocar enlaces públicos.' });
+          return Promise.resolve({ ok: false, error: tr('ui.reports.error_revoke_permission') });
         }
         const state = this.phase9;
         const token = this.phase9Token();
@@ -864,7 +868,7 @@
         report.error = '';
         if (!value) {
           report.loading = false;
-          report.error = 'El enlace público no es válido.';
+          report.error = tr('ui.reports.public_link_invalid');
           return Promise.resolve(false);
         }
         return window.AssetAccess.request(this, BASE + '/public/' + encodeURIComponent(value), {
@@ -882,7 +886,7 @@
         }).catch((error) => {
           if (epoch !== report.epoch || !this.phase9 || this.phase9.publicReport !== report) return false;
           if (error && error.name === 'AbortError') return false;
-          report.error = text(error && error.message) || 'El enlace público no está disponible.';
+          report.error = text(error && error.message) || tr('ui.reports.public_link_unavailable');
           return false;
         }).finally(() => {
           if (epoch === report.epoch && this.phase9 && this.phase9.publicReport === report) {

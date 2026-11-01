@@ -1,10 +1,16 @@
 (function () {
   'use strict';
   const periods = { '24h': 86400000, '7d': 604800000, '30d': 2592000000 };
-  const statusLabels = { up: 'Disponibles', degraded: 'Degradados', down: 'Fuera de línea', unmonitored: 'Sin supervisión', unknown: 'Sin datos' };
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+  // Stable operational identifiers. Only their displayed labels are localized.
+  const STATUS_IDS = ['up', 'degraded', 'down', 'unmonitored', 'unknown'];
+  const STATUS_KEYS = { up: 'ui.dashboard.status_up', degraded: 'ui.dashboard.status_degraded', down: 'ui.dashboard.status_down', unmonitored: 'ui.dashboard.status_unmonitored', unknown: 'ui.dashboard.status_unknown' };
+  const statusLabels = { get up() { return tr(STATUS_KEYS.up); }, get degraded() { return tr(STATUS_KEYS.degraded); }, get down() { return tr(STATUS_KEYS.down); }, get unmonitored() { return tr(STATUS_KEYS.unmonitored); }, get unknown() { return tr(STATUS_KEYS.unknown); } };
   const statusTones = { up: 'ok', degraded: 'warn', down: 'down', unmonitored: 'hold', unknown: 'hold' };
   const severityIds = { critical: 'critica', warning: 'alta', info: 'media', critica: 'critica', alta: 'alta', media: 'media', baja: 'baja' };
-  const severityLabels = { critica: 'Crítica', alta: 'Alta', media: 'Media', baja: 'Baja' };
+  const SEVERITY_KEYS = { critica: 'ui.dashboard.severity_critical', alta: 'ui.dashboard.severity_high', media: 'ui.dashboard.severity_medium', baja: 'ui.dashboard.severity_low' };
   const number = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
   const list = value => Array.isArray(value) ? value : [];
   const zeroStats = () => ({ total: 0, monitored: 0, up: 0, degraded: 0, down: 0, unmonitored: 0, unknown: 0, criticalAlerts: 0, unacknowledged: 0, activeIncidents: 0, availability: null });
@@ -28,8 +34,8 @@
         inventory: emptyInventory(), period, now, lastCheck: '', uptimeDays: null, widgetAvailable: () => false };
     }
     const rows = list(raw.rows).map(row => ({
-      asset: assetFromRow(row), status: statusLabels[row.status] ? row.status : 'unknown',
-      statusMeta: { id: row.status || 'unknown', label: statusLabels[row.status] || statusLabels.unknown, tone: statusTones[row.status] || 'hold' },
+      asset: assetFromRow(row), status: STATUS_IDS.includes(row.status) ? row.status : 'unknown',
+      statusMeta: { id: row.status || 'unknown', label: tr(STATUS_KEYS[row.status] || STATUS_KEYS.unknown), tone: statusTones[row.status] || 'hold' },
       monitored: !!row.monitored, reason: row.reason || '', uptimePct: number(row.uptimePct), latencyMs: number(row.latencyMs),
       lastCheckAt: row.lastCheckAt || '', uptimeDays: null, href: linkFor(row.target) || '#/activo/' + encodeURIComponent(row.assetId)
     })).filter(row => {
@@ -40,16 +46,16 @@
     });
     const assets = rows.map(row => row.asset);
     const byId = new Map(assets.map(asset => [asset.id, asset]));
-    const assetFor = (id, name, code) => byId.get(id) || (id ? { id, name: name || code || id, code: code || id, category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' } : { id: '', name: name || 'Sin activo', code: code || '', category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' });
+    const assetFor = (id, name, code) => byId.get(id) || (id ? { id, name: name || code || id, code: code || id, category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' }  : { id: '', name: name || tr('ui.dashboard.no_asset'), code: code || '', category: '', site: '', locationId: '', statusId: '', retired: false, assigneeId: '' });
     const availabilitySource = raw.availability || {};
     const samples = list(availabilitySource.samples).map(point => ({ at: point.at || '', label: point.label || period, value: number(point.value) })).filter(point => point.value !== null);
     const currentAvailability = number(availabilitySource.current);
     const availability = samples.length ? samples : currentAvailability === null ? [] : [{ at: availabilitySource.lastCheckAt || '', label: period, value: currentAvailability }];
     const latencyCurrent = number((raw.latency || {}).current);
-    const latency = latencyCurrent === null ? [] : [{ at: availabilitySource.lastCheckAt || '', label: 'Actual', value: latencyCurrent }];
+    const latency = latencyCurrent === null ? [] : [{ at: availabilitySource.lastCheckAt || '', label: tr('ui.dashboard.current'), value: latencyCurrent }];
     const stats = { ...zeroStats(), ...(raw.stats || {}), availability: currentAvailability };
     const activeAlerts = list(raw.activeAlerts).map(alert => ({
-      id: alert.id, title: alert.title || alert.description || 'Alerta', description: alert.description || '',
+      id: alert.id, title: alert.title || alert.description || tr('ui.dashboard.alert_fallback'), description: alert.description || '',
       severity: alert.severity || 'info', severityRank: ({ critical: 3, warning: 2, info: 1 })[alert.severity] || 0,
       assetId: alert.assetId || '', asset: assetFor(alert.assetId, alert.assetName, alert.assetCode),
       state: alert.state || 'open', acknowledged: !!alert.acknowledged, acknowledgedAt: alert.acknowledgedAt || null,
@@ -57,22 +63,22 @@
     }));
     const activity = list(raw.activity).map(event => {
       const asset = assetFor(event.assetId, event.assetName, event.assetCode);
-      return { id: event.id, at: event.at || '', kind: event.kind || 'inventory', title: event.title || 'Cambio registrado',
+      return { id: event.id, at: event.at || '', kind: event.kind || 'inventory', title: event.title || tr('ui.dashboard.change_registered'),
         detail: event.detail || '', asset, assetId: asset.id, href: linkFor(event.target) || (asset.id ? '#/activo/' + encodeURIComponent(asset.id) : '') };
     }).sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
     const maintenance = list(raw.maintenance).map(row => ({
       planId: row.planId, assetId: row.assetId, asset: assetFor(row.assetId, row.assetName, row.assetCode),
-      label: row.label || 'Mantenimiento preventivo', template: { label: row.label || 'Mantenimiento preventivo' },
-      status: row.status || '', statusMeta: { label: row.status || 'Pendiente', tone: row.statusTone || 'hold' }, dueAt: row.dueAt || ''
+      label: row.label || tr('ui.dashboard.preventive_default'), template: { label: row.label || tr('ui.dashboard.preventive_default') },
+      status: row.status || '', statusMeta: { label: row.status || tr('ui.dashboard.pending_default'), tone: row.statusTone || 'hold' }, dueAt: row.dueAt || ''
     }));
     const warranties = list(raw.warranties).map(row => ({
       asset: assetFor(row.assetId, row.assetName, row.assetCode), assetId: row.assetId, until: row.until || '',
       days: Number(row.days) || 0, coverage: row.coverage || 'expiring'
     }));
-    const distribution = list(raw.distribution).map(item => ({ id: item.id, label: item.label || statusLabels[item.id] || item.id, count: Number(item.count) || 0 }));
+    const distribution = list(raw.distribution).map(item => ({ id: item.id, label: item.label || (STATUS_KEYS[item.id] ? tr(STATUS_KEYS[item.id]) : item.id), count: Number(item.count) || 0 }));
     const severity = ['critica', 'alta', 'media', 'baja'].map(id => {
       const item = list(raw.severity).find(entry => (severityIds[entry.id] || entry.id) === id);
-      return { id, label: (item && item.label) || severityLabels[id], count: Number(item && item.count) || 0 };
+      return { id, label: (item && item.label) || tr(SEVERITY_KEYS[id]), count: Number(item && item.count) || 0 };
     });
     const outages = activity.filter(event => event.kind === 'recovery' || (event.kind === 'alert' && /caída|sin respuesta|conectividad|fuera de línea|recuper/i.test(event.title + ' ' + event.detail)));
     const inventorySource = raw.inventory || {};

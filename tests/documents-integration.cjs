@@ -4,6 +4,10 @@ function setup(entry='index.html'){
  const values=new Map(),storage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
  const c=vm.createContext({console,Date,URL,Blob,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,DataView,atob,btoa,setTimeout,clearTimeout,localStorage:storage,sessionStorage:storage,location:{hash:'#/panel'},history:{replaceState(){}},navigator:{}});c.window=c;
  vm.runInContext(fs.readFileSync('assets/vendor/vue.global.prod.js','utf8'),c);
+ vm.runInContext(fs.readFileSync('assets/vendor/vue-i18n.global.prod.js','utf8'),c);
+ const catalog=tag=>JSON.parse(fs.readFileSync('assets/i18n/'+tag+'.json','utf8'));
+ c.__ITSM_I18N_CATALOGS__={catalogs:{es:catalog('es'),en:catalog('en')},context:catalog('context')};
+ c.fetch=async()=>({ok:false,status:404,headers:{get:()=>null},json:async()=>({})});
  const decode=s=>s.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(_,e)=>({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:'\u00a0'}[e]||String.fromCodePoint(e[1].toLowerCase()==='x'?parseInt(e.slice(2),16):Number(e.slice(1)))));
  c.document={createElement(){return {children:[],set innerHTML(v){this.textContent=decode(v);this.children=[{getAttribute:()=>decode((v.match(/foo="([\s\S]*)"/)||[])[1]||'')}];}};},title:''};
  const html=fs.readFileSync(entry,'utf8');
@@ -12,6 +16,7 @@ function setup(entry='index.html'){
   if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
+ c.ItsmI18n.primeBundle('es');
  const Vue=c.Vue;c.Vue={...Vue,createApp(o){c.options=o;return {mount(){}};}};vm.runInContext(fs.readFileSync('assets/js/app.js','utf8'),c);c.Vue=Vue;
  const app=Vue.reactive(c.options.data());app.currentUser={id:'admin'};app.can=()=>true;app.showToast=m=>{app.lastToast=m;};
  for(const [key,fn] of Object.entries(c.options.methods))app[key]=fn.bind(app);
@@ -23,7 +28,7 @@ function setup(entry='index.html'){
   const source=c.options.components[name];assert.ok(source, name+' is registered');
   // Replace only DOM-only modal/transition infrastructure with transparent test components.
   function adapt(comp){if(!comp||typeof comp!=='object')return comp;const out={...comp,components:{...(comp.components||{})}};if(out.template)out.template=out.template.replace(/<transition name="fade">/g,'<template>').replace(/<\/transition>/g,'</template>');for(const [key,value] of Object.entries(out.components))out.components[key]=key==='ModalShell'?{props:['open'],template:'<div v-if="open"><slot></slot><slot name="footer"></slot></div>'}:adapt(value);return out;}
-  const root={children:[]},r=Vue.createRenderer(host),a=r.createApp(adapt(source),{app,...props});a.config.errorHandler=e=>errors.push(e);const instance=a.mount(root);return {instance,root,unmount:()=>a.unmount()};
+  const root={children:[]},r=Vue.createRenderer(host),a=r.createApp(adapt(source),{app,...props});if(c.ItsmI18n)a.use(c.ItsmI18n.i18n);a.config.errorHandler=e=>errors.push(e);const instance=a.mount(root);return {instance,root,unmount:()=>a.unmount()};
  }
  return {c,app,html,mount,errors,tick:Vue.nextTick};
 }
