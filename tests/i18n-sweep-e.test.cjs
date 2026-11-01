@@ -27,7 +27,7 @@ async function withLocales(s, root, pair) {
 const ASSET = { id: '5a1e0c10-0001-4f10-9a10-000000000001', name: 'Servidor de fichajes', quickCode: 'SRV-01', code: 'SRV-01', site: 'Sede' };
 const ALERT = { id: 'alert-1', alertName: 'ProbeFailed', assetName: ASSET.name, quickCode: ASSET.quickCode, severity: 'critical', state: 'firing' };
 
-test('T3e the silence dialog renders its copy from the catalog', { skip: 'monitoring-views.js copy is not converted yet' }, async () => {
+test('T3e the silence dialog renders its copy from the catalog', async () => {
   const s = setup();
   const dialog = s.mount('MonSilenceDialog', { open: true, alert: ALERT, app: s.app });
   await s.settle();
@@ -46,7 +46,7 @@ test('T3e the silence dialog renders its copy from the catalog', { skip: 'monito
   dialog.unmount();
 });
 
-test('T3e the alert settings page renders its copy from the catalog', { skip: 'monitoring-settings.js copy is not converted yet' }, async () => {
+test('T3e the alert settings page renders its copy from the catalog', async () => {
   const s = setup();
   const settings = s.mount('AlertSettings', { app: s.app });
   await s.settle();
