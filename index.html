@@ -514,15 +514,15 @@
 
         <main id="main-content" class="main" tabindex="-1">
           <workspace-shortcuts :app="$root"></workspace-shortcuts>
-          <section v-if="workspaceCanSave" class="universal-filter-strip" aria-label="Filtros de la vista" data-od-id="shared-view-filters">
+          <section v-if="workspaceCanSave" class="universal-filter-strip" :aria-label="$t('ui.inventory.filter_aria')" data-od-id="shared-view-filters">
             <div class="universal-filter-strip__controls">
-              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">Categoría</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">Todas las categorías</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
-              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">Sede</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">Todas las sedes</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-status">Estado del activo</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">Todos los estados</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-location">Ubicación</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">Todas las ubicaciones</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
-              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>Columnas</summary><div><label v-for="c in [{id:'model',label:'Tipo y modelo'},{id:'location',label:'Sede y ubicación'},{id:'assignee',label:'Responsable'},{id:'ip',label:'Dirección IP'},{id:'remote',label:'Acceso remoto'}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" :for="'shared-category'">{{ $t('ui.inventory.filter_category') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">{{ $t('ui.inventory.all_categories') }}</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
+              <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" :for="'shared-site'">{{ $t('ui.inventory.filter_site') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">{{ $t('ui.inventory.all_sites') }}</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" :for="'shared-status'">{{ $t('ui.inventory.filter_status') }}</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.inventory.all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" :for="'shared-location'">{{ $t('ui.inventory.filter_location') }}</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.inventory.all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
+              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.inventory.columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.inventory.column_model')},{id:'location',label:$t('ui.inventory.column_location')},{id:'assignee',label:$t('ui.inventory.column_assignee')},{id:'ip',label:$t('ui.inventory.column_ip')},{id:'remote',label:$t('ui.inventory.column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
             </div>
-            <div v-if="workspaceChips.length" class="universal-filter-strip__chips" aria-label="Filtros seleccionados"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="'Quitar filtro: '+chip.label" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">Restablecer filtros</button></div>
+            <div v-if="workspaceChips.length" class="universal-filter-strip__chips" :aria-label="$t('ui.inventory.selected_filters')"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.inventory.remove_filter', { label: chip.label })" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">{{ $t('ui.inventory.reset_filters') }}</button></div>
           </section>
 
           <asset-conversation v-if="authenticated && can('assets.view')" :key="activeUserId" :app="$root"></asset-conversation>
@@ -543,64 +543,64 @@
               <section v-else-if="route.name === 'inventory'" class="page" aria-labelledby="inventory-title">
                 <header class="page-head">
                   <div class="page-head__copy">
-                    <p class="eyebrow"><span class="eyebrow__line"></span> Control de inventario</p>
-                    <h1 id="inventory-title">Inventario de activos</h1>
+                    <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.inventory.eyebrow') }}</p>
+                    <h1 id="inventory-title">{{ $t('ui.inventory.title') }}</h1>
                   </div>
                   <div class="page-head__side">
-                    <div class="page-head__meta" aria-label="Resumen del inventario">
-                      <span class="mono">{{ inventoryItems.length }} de {{ inventoryTotal }}</span>
-                      <span>activos del servidor</span>
+                    <div class="page-head__meta" :aria-label="$t('ui.inventory.summary_aria')">
+                      <span class="mono">{{ $t('ui.inventory.page_of', { shown: inventoryItems.length, total: inventoryTotal }) }}</span>
+                      <span>{{ $t('ui.inventory.server_assets') }}</span>
                     </div>
                     <button v-if="can('assets.edit')" type="button" class="btn btn--secondary" data-od-id="inventory-bulk-open" :disabled="inventory.loading || !inventoryItems.length" @click="bulk.ids = inventoryItems.map(item => item.id); openBulkEditor()">
                       <app-icon name="edit"></app-icon>
-                      <span>Editar esta página</span>
+                      <span>{{ $t('ui.inventory.bulk_edit') }}</span>
                     </button>
                     <button v-if="can('assets.edit')" type="button" class="btn btn--primary" data-od-id="create-asset" @click="openAssetCreate()">
                       <app-icon name="plus"></app-icon>
-                      <span>Nuevo activo</span>
+                      <span>{{ $t('ui.inventory.new_asset') }}</span>
                     </button>
                     <a class="btn btn--ghost" data-od-id="inventory-reports" href="#/reportes" @click.prevent="setHash('#/reportes')"
-                       title="Preparar reportes y etiquetas del inventario del servidor">
+                       :title="$t('ui.inventory.reports_title')">
                       <app-icon name="file-text"></app-icon>
-                      <span>Reportes</span>
+                      <span>{{ $t('ui.inventory.reports') }}</span>
                     </a>
                   </div>
                 </header>
 
-                <div class="stats-strip" role="list" aria-label="Indicadores del inventario del servidor">
+                <div class="stats-strip" role="list" :aria-label="$t('ui.inventory.stats_aria')">
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryTotal }}</span><span class="stat__label">Activos en el servidor</span></div>
+                    <div><span class="stat__value">{{ inventoryTotal }}</span><span class="stat__label">{{ $t('ui.inventory.stat_total') }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="search"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryItems.length }}</span><span class="stat__label">En esta página</span></div>
+                    <div><span class="stat__value">{{ inventoryItems.length }}</span><span class="stat__label">{{ $t('ui.inventory.stat_page') }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="file-text"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryPageLabel }}</span><span class="stat__label">Paginación</span></div>
+                    <div><span class="stat__value">{{ inventoryPageLabel }}</span><span class="stat__label">{{ $t('ui.inventory.stat_pagination') }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="refresh"></app-icon></span>
-                    <div><span class="stat__value">{{ inventory.loading ? 'Consultando' : (inventory.error ? 'Con error' : 'Sincronizado') }}</span><span class="stat__label">Estado de la consulta</span></div>
+                    <div><span class="stat__value">{{ inventory.loading ? $t('ui.inventory.query_loading') : (inventory.error ? $t('ui.inventory.query_error') : $t('ui.inventory.query_synced')) }}</span><span class="stat__label">{{ $t('ui.inventory.stat_query') }}</span></div>
                   </div>
                 </div>
 
-                <div class="toolbar" aria-label="Filtros del inventario">
+                <div class="toolbar" :aria-label="$t('ui.inventory.toolbar_aria')">
                   <div class="search-field">
                     <app-icon name="search"></app-icon>
-                    <label class="sr-only" for="inventory-search">Buscar activos en el servidor</label>
-                    <input id="inventory-search" v-model="inventoryFilters.query" type="search" placeholder="Buscar nombre, código, IP o responsable" autocomplete="off">
-                    <button v-if="inventoryFilters.query" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="inventoryFilters.query = ''">
+                    <label class="sr-only" for="inventory-search">{{ $t('ui.inventory.search_label') }}</label>
+                    <input id="inventory-search" v-model="inventoryFilters.query" type="search" :placeholder="$t('ui.inventory.search_placeholder')" autocomplete="off">
+                    <button v-if="inventoryFilters.query" class="search-clear" type="button" :aria-label="$t('ui.inventory.clear_search')" @click="inventoryFilters.query = ''">
                       <app-icon name="close"></app-icon>
                     </button>
                   </div>
 
                   <div class="select-field">
                     <app-icon name="activity"></app-icon>
-                    <label class="sr-only" for="inventory-status-filter">Filtrar por estado</label>
+                    <label class="sr-only" for="inventory-status-filter">{{ $t('ui.inventory.status_filter_label') }}</label>
                     <select id="inventory-status-filter" v-model="inventoryFilters.status">
-                      <option value="all">Todos los estados</option>
+                      <option value="all">{{ $t('ui.inventory.all_statuses') }}</option>
                       <option v-for="option in inventoryStatusChoices" :key="option.value" :value="option.value">{{ option.label }}</option>
                     </select>
                     <app-icon name="chevron-down"></app-icon>
@@ -608,22 +608,22 @@
 
                   <button type="button" class="btn btn--secondary" data-od-id="inventory-refresh" :disabled="inventory.loading" @click="loadInventory()">
                     <app-icon name="refresh"></app-icon>
-                    <span>Actualizar</span>
+                    <span>{{ $t('ui.inventory.refresh') }}</span>
                   </button>
 
-                  <div class="view-switch" role="group" aria-label="Forma de visualización">
+                  <div class="view-switch" role="group" :aria-label="$t('ui.inventory.view_aria')">
                     <button type="button" :class="{ 'is-active': prefs.view === 'table' }" :aria-pressed="prefs.view === 'table'" @click="setView('table')">
-                      <app-icon name="table"></app-icon><span>Tabla</span>
+                      <app-icon name="table"></app-icon><span>{{ $t('ui.inventory.view_table') }}</span>
                     </button>
                     <button type="button" :class="{ 'is-active': prefs.view === 'cards' }" :aria-pressed="prefs.view === 'cards'" @click="setView('cards')">
-                      <app-icon name="grid"></app-icon><span>Tarjetas</span>
+                      <app-icon name="grid"></app-icon><span>{{ $t('ui.inventory.view_cards') }}</span>
                     </button>
                   </div>
                 </div>
 
-                <div class="category-rail od-rail" role="group" aria-label="Filtrar por categoría">
+                <div class="category-rail od-rail" role="group" :aria-label="$t('ui.inventory.category_filter_aria')">
                   <button type="button" class="chip" :class="{ 'is-active': inventoryFilters.category === 'all' }" :aria-pressed="inventoryFilters.category === 'all'" @click="inventoryFilters.category = 'all'">
-                    <span>Todos</span>
+                    <span>{{ $t('ui.inventory.all') }}</span>
                   </button>
                   <button v-for="category in inventoryCategoryChoices" :key="category.id" type="button" class="chip"
                           :class="{ 'is-active': inventoryFilters.category === category.id }" :aria-pressed="inventoryFilters.category === category.id"
@@ -634,9 +634,9 @@
                 </div>
 
                 <div class="results-bar" aria-live="polite">
-                  <p><strong>{{ inventoryTotal }}</strong> {{ inventoryTotal === 1 ? 'activo en el servidor' : 'activos en el servidor' }} <span>· {{ inventoryPageLabel }}</span></p>
+                  <p><strong>{{ inventoryTotal }}</strong> {{ $t('ui.inventory.results', { count: inventoryTotal }) }} <span>· {{ inventoryPageLabel }}</span></p>
                   <button v-if="inventoryFiltersActive" type="button" class="text-button text-button--quiet" @click="clearInventoryFilters">
-                    Limpiar filtros
+                    {{ $t('ui.inventory.clear_filters') }}
                   </button>
                 </div>
 
@@ -644,19 +644,19 @@
                   <div v-if="!inventory.error && !inventory.loading && inventoryItems.length" :key="prefs.view" class="results-surface">
                     <div v-if="prefs.view === 'table'" class="table-panel">
                       <table class="asset-table">
-                        <caption class="sr-only">Activos informáticos. Selecciona el nombre de un activo para abrir su ficha.</caption>
+                        <caption class="sr-only">{{ $t('ui.inventory.caption') }}</caption>
                         <thead>
                           <tr>
-                            <th scope="col">Activo</th>
-                            <th v-if="workspaceInventory.columns.includes('model')" scope="col">Tipo y modelo</th>
-                            <th v-if="workspaceInventory.columns.includes('location')" scope="col">Sede y ubicación</th>
-                            <th v-if="workspaceInventory.columns.includes('assignee')" scope="col">Responsable</th>
-                            <th v-if="workspaceInventory.columns.includes('ip')" scope="col">Dirección IP</th>
+                            <th scope="col">{{ $t('ui.inventory.column_asset') }}</th>
+                            <th v-if="workspaceInventory.columns.includes('model')" scope="col">{{ $t('ui.inventory.column_model') }}</th>
+                            <th v-if="workspaceInventory.columns.includes('location')" scope="col">{{ $t('ui.inventory.column_location') }}</th>
+                            <th v-if="workspaceInventory.columns.includes('assignee')" scope="col">{{ $t('ui.inventory.column_assignee') }}</th>
+                            <th v-if="workspaceInventory.columns.includes('ip')" scope="col">{{ $t('ui.inventory.column_ip') }}</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr v-for="asset in inventoryItems" :key="asset.id" class="asset-row" :class="{ 'is-retired': asset.retired }" @click="openAsset(asset)">
-                            <td data-label="Activo">
+                            <td :data-label="$t('ui.inventory.column_asset')">
                               <div class="asset-cell">
                                 <span class="asset-thumb"><img :src="assetImage(asset)" width="640" height="400" :alt="asset.name + ', ' + asset.type" loading="lazy"></span>
                                 <span class="asset-cell__text">
@@ -665,19 +665,19 @@
                                 </span>
                               </div>
                             </td>
-                            <td v-if="workspaceInventory.columns.includes('model')" data-label="Tipo y modelo">
+                            <td v-if="workspaceInventory.columns.includes('model')" :data-label="$t('ui.inventory.column_model')">
                               <span class="type-tag">{{ asset.type }}</span>
                               <span class="cell-note" :title="asset.brand + ' ' + asset.model">{{ asset.brand }} {{ asset.model }}</span>
                             </td>
-                            <td v-if="workspaceInventory.columns.includes('location')" data-label="Sede y ubicación">
+                            <td v-if="workspaceInventory.columns.includes('location')" :data-label="$t('ui.inventory.column_location')">
                               <span class="cell-strong">{{ assetSiteText(asset) }}</span>
                               <span class="cell-note">{{ assetLocationText(asset) }}</span>
                             </td>
-                            <td v-if="workspaceInventory.columns.includes('assignee')" data-label="Responsable">
+                            <td v-if="workspaceInventory.columns.includes('assignee')" :data-label="$t('ui.inventory.column_assignee')">
                               <span v-if="assetResponsibleText(asset)" class="cell-strong">{{ assetResponsibleText(asset) }}</span>
-                              <span v-else class="cell-muted">Sin responsable</span>
+                              <span v-else class="cell-muted">{{ $t('ui.inventory.unassigned') }}</span>
                             </td>
-                            <td v-if="workspaceInventory.columns.includes('ip')" data-label="Dirección IP">
+                            <td v-if="workspaceInventory.columns.includes('ip')" :data-label="$t('ui.inventory.column_ip')">
                               <span v-if="asset.ip" class="mono cell-ip od-nowrap">{{ asset.ip }}</span>
                               <span v-else class="cell-muted">—</span>
                             </td>
@@ -702,10 +702,10 @@
                           <p class="asset-card__model">{{ asset.brand }} {{ asset.model }}</p>
                           <div class="asset-card__meta">
                             <span><app-icon name="map-pin"></app-icon>{{ assetSiteText(asset) }}</span>
-                            <span><app-icon name="user"></app-icon>{{ assetResponsibleText(asset) || 'Sin responsable' }}</span>
+                            <span><app-icon name="user"></app-icon>{{ assetResponsibleText(asset) || $t('ui.inventory.unassigned') }}</span>
                           </div>
                           <div class="asset-card__foot">
-                            <span class="mono">{{ asset.ip || 'Sin IP' }}</span>
+                            <span class="mono">{{ asset.ip || $t('ui.inventory.no_ip') }}</span>
                             <span class="cell-muted">{{ assetLocationText(asset) }}</span>
                           </div>
                         </div>
@@ -716,27 +716,27 @@
                 </transition>
 
                 <div v-if="inventory.loading" class="results-surface" aria-busy="true" role="status">
-                  <p class="cell-muted">Consultando el inventario del servidor…</p>
+                  <p class="cell-muted">{{ $t('ui.inventory.loading') }}</p>
                 </div>
 
                 <div v-else-if="inventory.error" class="empty-state" role="alert">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
-                  <h2>No se pudo cargar el inventario</h2>
+                  <h2>{{ $t('ui.inventory.error_title') }}</h2>
                   <p>{{ inventory.error }}</p>
-                  <button type="button" class="btn btn--primary" @click="loadInventory()">Reintentar</button>
+                  <button type="button" class="btn btn--primary" @click="loadInventory()">{{ $t('ui.inventory.retry') }}</button>
                 </div>
 
                 <div v-else-if="!inventoryItems.length" class="empty-state">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
-                  <h2>{{ inventoryFiltersActive ? 'No hay activos con estos filtros' : 'El inventario está vacío' }}</h2>
-                  <p>{{ inventoryFiltersActive ? 'Ajusta la búsqueda o los filtros.' : 'Registra el primer activo para empezar.' }}</p>
-                  <button v-if="inventoryFiltersActive" type="button" class="btn btn--primary" @click="clearInventoryFilters">Limpiar filtros</button>
+                  <h2>{{ inventoryFiltersActive ? $t('ui.inventory.empty_filtered_title') : $t('ui.inventory.empty_title') }}</h2>
+                  <p>{{ inventoryFiltersActive ? $t('ui.inventory.empty_filtered_body') : $t('ui.inventory.empty_body') }}</p>
+                  <button v-if="inventoryFiltersActive" type="button" class="btn btn--primary" @click="clearInventoryFilters">{{ $t('ui.inventory.clear_filters') }}</button>
                 </div>
 
-                <nav v-if="inventoryTotal > inventory.limit" class="inventory-pagination" aria-label="Paginación del inventario">
-                  <button type="button" class="btn btn--secondary" :disabled="!inventoryHasPrev" @click="prevInventoryPage">Anterior</button>
+                <nav v-if="inventoryTotal > inventory.limit" class="inventory-pagination" :aria-label="$t('ui.inventory.pagination_aria')">
+                  <button type="button" class="btn btn--secondary" :disabled="!inventoryHasPrev" @click="prevInventoryPage">{{ $t('ui.inventory.previous') }}</button>
                   <span aria-live="polite">{{ inventoryPageLabel }}</span>
-                  <button type="button" class="btn btn--secondary" :disabled="!inventoryHasNext" @click="nextInventoryPage">Siguiente</button>
+                  <button type="button" class="btn btn--secondary" :disabled="!inventoryHasNext" @click="nextInventoryPage">{{ $t('ui.inventory.next') }}</button>
                 </nav>
               </section>
 
@@ -1169,19 +1169,19 @@
                     <section v-else-if="route.section === 'general'" class="config-section" aria-labelledby="config-general-title">
                       <header class="config-section__head">
                         <div>
-                          <p class="eyebrow">Identidad</p>
-                          <h2 id="config-general-title">Identidad y marca</h2>
-                          <p>El nombre y el logotipo se muestran en el acceso y en la navegación.</p>
+                          <p class="eyebrow">{{ $t('ui.catalog.general.eyebrow') }}</p>
+                          <h2 id="config-general-title">{{ $t('ui.catalog.general.title') }}</h2>
+                          <p>{{ $t('ui.catalog.general.lead') }}</p>
                         </div>
-                        <span class="config-badge"><app-icon name="sliders"></app-icon> General</span>
+                        <span class="config-badge"><app-icon name="sliders"></app-icon> {{ $t('ui.catalog.general.badge') }}</span>
                       </header>
 
                       <div class="brand-preview">
                         <span class="brand-preview__logo"><img :src="brandLogo" width="64" height="64" alt=""></span>
                         <div class="brand-preview__copy"><strong>{{ appName }}</strong><small>{{ organizationName }}</small></div>
                       </div>
-                      <p>La identidad es global para esta instalación. Administra los logotipos, colores y presets en Apariencia.</p>
-                      <a class="btn btn--secondary" href="#/configuracion/apariencia">Administrar apariencia</a>
+                      <p>{{ $t('ui.catalog.general.body') }}</p>
+                      <a class="btn btn--secondary" href="#/configuracion/apariencia">{{ $t('ui.catalog.general.manage') }}</a>
                       <search-settings :app="$root"></search-settings>
                       <dashboard-preferences :app="$root"></dashboard-preferences>
                     </section>
@@ -1192,29 +1192,29 @@
                     <section v-else-if="route.section === 'categorias'" class="config-section" aria-labelledby="config-categories-title">
                       <header class="config-section__head">
                         <div>
-                          <p class="eyebrow">Catálogo</p>
-                          <h2 id="config-categories-title">Categorías de activos</h2>
-                          <p v-if="inventoryCatalogReady">Las categorías del inventario las define el servidor: agrupan los equipos y fijan su prefijo de código rápido.</p>
-                          <p v-else>Agrupa los equipos y define la imagen genérica de cada grupo.</p>
+                          <p class="eyebrow">{{ $t('ui.catalog.categories.eyebrow') }}</p>
+                          <h2 id="config-categories-title">{{ $t('ui.catalog.categories.title') }}</h2>
+                          <p v-if="inventoryCatalogReady">{{ $t('ui.catalog.categories.lead_server') }}</p>
+                          <p v-else>{{ $t('ui.catalog.categories.lead_local') }}</p>
                         </div>
                         <button v-if="inventoryCatalogReady && inventoryCanConfigure('fields')" type="button" class="btn btn--primary btn--small" data-od-id="create-server-category" @click="openCategoryDialog()">
-                          <app-icon name="plus"></app-icon> Nueva categoría
+                          <app-icon name="plus"></app-icon> {{ $t('ui.catalog.categories.new') }}
                         </button>
                         <a v-else-if="inventoryCatalogReady" class="btn btn--secondary btn--small" href="#/configuracion/activos" @click.prevent="setHash('#/configuracion/activos')">
-                          <app-icon name="sliders"></app-icon> Configurar en activos
+                          <app-icon name="sliders"></app-icon> {{ $t('ui.catalog.categories.configure') }}
                         </a>
                         <button v-else-if="!inventoryServerMode()" type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()">
-                          <app-icon name="plus"></app-icon> Nueva categoría
+                          <app-icon name="plus"></app-icon> {{ $t('ui.catalog.categories.new') }}
                         </button>
                       </header>
 
                       <div v-if="inventoryServerMode() && !inventoryCatalogReady" class="config-note" role="alert">
                         <app-icon name="info"></app-icon>
                         <span>
-                          <template v-if="inventoryCatalog.loading">Consultando la configuración del inventario en el servidor…</template>
-                          <template v-else>{{ inventoryCatalog.error || 'La configuración del inventario no está disponible.' }}</template>
+                          <template v-if="inventoryCatalog.loading">{{ $t('ui.catalog.categories.loading') }}</template>
+                          <template v-else>{{ inventoryCatalog.error || $t('ui.catalog.categories.unavailable') }}</template>
                         </span>
-                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" @click="loadInventoryCatalog({ force: true })">Reintentar</button>
+                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" @click="loadInventoryCatalog({ force: true })">{{ $t('ui.catalog.categories.retry') }}</button>
                       </div>
 
                       <div v-if="inventoryCatalogReady" class="category-manage">
@@ -1223,14 +1223,14 @@
                           <div class="category-row__copy">
                             <div class="category-row__title">
                               <strong>{{ category.label }}</strong>
-                              <span class="mono">Prefijo {{ category.prefix }}</span>
-                              <span class="chip chip--muted">{{ category.tech.length }} campos técnicos</span>
-                              <span v-if="category.active === false" class="chip chip--outline">Inactiva</span>
+                              <span class="mono">{{ $t('ui.catalog.categories.prefix', { prefix: category.prefix }) }}</span>
+                              <span class="chip chip--muted">{{ $t('ui.catalog.categories.tech_count', { count: category.tech.length }) }}</span>
+                              <span v-if="category.active === false" class="chip chip--outline">{{ $t('ui.catalog.categories.inactive') }}</span>
                             </div>
-                            <p>{{ category.tech.length ? category.tech.join(', ') : 'Sin campos técnicos asociados.' }}</p>
+                            <p>{{ category.tech.length ? category.tech.join(', ') : $t('ui.catalog.categories.no_tech') }}</p>
                           </div>
                           <div v-if="inventoryCanConfigure('fields')" class="config-row-actions">
-                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + category.label" title="Editar categoría" @click="openCategoryDialog(category)">
+                            <button type="button" class="config-icon-action" :aria-label="$t('ui.catalog.categories.edit_aria', { label: category.label })" :title="$t('ui.catalog.categories.edit_title')" @click="openCategoryDialog(category)">
                               <app-icon name="pencil"></app-icon>
                             </button>
                           </div>
@@ -1243,15 +1243,15 @@
                           <div class="category-row__copy">
                             <div class="category-row__title">
                               <strong>{{ category.label }}</strong>
-                              <span class="mono">{{ categoryCount(category.id) }} {{ categoryCount(category.id) === 1 ? 'activo' : 'activos' }}</span>
+                              <span class="mono">{{ $t('ui.catalog.categories.active_count', { count: categoryCount(category.id) }) }}</span>
                             </div>
-                            <p>{{ category.description || 'Sin descripción.' }}</p>
+                            <p>{{ category.description || $t('ui.catalog.categories.no_description') }}</p>
                           </div>
                           <div class="config-row-actions">
-                            <button type="button" class="config-icon-action" :aria-label="'Editar ' + category.label" title="Editar" @click="openCategoryDialog(category)">
+                            <button type="button" class="config-icon-action" :aria-label="$t('ui.catalog.categories.edit_aria', { label: category.label })" :title="$t('ui.catalog.categories.edit')" @click="openCategoryDialog(category)">
                               <app-icon name="pencil"></app-icon>
                             </button>
-                            <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + category.label" title="Eliminar" @click="requestDeleteCategory(category)">
+                            <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="$t('ui.catalog.categories.delete_aria', { label: category.label })" :title="$t('ui.catalog.categories.delete')" @click="requestDeleteCategory(category)">
                               <app-icon name="trash"></app-icon>
                             </button>
                           </div>
@@ -1260,26 +1260,26 @@
 
                       <div v-else-if="inventoryCatalogReady" class="config-empty">
                         <span class="config-empty__icon"><app-icon name="grid"></app-icon></span>
-                        <h3>Sin categorías</h3>
-                        <p v-if="inventoryCanConfigure('fields')">Crea la primera categoría del catálogo del servidor.</p>
-                        <p v-else>El catálogo del servidor no tiene categorías. Tu rol no permite crearlas.</p>
-                        <button v-if="inventoryCanConfigure('fields')" type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> Crear categoría</button>
+                        <h3>{{ $t('ui.catalog.categories.empty_title') }}</h3>
+                        <p v-if="inventoryCanConfigure('fields')">{{ $t('ui.catalog.categories.empty_server') }}</p>
+                        <p v-else>{{ $t('ui.catalog.categories.empty_server_readonly') }}</p>
+                        <button v-if="inventoryCanConfigure('fields')" type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> {{ $t('ui.catalog.categories.create') }}</button>
                       </div>
 
                       <div v-else-if="!inventoryServerMode()" class="config-empty">
                         <span class="config-empty__icon"><app-icon name="grid"></app-icon></span>
-                        <h3>Sin categorías</h3>
-                        <p>Crea la primera categoría para organizar el inventario.</p>
-                        <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> Crear categoría</button>
+                        <h3>{{ $t('ui.catalog.categories.empty_title') }}</h3>
+                        <p>{{ $t('ui.catalog.categories.empty_local') }}</p>
+                        <button type="button" class="btn btn--primary btn--small" @click="openCategoryDialog()"><app-icon name="plus"></app-icon> {{ $t('ui.catalog.categories.create') }}</button>
                       </div>
 
-                      <p v-if="inventoryCatalogReady" class="config-note"><app-icon name="info"></app-icon> El tipo y las opciones de un campo no cambian; las categorías se desactivan sin borrar sus valores. La imagen de categoría solo se usa cuando el activo no tiene una imagen propia.</p>
-                      <p v-else class="config-note"><app-icon name="info"></app-icon> La imagen de categoría se usa cuando el activo no tiene una imagen propia. Una categoría con activos no se puede eliminar.</p>
+                      <p v-if="inventoryCatalogReady" class="config-note"><app-icon name="info"></app-icon> {{ $t('ui.catalog.categories.note_server') }}</p>
+                      <p v-else class="config-note"><app-icon name="info"></app-icon> {{ $t('ui.catalog.categories.note_local') }}</p>
                     </section>
 
                     <!-- Activos -->
                     <div v-else-if="route.section === 'activos'" class="config-assets" data-od-id="config-asset-management">
-                      <div class="config-assets__tabs" role="tablist" aria-label="Configuración de activos">
+                      <div class="config-assets__tabs" role="tablist" :aria-label="$t('ui.catalog.assets.tabs_aria')">
                         <button
                           v-for="tab in assetConfigTabs"
                           :key="tab.id"
@@ -1297,10 +1297,10 @@
                       <div v-if="inventoryServerMode() && !inventoryCatalogReady" class="config-note" role="alert">
                         <app-icon name="info"></app-icon>
                         <span>
-                          <template v-if="inventoryCatalog.loading">Consultando la configuración del inventario en el servidor…</template>
-                          <template v-else>{{ inventoryCatalog.error || 'La configuración del inventario no está disponible.' }}</template>
+                          <template v-if="inventoryCatalog.loading">{{ $t('ui.catalog.categories.loading') }}</template>
+                          <template v-else>{{ inventoryCatalog.error || $t('ui.catalog.categories.unavailable') }}</template>
                         </span>
-                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" data-od-id="retry-inventory-catalog" @click="loadInventoryCatalog({ force: true })">Reintentar</button>
+                        <button v-if="!inventoryCatalog.loading" type="button" class="btn btn--secondary btn--small" data-od-id="retry-inventory-catalog" @click="loadInventoryCatalog({ force: true })">{{ $t('ui.catalog.categories.retry') }}</button>
                       </div>
                       <asset-fields-panel v-if="assetConfigTab === 'campos' && inventoryCatalogReady" :app="$root"></asset-fields-panel>
                       <asset-forms-panel v-else-if="assetConfigTab === 'formularios' && inventoryCatalogReady" :app="$root"></asset-forms-panel>
@@ -1670,14 +1670,14 @@
 
               <!-- Detalle -->
               <section v-else-if="route.name === 'detail' && currentAsset" class="page detail-page" aria-labelledby="detail-title">
-                <nav class="breadcrumbs" aria-label="Migas de pan">
-                  <a href="#/inventario" @click.prevent="backToInventory">Inventario</a>
+                <nav class="breadcrumbs" :aria-label="$t('ui.asset.detail.breadcrumb_aria')">
+                  <a href="#/inventario" @click.prevent="backToInventory">{{ $t('ui.asset.detail.breadcrumb_inventory') }}</a>
                   <app-icon name="chevron-right"></app-icon>
                   <span aria-current="page">{{ currentAsset.id }}</span>
                 </nav>
 
                 <button type="button" class="back-link" @click="backToInventory">
-                  <app-icon name="arrow-left"></app-icon> Volver al inventario
+                  <app-icon name="arrow-left"></app-icon> {{ $t('ui.asset.detail.back') }}
                 </button>
 
                 <header class="detail-head">
@@ -1685,7 +1685,7 @@
                     <div class="detail-eyebrow">
                       <span class="type-tag">{{ currentAsset.serverAsset ? inventoryCategoryLabel(currentAsset) : categoryLabel(currentAsset.category) }}</span>
                       <span class="status-pill" :class="'status--' + currentAsset.statusTone">{{ currentAsset.status }}</span>
-                      <span v-if="currentAsset.retired" class="chip chip--muted">Baja conservada</span>
+                      <span v-if="currentAsset.retired" class="chip chip--muted">{{ $t('ui.asset.detail.retired_chip') }}</span>
                     </div>
                     <h1 id="detail-title">{{ currentAsset.name }}</h1>
                     <p class="detail-sub">
@@ -1701,43 +1701,43 @@
                   <div class="detail-head__actions">
                     <extension-asset-actions v-if="currentAsset && currentAsset.id" :app="$root" :asset="currentAsset"></extension-asset-actions>
                     <composition-slot :app="$root" target="asset.action.edit" :permitted="can('assets.edit') && !currentAsset.retired" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !currentAsset.retired" type="button" class="btn btn--primary" data-od-id="edit-asset" @click="openAssetEdit(currentAsset)">
-                      <app-icon name="pencil"></app-icon> Editar activo
+                      <app-icon name="pencil"></app-icon> {{ $t('ui.asset.detail.edit') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.assign" :permitted="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" :context="{ asset: currentAsset }"><button v-if="serverAssetMode && can('assets.assign') && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="assign-asset" @click="openAssignAsset(currentAsset)">
-                      <app-icon name="user"></app-icon> {{ currentAsset.responsiblePersonId ? 'Reasignar responsable' : 'Asignar responsable' }}
+                      <app-icon name="user"></app-icon> {{ currentAsset.responsiblePersonId ? $t('ui.asset.detail.reassign') : $t('ui.asset.detail.assign') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.return" :permitted="serverAssetMode && can('assets.assign') && !!currentAsset.responsiblePersonId" :context="{ asset: currentAsset }"><button v-if="serverAssetMode && can('assets.assign') && currentAsset.responsiblePersonId" type="button" class="btn btn--ghost" data-od-id="return-asset" @click="removeAssignment(currentAsset)">
-                      <app-icon name="close"></app-icon> Quitar responsable
+                      <app-icon name="close"></app-icon> {{ $t('ui.asset.detail.unassign') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.transfer" :permitted="can('assets.edit') && !!currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="transfer-asset" @click="openOrganizationTransfer(currentAsset)">
-                      <app-icon name="arrow-right"></app-icon> Trasladar
+                      <app-icon name="arrow-right"></app-icon> {{ $t('ui.asset.detail.transfer') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.ask" :permitted="!!currentAsset.serverAsset" :context="{ asset: currentAsset }"><a v-if="currentAsset.serverAsset" class="btn btn--ghost" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
-                      <app-icon name="send"></app-icon> Consultar sobre este activo
+                      <app-icon name="send"></app-icon> {{ $t('ui.asset.detail.ask') }}
                     </a></composition-slot>
                     <!-- Duplicar y restaurar existen dos veces (servidor y prototipo).
                          Cada instancia recibe la condición del núcleo que corresponde a su contexto,
                          de forma mutuamente excluyente, así que la extensión renderiza un solo nodo. -->
                     <composition-slot :app="$root" target="asset.action.duplicate" :permitted="can('assets.edit') && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="duplicateAsset(currentAsset)">
-                      <app-icon name="copy"></app-icon> Duplicar
+                      <app-icon name="copy"></app-icon> {{ $t('ui.asset.detail.duplicate') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.change-status" :permitted="can('assets.edit') && !currentAsset.retired && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && !currentAsset.retired && !serverAssetMode" type="button" class="btn btn--ghost" data-od-id="change-status" @click="openStatusDialog(currentAsset)">
-                      <app-icon name="activity"></app-icon> Cambiar estado
+                      <app-icon name="activity"></app-icon> {{ $t('ui.asset.detail.change_status') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.restore" :permitted="can('assets.edit') && !!currentAsset.retired && !serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && currentAsset.retired && !serverAssetMode" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="restoreAsset(currentAsset)">
-                      <app-icon name="restore"></app-icon> Restaurar
+                      <app-icon name="restore"></app-icon> {{ $t('ui.asset.detail.restore') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.duplicate" :permitted="can('assets.edit') && serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="cloneInventoryAsset(currentAsset)">
-                      <app-icon name="copy"></app-icon> Duplicar
+                      <app-icon name="copy"></app-icon> {{ $t('ui.asset.detail.duplicate') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--ghost" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
-                      <app-icon name="package"></app-icon> Archivar
+                      <app-icon name="package"></app-icon> {{ $t('ui.asset.detail.archive') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.restore" :permitted="!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="openInventoryLifecycle(currentAsset, 'restore')">
-                      <app-icon name="restore"></app-icon> Restaurar
+                      <app-icon name="restore"></app-icon> {{ $t('ui.asset.detail.restore') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.retire" :permitted="!inventoryLifecycleAllowed('retire', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--ghost" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
-                      <app-icon name="archive"></app-icon> Dar de baja
+                      <app-icon name="archive"></app-icon> {{ $t('ui.asset.detail.retire') }}
                     </button></composition-slot>
                   </div>
                 </header>
@@ -1745,16 +1745,16 @@
                 <div v-if="serverAssetMode && currentAsset.archived" class="retired-banner" role="status">
                   <span class="retired-banner__icon"><app-icon name="archive"></app-icon></span>
                   <div class="retired-banner__copy">
-                    <strong>Archivado{{ currentAsset.archivedAt ? ' el ' + assetDate(currentAsset.archivedAt) : '' }}</strong>
-                    <p>{{ currentAsset.archivedBy ? 'Archivado por ' + currentAsset.archivedBy + '. ' : '' }}El registro y su historial se conservan; puedes restaurarlo cuando lo necesites.</p>
+                    <strong>Archivado{{ currentAsset.archivedAt ? $t('ui.asset.detail.archived_on', { date: assetDate(currentAsset.archivedAt) }) : '' }}</strong>
+                    <p>{{ currentAsset.archivedBy ? $t('ui.asset.detail.archived_by', { name: currentAsset.archivedBy }) + '. ' : '' }}{{ $t('ui.asset.detail.archived_note') }}</p>
                   </div>
                 </div>
 
                 <div v-if="currentAsset.retired && !serverAssetMode" class="retired-banner" role="status">
                   <span class="retired-banner__icon"><app-icon name="alert"></app-icon></span>
                   <div class="retired-banner__copy">
-                    <strong>Dado de baja el {{ assetDate(currentAsset.retired.at) }}</strong>
-                    <p>{{ currentAsset.retired.reason }}<span v-if="currentAsset.retired.note"> · {{ currentAsset.retired.note }}</span>. El registro y su historial se conservan para consulta.</p>
+                    <strong>{{ $t('ui.asset.detail.retired_on', { date: assetDate(currentAsset.retired.at) }) }}</strong>
+                    <p>{{ currentAsset.retired.reason }}<span v-if="currentAsset.retired.note"> · {{ currentAsset.retired.note }}</span>{{ $t('ui.asset.detail.retired_note') }}</p>
                   </div>
                 </div>
 
@@ -1765,16 +1765,16 @@
                     </div>
                     <div class="asset-showcase__foot">
                       <div>
-                        <span class="eyebrow">Representación</span>
-                        <strong id="showcase-title">{{ currentAsset.hasOwnImage ? 'Imagen propia del activo' : 'Imagen genérica de categoría' }}</strong>
+                        <span class="eyebrow">{{ $t('ui.asset.detail.representation') }}</span>
+                        <strong id="showcase-title">{{ currentAsset.hasOwnImage ? $t('ui.asset.detail.own_image') : $t('ui.asset.detail.category_image') }}</strong>
                       </div>
                       <span class="mono">{{ currentAsset.serverAsset ? inventoryCategoryLabel(currentAsset) : categoryLabel(currentAsset.category) }}</span>
                     </div>
                     <figure v-if="currentAsset.fovImage" class="fov-figure">
-                      <img :src="currentAsset.fovImage" width="640" height="400" :alt="'Campo de visión de ' + currentAsset.name">
+                      <img :src="currentAsset.fovImage" width="640" height="400" :alt="$t('ui.asset.detail.fov_alt', { name: currentAsset.name })">
                       <figcaption>
-                        <span class="mono">Campo de visión</span>
-                        <span>Área cubierta por la cámara, independiente de la fotografía del equipo.</span>
+                        <span class="mono">{{ $t('ui.asset.detail.fov') }}</span>
+                        <span>{{ $t('ui.asset.detail.fov_note') }}</span>
                       </figcaption>
                     </figure>
                   </section>
@@ -1782,109 +1782,109 @@
                   <section class="info-panel" aria-labelledby="info-title">
                     <header class="panel-head">
                       <div>
-                        <p class="eyebrow">Ficha</p>
-                        <h2 id="info-title">Información del activo</h2>
+                        <p class="eyebrow">{{ $t('ui.asset.detail.record') }}</p>
+                        <h2 id="info-title">{{ $t('ui.asset.detail.info_title') }}</h2>
                       </div>
-                      <span v-if="!currentAsset.serverAsset" class="mono info-panel__meta">{{ currentAsset.history.length }} eventos</span>
+                      <span v-if="!currentAsset.serverAsset" class="mono info-panel__meta">{{ $t('ui.asset.detail.events', { count: currentAsset.history.length }) }}</span>
                     </header>
                     <div class="detail-groups">
                       <section class="detail-group" aria-labelledby="detail-group-identification">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-identification">Identificación</h3>
+                          <h3 id="detail-group-identification">{{ $t('ui.asset.detail.group_identification') }}</h3>
                         </div>
                         <dl class="field-grid">
-                          <div class="detail-field detail-field--wide"><dt>Nombre</dt><dd>{{ currentAsset.name }}</dd></div>
+                          <div class="detail-field detail-field--wide"><dt>{{ $t('ui.asset.common.name') }}</dt><dd>{{ currentAsset.name }}</dd></div>
                           <div class="detail-field">
-                            <dt>ID permanente</dt>
+                            <dt>{{ $t('ui.asset.common.permanent_id') }}</dt>
                             <dd class="detail-copy">
                               <span class="mono">{{ currentAsset.id }}</span>
-                              <button type="button" class="copy-button" title="Copiar ID permanente" :aria-label="'Copiar ID permanente de ' + currentAsset.name" @click="copyText(currentAsset.id, 'ID permanente copiado.')">
+                              <button type="button" class="copy-button" :title="$t('ui.asset.detail.copy_permanent')" :aria-label="$t('ui.asset.detail.copy_permanent_aria', { name: currentAsset.name })" @click="copyText(currentAsset.id, $t('ui.asset.detail.permanent_copied'))">
                                 <app-icon name="copy"></app-icon>
                               </button>
                             </dd>
                           </div>
                           <div class="detail-field">
-                            <dt>Código rápido</dt>
+                            <dt>{{ $t('ui.asset.common.quick_code') }}</dt>
                             <dd class="detail-copy">
                               <span class="mono">{{ currentAsset.code }}</span>
-                              <button type="button" class="copy-button" title="Copiar código rápido" :aria-label="'Copiar código rápido de ' + currentAsset.name" @click="copyText(currentAsset.code, 'Código rápido copiado.')">
+                              <button type="button" class="copy-button" :title="$t('ui.asset.detail.copy_quick_code')" :aria-label="$t('ui.asset.detail.copy_quick_code_aria', { name: currentAsset.name })" @click="copyText(currentAsset.code, $t('ui.asset.detail.quick_code_copied'))">
                                 <app-icon name="copy"></app-icon>
                               </button>
                             </dd>
                           </div>
-                          <div class="detail-field"><dt>Categoría</dt><dd>{{ currentAsset.serverAsset ? inventoryCategoryLabel(currentAsset) : categoryLabel(currentAsset.category) }}</dd></div>
-                          <div class="detail-field"><dt>Tipo</dt><dd>{{ currentAsset.type }}</dd></div>
-                          <div class="detail-field"><dt>Marca</dt><dd>{{ currentAsset.brand || '—' }}</dd></div>
-                          <div class="detail-field"><dt>Modelo</dt><dd>{{ currentAsset.model || '—' }}</dd></div>
-                          <div class="detail-field"><dt>Número de serie</dt><dd class="mono">{{ currentAsset.serial || '—' }}</dd></div>
-                          <div v-if="currentAsset.description" class="detail-field detail-field--wide"><dt>Descripción</dt><dd>{{ currentAsset.description }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.common.category') }}</dt><dd>{{ currentAsset.serverAsset ? inventoryCategoryLabel(currentAsset) : categoryLabel(currentAsset.category) }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.detail.type') }}</dt><dd>{{ currentAsset.type }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.common.brand') }}</dt><dd>{{ currentAsset.brand || '—' }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.common.model') }}</dt><dd>{{ currentAsset.model || '—' }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.common.serial') }}</dt><dd class="mono">{{ currentAsset.serial || '—' }}</dd></div>
+                          <div v-if="currentAsset.description" class="detail-field detail-field--wide"><dt>{{ $t('ui.asset.common.description') }}</dt><dd>{{ currentAsset.description }}</dd></div>
                         </dl>
                       </section>
 
                       <section class="detail-group" aria-labelledby="detail-group-state">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-state">{{ serverAssetMode ? 'Estado' : 'Estado y garantía' }}</h3>
+                          <h3 id="detail-group-state">{{ serverAssetMode ? $t('ui.asset.common.status') : $t('ui.asset.detail.group_state') }}</h3>
                         </div>
                         <dl class="field-grid">
                           <div class="detail-field">
-                            <dt>Estado</dt>
+                            <dt>{{ $t('ui.asset.common.status') }}</dt>
                             <dd><span class="status-pill" :class="'status--' + currentAsset.statusTone">{{ currentAsset.status }}</span></dd>
                           </div>
                           <div v-if="!serverAssetMode" class="detail-field">
-                            <dt>Garantía</dt>
+                            <dt>{{ $t('ui.asset.detail.warranty') }}</dt>
                             <dd>
                               <span class="warranty-state" :class="'warranty-state--' + assetWarrantyState(currentAsset).tone">{{ assetWarrantyState(currentAsset).label }}</span>
                               <span v-if="currentAsset.warranty && currentAsset.warranty.provider" class="cell-note">{{ currentAsset.warranty.provider }}</span>
                             </dd>
                           </div>
-                          <div class="detail-field"><dt>Alta en el inventario</dt><dd>{{ assetDate(currentAsset.createdAt) }}</dd></div>
-                          <div class="detail-field"><dt>Última actualización</dt><dd>{{ currentAsset.updatedAt ? assetDateTime(currentAsset.updatedAt) : 'Sin cambios registrados' }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.detail.created') }}</dt><dd>{{ assetDate(currentAsset.createdAt) }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.detail.updated') }}</dt><dd>{{ currentAsset.updatedAt ? assetDateTime(currentAsset.updatedAt) : $t('ui.asset.detail.never_updated') }}</dd></div>
                         </dl>
                       </section>
 
                       <section class="detail-group" aria-labelledby="detail-group-network">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-network">Red</h3>
+                          <h3 id="detail-group-network">{{ $t('ui.asset.detail.group_network') }}</h3>
                         </div>
                         <dl class="field-grid">
-                          <div class="detail-field detail-field--wide"><dt>Dirección IP</dt><dd class="mono">{{ currentAsset.ip || 'No registrada' }}</dd></div>
+                          <div class="detail-field detail-field--wide"><dt>{{ $t('ui.asset.common.ip') }}</dt><dd class="mono">{{ currentAsset.ip || $t('ui.asset.detail.no_ip') }}</dd></div>
                         </dl>
                       </section>
 
                       <section class="detail-group" aria-labelledby="detail-group-location">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-location">Ubicación y asignación</h3>
+                          <h3 id="detail-group-location">{{ $t('ui.asset.detail.group_location') }}</h3>
                         </div>
                         <dl class="field-grid">
-                          <div class="detail-field"><dt>Sede o sucursal</dt><dd>{{ assetSiteText(currentAsset) }}</dd></div>
+                          <div class="detail-field"><dt>{{ $t('ui.asset.common.site') }}</dt><dd>{{ assetSiteText(currentAsset) }}</dd></div>
                           <div class="detail-field">
-                            <dt>Responsable</dt>
+                            <dt>{{ $t('ui.asset.common.responsible') }}</dt>
                             <dd class="detail-assignee">
                               <a v-if="!currentAsset.serverAsset && assigneePerson(currentAsset) && can('people.view')" :href="'#/persona/' + assigneePerson(currentAsset).id">{{ assigneePerson(currentAsset).name }}</a>
                               <span v-else-if="assetResponsibleText(currentAsset)">{{ assetResponsibleText(currentAsset) }}</span>
-                              <span v-else class="cell-muted">Sin asignar</span>
+                              <span v-else class="cell-muted">{{ $t('ui.asset.field.unassigned') }}</span>
                               <button v-if="!currentAsset.serverAsset && can('assets.assign')" type="button" class="text-button text-button--quiet" @click="openAssignAsset(currentAsset)">
-                                {{ assigneeLabel(currentAsset) ? 'Cambiar' : 'Asignar' }}
+                                {{ assigneeLabel(currentAsset) ? $t('ui.asset.detail.change') : $t('ui.asset.detail.assign') }}
                               </button>
                             </dd>
                           </div>
-                          <div class="detail-field detail-field--wide"><dt>Ubicación</dt><dd>{{ assetLocationText(currentAsset) }}</dd></div>
+                          <div class="detail-field detail-field--wide"><dt>{{ $t('ui.asset.common.location') }}</dt><dd>{{ assetLocationText(currentAsset) }}</dd></div>
                         </dl>
                       </section>
 
                       <section v-if="!serverAssetMode || currentAsset.cost" class="detail-group" aria-labelledby="detail-group-economic">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-economic">Información económica</h3>
+                          <h3 id="detail-group-economic">{{ $t('ui.asset.detail.group_economic') }}</h3>
                         </div>
                         <dl class="field-grid">
-                          <div class="detail-field detail-field--cost detail-field--wide"><dt>Coste</dt><dd class="mono">{{ serverAssetMode ? currentAsset.cost : formatCurrency(currentAsset.cost) }}</dd></div>
+                          <div class="detail-field detail-field--cost detail-field--wide"><dt>{{ $t('ui.asset.common.cost') }}</dt><dd class="mono">{{ serverAssetMode ? currentAsset.cost : formatCurrency(currentAsset.cost) }}</dd></div>
                         </dl>
                       </section>
 
                       <section v-if="serverAssetMode ? inventoryTechnicalFields(currentAsset.category).length : assetTechFields(currentAsset.category).length" class="detail-group" aria-labelledby="detail-group-technical">
                         <div class="detail-group__head">
-                          <h3 id="detail-group-technical">Campos técnicos</h3>
-                          <button v-if="can('assets.edit')" type="button" class="text-button text-button--quiet" @click="openAssetEdit(currentAsset)">Editar</button>
+                          <h3 id="detail-group-technical">{{ $t('ui.asset.detail.group_technical') }}</h3>
+                          <button v-if="can('assets.edit')" type="button" class="text-button text-button--quiet" @click="openAssetEdit(currentAsset)">{{ $t('ui.asset.detail.edit') }}</button>
                         </div>
                         <dl class="field-grid">
                           <div v-for="field in (serverAssetMode ? inventoryTechnicalFields(currentAsset.category) : assetTechFields(currentAsset.category))" :key="field.key" class="detail-field">
@@ -1898,21 +1898,21 @@
                     <div v-if="!serverAssetMode && assetGaps(currentAsset).length" class="completion-note">
                       <span class="completion-note__icon"><app-icon name="info"></app-icon></span>
                       <div class="completion-note__copy">
-                        <strong>Ficha incompleta</strong>
-                        <p>Faltan {{ assetGaps(currentAsset).length }} datos: {{ assetGaps(currentAsset).join(', ') }}.</p>
+                        <strong>{{ $t('ui.asset.detail.gaps_title') }}</strong>
+                        <p>{{ $t('ui.asset.detail.gaps', { count: assetGaps(currentAsset).length, list: assetGaps(currentAsset).join(', ') }) }}</p>
                       </div>
-                      <button v-if="can('assets.edit')" type="button" class="btn btn--secondary btn--small" @click="openAssetEdit(currentAsset)">Completar ficha</button>
+                      <button v-if="can('assets.edit')" type="button" class="btn btn--secondary btn--small" @click="openAssetEdit(currentAsset)">{{ $t('ui.asset.detail.complete') }}</button>
                     </div>
                   </section>
 
                   <section v-if="can('assets.view') && (assetHasRemote(currentAsset) || can('assets.edit'))" class="remote-panel" aria-labelledby="remote-title">
                     <header class="panel-head panel-head--remote">
                       <div>
-                        <p class="eyebrow">Conectividad</p>
-                        <h2 id="remote-title">Acceso remoto</h2>
+                        <p class="eyebrow">{{ $t('ui.asset.detail.connectivity') }}</p>
+                        <h2 id="remote-title">{{ $t('ui.asset.detail.remote_title') }}</h2>
                       </div>
                       <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">
-                        <app-icon name="sliders"></app-icon> Configurar
+                        <app-icon name="sliders"></app-icon> {{ $t('ui.asset.detail.configure') }}
                       </button>
                     </header>
 
@@ -1920,52 +1920,52 @@
                       <article v-if="settings.anydeskEnabled && currentAsset.anydeskId" class="remote-card is-configured">
                         <header class="remote-card__head">
                           <span class="remote-mark"><app-icon name="remote"></app-icon></span>
-                          <div class="remote-card__title"><h3>AnyDesk</h3><p>Escritorio remoto</p></div>
-                          <span class="config-status is-on">Configurado</span>
+                          <div class="remote-card__title"><h3>AnyDesk</h3><p>{{ $t('ui.asset.detail.desktop_remote') }}</p></div>
+                          <span class="config-status is-on">{{ $t('ui.asset.detail.configured') }}</span>
                         </header>
                         <dl class="remote-details">
                           <div>
-                            <dt>Identificador</dt>
+                            <dt>{{ $t('ui.asset.detail.identifier') }}</dt>
                             <dd class="mono remote-details__value">
                               <span>{{ currentAsset.anydeskId }}</span>
-                              <button type="button" class="copy-button" title="Copiar identificador" :aria-label="'Copiar identificador de AnyDesk de ' + currentAsset.name" @click="copyText(currentAsset.anydeskId, 'Identificador de AnyDesk copiado.')">
+                              <button type="button" class="copy-button" :title="$t('ui.asset.detail.copy_identifier')" :aria-label="$t('ui.asset.detail.copy_anydesk_aria', { name: currentAsset.name })" @click="copyText(currentAsset.anydeskId, $t('ui.asset.detail.anydesk_copied'))">
                                 <app-icon name="copy"></app-icon>
                               </button>
                             </dd>
                           </div>
-                          <div><dt>Plataforma</dt><dd class="mono truncate" :title="settings.anydeskUrl">{{ settings.anydeskUrl }}</dd></div>
+                          <div><dt>{{ $t('ui.asset.detail.platform') }}</dt><dd class="mono truncate" :title="settings.anydeskUrl">{{ settings.anydeskUrl }}</dd></div>
                         </dl>
                         <div class="remote-card__actions">
                           <button v-if="can('assets.remote')" type="button" class="btn btn--primary btn--small" @click="openRemote(currentAsset, 'anydesk')">
-                            <app-icon name="arrow-up-right"></app-icon> Abrir acceso
+                            <app-icon name="arrow-up-right"></app-icon> {{ $t('ui.asset.detail.open_access') }}
                           </button>
-                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">Editar</button>
+                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">{{ $t('ui.asset.detail.edit') }}</button>
                         </div>
                       </article>
 
                       <article v-if="settings.rmmEnabled && currentAsset.rmmAgentId" class="remote-card is-configured">
                         <header class="remote-card__head">
                           <span class="remote-mark remote-mark--rmm"><app-icon name="activity"></app-icon></span>
-                          <div class="remote-card__title"><h3>Tactical RMM</h3><p>Gestión de agentes</p></div>
-                          <span class="config-status is-on">Configurado</span>
+                          <div class="remote-card__title"><h3>Tactical RMM</h3><p>{{ $t('ui.asset.detail.agents') }}</p></div>
+                          <span class="config-status is-on">{{ $t('ui.asset.detail.configured') }}</span>
                         </header>
                         <dl class="remote-details">
                           <div>
-                            <dt>Agente</dt>
+                            <dt>{{ $t('ui.asset.detail.agent') }}</dt>
                             <dd class="mono remote-details__value">
                               <span>{{ currentAsset.rmmAgentId }}</span>
-                              <button type="button" class="copy-button" title="Copiar identificador" :aria-label="'Copiar identificador de agente de ' + currentAsset.name" @click="copyText(currentAsset.rmmAgentId, 'Identificador de agente copiado.')">
+                              <button type="button" class="copy-button" :title="$t('ui.asset.detail.copy_identifier')" :aria-label="$t('ui.asset.detail.copy_agent_aria', { name: currentAsset.name })" @click="copyText(currentAsset.rmmAgentId, $t('ui.asset.detail.agent_copied'))">
                                 <app-icon name="copy"></app-icon>
                               </button>
                             </dd>
                           </div>
-                          <div><dt>Estado</dt><dd><span class="agent-state" :class="{ 'is-online': currentAsset.rmmOnline }"><span class="agent-state__dot" aria-hidden="true"></span>{{ currentAsset.rmmOnline ? 'Agente conectado' : 'Agente sin conexión' }}</span></dd></div>
+                          <div><dt>{{ $t('ui.asset.common.status') }}</dt><dd><span class="agent-state" :class="{ 'is-online': currentAsset.rmmOnline }"><span class="agent-state__dot" aria-hidden="true"></span>{{ currentAsset.rmmOnline ? $t('ui.asset.detail.agent_online') : $t('ui.asset.detail.agent_offline') }}</span></dd></div>
                         </dl>
                         <div class="remote-card__actions">
                           <button v-if="can('assets.remote')" type="button" class="btn btn--primary btn--small" @click="openRemote(currentAsset, 'rmm')">
-                            <app-icon name="arrow-up-right"></app-icon> Abrir acceso
+                            <app-icon name="arrow-up-right"></app-icon> {{ $t('ui.asset.detail.open_access') }}
                           </button>
-                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">Editar</button>
+                          <button v-if="can('assets.edit')" type="button" class="btn btn--ghost btn--small" @click="openAssetConfig(currentAsset)">{{ $t('ui.asset.detail.edit') }}</button>
                         </div>
                       </article>
                     </div>
@@ -1985,12 +1985,12 @@
                   <composition-slot :app="$root" target="asset.panel.history" :permitted="serverAssetMode" :context="{ asset: currentAsset }"><section v-if="serverAssetMode" class="asset-history" aria-labelledby="server-history-title">
                     <header class="panel-head">
                       <div>
-                        <p class="eyebrow">Trazabilidad</p>
-                        <h2 id="server-history-title">Historial del servidor</h2>
+                        <p class="eyebrow">{{ $t('ui.asset.detail.traceability') }}</p>
+                        <h2 id="server-history-title">{{ $t('ui.asset.detail.history_title') }}</h2>
                       </div>
-                      <span class="mono info-panel__meta">{{ inventoryHistory.total }} eventos</span>
+                      <span class="mono info-panel__meta">{{ $t('ui.asset.detail.events', { count: inventoryHistory.total }) }}</span>
                     </header>
-                    <p v-if="inventoryHistory.loading" class="config-note" role="status">Consultando el historial…</p>
+                    <p v-if="inventoryHistory.loading" class="config-note" role="status">{{ $t('ui.asset.detail.history_loading') }}</p>
                     <p v-else-if="inventoryHistory.error" class="field__error" role="alert">{{ inventoryHistory.error }}</p>
                     <ol v-else-if="inventoryHistory.items.length" class="history-list">
                       <li v-for="entry in inventoryHistory.items" :key="entry.id" class="history-item">
@@ -1998,21 +1998,21 @@
                         <div class="history-item__copy">
                           <strong>{{ entry.title }}</strong>
                           <p>
-                            <span>{{ entry.actor || 'Sistema' }}</span>
+                            <span>{{ entry.actor || $t('ui.asset.detail.history_system') }}</span>
                             <span aria-hidden="true">·</span>
                             <span>{{ assetDateTime(entry.recordedAt || entry.createdAt) }}</span>
                             <template v-if="entry.source">
                               <span aria-hidden="true">·</span>
-                              <span>Origen: {{ entry.source }}</span>
+                              <span>{{ $t('ui.asset.detail.history_source', { value: entry.source }) }}</span>
                             </template>
                             <template v-if="entry.entityType">
                               <span aria-hidden="true">·</span>
-                              <span>Entidad: {{ entry.entityType }}</span>
+                              <span>{{ $t('ui.asset.detail.history_entity', { value: entry.entityType }) }}</span>
                             </template>
                           </p>
-                          <p v-if="entry.effectiveAt" class="cell-note">Efectivo: {{ assetDateTime(entry.effectiveAt) }}</p>
-                          <p v-if="entry.reason" class="cell-note">Motivo: {{ entry.reason }}</p>
-                          <p v-if="entry.notes" class="cell-note">Notas: {{ entry.notes }}</p>
+                          <p v-if="entry.effectiveAt" class="cell-note">{{ $t('ui.asset.detail.history_effective', { value: assetDateTime(entry.effectiveAt) }) }}</p>
+                          <p v-if="entry.reason" class="cell-note">{{ $t('ui.asset.detail.history_reason', { value: entry.reason }) }}</p>
+                          <p v-if="entry.notes" class="cell-note">{{ $t('ui.asset.detail.history_notes', { value: entry.notes }) }}</p>
                           <ul v-if="organizationHistoryChanges(entry).length" class="history-changes">
                             <li v-for="change in organizationHistoryChanges(entry)" :key="change.key">
                               <span class="cell-note">{{ change.label }}:</span>
@@ -2023,8 +2023,8 @@
                         </div>
                       </li>
                     </ol>
-                    <p v-else class="config-note">El servidor no registra eventos para este activo.</p>
-                    <button v-if="inventoryHistoryHasMore" type="button" class="btn btn--ghost btn--small" @click="inventoryHistoryNextPage()">Ver más eventos</button>
+                    <p v-else class="config-note">{{ $t('ui.asset.detail.history_empty') }}</p>
+                    <button v-if="inventoryHistoryHasMore" type="button" class="btn btn--ghost btn--small" @click="inventoryHistoryNextPage()">{{ $t('ui.asset.detail.history_more') }}</button>
                   </section></composition-slot>
 
                   <asset-movements v-if="!serverAssetMode" :asset="currentAsset" :app="$root"></asset-movements>
@@ -2034,29 +2034,29 @@
                   <section v-if="serverAssetMode" class="operations-panel" aria-labelledby="operations-title">
                     <header class="panel-head">
                       <div>
-                        <p class="eyebrow">Ciclo de vida</p>
-                        <h2 id="operations-title">Conservación y eliminación</h2>
+                        <p class="eyebrow">{{ $t('ui.asset.detail.lifecycle') }}</p>
+                        <h2 id="operations-title">{{ $t('ui.asset.detail.conservation') }}</h2>
                       </div>
-                      <span class="chip chip--muted">Entorno del servidor: {{ inventoryEnvironmentLabel() }}</span>
+                      <span class="chip chip--muted">{{ $t('ui.asset.detail.environment', { environment: inventoryEnvironmentLabel() }) }}</span>
                     </header>
                     <div class="operations-grid">
                       <article class="operations-card">
-                        <h3>Archivar conserva el registro</h3>
-                        <p>Archivar deja el activo fuera del inventario operativo y conserva su ficha y su historial. Puedes restaurarlo cuando lo necesites.</p>
+                        <h3>{{ $t('ui.asset.detail.archive_title') }}</h3>
+                        <p>{{ $t('ui.asset.detail.archive_body') }}</p>
                         <!-- Acciones principales: asset.action.archive se compone en la barra superior.
                              Esta tarjeta comparte ocultación, pero no duplica sustituciones ni añadidos. -->
-                        <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :substitute="false" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'archive')">Archivar activo</button></composition-slot>
-                        <composition-slot :app="$root" target="asset.action.restore" :permitted="serverAssetMode && !!inventoryLifecycleAllowed('archive', currentAsset) && !!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="inventoryLifecycleAllowed('archive', currentAsset) && inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'restore')">Restaurar activo</button></composition-slot>
+                        <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :substitute="false" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'archive')">{{ $t('ui.asset.detail.archive_button') }}</button></composition-slot>
+                        <composition-slot :app="$root" target="asset.action.restore" :permitted="serverAssetMode && !!inventoryLifecycleAllowed('archive', currentAsset) && !!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="inventoryLifecycleAllowed('archive', currentAsset) && inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary btn--small" @click="openInventoryLifecycle(currentAsset, 'restore')">{{ $t('ui.asset.detail.restore_button') }}</button></composition-slot>
                       </article>
                       <article class="operations-card operations-card--danger">
-                        <h3>Eliminación definitiva</h3>
-                        <p v-if="!inventoryPurgePolicy()">El servidor no informó su política de eliminación, así que la acción no se ofrece desde el navegador.</p>
-                        <p v-else-if="inventoryPurgePolicy().environment === 'production'">En producción exige el permiso {{ inventoryPurgePolicy().permission }}, archivar antes, escribir el ID permanente y el motivo.</p>
-                        <p v-else>En desarrollo se confirma con un paso explícito. El servidor sigue comprobando el permiso y el motivo.</p>
+                        <h3>{{ $t('ui.asset.detail.purge_title') }}</h3>
+                        <p v-if="!inventoryPurgePolicy()">{{ $t('ui.asset.detail.purge_unknown') }}</p>
+                        <p v-else-if="inventoryPurgePolicy().environment === 'production'">{{ $t('ui.asset.detail.purge_production', { permission: inventoryPurgePolicy().permission }) }}</p>
+                        <p v-else>{{ $t('ui.asset.detail.purge_development') }}</p>
                         <composition-slot :app="$root" target="asset.action.purge" :permitted="serverAssetMode && !inventoryLifecycleAllowed('purge', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('purge', currentAsset)" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openInventoryLifecycle(currentAsset, 'purge')">
-                          <app-icon name="trash"></app-icon> Eliminar activo
+                          <app-icon name="trash"></app-icon> {{ $t('ui.asset.detail.delete_button') }}
                         </button>
-                        <span v-else-if="inventoryPurgePolicy()" class="cell-muted">Requiere el permiso {{ inventoryPurgePolicy().permission }} y que el activo cumpla las condiciones del servidor.</span></composition-slot>
+                        <span v-else-if="inventoryPurgePolicy()" class="cell-muted">{{ $t('ui.asset.detail.purge_requires', { permission: inventoryPurgePolicy().permission }) }}</span></composition-slot>
                       </article>
                     </div>
                   </section>
@@ -2064,43 +2064,43 @@
                   <section v-if="!serverAssetMode" class="operations-panel" aria-labelledby="operations-title">
                     <header class="panel-head">
                       <div>
-                        <p class="eyebrow">Ciclo de vida</p>
-                        <h2 id="operations-title">Conservación y eliminación</h2>
+                        <p class="eyebrow">{{ $t('ui.asset.detail.lifecycle') }}</p>
+                        <h2 id="operations-title">{{ $t('ui.asset.detail.conservation') }}</h2>
                       </div>
-                      <span class="chip chip--muted">{{ assetAdmin.operations.mode === 'production' ? 'Modo producción' : 'Modo desarrollo' }}</span>
+                      <span class="chip chip--muted">{{ assetAdmin.operations.mode === 'production' ? $t('ui.asset.detail.mode_production') : $t('ui.asset.detail.mode_development') }}</span>
                     </header>
                     <div class="operations-grid">
                       <article class="operations-card">
-                        <h3>La baja conserva el registro</h3>
-                        <p>La baja se registra como movimiento: la ficha, sus adjuntos y el historial completo se mantienen, y el activo puede restaurarse.</p>
-                        <p class="operations-card__note">Los activos relacionados no se modifican al dar de baja un equipo.</p>
+                        <h3>{{ $t('ui.asset.detail.retire_title') }}</h3>
+                        <p>{{ $t('ui.asset.detail.retire_body') }}</p>
+                        <p class="operations-card__note">{{ $t('ui.asset.detail.retire_note') }}</p>
                       </article>
                       <article class="operations-card operations-card--danger">
-                        <h3>Eliminación definitiva</h3>
-                        <p>{{ assetAdmin.operations.mode === 'production' ? 'En producción exige escribir el ID permanente y el motivo de la eliminación.' : 'En desarrollo se confirma con un solo paso. Cambia el modo en Configuración para protegerla.' }}</p>
+                        <h3>{{ $t('ui.asset.detail.purge_title') }}</h3>
+                        <p>{{ assetAdmin.operations.mode === 'production' ? $t('ui.asset.detail.purge_production_demo') : $t('ui.asset.detail.purge_development_demo') }}</p>
                         <composition-slot :app="$root" target="asset.action.delete" :permitted="!serverAssetMode && can('assets.edit')" :context="{ asset: currentAsset }"><button v-if="can('assets.edit')" type="button" class="btn btn--danger btn--small" data-od-id="delete-asset" @click="openDeleteAsset(currentAsset)">
-                          <app-icon name="trash"></app-icon> Eliminar activo
+                          <app-icon name="trash"></app-icon> {{ $t('ui.asset.detail.delete_button') }}
                         </button>
-                        <span v-else class="cell-muted">Requiere permiso de edición de activos.</span></composition-slot>
+                        <span v-else class="cell-muted">{{ $t('ui.asset.detail.edit_requires') }}</span></composition-slot>
                       </article>
                     </div>
                   </section>
                 </div>
               </section>
-              <section v-else-if="route.name === 'detail'" class="page detail-page" aria-label="Activo solicitado">
+              <section v-else-if="route.name === 'detail'" class="page detail-page" :aria-label="$t('ui.asset.detail.requested')">
                 <button type="button" class="back-link" @click="backToInventory">
-                  <app-icon name="arrow-left"></app-icon> Volver al inventario
+                  <app-icon name="arrow-left"></app-icon> {{ $t('ui.asset.detail.back') }}
                 </button>
                 <div v-if="inventoryDetail.loading" class="empty-state" role="status">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
-                  <h2>Cargando el activo…</h2>
-                  <p>Consultando el inventario del servidor.</p>
+                  <h2>{{ $t('ui.asset.detail.loading') }}</h2>
+                  <p>{{ $t('ui.asset.detail.loading_body') }}</p>
                 </div>
                 <div v-else class="empty-state" role="alert">
                   <img src="assets/svg/empty-search.svg" width="480" height="300" alt="">
-                  <h2>No se pudo abrir el activo</h2>
-                  <p>{{ inventoryDetail.error || 'El activo solicitado no está disponible.' }}</p>
-                  <button type="button" class="btn btn--secondary" @click="loadInventoryDetail(route.assetId)">Reintentar</button>
+                  <h2>{{ $t('ui.asset.detail.error_title') }}</h2>
+                  <p>{{ inventoryDetail.error || $t('ui.asset.detail.unavailable') }}</p>
+                  <button type="button" class="btn btn--secondary" @click="loadInventoryDetail(route.assetId)">{{ $t('ui.asset.detail.retry') }}</button>
                 </div>
               </section>
               </composition-boundary>
@@ -2114,7 +2114,7 @@
     </transition>
 
     <!-- Diálogo de acceso remoto -->
-    <modal-shell :open="remoteDialog.open" title="Acceso remoto simulado" eyebrow="Conectividad" @close="closeRemote">
+    <modal-shell :open="remoteDialog.open" :title="$t('ui.asset.remote.dialog_title')" :eyebrow="$t('ui.asset.detail.connectivity')" @close="closeRemote">
       <div v-if="remoteDialog.asset" class="remote-modal">
         <div class="remote-modal__asset">
           <span class="remote-modal__thumb"><img :src="assetImage(remoteDialog.asset)" width="640" height="400" alt=""></span>
@@ -2123,95 +2123,95 @@
         </div>
 
         <dl class="remote-detail-list">
-          <div><dt>Integración</dt><dd>{{ remoteDialog.kind === 'anydesk' ? 'AnyDesk' : 'Tactical RMM' }}</dd></div>
-          <div><dt>{{ remoteDialog.kind === 'anydesk' ? 'Identificador' : 'Agente' }}</dt><dd class="mono">{{ remoteDialogId }}</dd></div>
-          <div><dt>Destino configurado</dt><dd class="mono remote-endpoint">{{ remoteDialogEndpoint }}</dd></div>
+          <div><dt>{{ $t('ui.asset.remote.integration') }}</dt><dd>{{ remoteDialog.kind === 'anydesk' ? 'AnyDesk' : 'Tactical RMM' }}</dd></div>
+          <div><dt>{{ remoteDialog.kind === 'anydesk' ? $t('ui.asset.detail.identifier') : $t('ui.asset.detail.agent') }}</dt><dd class="mono">{{ remoteDialogId }}</dd></div>
+          <div><dt>{{ $t('ui.asset.remote.target') }}</dt><dd class="mono remote-endpoint">{{ remoteDialogEndpoint }}</dd></div>
         </dl>
 
         <div class="simulation-note">
           <app-icon name="info"></app-icon>
-          <p><strong>Modo demostración.</strong> No se establece ninguna conexión real.</p>
+          <p><strong>{{ $t('ui.asset.remote.demo') }}</strong> {{ $t('ui.asset.remote.demo_body') }}</p>
         </div>
 
         <div v-if="remoteDialog.state === 'connecting'" class="connection-state" role="status">
           <span class="spinner spinner--teal" aria-hidden="true"></span>
-          <p>Simulando conexión con {{ remoteDialog.asset.name }}…</p>
+          <p>{{ $t('ui.asset.remote.connecting', { name: remoteDialog.asset.name }) }}</p>
         </div>
         <div v-else-if="remoteDialog.state === 'connected'" class="connection-success" role="status">
           <span class="success-mark"><app-icon name="check"></app-icon></span>
-          <div><strong>Simulación completada</strong><p>No se ha abierto ninguna sesión real.</p></div>
+          <div><strong>{{ $t('ui.asset.remote.done') }}</strong><p>{{ $t('ui.asset.remote.done_body') }}</p></div>
         </div>
       </div>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeRemote">Cerrar</button>
+        <button type="button" class="btn btn--ghost" @click="closeRemote">{{ $t('ui.asset.remote.close') }}</button>
         <button v-if="remoteDialog.state !== 'connected'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
           <span v-if="remoteDialog.state === 'connecting'" class="spinner" aria-hidden="true"></span>
           <app-icon v-else name="arrow-up-right"></app-icon>
-          {{ remoteDialog.state === 'connecting' ? 'Conectando…' : 'Simular conexión' }}
+          {{ remoteDialog.state === 'connecting' ? $t('ui.asset.remote.simulating') : $t('ui.asset.remote.simulate') }}
         </button>
       </template>
     </modal-shell>
 
     <!-- Categoría -->
-    <modal-shell :open="categoryDialog.open" :title="categoryDialog.mode === 'edit' ? 'Editar categoría' : 'Nueva categoría'" eyebrow="Catálogo" size="wide" @close="closeCategoryDialog">
+    <modal-shell :open="categoryDialog.open" :title="categoryDialog.mode === 'edit' ? $t('ui.catalog.dialog.edit_title') : $t('ui.catalog.dialog.new_title')" :eyebrow="$t('ui.catalog.dialog.eyebrow')" size="wide" @close="closeCategoryDialog">
       <form id="category-form" class="form-stack" @submit.prevent="saveCategory" novalidate>
         <div class="config-form-grid">
           <div class="field" :class="{ 'field--invalid': categoryErrors.label }">
-            <label for="category-label">Nombre</label>
+            <label for="category-label">{{ $t('ui.catalog.dialog.name') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="grid"></app-icon>
-              <input id="category-label" v-model="categoryDialog.label" type="text" placeholder="Ej. Equipos de escritorio"
+              <input id="category-label" v-model="categoryDialog.label" type="text" :placeholder="$t('ui.catalog.dialog.name_placeholder')"
                      :aria-invalid="!!categoryErrors.label">
             </div>
             <p v-if="categoryErrors.label" class="field__error">{{ categoryErrors.label }}</p>
           </div>
           <div v-if="inventoryServerMode()" class="field" :class="{ 'field--invalid': categoryErrors.prefix }">
-            <label for="category-prefix">Prefijo del código rápido</label>
+            <label for="category-prefix">{{ $t('ui.catalog.dialog.prefix') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="hash"></app-icon>
-              <input id="category-prefix" v-model="categoryDialog.prefix" type="text" maxlength="6" placeholder="Ej. NB"
+              <input id="category-prefix" v-model="categoryDialog.prefix" type="text" maxlength="6" :placeholder="$t('ui.catalog.dialog.prefix_placeholder')"
                      :aria-invalid="!!categoryErrors.prefix" aria-describedby="category-prefix-hint">
             </div>
-            <p id="category-prefix-hint" class="field__hint">1 a 6 caracteres alfanuméricos; el servidor lo usa para el correlativo.</p>
+            <p id="category-prefix-hint" class="field__hint">{{ $t('ui.catalog.dialog.prefix_hint') }}</p>
             <p v-if="categoryErrors.prefix" class="field__error">{{ categoryErrors.prefix }}</p>
           </div>
           <div v-else class="field">
-            <label for="category-description">Descripción</label>
+            <label for="category-description">{{ $t('ui.catalog.dialog.description') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="info"></app-icon>
-              <input id="category-description" v-model="categoryDialog.description" type="text" placeholder="Qué agrupa esta categoría">
+              <input id="category-description" v-model="categoryDialog.description" type="text" :placeholder="$t('ui.catalog.dialog.description_placeholder')">
             </div>
-            <p class="field__hint">Opcional. Máximo 160 caracteres.</p>
+            <p class="field__hint">{{ $t('ui.catalog.dialog.description_hint') }}</p>
             <p v-if="categoryErrors.description" class="field__error">{{ categoryErrors.description }}</p>
           </div>
         </div>
 
         <div v-if="inventoryServerMode()" class="config-form-grid">
           <div class="field">
-            <label for="category-type">Tipo de equipo</label>
+            <label for="category-type">{{ $t('ui.catalog.dialog.type') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="tag"></app-icon>
-              <input id="category-type" v-model="categoryDialog.type" type="text" placeholder="Ej. Notebook">
+              <input id="category-type" v-model="categoryDialog.type" type="text" :placeholder="$t('ui.catalog.dialog.type_placeholder')">
             </div>
-            <p class="field__hint">Nombre del tipo que se propone al registrar un activo.</p>
+            <p class="field__hint">{{ $t('ui.catalog.dialog.type_hint') }}</p>
           </div>
           <div class="field">
-            <span class="field__label">Disponibilidad</span>
+            <span class="field__label">{{ $t('ui.catalog.dialog.availability') }}</span>
             <label class="switch">
               <input type="checkbox" v-model="categoryDialog.active">
               <span class="switch__track" aria-hidden="true"></span>
-              <span class="switch__label">{{ categoryDialog.active ? 'Categoría activa' : 'Categoría inactiva' }}</span>
+              <span class="switch__label">{{ categoryDialog.active ? $t('ui.catalog.dialog.active') : $t('ui.catalog.dialog.inactive') }}</span>
             </label>
-            <p class="field__hint">Desactivar conserva los activos y sus valores guardados.</p>
+            <p class="field__hint">{{ $t('ui.catalog.dialog.active_hint') }}</p>
           </div>
         </div>
 
         <div v-if="!inventoryServerMode()" class="field">
-          <span class="field__label">Imagen de categoría</span>
+          <span class="field__label">{{ $t('ui.catalog.dialog.image') }}</span>
           <div class="image-picker">
-            <span class="image-picker__preview"><img :src="categoryDialog.image" width="640" height="400" alt="Vista previa de la categoría"></span>
+            <span class="image-picker__preview"><img :src="categoryDialog.image" width="640" height="400" :alt="$t('ui.catalog.dialog.image_preview')"></span>
             <div class="image-picker__body">
-              <div class="preset-grid" role="group" aria-label="Imágenes predeterminadas">
+              <div class="preset-grid" role="group" :aria-label="$t('ui.catalog.dialog.presets')">
                 <button v-for="preset in deviceImagePresets" :key="preset.src" type="button" class="preset-option"
                         :class="{ 'is-active': categoryDialog.image === preset.src }" :aria-pressed="categoryDialog.image === preset.src"
                         :title="preset.label" @click="applyImagePreset(preset)">
@@ -2220,9 +2220,9 @@
                 </button>
               </div>
               <div class="image-picker__actions">
-                <button type="button" class="btn btn--secondary btn--small" @click="$refs.categoryImageInput.click()"><app-icon name="upload"></app-icon> Subir imagen</button>
+                <button type="button" class="btn btn--secondary btn--small" @click="$refs.categoryImageInput.click()"><app-icon name="upload"></app-icon> {{ $t('ui.catalog.dialog.upload') }}</button>
                 <input id="category-image-upload" ref="categoryImageInput" class="sr-only" type="file" tabindex="-1" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" @change="handleCategoryImageUpload">
-                <span class="field__hint">PNG, JPG, WebP, GIF o SVG · máximo 1 MB</span>
+                <span class="field__hint">{{ $t('ui.catalog.dialog.image_limits') }}</span>
               </div>
             </div>
           </div>
@@ -2231,92 +2231,92 @@
         <p v-if="categoryErrors.general" class="form-error" role="alert">{{ categoryErrors.general }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeCategoryDialog">Cancelar</button>
-        <button type="submit" form="category-form" class="btn btn--primary">{{ categoryDialog.mode === 'edit' ? 'Guardar categoría' : 'Crear categoría' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeCategoryDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="category-form" class="btn btn--primary">{{ categoryDialog.mode === 'edit' ? $t('ui.catalog.dialog.save') : $t('ui.catalog.dialog.create') }}</button>
       </template>
     </modal-shell>
 
     <!-- Sede -->
-    <modal-shell :open="siteDialog.open" :title="siteDialog.mode === 'edit' ? 'Editar sede' : 'Nueva sede'" eyebrow="Estructura" @close="closeSiteDialog">
+    <modal-shell :open="siteDialog.open" :title="siteDialog.mode === 'edit' ? $t('ui.asset.site.edit_title') : $t('ui.asset.site.new_title')" :eyebrow="$t('ui.asset.site.eyebrow')" @close="closeSiteDialog">
       <form id="site-form" class="form-stack" @submit.prevent="saveSite" novalidate>
-        <p class="form-intro">Las ubicaciones internas se gestionan desde la ficha de cada sede.</p>
+        <p class="form-intro">{{ $t('ui.asset.site.intro') }}</p>
         <div class="field" :class="{ 'field--invalid': siteErrors.label }">
-          <label for="site-label">Nombre de la sede</label>
+          <label for="site-label">{{ $t('ui.asset.site.name') }}</label>
           <div class="input-shell input-shell--plain">
             <app-icon name="building"></app-icon>
-            <input id="site-label" v-model="siteDialog.label" type="text" placeholder="Ej. Sede Centro"
+            <input id="site-label" v-model="siteDialog.label" type="text" :placeholder="$t('ui.asset.site.name_placeholder')"
                    :aria-invalid="!!siteErrors.label">
           </div>
           <p v-if="siteErrors.label" class="field__error">{{ siteErrors.label }}</p>
         </div>
         <div class="field" :class="{ 'field--invalid': siteErrors.short }">
-          <label for="site-short">Nombre corto</label>
+          <label for="site-short">{{ $t('ui.asset.site.short') }}</label>
           <div class="input-shell input-shell--plain">
             <app-icon name="map-pin"></app-icon>
-            <input id="site-short" v-model="siteDialog.short" type="text" placeholder="Ej. Centro">
+            <input id="site-short" v-model="siteDialog.short" type="text" :placeholder="$t('ui.asset.site.short_placeholder')">
           </div>
-          <p class="field__hint">Opcional. Se usa en espacios reducidos.</p>
+          <p class="field__hint">{{ $t('ui.asset.site.short_hint') }}</p>
           <p v-if="siteErrors.short" class="field__error">{{ siteErrors.short }}</p>
         </div>
         <p v-if="siteErrors.general" class="form-error" role="alert">{{ siteErrors.general }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeSiteDialog">Cancelar</button>
-        <button type="submit" form="site-form" class="btn btn--primary">{{ siteDialog.mode === 'edit' ? 'Guardar sede' : 'Crear sede' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeSiteDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="site-form" class="btn btn--primary">{{ siteDialog.mode === 'edit' ? $t('ui.asset.site.save') : $t('ui.asset.site.create') }}</button>
       </template>
     </modal-shell>
 
     <!-- Ubicación -->
-    <modal-shell :open="locationDialog.open" :title="locationDialog.id ? 'Editar ubicación' : 'Nueva ubicación'" eyebrow="Sede" @close="closeLocationDialog">
+    <modal-shell :open="locationDialog.open" :title="locationDialog.id ? $t('ui.asset.location.edit_title') : $t('ui.asset.location.new_title')" :eyebrow="$t('ui.asset.location.eyebrow')" @close="closeLocationDialog">
       <form id="location-form" class="form-stack" @submit.prevent="saveLocation" novalidate>
         <div class="field" :class="{ 'field--invalid': locationErrors.label }">
-          <label for="location-label">Nombre de la ubicación</label>
+          <label for="location-label">{{ $t('ui.asset.location.name') }}</label>
           <div class="input-shell input-shell--plain">
             <app-icon name="map-pin"></app-icon>
-            <input id="location-label" v-model="locationDialog.label" type="text" placeholder="Ej. Laboratorio 2"
+            <input id="location-label" v-model="locationDialog.label" type="text" :placeholder="$t('ui.asset.location.name_placeholder')"
                    :aria-invalid="!!locationErrors.label">
           </div>
-          <p class="field__hint">Debe ser único dentro de la sede.</p>
+          <p class="field__hint">{{ $t('ui.asset.location.name_hint') }}</p>
           <p v-if="locationErrors.label" class="field__error">{{ locationErrors.label }}</p>
         </div>
         <p v-if="locationErrors.general" class="form-error" role="alert">{{ locationErrors.general }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeLocationDialog">Cancelar</button>
-        <button type="submit" form="location-form" class="btn btn--primary">{{ locationDialog.id ? 'Guardar ubicación' : 'Crear ubicación' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeLocationDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="location-form" class="btn btn--primary">{{ locationDialog.id ? $t('ui.asset.location.save') : $t('ui.asset.location.create') }}</button>
       </template>
     </modal-shell>
 
     <!-- Persona -->
-    <modal-shell :open="personDialog.open" :title="personDialog.mode === 'edit' ? 'Editar persona' : 'Nueva persona'" eyebrow="Directorio" @close="closePersonDialog">
+    <modal-shell :open="personDialog.open" :title="personDialog.mode === 'edit' ? $t('ui.asset.person.edit_title') : $t('ui.asset.person.new_title')" :eyebrow="$t('ui.asset.person.eyebrow')" @close="closePersonDialog">
       <form id="person-form" class="form-stack" @submit.prevent="savePerson" novalidate>
-        <p class="form-intro">Los datos de contacto son opcionales. El nombre es obligatorio.</p>
+        <p class="form-intro">{{ $t('ui.asset.person.intro') }}</p>
         <div class="config-form-grid">
           <div class="field" :class="{ 'field--invalid': personErrors.name }">
-            <label for="person-name">Nombre completo</label>
+            <label for="person-name">{{ $t('ui.asset.person.name') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="user"></app-icon>
-              <input id="person-name" v-model="personDialog.name" type="text" autocomplete="name" placeholder="Ej. Laura Méndez"
+              <input id="person-name" v-model="personDialog.name" type="text" autocomplete="name" :placeholder="$t('ui.asset.person.name_placeholder')"
                      :aria-invalid="!!personErrors.name" @blur="validatePersonField('name')">
             </div>
             <p v-if="personErrors.name" class="field__error">{{ personErrors.name }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': personErrors.role }">
-            <label for="person-role">Cargo</label>
+            <label for="person-role">{{ $t('ui.asset.person.role') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="inventory"></app-icon>
-              <input id="person-role" v-model="personDialog.role" type="text" placeholder="Ej. Técnica de soporte"
+              <input id="person-role" v-model="personDialog.role" type="text" :placeholder="$t('ui.asset.person.role_placeholder')"
                      :aria-invalid="!!personErrors.role" @blur="validatePersonField('role')">
             </div>
-            <p class="field__hint">Opcional. Máximo 80 caracteres.</p>
+            <p class="field__hint">{{ $t('ui.asset.person.role_hint') }}</p>
             <p v-if="personErrors.role" class="field__error">{{ personErrors.role }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': personErrors.departmentId }">
-            <label for="person-department">Departamento</label>
+            <label for="person-department">{{ $t('ui.asset.person.department') }}</label>
             <div class="select-field select-field--plain">
               <app-icon name="grid"></app-icon>
               <select id="person-department" v-model="personDialog.departmentId">
-                <option value="">Sin departamento</option>
+                <option value="">{{ $t('ui.asset.person.no_department') }}</option>
                 <option v-for="department in departments" :key="department.id" :value="department.id">{{ department.label }}</option>
               </select>
               <app-icon name="chevron-down"></app-icon>
@@ -2324,11 +2324,11 @@
             <p v-if="personErrors.departmentId" class="field__error">{{ personErrors.departmentId }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': personErrors.siteId }">
-            <label for="person-site">Sede</label>
+            <label for="person-site">{{ $t('ui.asset.site.eyebrow') }}</label>
             <div class="select-field select-field--plain">
               <app-icon name="building"></app-icon>
               <select id="person-site" v-model="personDialog.siteId">
-                <option value="">Sin sede</option>
+                <option value="">{{ $t('ui.asset.field.no_site') }}</option>
                 <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
               </select>
               <app-icon name="chevron-down"></app-icon>
@@ -2336,58 +2336,58 @@
             <p v-if="personErrors.siteId" class="field__error">{{ personErrors.siteId }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': personErrors.email }">
-            <label for="person-email">Correo electrónico</label>
+            <label for="person-email">{{ $t('ui.asset.person.email') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="mail"></app-icon>
-              <input id="person-email" v-model="personDialog.email" type="email" autocomplete="email" placeholder="Ej. laura@empresa.com"
+              <input id="person-email" v-model="personDialog.email" type="email" autocomplete="email" :placeholder="$t('ui.asset.person.email_placeholder')"
                      :aria-invalid="!!personErrors.email" @blur="validatePersonField('email')">
             </div>
-            <p class="field__hint">Opcional. Se usa para contactar desde la ficha.</p>
+            <p class="field__hint">{{ $t('ui.asset.person.email_hint') }}</p>
             <p v-if="personErrors.email" class="field__error">{{ personErrors.email }}</p>
           </div>
           <div class="field" :class="{ 'field--invalid': personErrors.phone }">
-            <label for="person-phone">Teléfono</label>
+            <label for="person-phone">{{ $t('ui.asset.person.phone') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="phone"></app-icon>
-              <input id="person-phone" v-model="personDialog.phone" type="tel" autocomplete="tel" placeholder="Ej. +34 611 204 882"
+              <input id="person-phone" v-model="personDialog.phone" type="tel" autocomplete="tel" :placeholder="$t('ui.asset.person.phone_placeholder')"
                      :aria-invalid="!!personErrors.phone" @blur="validatePersonField('phone')">
             </div>
-            <p class="field__hint">Opcional. Máximo 40 caracteres.</p>
+            <p class="field__hint">{{ $t('ui.asset.person.phone_hint') }}</p>
             <p v-if="personErrors.phone" class="field__error">{{ personErrors.phone }}</p>
           </div>
         </div>
         <label class="switch person-active-switch">
           <input v-model="personDialog.active" type="checkbox">
           <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-          <span class="switch__text">{{ personDialog.active ? 'Persona activa' : 'Persona inactiva' }}</span>
+          <span class="switch__text">{{ personDialog.active ? $t('ui.asset.person.active') : $t('ui.asset.person.inactive') }}</span>
         </label>
-        <p class="field__hint">Una persona inactiva conserva sus activos, pero no puede recibir nuevas asignaciones.</p>
+        <p class="field__hint">{{ $t('ui.asset.person.active_hint') }}</p>
         <p v-if="personErrors.general" class="form-error" role="alert">{{ personErrors.general }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closePersonDialog">Cancelar</button>
-        <button type="submit" form="person-form" class="btn btn--primary">{{ personDialog.mode === 'edit' ? 'Guardar persona' : 'Crear persona' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closePersonDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="person-form" class="btn btn--primary">{{ personDialog.mode === 'edit' ? $t('ui.asset.person.save') : $t('ui.asset.person.create') }}</button>
       </template>
     </modal-shell>
 
     <!-- Departamento -->
-    <modal-shell :open="departmentDialog.open" :title="departmentDialog.mode === 'edit' ? 'Editar departamento' : 'Nuevo departamento'" eyebrow="Equipo" @close="closeDepartmentDialog">
+    <modal-shell :open="departmentDialog.open" :title="departmentDialog.mode === 'edit' ? $t('ui.asset.department.edit_title') : $t('ui.asset.department.new_title')" :eyebrow="$t('ui.asset.department.eyebrow')" @close="closeDepartmentDialog">
       <form id="department-form" class="form-stack" @submit.prevent="saveDepartment" novalidate>
         <div class="field" :class="{ 'field--invalid': departmentErrors.label }">
-          <label for="department-label">Nombre del departamento</label>
+          <label for="department-label">{{ $t('ui.asset.department.name') }}</label>
           <div class="input-shell input-shell--plain">
             <app-icon name="grid"></app-icon>
-            <input id="department-label" v-model="departmentDialog.label" type="text" placeholder="Ej. Infraestructura"
+            <input id="department-label" v-model="departmentDialog.label" type="text" :placeholder="$t('ui.asset.department.name_placeholder')"
                    :aria-invalid="!!departmentErrors.label">
           </div>
-          <p class="field__hint">Debe ser único. Máximo 48 caracteres.</p>
+          <p class="field__hint">{{ $t('ui.asset.department.name_hint') }}</p>
           <p v-if="departmentErrors.label" class="field__error">{{ departmentErrors.label }}</p>
         </div>
         <p v-if="departmentErrors.general" class="form-error" role="alert">{{ departmentErrors.general }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeDepartmentDialog">Cancelar</button>
-        <button type="submit" form="department-form" class="btn btn--primary">{{ departmentDialog.mode === 'edit' ? 'Guardar departamento' : 'Crear departamento' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeDepartmentDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="department-form" class="btn btn--primary">{{ departmentDialog.mode === 'edit' ? $t('ui.asset.department.save') : $t('ui.asset.department.create') }}</button>
       </template>
     </modal-shell>
 
@@ -2548,61 +2548,61 @@
     </modal-shell>
 
     <!-- Traslado de activo -->
-    <modal-shell :open="transferDialog.open" title="Trasladar activo" eyebrow="Ubicación" size="normal" @close="closeOrganizationTransfer">
+    <modal-shell :open="transferDialog.open" :title="$t('ui.transfer.dialog.title')" :eyebrow="$t('ui.transfer.dialog.eyebrow')" size="normal" @close="closeOrganizationTransfer">
       <form id="transfer-form" class="form-stack" @submit.prevent="confirmOrganizationTransfer" novalidate>
         <p v-if="transferDialog.assetName" class="form-intro">{{ transferDialog.assetName }}</p>
         <div class="field" :class="{ 'field--invalid': transferDialog.fieldErrors.siteId }">
-          <label for="transfer-site">Sede</label>
+          <label for="transfer-site">{{ $t('ui.transfer.dialog.site') }}</label>
           <div class="input-shell input-shell--plain">
             <select id="transfer-site" v-model="transferDialog.siteId" :aria-invalid="transferDialog.fieldErrors.siteId ? 'true' : 'false'" aria-describedby="transfer-site-error" @change="transferDialog.locationId = ''">
-              <option value="">Sin cambio de sede</option>
+              <option value="">{{ $t('ui.transfer.dialog.no_site_change') }}</option>
               <option v-for="site in transferSites" :key="site.id" :value="site.id">{{ site.label }}</option>
             </select>
           </div>
           <p id="transfer-site-error" v-if="transferDialog.fieldErrors.siteId" class="field__error">{{ transferDialog.fieldErrors.siteId }}</p>
         </div>
         <div class="field" :class="{ 'field--invalid': transferDialog.fieldErrors.locationId }">
-          <label for="transfer-location">Ubicación dentro de la sede</label>
+          <label for="transfer-location">{{ $t('ui.transfer.dialog.location') }}</label>
           <div class="input-shell input-shell--plain">
             <select id="transfer-location" v-model="transferDialog.locationId" :disabled="!transferDialog.siteId" :aria-invalid="transferDialog.fieldErrors.locationId ? 'true' : 'false'" aria-describedby="transfer-location-hint">
-              <option value="">Sin cambio de ubicación</option>
+              <option value="">{{ $t('ui.transfer.dialog.no_location_change') }}</option>
               <option v-for="location in transferLocations" :key="location.id" :value="location.id">{{ location.label }}</option>
             </select>
           </div>
-          <p id="transfer-location-hint" class="field__hint">Solo se listan las ubicaciones de la sede elegida.</p>
+          <p id="transfer-location-hint" class="field__hint">{{ $t('ui.transfer.dialog.location_hint') }}</p>
           <p v-if="transferDialog.fieldErrors.locationId" class="field__error">{{ transferDialog.fieldErrors.locationId }}</p>
         </div>
         <div class="field">
-          <label for="transfer-reason">Motivo</label>
+          <label for="transfer-reason">{{ $t('ui.transfer.dialog.reason') }}</label>
           <div class="input-shell input-shell--plain">
-            <input id="transfer-reason" v-model="transferDialog.reason" type="text" maxlength="200" autocomplete="off" placeholder="Ej. Mudanza al edificio norte">
+            <input id="transfer-reason" v-model="transferDialog.reason" type="text" maxlength="200" autocomplete="off" :placeholder="$t('ui.transfer.dialog.reason_placeholder')">
           </div>
         </div>
         <div class="field">
-          <label for="transfer-notes">Notas</label>
+          <label for="transfer-notes">{{ $t('ui.transfer.dialog.notes') }}</label>
           <div class="input-shell input-shell--plain">
             <textarea id="transfer-notes" v-model="transferDialog.notes" rows="2" maxlength="1000"></textarea>
           </div>
         </div>
         <div class="field">
-          <label for="transfer-effective">Fecha efectiva</label>
+          <label for="transfer-effective">{{ $t('ui.transfer.dialog.effective') }}</label>
           <div class="input-shell input-shell--plain">
             <input id="transfer-effective" v-model="transferDialog.effectiveAt" type="datetime-local">
           </div>
-          <p class="field__hint">Opcional. Se registra aparte de la fecha de carga del evento.</p>
+          <p class="field__hint">{{ $t('ui.transfer.dialog.effective_hint') }}</p>
         </div>
         <p v-if="transferDialog.error" class="form-error" role="alert">{{ transferDialog.error }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeOrganizationTransfer">Cancelar</button>
+        <button type="button" class="btn btn--ghost" @click="closeOrganizationTransfer">{{ $t('ui.common.cancel') }}</button>
         <button type="submit" form="transfer-form" class="btn btn--primary" :disabled="transferDialog.busy">
-          {{ transferDialog.busy ? 'Trasladando…' : 'Trasladar activo' }}
+          {{ transferDialog.busy ? $t('ui.transfer.dialog.submitting') : $t('ui.transfer.dialog.submit') }}
         </button>
       </template>
     </modal-shell>
 
     <!-- Confirmación -->
-    <modal-shell :open="confirmDialog.open" :title="confirmDialog.title" eyebrow="Confirmar" @close="closeConfirm">
+    <modal-shell :open="confirmDialog.open" :title="confirmDialog.title" :eyebrow="$t('ui.asset.confirm.eyebrow')" @close="closeConfirm">
       <div class="confirm-dialog">
         <span class="confirm-dialog__icon" :class="{ 'confirm-dialog__icon--danger': confirmDialog.confirmLabel }">
           <app-icon :name="confirmDialog.confirmLabel ? 'trash' : 'alert'"></app-icon>
@@ -2613,48 +2613,48 @@
         </div>
       </div>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeConfirm">{{ confirmDialog.confirmLabel ? 'Cancelar' : 'Entendido' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeConfirm">{{ confirmDialog.confirmLabel ? $t('ui.common.cancel') : $t('ui.asset.confirm.understood') }}</button>
         <button v-if="confirmDialog.confirmLabel" type="button" class="btn btn--danger" @click="executeConfirm">{{ confirmDialog.confirmLabel }}</button>
       </template>
     </modal-shell>
 
     <!-- Configuración por activo -->
-    <modal-shell :open="assetConfig.open" title="Integraciones del activo" eyebrow="Acceso remoto" @close="closeAssetConfig">
+    <modal-shell :open="assetConfig.open" :title="$t('ui.asset.config.title')" :eyebrow="$t('ui.asset.config.eyebrow')" @close="closeAssetConfig">
       <div v-if="assetConfig.asset" class="asset-config">
         <div class="asset-config__context">
           <span class="asset-config__thumb"><img :src="assetImage(assetConfig.asset)" width="640" height="400" alt=""></span>
           <div><strong>{{ assetConfig.asset.name }}</strong><span class="mono">{{ assetConfig.asset.id }} · {{ assetConfig.asset.brand }} {{ assetConfig.asset.model }}</span></div>
         </div>
-        <p class="form-intro">Deja un campo vacío para ocultar esa integración.</p>
+        <p class="form-intro">{{ $t('ui.asset.config.intro') }}</p>
         <form id="asset-config-form" class="form-stack" @submit.prevent="saveAssetConfig" novalidate>
           <div v-if="settings.anydeskEnabled" class="field" :class="{ 'field--invalid': assetConfigErrors.anydeskId }">
-            <label for="asset-anydesk">Identificador de AnyDesk</label>
+            <label for="asset-anydesk">{{ $t('ui.asset.config.anydesk') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="remote"></app-icon>
-              <input id="asset-anydesk" v-model="assetConfig.anydeskId" type="text" autocomplete="off" placeholder="Ej. 1523884017" inputmode="numeric">
+              <input id="asset-anydesk" v-model="assetConfig.anydeskId" type="text" autocomplete="off" :placeholder="$t('ui.asset.config.anydesk_placeholder')" inputmode="numeric">
             </div>
-            <p class="field__hint">Identificador numérico del dispositivo en AnyDesk.</p>
+            <p class="field__hint">{{ $t('ui.asset.config.anydesk_hint') }}</p>
             <p v-if="assetConfigErrors.anydeskId" class="field__error">{{ assetConfigErrors.anydeskId }}</p>
           </div>
           <div v-if="settings.rmmEnabled" class="field" :class="{ 'field--invalid': assetConfigErrors.rmmAgentId }">
-            <label for="asset-rmm">ID del agente en Tactical RMM</label>
+            <label for="asset-rmm">{{ $t('ui.asset.config.rmm') }}</label>
             <div class="input-shell input-shell--plain">
               <app-icon name="activity"></app-icon>
-              <input id="asset-rmm" v-model="assetConfig.rmmAgentId" type="text" autocomplete="off" placeholder="Ej. rmm-7fd2-1042">
+              <input id="asset-rmm" v-model="assetConfig.rmmAgentId" type="text" autocomplete="off" :placeholder="$t('ui.asset.config.rmm_placeholder')">
             </div>
-            <p class="field__hint">Identificador del agente registrado en la plataforma RMM.</p>
+            <p class="field__hint">{{ $t('ui.asset.config.rmm_hint') }}</p>
             <p v-if="assetConfigErrors.rmmAgentId" class="field__error">{{ assetConfigErrors.rmmAgentId }}</p>
           </div>
           <div v-if="!anyIntegrationEnabled" class="form-note">
             <app-icon name="info"></app-icon>
-            <p>Todas las integraciones están desactivadas. Actívalas en Configuración para asignar identificadores.</p>
+            <p>{{ $t('ui.asset.config.none_enabled') }}</p>
           </div>
           <p v-if="assetConfigErrors.general" class="form-error" role="alert">{{ assetConfigErrors.general }}</p>
         </form>
       </div>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeAssetConfig">Cancelar</button>
-        <button type="submit" form="asset-config-form" class="btn btn--primary">Guardar integraciones</button>
+        <button type="button" class="btn btn--ghost" @click="closeAssetConfig">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-config-form" class="btn btn--primary">{{ $t('ui.asset.config.save') }}</button>
       </template>
     </modal-shell>
 
@@ -2662,13 +2662,13 @@
 
     <modal-shell
       :open="statusDialog.open"
-      eyebrow="Estado del activo"
-      :title="statusAsset ? 'Cambiar estado de ' + statusAsset.name : 'Cambiar estado'"
+      :eyebrow="$t('ui.asset.status_dialog.eyebrow')"
+      :title="statusAsset ? $t('ui.asset.status_dialog.title', { name: statusAsset.name }) : $t('ui.asset.status_dialog.title_generic')"
       @close="closeStatusDialog()"
     >
       <form id="asset-status-form" class="form-stack" novalidate @submit.prevent="confirmStatusChange()">
-        <p class="modal-lead">El estado actual es <strong>{{ statusAsset ? statusAsset.status : '—' }}</strong>. Elige el nuevo estado y deja una nota si hace falta contexto.</p>
-        <div class="status-choice-list" role="radiogroup" aria-label="Nuevo estado">
+        <p class="modal-lead">{{ $t('ui.asset.status_dialog.lead', { status: statusAsset ? statusAsset.status : '—' }) }}</p>
+        <div class="status-choice-list" role="radiogroup" :aria-label="$t('ui.asset.status_dialog.choices_aria')">
           <label
             v-for="status in assetAdmin.statuses"
             :key="status.id"
@@ -2679,38 +2679,38 @@
             <span class="status-dot" :class="'status-dot--' + status.tone"></span>
             <span class="status-choice__copy">
               <strong>{{ status.label }}</strong>
-              <small>{{ status.final ? 'Retira el activo del inventario operativo y conserva el historial' : assetToneLabel(status.tone) }}</small>
+              <small>{{ status.final ? $t('ui.asset.status_dialog.final_hint') : assetToneLabel(status.tone) }}</small>
             </span>
             <app-icon v-if="statusDialog.statusId === status.id" name="check"></app-icon>
           </label>
         </div>
         <div class="field">
-          <label for="asset-status-note">Nota del cambio <span class="field__optional">(opcional)</span></label>
+          <label for="asset-status-note">{{ $t('ui.asset.status_dialog.note') }} <span class="field__optional">({{ $t('ui.asset.lifecycle.optional') }})</span></label>
           <div class="input-shell">
-            <input id="asset-status-note" v-model="statusDialog.note" type="text" autocomplete="off" placeholder="Ej. Enviado al proveedor para revisión">
+            <input id="asset-status-note" v-model="statusDialog.note" type="text" autocomplete="off" :placeholder="$t('ui.asset.status_dialog.note_placeholder')">
           </div>
         </div>
         <p v-if="statusDialogError" class="field__error" role="alert">{{ statusDialogError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeStatusDialog()">Cancelar</button>
-        <button type="submit" form="asset-status-form" class="btn btn--primary">Actualizar estado</button>
+        <button type="button" class="btn btn--ghost" @click="closeStatusDialog()">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-status-form" class="btn btn--primary">{{ $t('ui.asset.status_dialog.submit') }}</button>
       </template>
     </modal-shell>
 
     <modal-shell
       :open="retireDialog.open"
-      eyebrow="Baja de activo"
-      :title="retireAsset ? 'Dar de baja ' + retireAsset.name : 'Dar de baja el activo'"
+      :eyebrow="$t('ui.asset.retire_dialog.eyebrow')"
+      :title="retireAsset ? $t('ui.asset.retire_dialog.title', { name: retireAsset.name }) : $t('ui.asset.retire_dialog.title_generic')"
       @close="closeRetireDialog()"
     >
       <form id="asset-retire-form" class="form-stack" novalidate @submit.prevent="confirmRetire()">
         <div class="config-note config-note--hold">
           <app-icon name="info"></app-icon>
-          <p>La baja conserva el registro, su fotografía y todo el historial. El activo deja de contar como operativo y puede restaurarse después.</p>
+          <p>{{ $t('ui.asset.retire_dialog.body') }}</p>
         </div>
         <div class="field">
-          <label for="asset-retire-reason">Motivo de la baja</label>
+          <label for="asset-retire-reason">{{ $t('ui.asset.retire_dialog.reason') }}</label>
           <div class="input-shell">
             <select id="asset-retire-reason" v-model="retireDialog.reason">
               <option v-for="reason in retireReasons" :key="reason" :value="reason">{{ reason }}</option>
@@ -2718,138 +2718,138 @@
           </div>
         </div>
         <div class="field">
-          <label for="asset-retire-note">Detalle <span class="field__optional">(opcional)</span></label>
+          <label for="asset-retire-note">{{ $t('ui.asset.retire_dialog.detail') }} <span class="field__optional">({{ $t('ui.asset.lifecycle.optional') }})</span></label>
           <div class="input-shell input-shell--area">
-            <textarea id="asset-retire-note" v-model="retireDialog.note" rows="3" placeholder="Destino del equipo, reemplazo o número de incidencia"></textarea>
+            <textarea id="asset-retire-note" v-model="retireDialog.note" rows="3" :placeholder="$t('ui.asset.retire_dialog.detail_placeholder')"></textarea>
           </div>
         </div>
         <label class="check-row">
           <input v-model="retireDialog.acknowledged" type="checkbox" />
-          <span>Confirmo que el activo deja de estar operativo y que la ficha se conserva para consulta.</span>
+          <span>{{ $t('ui.asset.retire_dialog.acknowledge') }}</span>
         </label>
         <p v-if="retireDialogError" class="field__error" role="alert">{{ retireDialogError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeRetireDialog()">Cancelar</button>
-        <button type="submit" form="asset-retire-form" class="btn btn--danger">Dar de baja</button>
+        <button type="button" class="btn btn--ghost" @click="closeRetireDialog()">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-retire-form" class="btn btn--danger">{{ $t('ui.asset.lifecycle.submit_retire') }}</button>
       </template>
     </modal-shell>
 
     <modal-shell
       :open="deleteDialog.open"
-      eyebrow="Eliminación definitiva"
-      :title="deleteAsset ? 'Eliminar ' + deleteAsset.id : 'Eliminar activo'"
+      :eyebrow="$t('ui.asset.delete_dialog.eyebrow')"
+      :title="deleteAsset ? $t('ui.asset.delete_dialog.title', { id: deleteAsset.id }) : $t('ui.asset.delete_dialog.title_generic')"
       @close="closeDeleteAsset()"
     >
       <form id="asset-delete-form" class="form-stack" novalidate @submit.prevent="confirmDeleteAsset()">
         <div class="config-note config-note--danger">
           <app-icon name="alert"></app-icon>
-          <p>Esta acción borra el activo y su historial de este navegador. No se puede deshacer.</p>
+          <p>{{ $t('ui.asset.delete_dialog.body') }}</p>
         </div>
         <div v-if="deleteAsset" class="delete-identity">
-          <span class="eyebrow">Activo seleccionado</span>
+          <span class="eyebrow">{{ $t('ui.asset.delete_dialog.selected') }}</span>
           <strong>{{ deleteAsset.name }}</strong>
           <span class="mono">{{ deleteAsset.id }} · {{ deleteAsset.code }}</span>
         </div>
         <template v-if="deleteAssetIsProtected()">
           <div class="field">
-            <label for="asset-delete-confirm">Escribe el ID permanente para confirmar</label>
+            <label for="asset-delete-confirm">{{ $t('ui.asset.delete_dialog.typed') }}</label>
             <div class="input-shell">
               <input id="asset-delete-confirm" v-model="deleteDialog.typed" type="text" autocomplete="off" :placeholder="deleteAsset ? deleteAsset.id : 'AM-0000'">
             </div>
-            <span class="field__hint">Protección del modo producción.</span>
+            <span class="field__hint">{{ $t('ui.asset.delete_dialog.protected') }}</span>
           </div>
           <div class="field">
-            <label for="asset-delete-reason">Motivo de la eliminación</label>
+            <label for="asset-delete-reason">{{ $t('ui.asset.delete_dialog.reason') }}</label>
             <div class="input-shell input-shell--area">
-              <textarea id="asset-delete-reason" v-model="deleteDialog.reason" rows="2" placeholder="Ej. Registro duplicado por error de carga"></textarea>
+              <textarea id="asset-delete-reason" v-model="deleteDialog.reason" rows="2" :placeholder="$t('ui.asset.delete_dialog.reason_placeholder')"></textarea>
             </div>
           </div>
         </template>
-        <p v-else class="modal-lead">Modo desarrollo: la confirmación es directa. El modo producción exige escribir el ID y el motivo.</p>
+        <p v-else class="modal-lead">{{ $t('ui.asset.delete_dialog.development') }}</p>
         <p v-if="deleteDialogError" class="field__error" role="alert">{{ deleteDialogError }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeDeleteAsset()">Cancelar</button>
-        <button type="submit" form="asset-delete-form" class="btn btn--danger">Eliminar definitivamente</button>
+        <button type="button" class="btn btn--ghost" @click="closeDeleteAsset()">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-delete-form" class="btn btn--danger">{{ $t('ui.asset.delete_dialog.submit') }}</button>
       </template>
     </modal-shell>
 
     <modal-shell
       :open="inventoryLifecycle.open"
-      eyebrow="Ciclo de vida del servidor"
-      :title="inventoryLifecycle.kind === 'purge' ? 'Eliminar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : (inventoryLifecycle.kind === 'retire' ? 'Dar de baja ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : (inventoryLifecycle.kind === 'restore' ? 'Restaurar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo') : 'Archivar ' + (inventoryLifecycle.asset ? inventoryLifecycle.asset.name : 'activo')))"
+      :eyebrow="$t('ui.asset.lifecycle.eyebrow')"
+      :title="inventoryLifecycle.kind === 'purge' ? $t('ui.asset.lifecycle.title_purge', { name: inventoryLifecycle.asset ? inventoryLifecycle.asset.name : $t('ui.asset.lifecycle.asset_fallback') }) : (inventoryLifecycle.kind === 'retire' ? $t('ui.asset.lifecycle.title_retire', { name: inventoryLifecycle.asset ? inventoryLifecycle.asset.name : $t('ui.asset.lifecycle.asset_fallback') }) : (inventoryLifecycle.kind === 'restore' ? $t('ui.asset.lifecycle.title_restore', { name: inventoryLifecycle.asset ? inventoryLifecycle.asset.name : $t('ui.asset.lifecycle.asset_fallback') }) : $t('ui.asset.lifecycle.title_archive', { name: inventoryLifecycle.asset ? inventoryLifecycle.asset.name : $t('ui.asset.lifecycle.asset_fallback') })))"
       @close="closeInventoryLifecycle()"
     >
       <form id="inventory-lifecycle-form" class="form-stack" novalidate @submit.prevent="confirmInventoryLifecycle()">
         <div v-if="inventoryLifecycle.kind === 'purge'" class="config-note config-note--danger">
           <app-icon name="alert"></app-icon>
-          <p>La eliminación definitiva borra el activo del inventario. El servidor conserva el identificador en su registro de bajas y aplica su propia política.</p>
+          <p>{{ $t('ui.asset.lifecycle.purge_body') }}</p>
         </div>
         <div v-else-if="inventoryLifecycle.kind === 'archive'" class="config-note">
           <app-icon name="info"></app-icon>
-          <p>Archivar conserva la ficha, sus imágenes y su historial. Puedes restaurar el activo después.</p>
+          <p>{{ $t('ui.asset.lifecycle.archive_body') }}</p>
         </div>
         <div v-else-if="inventoryLifecycle.kind === 'restore'" class="config-note">
           <app-icon name="restore"></app-icon>
-          <p>El activo vuelve al inventario operativo con su identificador y su historial.</p>
+          <p>{{ $t('ui.asset.lifecycle.restore_body') }}</p>
         </div>
         <div v-else class="config-note config-note--hold">
           <app-icon name="info"></app-icon>
-          <p>La baja conserva el registro completo y exige un motivo. El estado final lo define la configuración del servidor.</p>
+          <p>{{ $t('ui.asset.lifecycle.retire_body') }}</p>
         </div>
         <div v-if="inventoryLifecycle.asset" class="delete-identity">
-          <span class="eyebrow">Activo seleccionado</span>
+          <span class="eyebrow">{{ $t('ui.asset.delete_dialog.selected') }}</span>
           <strong>{{ inventoryLifecycle.asset.name }}</strong>
           <span class="mono">{{ inventoryLifecycle.asset.id }} · {{ inventoryLifecycle.asset.quickCode || '' }}</span>
         </div>
         <template v-if="inventoryLifecycle.kind === 'purge' && inventoryPurgePolicy() && inventoryPurgePolicy().typedIdRequired">
           <div class="field">
-            <label for="inventory-purge-typed">Escribe el ID permanente para confirmar</label>
+            <label for="inventory-purge-typed">{{ $t('ui.asset.delete_dialog.typed') }}</label>
             <div class="input-shell">
               <input id="inventory-purge-typed" v-model="inventoryLifecycle.typed" type="text" autocomplete="off" :placeholder="inventoryLifecycle.assetId" />
             </div>
           </div>
         </template>
         <div v-if="inventoryLifecycle.kind === 'retire' || (inventoryLifecycle.kind === 'purge' && inventoryPurgePolicy() && inventoryPurgePolicy().reasonRequired)" class="field">
-          <label for="inventory-lifecycle-reason">Motivo <span v-if="inventoryLifecycle.kind === 'retire'">(obligatorio, 4 a 500 caracteres)</span><span v-else>(obligatorio)</span></label>
+          <label for="inventory-lifecycle-reason">{{ $t('ui.asset.lifecycle.reason') }} <span v-if="inventoryLifecycle.kind === 'retire'">{{ $t('ui.asset.lifecycle.reason_required') }}</span><span v-else>{{ $t('ui.asset.lifecycle.required') }}</span></label>
           <div class="input-shell input-shell--area">
-            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="3" placeholder="Ej. Sustituido por renovación del parque"></textarea>
+            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="3" :placeholder="$t('ui.asset.lifecycle.reason_placeholder')"></textarea>
           </div>
         </div>
         <div v-else-if="inventoryLifecycle.kind === 'archive'" class="field">
-          <label for="inventory-lifecycle-reason">Motivo <span class="field__optional">(opcional)</span></label>
+          <label for="inventory-lifecycle-reason">{{ $t('ui.asset.lifecycle.reason') }} <span class="field__optional">({{ $t('ui.asset.lifecycle.optional') }})</span></label>
           <div class="input-shell input-shell--area">
-            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="2" placeholder="Ej. Equipo retirado del servicio"></textarea>
+            <textarea id="inventory-lifecycle-reason" v-model="inventoryLifecycle.reason" rows="2" :placeholder="$t('ui.asset.lifecycle.archive_reason_placeholder')"></textarea>
           </div>
         </div>
         <p v-if="inventoryLifecycle.error" class="field__error" role="alert">{{ inventoryLifecycle.error }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" :disabled="inventoryLifecycle.busy" @click="closeInventoryLifecycle()">Cancelar</button>
+        <button type="button" class="btn btn--ghost" :disabled="inventoryLifecycle.busy" @click="closeInventoryLifecycle()">{{ $t('ui.common.cancel') }}</button>
         <button type="submit" form="inventory-lifecycle-form" class="btn" :class="inventoryLifecycle.kind === 'purge' || inventoryLifecycle.kind === 'retire' ? 'btn--danger' : 'btn--primary'" :disabled="inventoryLifecycle.busy">
-          {{ inventoryLifecycle.busy ? 'Procesando…' : (inventoryLifecycle.kind === 'purge' ? 'Eliminar definitivamente' : (inventoryLifecycle.kind === 'retire' ? 'Dar de baja' : (inventoryLifecycle.kind === 'restore' ? 'Restaurar activo' : 'Archivar activo'))) }}
+          {{ inventoryLifecycle.busy ? $t('ui.asset.lifecycle.processing') : (inventoryLifecycle.kind === 'purge' ? $t('ui.asset.lifecycle.submit_purge') : (inventoryLifecycle.kind === 'retire' ? $t('ui.asset.lifecycle.submit_retire') : (inventoryLifecycle.kind === 'restore' ? $t('ui.asset.lifecycle.submit_restore') : $t('ui.asset.lifecycle.submit_archive')))) }}
         </button>
       </template>
     </modal-shell>
 
     <modal-shell
       :open="fieldDialog.open"
-      eyebrow="Biblioteca de campos"
-      :title="fieldDialog.mode === 'edit' ? 'Editar campo' : 'Nuevo campo técnico'"
+      :eyebrow="$t('ui.catalog.field_dialog.eyebrow')"
+      :title="fieldDialog.mode === 'edit' ? $t('ui.catalog.field_dialog.edit_title') : $t('ui.catalog.field_dialog.new_title')"
       @close="closeAssetField()"
     >
       <form id="asset-field-form" class="form-stack" novalidate @submit.prevent="saveAssetField()">
         <div class="field" :class="{ 'field--invalid': !!fieldDialogErrors.label }">
-          <label for="asset-field-label">Nombre del campo</label>
+          <label for="asset-field-label">{{ $t('ui.catalog.field_dialog.name') }}</label>
           <div class="input-shell">
-            <input id="asset-field-label" v-model="fieldDialog.label" type="text" autocomplete="off" placeholder="Ej. Número de serie">
+            <input id="asset-field-label" v-model="fieldDialog.label" type="text" autocomplete="off" :placeholder="$t('ui.catalog.field_dialog.name_placeholder')">
           </div>
           <p v-if="fieldDialogErrors.label" class="field__error">{{ fieldDialogErrors.label }}</p>
         </div>
         <div class="form-grid">
           <div class="field">
-            <label for="asset-field-type">Tipo de dato</label>
+            <label for="asset-field-type">{{ $t('ui.catalog.field_dialog.type') }}</label>
             <div class="input-shell">
               <select id="asset-field-type" v-model="fieldDialog.type">
                 <option v-for="type in fieldTypes" :key="type.value" :value="type.value">{{ type.label }}</option>
@@ -2857,68 +2857,68 @@
             </div>
           </div>
           <div class="field">
-            <label for="asset-field-unit">Unidad <span class="field__optional">(opcional)</span></label>
+            <label for="asset-field-unit">{{ $t('ui.catalog.field_dialog.unit') }} <span class="field__optional">({{ $t('ui.asset.lifecycle.optional') }})</span></label>
             <div class="input-shell">
-              <input id="asset-field-unit" v-model="fieldDialog.unit" type="text" autocomplete="off" placeholder="GB, u, mm">
+              <input id="asset-field-unit" v-model="fieldDialog.unit" type="text" autocomplete="off" :placeholder="$t('ui.catalog.field_dialog.unit_placeholder')">
             </div>
           </div>
         </div>
         <div v-if="fieldDialog.type === 'select'" class="field" :class="{ 'field--invalid': !!fieldDialogErrors.options }">
-          <label for="asset-field-options">Opciones separadas por comas</label>
+          <label for="asset-field-options">{{ $t('ui.catalog.field_dialog.options') }}</label>
           <div class="input-shell">
-            <input id="asset-field-options" v-model="fieldDialog.options" type="text" autocomplete="off" placeholder="Activo, Respaldo, Retirado">
+            <input id="asset-field-options" v-model="fieldDialog.options" type="text" autocomplete="off" :placeholder="$t('ui.catalog.field_dialog.options_placeholder')">
           </div>
           <p v-if="fieldDialogErrors.options" class="field__error">{{ fieldDialogErrors.options }}</p>
         </div>
         <div class="field">
-          <label for="asset-field-hint">Ayuda del campo <span class="field__optional">(opcional)</span></label>
+          <label for="asset-field-hint">{{ $t('ui.catalog.field_dialog.hint') }} <span class="field__optional">({{ $t('ui.asset.lifecycle.optional') }})</span></label>
           <div class="input-shell">
-            <input id="asset-field-hint" v-model="fieldDialog.hint" type="text" autocomplete="off" placeholder="Texto de apoyo que aparece bajo el campo">
+            <input id="asset-field-hint" v-model="fieldDialog.hint" type="text" autocomplete="off" :placeholder="$t('ui.catalog.field_dialog.hint_placeholder')">
           </div>
         </div>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeAssetField()">Cancelar</button>
-        <button type="submit" form="asset-field-form" class="btn btn--primary">Guardar campo</button>
+        <button type="button" class="btn btn--ghost" @click="closeAssetField()">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-field-form" class="btn btn--primary">{{ $t('ui.catalog.field_dialog.save') }}</button>
       </template>
     </modal-shell>
 
     <modal-shell
       :open="assetStatusDialog.open"
-      eyebrow="Estados del activo"
-      :title="assetStatusDialog.mode === 'edit' ? 'Editar estado' : 'Nuevo estado'"
+      :eyebrow="$t('ui.catalog.status_dialog.eyebrow')"
+      :title="assetStatusDialog.mode === 'edit' ? $t('ui.catalog.status_dialog.edit_title') : $t('ui.catalog.status_dialog.new_title')"
       @close="closeAssetStatusDialog()"
     >
       <form id="asset-status-config-form" class="form-stack" novalidate @submit.prevent="saveAssetStatus()">
         <div class="field" :class="{ 'field--invalid': !!assetStatusErrors.label }">
-          <label for="asset-status-label">Nombre del estado</label>
+          <label for="asset-status-label">{{ $t('ui.catalog.status_dialog.name') }}</label>
           <div class="input-shell">
-            <input id="asset-status-label" v-model="assetStatusDialog.label" type="text" autocomplete="off" placeholder="Ej. En revisión">
+            <input id="asset-status-label" v-model="assetStatusDialog.label" type="text" autocomplete="off" :placeholder="$t('ui.catalog.status_dialog.name_placeholder')">
           </div>
           <p v-if="assetStatusErrors.label" class="field__error">{{ assetStatusErrors.label }}</p>
         </div>
         <div class="field">
-          <label for="asset-status-tone">Familia de color</label>
+          <label for="asset-status-tone">{{ $t('ui.catalog.status_dialog.tone') }}</label>
           <div class="input-shell">
             <select id="asset-status-tone" v-model="assetStatusDialog.tone">
               <option v-for="tone in statusTones" :key="tone.value" :value="tone.value">{{ tone.label }}</option>
             </select>
           </div>
-          <span class="field__hint">El color acompaña al estado en tablas, tarjetas y fichas.</span>
+          <span class="field__hint">{{ $t('ui.catalog.status_dialog.tone_hint') }}</span>
         </div>
         <div class="field">
           <label class="switch">
             <input v-model="assetStatusDialog.final" type="checkbox">
             <span class="switch__track"><span class="switch__thumb"></span></span>
-            <span class="switch__text">Estado final de baja</span>
+            <span class="switch__text">{{ $t('ui.catalog.status_dialog.final') }}</span>
           </label>
-          <span class="field__hint">Solo puede existir un estado final. Retira el activo del inventario operativo.</span>
+          <span class="field__hint">{{ $t('ui.catalog.status_dialog.final_hint') }}</span>
           <p v-if="assetStatusErrors.final" class="field__error">{{ assetStatusErrors.final }}</p>
         </div>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeAssetStatusDialog()">Cancelar</button>
-        <button type="submit" form="asset-status-config-form" class="btn btn--primary">Guardar estado</button>
+        <button type="button" class="btn btn--ghost" @click="closeAssetStatusDialog()">{{ $t('ui.common.cancel') }}</button>
+        <button type="submit" form="asset-status-config-form" class="btn btn--primary">{{ $t('ui.catalog.status_dialog.save') }}</button>
       </template>
     </modal-shell>
 

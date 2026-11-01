@@ -11,17 +11,26 @@
    */
   const E = window.AssetWarrantyEngine;
 
-  const STATUS_LABELS = {
-    active: 'Vigente',
-    cancelled: 'Cancelada',
-    claimed: 'Reclamada',
-    unknown: 'Sin estado'
+  function t(key, params) {
+    const runtime = window.ItsmI18n;
+    return runtime ? runtime.t(key, params) : key;
+  }
+
+  function localeRevision() {
+    return window.ItsmI18n && window.ItsmI18n.version ? window.ItsmI18n.version.value : 0;
+  }
+
+  const STATUS_KEYS = {
+    active: 'ui.warranty.status.active',
+    cancelled: 'ui.warranty.status.cancelled',
+    claimed: 'ui.warranty.status.claimed',
+    unknown: 'ui.warranty.status.unknown'
   };
   const COVERAGE = {
-    current: { label: 'Vigente', tone: 'ok' },
-    expiring: { label: 'Próxima a vencer', tone: 'warn' },
-    expired: { label: 'Vencida', tone: 'down' },
-    unknown: { label: 'Sin información', tone: 'hold' }
+    current: { key: 'ui.warranty.coverage.current', tone: 'ok' },
+    expiring: { key: 'ui.warranty.coverage.expiring', tone: 'warn' },
+    expired: { key: 'ui.warranty.coverage.expired', tone: 'down' },
+    unknown: { key: 'ui.warranty.coverage.unknown', tone: 'hold' }
   };
 
   function text(value) {
@@ -30,7 +39,7 @@
 
   function formatDate(value) {
     const raw = text(value);
-    return raw ? new Date(raw + 'T12:00:00').toLocaleDateString('es-ES') : 'Sin fecha';
+    return raw ? (window.ItsmI18n ? window.ItsmI18n.formatDate(raw) : raw) : t('ui.warranty.no_date');
   }
 
   function formatSize(bytes) {
@@ -45,7 +54,13 @@
   }
 
   function statusLabel(value) {
-    return STATUS_LABELS[text(value)] || STATUS_LABELS.unknown;
+    localeRevision();
+    return t(STATUS_KEYS[text(value)] || STATUS_KEYS.unknown);
+  }
+
+  function coverageLabelOf(value) {
+    localeRevision();
+    return t(coverageOf(value).key);
   }
 
   const TODAY = () => new Date().toLocaleDateString('en-CA');
@@ -62,7 +77,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = filename || 'comprobante';
+    link.download = filename || t('ui.warranty.receipt_filename');
     link.rel = 'noopener';
     if (document.body && document.body.appendChild) {
       document.body.appendChild(link);
@@ -100,6 +115,7 @@
       this.warrantyAlive = false;
     },
     methods: {
+      t,
       statusLabel,
       formatSize,
       editorDraft(next) {
@@ -146,16 +162,16 @@
         const draft = this.editorDraft(next);
         const id = this.warrantyAssetId;
         if (!id) {
-          this.error = 'El activo no está disponible.';
+          this.error = t('ui.warranty.error_asset');
           return false;
         }
         const provider = text(draft.provider);
         if (!provider) {
-          this.error = 'Indica el proveedor de la garantía.';
+          this.error = t('ui.warranty.error_provider');
           return false;
         }
         if (!E.validDate(draft.purchase)) {
-          this.error = 'Indica una fecha de compra válida.';
+          this.error = t('ui.warranty.error_purchase');
           return false;
         }
         const values = {
@@ -168,7 +184,7 @@
         if (draft.mode === 'duration') {
           const months = Number(draft.months);
           if (!Number.isInteger(months) || months < 1 || months > 1200) {
-            this.error = 'Indica una duración entre 1 y 1200 meses.';
+            this.error = t('ui.warranty.error_months');
             return false;
           }
           /* The server calculates and stores the expiry; sending a date too
@@ -176,11 +192,11 @@
           values.durationMonths = months;
         } else {
           if (!E.validDate(draft.until)) {
-            this.error = 'Indica una fecha de vencimiento válida.';
+            this.error = t('ui.warranty.error_until');
             return false;
           }
           if (draft.until < draft.purchase) {
-            this.error = 'El vencimiento no puede ser anterior a la compra.';
+            this.error = t('ui.warranty.error_before');
             return false;
           }
           values.expiresOn = draft.until;
@@ -191,7 +207,7 @@
         if (!this.warrantyAlive) return false;
         if (!result || !result.ok || result.cancelled) {
           if (!(result && result.cancelled)) {
-            this.error = (result && result.error) || 'No se pudo guardar la garantía.';
+            this.error = (result && result.error) || t('ui.warranty.error_save');
             this.fieldErrors = (result && result.fieldErrors) || {};
           }
           return false;
@@ -199,8 +215,8 @@
         this.editing = false;
         this.error = '';
         this.fieldErrors = {};
-        this.message = 'Garantía individual actualizada.';
-        if (this.app.showToast) this.app.showToast('Garantía individual actualizada.');
+        this.message = t('ui.warranty.saved');
+        if (this.app.showToast) this.app.showToast(t('ui.warranty.saved'));
         if (this.$emit) {
           this.$emit('saved', result.payload);
           this.$emit('close');
@@ -218,7 +234,7 @@
         this.receiptBusy = false;
         if (!this.warrantyAlive) return false;
         if (!result || !result.ok) {
-          if (result && !result.cancelled) this.error = result.error || 'No se pudo subir el comprobante.';
+          if (result && !result.cancelled) this.error = result.error || t('ui.warranty.error_upload');
           return false;
         }
         const uploaded = text(result.payload && result.payload.id);
@@ -238,10 +254,10 @@
         const result = await this.app.downloadAssetAttachment(entry);
         if (result && result.ok) {
           saveBlob(result.blob, result.filename);
-          this.message = 'Descarga preparada.';
+          this.message = t('ui.warranty.download_ready');
           return true;
         }
-        if (result && !result.cancelled) this.message = result.error || 'No se pudo descargar el comprobante.';
+        if (result && !result.cancelled) this.message = result.error || t('ui.warranty.error_download');
         return false;
       }
     }
@@ -250,31 +266,31 @@
   /* The editor dialog keeps the original single-column form and its month-end
    * preview. The preview is local arithmetic; only the server value is stored. */
   const editorTemplate = `
-    <modal-shell :open="editing" title="Editar garantía individual" :eyebrow="warrantyAssetId" size="wide" @close="closeEditor">
+    <modal-shell :open="editing" :title="t('ui.warranty.editor_title')" :eyebrow="warrantyAssetId" size="wide" @close="closeEditor">
       <form id="warranty-edit-form" data-od-id="warranty-edit-form" class="warranty-form" @submit.prevent="saveEditor()">
         <p>La cobertura pertenece únicamente a <strong>{{ warrantyAssetLabel }}</strong>.</p>
-        <label class="doc-field">Proveedor<input v-model="draft.provider" required maxlength="160" placeholder="Nombre del proveedor"></label>
+        <label class="doc-field">{{ t('ui.warranty.editor_provider') }}<input v-model="draft.provider" required maxlength="160" placeholder="Nombre del proveedor"></label>
         <div class="doc-form-grid">
-          <label class="doc-field">Fecha de compra<input type="date" v-model="draft.purchase" required></label>
-          <label class="doc-field">Definir vencimiento por<select v-model="draft.mode"><option value="date">Fecha de vencimiento</option><option value="duration">Duración desde la compra</option></select></label>
+          <label class="doc-field">{{ t('ui.warranty.purchase') }}<input type="date" v-model="draft.purchase" required></label>
+          <label class="doc-field">Definir vencimiento por<select v-model="draft.mode"><option value="date">{{ t('ui.warranty.editor_mode_date') }}</option><option value="duration">{{ t('ui.warranty.editor_mode_duration') }}</option></select></label>
         </div>
-        <label v-if="draft.mode === 'date'" class="doc-field">Fecha de vencimiento<input type="date" v-model="draft.until" :min="draft.purchase" required></label>
+        <label v-if="draft.mode === 'date'" class="doc-field">{{ t('ui.warranty.editor_until') }}<input type="date" v-model="draft.until" :min="draft.purchase" required></label>
         <div v-else class="doc-form-grid">
-          <label class="doc-field">Duración en meses<input type="number" v-model.number="draft.months" min="1" max="1200" required></label>
-          <div class="warranty-calculated"><span>Vencimiento calculado</span><strong>{{ previewExpiry(draft) || 'Selecciona la compra' }}</strong></div>
+          <label class="doc-field">{{ t('ui.warranty.editor_months') }}<input type="number" v-model.number="draft.months" min="1" max="1200" required></label>
+          <div class="warranty-calculated"><span>{{ t('ui.warranty.editor_calculated') }}</span><strong>{{ previewExpiry(draft) || t('ui.warranty.editor_pick_purchase') }}</strong></div>
         </div>
-        <label class="doc-field">Estado<select v-model="draft.status"><option value="active">Vigente</option><option value="claimed">Reclamada</option><option value="cancelled">Cancelada</option><option value="unknown">Sin estado</option></select></label>
-        <label class="doc-field">Notas de cobertura<textarea v-model="draft.note" maxlength="2000" placeholder="Condiciones o referencias de la garantía"></textarea></label>
+        <label class="doc-field">Estado<select v-model="draft.status"><option value="active">{{ t('ui.warranty.status.active') }}</option><option value="claimed">{{ t('ui.warranty.status.claimed') }}</option><option value="cancelled">{{ t('ui.warranty.status.cancelled') }}</option><option value="unknown">{{ t('ui.warranty.status.unknown') }}</option></select></label>
+        <label class="doc-field">{{ t('ui.warranty.editor_note') }}<textarea v-model="draft.note" maxlength="2000" placeholder="Condiciones o referencias de la garantía"></textarea></label>
         <div class="warranty-receipts">
-          <div class="doc-section-label"><strong>Comprobante</strong><label class="btn btn--secondary btn--small warranty-upload">Añadir archivo<input type="file" accept=".pdf,image/*" :disabled="receiptBusy" @change="uploadReceipt"></label></div>
-          <p class="doc-help">La garantía referencia un único comprobante guardado en el servidor. Los demás archivos del activo permanecen en «Adjuntos del activo».</p>
-          <div v-if="receipt()" class="warranty-receipt"><app-icon name="file-text"></app-icon><span>{{ receipt().filename }}<small>{{ formatSize(receipt().size) }}</small></span><button class="icon-button" type="button" :aria-label="'Quitar la referencia a ' + receipt().filename" @click="unlinkReceipt">×</button></div>
-          <p v-else class="doc-help">No hay comprobante vinculado.</p>
-          <p class="doc-help">Quitar la referencia no elimina el archivo guardado.</p>
+          <div class="doc-section-label"><strong>{{ t('ui.warranty.editor_receipt') }}</strong><label class="btn btn--secondary btn--small warranty-upload">{{ t('ui.warranty.editor_add_file') }}<input type="file" accept=".pdf,image/*" :disabled="receiptBusy" @change="uploadReceipt"></label></div>
+          <p class="doc-help">{{ t('ui.warranty.editor_receipt_note') }}</p>
+          <div v-if="receipt()" class="warranty-receipt"><app-icon name="file-text"></app-icon><span>{{ receipt().filename }}<small>{{ formatSize(receipt().size) }}</small></span><button class="icon-button" type="button" :aria-label="t('ui.warranty.editor_unlink_aria', { name: receipt().filename })" @click="unlinkReceipt">×</button></div>
+          <p v-else class="doc-help">{{ t('ui.warranty.editor_no_receipt') }}</p>
+          <p class="doc-help">{{ t('ui.warranty.editor_unlink_note') }}</p>
         </div>
         <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
       </form>
-      <template #footer><button class="btn btn--secondary" type="button" @click="closeEditor">Cancelar</button><button class="btn btn--primary" type="submit" form="warranty-edit-form" :disabled="busy">Guardar garantía</button></template>
+      <template #footer><button class="btn btn--secondary" type="button" @click="closeEditor">{{ t('ui.common.cancel') }}</button><button class="btn btn--primary" type="submit" form="warranty-edit-form" :disabled="busy">{{ t('ui.warranty.editor_save') }}</button></template>
     </modal-shell>
   `;
 
@@ -367,7 +383,7 @@
         const cover = coverageOf(this.item && this.item.coverage);
         return {
           key: text(this.item && this.item.coverage) || 'unknown',
-          label: cover.label,
+          label: coverageLabelOf(this.item && this.item.coverage),
           tone: cover.tone,
           days: daysLeft(this.w && this.w.until)
         };
@@ -387,6 +403,14 @@
       expiringDays() {
         const prefs = this.app.phase6 && this.app.phase6.warrantyPrefs;
         return prefs && prefs.loaded ? prefs.expiringDays : null;
+      },
+      stateDaysLabel() {
+        localeRevision();
+        const days = this.state.days;
+        if (days === null || days === undefined) return '';
+        if (days < 0) return t('ui.warranty.days_since', { count: Math.abs(days) });
+        if (days === 0) return t('ui.warranty.expires_today');
+        return t('ui.warranty.days_covered', { count: days });
       }
     },
     watch: {
@@ -400,6 +424,7 @@
       }
     },
     methods: {
+      t,
       date: formatDate,
       statusLabel,
       async reload() {
@@ -412,33 +437,33 @@
     template: `
       <section class="operations-panel warranty-asset-panel" data-od-id="asset-warranty-panel">
         <header class="panel-head">
-          <div><p class="eyebrow">Cobertura individual</p><h2>Garantía</h2></div>
-          <button v-if="canEdit" class="btn btn--secondary btn--small" type="button" @click="startEdit">Editar garantía</button>
+          <div><p class="eyebrow">{{ t('ui.warranty.eyebrow') }}</p><h2>{{ t('ui.warranty.panel_title') }}</h2></div>
+          <button v-if="canEdit" class="btn btn--secondary btn--small" type="button" @click="startEdit">{{ t('ui.warranty.edit') }}</button>
         </header>
-        <p v-if="loading" class="config-note" role="status">Consultando la garantía…</p>
+        <p v-if="loading" class="config-note" role="status">{{ t('ui.warranty.loading') }}</p>
         <p v-else-if="detailError" class="field__error" role="alert">{{ detailError }}</p>
-        <p v-if="!server" class="config-note">Datos de demostración de solo lectura. La garantía real se registra desde el inventario del servidor.</p>
+        <p v-if="!server" class="config-note">{{ t('ui.warranty.demo_note') }}</p>
         <div class="warranty-asset-body">
           <div class="warranty-status-card">
             <span :class="['status-pill','status--'+state.tone]">{{ state.label }}</span>
-            <strong v-if="state.days !== null">{{ state.days < 0 ? Math.abs(state.days) + ' días desde el vencimiento' : state.days === 0 ? 'Vence hoy' : state.days + ' días de cobertura' }}</strong>
-            <p v-if="server && expiringDays">Aviso de proximidad: {{ expiringDays }} días (preferencia del servidor).</p>
-            <p v-else-if="server">Cobertura calculada por el servidor con los datos registrados.</p>
+            <strong v-if="state.days !== null">{{ stateDaysLabel }}</strong>
+            <p v-if="server && expiringDays">{{ t('ui.warranty.expiring_notice', { count: expiringDays }) }}.</p>
+            <p v-else-if="server">{{ t('ui.warranty.calculated') }}</p>
           </div>
           <dl class="doc-facts">
-            <div><dt>Proveedor</dt><dd>{{ w.provider || 'Sin especificar' }}</dd></div>
-            <div><dt>Fecha de compra</dt><dd>{{ date(w.purchase) }}</dd></div>
-            <div><dt>Vencimiento</dt><dd>{{ date(w.until) }}</dd></div>
-            <div><dt>Duración</dt><dd>{{ w.months ? w.months + ' meses' : 'Según fecha de vencimiento' }}</dd></div>
-            <div v-if="w.status"><dt>Estado registrado</dt><dd>{{ statusLabel(w.status) }}</dd></div>
+            <div><dt>{{ t('ui.warranty.provider') }}</dt><dd>{{ w.provider || t('ui.warranty.unspecified') }}</dd></div>
+            <div><dt>{{ t('ui.warranty.purchase') }}</dt><dd>{{ date(w.purchase) }}</dd></div>
+            <div><dt>{{ t('ui.warranty.until') }}</dt><dd>{{ date(w.until) }}</dd></div>
+            <div><dt>{{ t('ui.warranty.duration') }}</dt><dd>{{ w.months ? t('ui.warranty.months', { count: w.months }) : t('ui.warranty.by_expiry') }}</dd></div>
+            <div v-if="w.status"><dt>{{ t('ui.warranty.registered_status') }}</dt><dd>{{ statusLabel(w.status) }}</dd></div>
           </dl>
         </div>
-        <p v-if="server && loaded && !item" class="config-note">Este activo no tiene garantía registrada.</p>
+        <p v-if="server && loaded && !item" class="config-note">{{ t('ui.warranty.none_registered') }}</p>
         <p v-if="w.note" class="warranty-note">{{ w.note }}</p>
         <div class="warranty-asset-receipts">
-          <span class="doc-help">Comprobante · {{ w.receiptId ? 1 : 0 }}</span>
+          <span class="doc-help">{{ t('ui.warranty.receipt_count', { count: w.receiptId ? 1 : 0 }) }}</span>
           <button v-if="receipt()" class="btn btn--ghost btn--small" type="button" @click="downloadReceipt"><app-icon name="file-text"></app-icon>{{ receipt().filename }}</button>
-          <p v-if="server && !w.receiptId" class="doc-help">Sin comprobante vinculado. Los archivos del activo se gestionan en «Adjuntos del activo».</p>
+          <p v-if="server && !w.receiptId" class="doc-help">{{ t('ui.warranty.receipt_none_linked') }}</p>
         </div>
         ${editorTemplate}
       </section>
@@ -510,29 +535,31 @@
           .sort((a, b) => text(a.expiresOn || '9999').localeCompare(text(b.expiresOn || '9999')));
       },
       metrics() {
+        localeRevision();
         const days = this.app.phase6.warrantyPrefs.expiringDays;
         return [
-          { id: '', cov: '', label: 'Garantías cargadas', description: 'Garantías individuales registradas' },
-          { id: 'current', cov: 'current', label: 'Vigentes', description: 'Cobertura sin vencimiento próximo' },
-          { id: 'expiring', cov: 'expiring', label: 'Próximas a vencer', description: 'Dentro de ' + days + ' días (preferencia del servidor)' },
-          { id: 'expired', cov: 'expired', label: 'Vencidas', description: 'Cobertura finalizada' }
+          { id: '', cov: '', label: t('ui.warranty.metric_all'), description: t('ui.warranty.metric_all_note') },
+          { id: 'current', cov: 'current', label: t('ui.warranty.metric_current'), description: t('ui.warranty.metric_current_note') },
+          { id: 'expiring', cov: 'expiring', label: t('ui.warranty.metric_expiring'), description: t('ui.warranty.metric_expiring_note', { count: days }) },
+          { id: 'expired', cov: 'expired', label: t('ui.warranty.metric_expired'), description: t('ui.warranty.metric_expired_note') }
         ];
       },
       loadedNote() {
-        return this.counts.all + ' garantías cargadas. Los recuentos describen únicamente las garantías cargadas en esta vista.';
+        return t('ui.warranty.loaded_note', { count: this.counts.all });
       }
     },
     created() {
       if (this.app.phase6CanView) this.reload();
     },
     methods: {
+      t,
       date: formatDate,
       coverageLabel(value) {
-        return coverageOf(value).label;
+        return coverageLabelOf(value);
       },
       status(row) {
         const cover = coverageOf(row && row.coverage);
-        return { key: text(row && row.coverage) || 'unknown', label: cover.label, tone: cover.tone, days: daysLeft(row && row.expiresOn) };
+        return { key: text(row && row.coverage) || 'unknown', label: coverageLabelOf(row && row.coverage), tone: cover.tone, days: daysLeft(row && row.expiresOn) };
       },
       assetOf(row) {
         const id = row && typeof row === 'object' ? text(row.assetId) : text(row);
@@ -549,8 +576,16 @@
         if (!found) return text(row && row.assetId) || text(row);
         return found.name ? found.name : found.id;
       },
+      daysLabel(row) {
+        localeRevision();
+        const days = this.status(row).days;
+        if (days === null || days === undefined) return '';
+        if (days < 0) return t('ui.warranty.days_ago', { count: Math.abs(days) });
+        if (days === 0) return t('ui.warranty.expires_today');
+        return t('ui.warranty.in_days', { count: days });
+      },
       receiptsLabel(row) {
-        return row && text(row.receiptId) ? 'Comprobante vinculado' : 'Sin comprobante';
+        return row && text(row.receiptId) ? t('ui.warranty.receipt_linked') : t('ui.warranty.receipt_none');
       },
       setCoverage(value) {
         this.filter = value;
@@ -579,41 +614,41 @@
     template: `
       <section class="page warranties-page" data-od-id="warranties-center">
         <header class="page-head">
-          <div><p class="eyebrow">Ciclo de vida</p><h1>Garantías</h1><p class="page-head__description">Cobertura de cada activo, proveedores y próximos vencimientos.</p></div>
-          <div class="doc-inline"><a class="btn btn--secondary" href="#/configuracion/garantias"><app-icon name="sliders"></app-icon>Preferencias</a><button class="btn btn--primary" type="button" disabled aria-describedby="warranty-report-note">Preparar reporte</button></div>
+          <div><p class="eyebrow">{{ t('ui.warranty.lifecycle') }}</p><h1>{{ t('ui.warranty.center_title') }}</h1><p class="page-head__description">{{ t('ui.warranty.center_lead') }}</p></div>
+          <div class="doc-inline"><a class="btn btn--secondary" href="#/configuracion/garantias"><app-icon name="sliders"></app-icon>{{ t('ui.warranty.preferences') }}</a><button class="btn btn--primary" type="button" disabled aria-describedby="warranty-report-note">{{ t('ui.warranty.report') }}</button></div>
         </header>
-        <p id="warranty-report-note" class="doc-help">La preparación de informes de garantías no forma parte de esta fase; el botón queda desactivado.</p>
+        <p id="warranty-report-note" class="doc-help">{{ t('ui.warranty.report_note') }}</p>
         <div class="warranty-metrics">
           <button v-for="m in metrics" :key="m.id" type="button" :class="['warranty-metric',{'is-active':filter===m.cov}]" :aria-pressed="filter===m.cov" @click="setCoverage(m.cov)"><span>{{ m.label }}</span><strong class="mono">{{ counts[m.cov || 'all'] }}</strong><small>{{ m.description }}</small></button>
         </div>
         <div class="warranty-toolbar">
-          <label class="doc-field"><span class="sr-only">Buscar garantía</span><input type="search" v-model="search" placeholder="Buscar activo, ID o proveedor"></label>
-          <label class="doc-field"><span class="sr-only">Sede</span><select v-model="site"><option value="all">Todas las sedes</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
-          <label class="doc-field"><span class="sr-only">Categoría</span><select v-model="category"><option value="all">Todas las categorías</option><option v-for="c in app.categories" :key="c.id" :value="c.id">{{ c.label }}</option></select></label>
-          <label class="doc-field"><span class="sr-only">Proveedor</span><select v-model="provider"><option value="all">Todos los proveedores</option><option v-for="p in providers" :key="p" :value="p">{{ p }}</option></select></label>
+          <label class="doc-field"><span class="sr-only">{{ t('ui.warranty.search_aria') }}</span><input type="search" v-model="search" :placeholder="t('ui.warranty.search_placeholder')"></label>
+          <label class="doc-field"><span class="sr-only">{{ t('ui.transfer.dialog.site') }}</span><select v-model="site"><option value="all">{{ t('ui.warranty.all_sites') }}</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
+          <label class="doc-field"><span class="sr-only">{{ t('ui.asset.common.category') }}</span><select v-model="category"><option value="all">{{ t('ui.warranty.all_categories') }}</option><option v-for="c in app.categories" :key="c.id" :value="c.id">{{ c.label }}</option></select></label>
+          <label class="doc-field"><span class="sr-only">{{ t('ui.warranty.provider') }}</span><select v-model="provider"><option value="all">{{ t('ui.warranty.all_providers') }}</option><option v-for="p in providers" :key="p" :value="p">{{ p }}</option></select></label>
         </div>
-        <p class="doc-help">Los filtros de sede, categoría y proveedor se aplican a las garantías cargadas; solo se pueden filtrar los activos que ya están en la página del inventario.</p>
-        <div class="results-bar"><p><strong>{{ rows.length }}</strong> de {{ counts.all }} cargadas · Ordenadas por fecha de vencimiento</p><button class="text-button" type="button" :aria-pressed="filter==='unknown'" @click="setCoverage(filter==='unknown'?'':'unknown')">Sin información <span class="mono">{{ counts.unknown }}</span></button></div>
-        <p v-if="state.loading" class="config-note" role="status">Consultando garantías…</p>
+        <p class="doc-help">{{ t('ui.warranty.filters_note') }}</p>
+        <div class="results-bar"><p>{{ t('ui.warranty.results', { shown: rows.length, total: counts.all }) }}</p><button class="text-button" type="button" :aria-pressed="filter==='unknown'" @click="setCoverage(filter==='unknown'?'':'unknown')">{{ t('ui.warranty.coverage.unknown') }} <span class="mono">{{ counts.unknown }}</span></button></div>
+        <p v-if="state.loading" class="config-note" role="status">{{ t('ui.warranty.loading_list') }}</p>
         <p v-else-if="state.error" class="field__error" role="alert">{{ state.error }}</p>
         <div class="table-panel">
           <table class="asset-table warranty-table">
-            <thead><tr><th>Activo</th><th>Proveedor / compra</th><th>Vencimiento</th><th>Cobertura</th><th>Comprobante</th><th></th></tr></thead>
+            <thead><tr><th>{{ t('ui.warranty.col_asset') }}</th><th>{{ t('ui.warranty.col_provider') }}</th><th>{{ t('ui.warranty.col_expiry') }}</th><th>{{ t('ui.warranty.col_coverage') }}</th><th>{{ t('ui.warranty.col_receipt') }}</th><th></th></tr></thead>
             <tbody>
               <tr v-for="row in rows" :key="row.assetId">
-                <td data-label="Activo"><a :href="'#/activo/'+row.assetId" class="asset-name">{{ assetLabel(row) }}</a><span class="cell-note mono">{{ row.assetId }}</span></td>
-                <td data-label="Proveedor"><strong>{{ row.supplier || 'Sin especificar' }}</strong><span class="cell-note">{{ date(row.purchaseDate) }}</span></td>
-                <td data-label="Vencimiento"><span class="mono">{{ date(row.expiresOn) }}</span><span class="cell-note" v-if="status(row).days !== null">{{ status(row).days < 0 ? 'Hace ' + Math.abs(status(row).days) + ' días' : status(row).days === 0 ? 'Vence hoy' : 'En ' + status(row).days + ' días' }}</span></td>
-                <td data-label="Cobertura"><span :class="['status-pill','status--'+status(row).tone]">{{ status(row).label }}</span></td>
-                <td data-label="Comprobante"><span class="cell-note">{{ receiptsLabel(row) }}</span></td>
-                <td><button v-if="canEdit" class="text-button" type="button" @click="openEditor(row)" :aria-label="'Editar garantía de ' + assetLabel(row)">Editar</button><a v-else :href="'#/activo/'+row.assetId" class="text-button">Ver ficha</a></td>
+                <td :data-label="t('ui.warranty.col_asset')"><a :href="'#/activo/'+row.assetId" class="asset-name">{{ assetLabel(row) }}</a><span class="cell-note mono">{{ row.assetId }}</span></td>
+                <td :data-label="t('ui.warranty.col_provider')"><strong>{{ row.supplier || 'Sin especificar' }}</strong><span class="cell-note">{{ date(row.purchaseDate) }}</span></td>
+                <td :data-label="t('ui.warranty.col_expiry')"><span class="mono">{{ date(row.expiresOn) }}</span><span class="cell-note" v-if="status(row).days !== null">{{ daysLabel(row) }}</span></td>
+                <td :data-label="t('ui.warranty.col_coverage')"><span :class="['status-pill','status--'+status(row).tone]">{{ status(row).label }}</span></td>
+                <td :data-label="t('ui.warranty.col_receipt')"><span class="cell-note">{{ receiptsLabel(row) }}</span></td>
+                <td><button v-if="canEdit" class="text-button" type="button" @click="openEditor(row)" :aria-label="t('ui.warranty.edit_aria', { name: assetLabel(row) })">{{ t('ui.warranty.edit_short') }}</button><a v-else :href="'#/activo/'+row.assetId" class="text-button">{{ t('ui.warranty.view_record') }}</a></td>
               </tr>
-              <tr v-if="!rows.length"><td colspan="6" class="doc-empty">{{ state.loaded ? 'No hay garantías con estos filtros.' : 'Sin garantías cargadas.' }}</td></tr>
+              <tr v-if="!rows.length"><td colspan="6" class="doc-empty">{{ state.loaded ? t('ui.warranty.empty_filtered') : t('ui.warranty.empty_loaded') }}</td></tr>
             </tbody>
           </table>
         </div>
-        <button v-if="state.hasMore" class="btn btn--secondary btn--small" type="button" :disabled="state.loading" @click="loadMore">Cargar más garantías</button>
-        <p class="doc-help warranty-bottom-note">{{ loadedNote }} Cada garantía pertenece a un único activo; no hay garantías compartidas. El plazo de aviso lo fija la preferencia guardada en el servidor.</p>
+        <button v-if="state.hasMore" class="btn btn--secondary btn--small" type="button" :disabled="state.loading" @click="loadMore">{{ t('ui.warranty.load_more') }}</button>
+        <p class="doc-help warranty-bottom-note">{{ loadedNote }} {{ t('ui.warranty.bottom_note') }}</p>
         ${editorTemplate}
       </section>
     `
@@ -640,17 +675,19 @@
         return current && presets.indexOf(current) === -1 ? presets.concat(current).sort((a, b) => a - b) : presets;
       },
       filterNote() {
-        return 'Los filtros de sede, categoría y activos dados de baja solo se aplican en esta sesión; no se guardan en el servidor ni en el navegador.';
+        localeRevision();
+        return t('ui.warranty.settings_filter_note');
       }
     },
     created() {
       this.load();
     },
     methods: {
+      t,
       async load() {
         this.saved = false;
         if (!this.canView) {
-          this.error = 'No tienes permisos para consultar las preferencias de garantías.';
+          this.error = t('ui.warranty.error_settings_view');
           return false;
         }
         const ok = await this.app.loadWarrantyPreferences();
@@ -662,43 +699,43 @@
         this.saved = false;
         const value = Number(this.days);
         if (!Number.isInteger(value) || value < 1 || value > 365) {
-          this.error = 'Indica un número entero de días entre 1 y 365.';
+          this.error = t('ui.warranty.error_settings_days');
           return false;
         }
         if (!this.canEdit) {
-          this.error = 'No tienes permisos para guardar esta preferencia.';
+          this.error = t('ui.warranty.error_settings_save');
           return false;
         }
         this.busy = true;
         const result = await this.app.saveWarrantyPreferences(value);
         this.busy = false;
         if (!result || !result.ok) {
-          if (!(result && result.cancelled)) this.error = (result && result.error) || 'No se pudo guardar la preferencia.';
+          if (!(result && result.cancelled)) this.error = (result && result.error) || t('ui.warranty.error_settings');
           return false;
         }
         this.days = this.app.phase6.warrantyPrefs.expiringDays;
         this.saved = true;
         this.error = '';
-        this.message = 'Preferencia guardada en el servidor.';
-        if (this.app.showToast) this.app.showToast('Preferencia de vencimiento guardada.');
+        this.message = t('ui.warranty.settings_stored');
+        if (this.app.showToast) this.app.showToast(t('ui.warranty.settings_toast'));
         return true;
       }
     },
     template: `
       <section class="config-section doc-settings" data-od-id="warranty-settings">
-        <header class="config-section-head"><p class="eyebrow">Cobertura individual</p><h2>Preferencias de garantías</h2><p>El servidor guarda únicamente el plazo de aviso; el resto de filtros son de vista.</p></header>
+        <header class="config-section-head"><p class="eyebrow">{{ t('ui.warranty.eyebrow') }}</p><h2>{{ t('ui.warranty.settings_title') }}</h2><p>{{ t('ui.warranty.settings_lead') }}</p></header>
         <form class="warranty-settings-form" @submit.prevent="save">
-          <label class="doc-field">Considerar próximas a vencer<select v-model.number="days" :disabled="!canEdit"><option v-for="option in dayOptions" :key="option" :value="option">En los próximos {{ option }} días</option></select><small class="doc-help">Entre 1 y 365 días. Es el único valor que se guarda en el servidor.</small></label>
+          <label class="doc-field">{{ t('ui.warranty.settings_window') }}<select v-model.number="days" :disabled="!canEdit"><option v-for="option in dayOptions" :key="option" :value="option">{{ t('ui.warranty.settings_window_option', { count: option }) }}</option></select><small class="doc-help">{{ t('ui.warranty.settings_window_hint') }}</small></label>
           <div class="doc-form-grid">
-            <label class="doc-field">Sede inicial<select v-model="app.warrantyPrefs.site"><option value="all">Todas</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
-            <label class="doc-field">Categoría inicial<select v-model="app.warrantyPrefs.category"><option value="all">Todas</option><option v-for="c in app.categories" :key="c.id" :value="c.id">{{ c.label }}</option></select></label>
+            <label class="doc-field">{{ t('ui.warranty.settings_site') }}<select v-model="app.warrantyPrefs.site"><option value="all">{{ t('ui.warranty.settings_all') }}</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
+            <label class="doc-field">{{ t('ui.warranty.settings_category') }}<select v-model="app.warrantyPrefs.category"><option value="all">{{ t('ui.warranty.settings_all') }}</option><option v-for="c in app.categories" :key="c.id" :value="c.id">{{ c.label }}</option></select></label>
           </div>
-          <label class="doc-inline"><input type="checkbox" v-model="app.warrantyPrefs.includeRetired">Incluir activos dados de baja</label>
+          <label class="doc-inline"><input type="checkbox" v-model="app.warrantyPrefs.includeRetired">{{ t('ui.warranty.settings_retired') }}</label>
           <p class="doc-help">{{ filterNote }}</p>
-          <p class="doc-help">El estado se calcula en el servidor a partir del vencimiento individual. No se crean contratos ni garantías compartidas.</p>
+          <p class="doc-help">{{ t('ui.warranty.settings_server_note') }}</p>
           <p v-if="message" class="config-note" role="status">{{ message }}</p>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canEdit || busy">{{ saved ? 'Preferencias guardadas' : 'Guardar preferencias' }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canEdit || busy">{{ saved ? t('ui.warranty.settings_saved') : t('ui.warranty.settings_save') }}</button>
         </form>
       </section>
     `
