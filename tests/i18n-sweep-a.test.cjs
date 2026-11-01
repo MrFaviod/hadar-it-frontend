@@ -102,3 +102,19 @@ test('T3a converted index.html regions contain no literal copy', () => {
     for (const literal of literals) assert.ok(!slice.includes(literal), name + ' no longer hard-codes ' + JSON.stringify(literal));
   }
 });
+
+test('T3a access views render from the catalog', async () => {
+  const s = setup();
+  mountNamed(s, 'AccessUsers', { app: s.app });
+  await withLocales(s, {
+    es(t) {
+      assert.match(t, /Usuarios/);
+      assert.match(t, /Cuentas con acceso a la aplicación\./);
+    },
+    en(t) {
+      assert.match(t, /Users/);
+      assert.match(t, /Accounts with access to the application\./);
+      assert.doesNotMatch(t, /Nuevo usuario|Cuentas con acceso|Sin permiso de consulta|Último acceso/);
+    }
+  });
+});

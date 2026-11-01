@@ -1,5 +1,9 @@
 (function () {
   'use strict';
+  // Copy resolved outside a mounted template goes through the same runtime.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
 
   const E = window.AssetReportEngine;
   const LABEL = window.AssetLabelEngine;
@@ -385,7 +389,7 @@
       async previewReport() {
         this.error = '';
         if (!this.draft) {
-          this.error = 'Selecciona una plantilla antes de previsualizar.';
+          this.error = tr('ui.reports.error_select_template_preview');
           return;
         }
         const result = await this.app.phase9PreviewReport(this.request('pdf'));
@@ -398,11 +402,11 @@
       async generate() {
         this.error = '';
         if (!this.selectedCount) {
-          this.error = 'Selecciona al menos un activo.';
+          this.error = tr('ui.reports.error_select_asset');
           return;
         }
         if (!this.draft) {
-          this.error = 'Selecciona una plantilla antes de generar.';
+          this.error = tr('ui.reports.error_select_template_generate');
           return;
         }
         const result = await this.app.phase9CreateJob(this.request(this.output));
@@ -426,16 +430,16 @@
       <section class="page reports-page" data-od-id="reports-center">
         <header class="page-head">
           <div>
-            <p class="eyebrow">Documentos del servidor</p>
-            <h1>Reportes</h1>
-            <p class="page-head__description">Reportes de inventario, historial y garantías con plantillas versionadas del servidor. La previsualización y el PDF comparten la misma composición.</p>
+            <p class="eyebrow">{{ $t('ui.reports.eyebrow') }}</p>
+            <h1>{{ $t('ui.nav.reports') }}</h1>
+            <p class="page-head__description">{{ $t('ui.reports.lead') }}</p>
           </div>
         </header>
 
-        <div class="doc-tabs" role="tablist" aria-label="Secciones de reportes">
-          <button role="tab" :aria-selected="tab === 'prepare'" :class="{ active: tab === 'prepare' }" @click="tab = 'prepare'">Preparar</button>
+        <div class="doc-tabs" role="tablist" :aria-label="$t('ui.reports.tabs_aria')">
+          <button role="tab" :aria-selected="tab === 'prepare'" :class="{ active: tab === 'prepare' }" @click="tab = 'prepare'">{{ $t('ui.reports.tab_prepare') }}</button>
           <button role="tab" :aria-selected="tab === 'jobs'" :class="{ active: tab === 'jobs' }" @click="tab = 'jobs'">
-            Trabajos y documentos <span class="mono">{{ jobs.length }}</span>
+            {{ $t('ui.reports.tab_jobs') }} <span class="mono">{{ jobs.length }}</span>
           </button>
         </div>
 
@@ -452,123 +456,123 @@
           <div class="doc-workspace">
             <aside class="doc-controls">
               <div class="doc-control-head">
-                <p class="eyebrow">01 · Alcance</p>
-                <h2>Prepara el reporte</h2>
+                <p class="eyebrow">{{ $t('ui.reports.step_scope') }}</p>
+                <h2>{{ $t('ui.reports.scope_title') }}</h2>
               </div>
 
-              <label class="doc-field">Plantilla del servidor
+              <label class="doc-field">{{ $t('ui.reports.field_template') }}
                 <select :value="templateId" @change="chooseTemplate($event.target.value)">
-                  <option value="" disabled>Selecciona una plantilla</option>
+                  <option value="" disabled>{{ $t('ui.reports.select_template') }}</option>
                   <option v-for="template in familyTemplates" :key="template.id" :value="template.id">
-                    {{ template.name }}{{ template.builtin ? ' · predeterminada' : '' }}
+                    {{ template.name }}{{ template.builtin ? $t('ui.reports.default_builtin') : '' }}
                   </option>
                 </select>
               </label>
               <div class="doc-inline">
-                <button type="button" class="text-button" @click="editor = !editor">{{ editor ? 'Ocultar editor' : 'Editar composición' }}</button>
-                <button type="button" class="text-button" @click="newTemplate">Nueva plantilla</button>
+                <button type="button" class="text-button" @click="editor = !editor">{{ editor ? $t('ui.reports.hide_editor') : $t('ui.reports.edit_composition') }}</button>
+                <button type="button" class="text-button" @click="newTemplate">{{ $t('ui.reports.new_template') }}</button>
               </div>
-              <p v-if="!templates.length && !state.templates.loading" class="doc-help">El servidor no ha publicado plantillas. Puedes crear una plantilla personalizada.</p>
+              <p v-if="!templates.length && !state.templates.loading" class="doc-help">{{ $t('ui.reports.no_templates') }}</p>
 
               <hr class="doc-rule">
-              <label class="doc-field">Buscar activos
-                <input type="search" v-model="filters.search" placeholder="Nombre, ID, código o serie" @input="scheduleSelection">
+              <label class="doc-field">{{ $t('ui.reports.field_search') }}
+                <input type="search" v-model="filters.search" :placeholder="$t('ui.reports.search_placeholder')" @input="scheduleSelection">
               </label>
               <div class="doc-form-grid">
-                <label class="doc-field">Categoría
+                <label class="doc-field">{{ $t('ui.shell.filter_category') }}
                   <select v-model="filters.category" @change="reloadSelection">
-                    <option value="">Todas</option>
+                    <option value="">{{ $t('ui.reports.option_all_f') }}</option>
                     <option v-for="category in categoryOptions" :key="category.id" :value="category.id">{{ category.label }}</option>
                   </select>
                 </label>
-                <label class="doc-field">Estado
+                <label class="doc-field">{{ $t('ui.people.col_status') }}
                   <select v-model="filters.status" @change="reloadSelection">
-                    <option value="">Todos</option>
+                    <option value="">{{ $t('ui.reports.option_all_m') }}</option>
                     <option v-for="status in statusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
                   </select>
                 </label>
-                <label class="doc-field">Sede
+                <label class="doc-field">{{ $t('ui.shell.filter_site') }}
                   <select v-model="filters.siteId" @change="reloadSelection">
-                    <option value="">Todas</option>
+                    <option value="">{{ $t('ui.reports.option_all_f') }}</option>
                     <option v-for="site in siteOptions" :key="site.id" :value="site.id">{{ site.label }}</option>
                   </select>
                 </label>
-                <label class="doc-field">Ubicación
+                <label class="doc-field">{{ $t('ui.shell.filter_location') }}
                   <select v-model="filters.locationId" @change="reloadSelection">
-                    <option value="">Todas</option>
+                    <option value="">{{ $t('ui.reports.option_all_f') }}</option>
                     <option v-for="location in locationOptions" :key="location.id" :value="location.id">{{ location.name }}</option>
                   </select>
                 </label>
-                <label class="doc-field">Responsable
+                <label class="doc-field">{{ $t('ui.reports.field_responsible') }}
                   <select v-model="filters.responsiblePersonId" @change="reloadSelection">
-                    <option value="">Todos</option>
+                    <option value="">{{ $t('ui.reports.option_all_m') }}</option>
                     <option v-for="person in responsibleOptions" :key="person.id" :value="person.id">{{ person.name }}</option>
                   </select>
                 </label>
-                <label class="doc-field">Archivados
+                <label class="doc-field">{{ $t('ui.reports.field_archived') }}
                   <select v-model="filters.archived" @change="reloadSelection">
-                    <option value="active">Solo activos</option>
-                    <option value="archived">Solo archivados</option>
+                    <option value="active">{{ $t('ui.reports.only_active') }}</option>
+                    <option value="archived">{{ $t('ui.reports.only_archived') }}</option>
                   </select>
                 </label>
               </div>
 
               <div v-if="family === 'history'" class="doc-form-grid">
-                <label class="doc-field">Desde<input type="date" v-model="filters.from" @change="reloadSelection"></label>
-                <label class="doc-field">Hasta<input type="date" v-model="filters.to" @change="reloadSelection"></label>
-                <label class="doc-field">Actor<input v-model="filters.actor" maxlength="120" @change="reloadSelection"></label>
-                <label class="doc-field">Evento<input v-model="filters.event" maxlength="120" @change="reloadSelection"></label>
+                <label class="doc-field">{{ $t('ui.reports.from') }}<input type="date" v-model="filters.from" @change="reloadSelection"></label>
+                <label class="doc-field">{{ $t('ui.reports.to') }}<input type="date" v-model="filters.to" @change="reloadSelection"></label>
+                <label class="doc-field">{{ $t('ui.reports.actor') }}<input v-model="filters.actor" maxlength="120" @change="reloadSelection"></label>
+                <label class="doc-field">{{ $t('ui.reports.event') }}<input v-model="filters.event" maxlength="120" @change="reloadSelection"></label>
               </div>
-              <label v-if="family === 'warranty'" class="doc-field">Cobertura
+              <label v-if="family === 'warranty'" class="doc-field">{{ $t('ui.reports.coverage') }}
                 <select v-model="filters.warrantyFilter" @change="reloadSelection">
-                  <option value="">Todas</option>
-                  <option value="current">Vigente</option>
-                  <option value="expiring">Por vencer</option>
-                  <option value="expired">Vencida</option>
-                  <option value="unknown">Sin datos</option>
+                  <option value="">{{ $t('ui.reports.option_all_f') }}</option>
+                  <option value="current">{{ $t('ui.reports.warranty_current') }}</option>
+                  <option value="expiring">{{ $t('ui.reports.warranty_expiring') }}</option>
+                  <option value="expired">{{ $t('ui.reports.warranty_expired') }}</option>
+                  <option value="unknown">{{ $t('ui.dashboard.status_unknown') }}</option>
                 </select>
               </label>
 
               <hr class="doc-rule">
               <div class="doc-section-label">
-                <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'activo' : 'activos' }}</strong>
-                <span class="mono" v-if="!explicit">Todos los resultados</span>
-                <span class="mono" v-else>Selección manual</span>
+                <strong>{{ $t('ui.reports.selected_assets', { count: selectedCount }) }}</strong>
+                <span class="mono" v-if="!explicit">{{ $t('ui.reports.all_results') }}</span>
+                <span class="mono" v-else>{{ $t('ui.reports.manual_selection') }}</span>
               </div>
               <div class="doc-inline">
-                <button type="button" class="text-button" @click="selectAllMatching">Todos los resultados</button>
-                <button type="button" class="text-button" @click="selectPage">Página actual</button>
-                <button type="button" class="text-button" @click="clearSelection">Vaciar</button>
+                <button type="button" class="text-button" @click="selectAllMatching">{{ $t('ui.reports.all_results') }}</button>
+                <button type="button" class="text-button" @click="selectPage">{{ $t('ui.reports.current_page') }}</button>
+                <button type="button" class="text-button" @click="clearSelection">{{ $t('ui.reports.clear_selection') }}</button>
               </div>
 
               <div class="doc-asset-picker" aria-live="polite">
-                <p v-if="selection.loading" class="doc-help">Cargando activos del servidor…</p>
+                <p v-if="selection.loading" class="doc-help">{{ $t('ui.reports.loading_assets') }}</p>
                 <p v-else-if="selection.error" class="doc-error" role="alert">{{ selection.error }}</p>
-                <p v-else-if="!selection.items.length" class="doc-help">Ningún activo coincide con los filtros.</p>
+                <p v-else-if="!selection.items.length" class="doc-help">{{ $t('ui.reports.no_assets') }}</p>
                 <label v-for="asset in selection.items" :key="asset.id">
                   <input type="checkbox" :checked="rowSelected(asset)" @change="toggle(asset)">
                   <span><strong>{{ asset.name }}</strong><small class="mono">{{ asset.id }} · {{ asset.code || asset.quickCode }}</small></span>
                 </label>
               </div>
               <div class="doc-inline">
-                <button type="button" class="btn btn--ghost btn--small" :disabled="selection.offset === 0 || selection.loading" @click="selectionPage('previous')">← Anterior</button>
+                <button type="button" class="btn btn--ghost btn--small" :disabled="selection.offset === 0 || selection.loading" @click="selectionPage('previous')">{{ $t('ui.reports.prev_page') }}</button>
                 <span class="mono">{{ pageNumber }} / {{ pageCount }}</span>
-                <button type="button" class="btn btn--ghost btn--small" :disabled="selection.loading || selection.offset + selection.limit >= selection.total" @click="selectionPage('next')">Siguiente →</button>
+                <button type="button" class="btn btn--ghost btn--small" :disabled="selection.loading || selection.offset + selection.limit >= selection.total" @click="selectionPage('next')">{{ $t('ui.reports.next_page') }}</button>
               </div>
 
               <hr class="doc-rule">
-              <label class="doc-field">Composición
+              <label class="doc-field">{{ $t('ui.reports.field_composition') }}
                 <select v-model="composition">
-                  <option value="consolidated">Consolidado</option>
-                  <option value="individual">Un documento por activo</option>
+                  <option value="consolidated">{{ $t('ui.reports.composition_consolidated') }}</option>
+                  <option value="individual">{{ $t('ui.reports.composition_individual') }}</option>
                 </select>
               </label>
-              <label class="doc-field">Agrupar por
-                <select v-model="group" aria-label="Agrupar filas del reporte">
+              <label class="doc-field">{{ $t('ui.reports.field_group') }}
+                <select v-model="group" :aria-label="$t('ui.reports.group_aria')">
                   <option v-for="item in groupOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
                 </select>
               </label>
-              <label class="doc-field">Salida
+              <label class="doc-field">{{ $t('ui.reports.field_output') }}
                 <select v-model="output">
                   <option v-for="item in outputOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
                 </select>
@@ -578,23 +582,23 @@
             <div class="doc-preview-area">
               <header class="doc-preview-toolbar">
                 <div>
-                  <p class="eyebrow">02 · Previsualización</p>
+                  <p class="eyebrow">{{ $t('ui.reports.step_preview') }}</p>
                   <h2>{{ draft ? draft.name : 'Sin plantilla' }}</h2>
-                  <p>{{ selectedCount }} activos · {{ composition === 'individual' ? 'documento por activo' : 'documento consolidado' }} · {{ outputLabel(output) }}</p>
+                  <p>{{ $t('ui.reports.selection_summary', { count: selectedCount, document: composition === 'individual' ? $t('ui.reports.doc_per_asset') : $t('ui.reports.doc_consolidated'), output: outputLabel(output) }) }}</p>
                 </div>
                 <button type="button" class="btn btn--secondary" :disabled="previewState.loading || !draft" @click="previewReport">
-                  <app-icon name="eye"></app-icon>{{ previewState.loading ? 'Preparando…' : 'Actualizar vista previa' }}
+                  <app-icon name="eye"></app-icon>{{ previewState.loading ? $t('ui.reports.preparing') : $t('ui.reports.refresh_preview') }}
                 </button>
               </header>
 
               <div v-if="editor && draft" class="doc-editor">
                 <div class="doc-editor__head">
-                  <div><h3>Editor de plantilla</h3><p>Los bloques y campos se guardan en el servidor como una plantilla personalizada.</p></div>
+                  <div><h3>{{ $t('ui.reports.editor_title') }}</h3><p>{{ $t('ui.reports.editor_lead') }}</p></div>
                   <span class="mono">v{{ draft.version }}</span>
                 </div>
                 <div class="doc-form-grid">
-                  <label class="doc-field">Nombre<input v-model="draft.name" maxlength="120"></label>
-                  <label class="doc-field">Descripción<input v-model="draft.description" maxlength="240"></label>
+                  <label class="doc-field">{{ $t('ui.common.name') }}<input v-model="draft.name" maxlength="120"></label>
+                  <label class="doc-field">{{ $t('ui.reports.field_description') }}<input v-model="draft.description" maxlength="240"></label>
                   <label class="doc-field">Familia
                     <select v-model="draft.family" @change="draftFamilyChanged">
                       <option v-for="family in familyOptions" :key="family.id" :value="family.id">{{ family.label }}</option>
@@ -602,25 +606,25 @@
                   </label>
                   <label class="doc-field">Modo
                     <select v-model="draft.mode">
-                      <option value="list">Lista</option>
-                      <option value="sheet">Ficha</option>
+                      <option value="list">{{ $t('ui.reports.layout_list') }}</option>
+                      <option value="sheet">{{ $t('ui.reports.layout_card') }}</option>
                     </select>
                   </label>
                   <label class="doc-field">Papel
-                    <select v-model="draft.format"><option value="A4">A4</option><option value="Letter">Carta</option></select>
+                    <select v-model="draft.format"><option value="A4">{{ $t('ui.reports.format_a4') }}</option><option value="Letter">{{ $t('ui.reports.format_letter') }}</option></select>
                   </label>
                 </div>
                 <div class="doc-inline">
-                  <label><input type="checkbox" v-model="draft.logo">Mostrar logotipo</label>
-                  <label><input type="checkbox" v-model="draft.images">Incluir fotografías</label>
+                  <label><input type="checkbox" v-model="draft.logo">{{ $t('ui.reports.show_logo') }}</label>
+                  <label><input type="checkbox" v-model="draft.images">{{ $t('ui.reports.include_photos') }}</label>
                 </div>
                 <fieldset class="doc-field-options">
-                  <legend>Campos visibles</legend>
+                  <legend>{{ $t('ui.reports.visible_fields') }}</legend>
                   <label v-for="field in fieldOptions" :key="field.key">
                     <input type="checkbox" :checked="fieldChecked(field.key)" @change="toggleField(field.key)">{{ field.label }}
                   </label>
                 </fieldset>
-                <div class="doc-section-label"><strong>Bloques</strong><span class="mono">{{ draft.blocks.length }}</span></div>
+                <div class="doc-section-label"><strong>{{ $t('ui.reports.blocks') }}</strong><span class="mono">{{ draft.blocks.length }}</span></div>
                 <div class="doc-block-list">
                   <div v-for="(item, index) in draft.blocks" :key="item.id" class="doc-block-row">
                     <input type="checkbox" :checked="item.enabled !== false" :aria-label="'Activar ' + item.label" @change="toggleBlock(item)">
@@ -634,22 +638,22 @@
                   </div>
                 </div>
                 <div class="doc-inline">
-                  <select v-model="addType" aria-label="Tipo de bloque">
+                  <select v-model="addType" :aria-label="$t('ui.reports.block_type_aria')">
                     <option v-for="type in blockTypes" :key="type.type" :value="type.type">{{ type.label }}</option>
                   </select>
-                  <button type="button" class="btn btn--ghost btn--small" @click="addBlock">Añadir bloque</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="addBlock">{{ $t('ui.reports.add_block') }}</button>
                 </div>
                 <div class="doc-inline">
-                  <button type="button" class="btn btn--primary btn--small" :disabled="!canEditTemplate" @click="saveTemplate">Guardar plantilla</button>
-                  <button v-if="templateId" type="button" class="btn btn--ghost btn--small" :disabled="!canEditTemplate" @click="removeTemplate">Eliminar plantilla</button>
-                  <span v-if="!canEditTemplate" class="doc-help">Necesitas el permiso de edición de activos.</span>
+                  <button type="button" class="btn btn--primary btn--small" :disabled="!canEditTemplate" @click="saveTemplate">{{ $t('ui.reports.save_template') }}</button>
+                  <button v-if="templateId" type="button" class="btn btn--ghost btn--small" :disabled="!canEditTemplate" @click="removeTemplate">{{ $t('ui.reports.delete_template') }}</button>
+                  <span v-if="!canEditTemplate" class="doc-help">{{ $t('ui.reports.need_edit') }}</span>
                 </div>
               </div>
 
               <div v-if="previewState.html" class="doc-pages">
-                <iframe :srcdoc="previewState.html" sandbox="" title="Vista previa del reporte" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
-                <p v-if="previewState.truncated" class="doc-help" role="status">La selección supera el límite del servidor; reduce los filtros para incluir todos los activos.</p>
-                <p v-if="previewStale" class="doc-help" role="status">Los filtros o la plantilla cambiaron. Actualiza la vista previa antes de generar.</p>
+                <iframe :srcdoc="previewState.html" sandbox="" :title="$t('ui.reports.preview_title')" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
+                <p v-if="previewState.truncated" class="doc-help" role="status">{{ $t('ui.reports.over_limit') }}</p>
+                <p v-if="previewStale" class="doc-help" role="status">{{ $t('ui.reports.stale_preview') }}</p>
               </div>
               <div v-else class="doc-empty">
                 <app-icon name="file-text"></app-icon>
@@ -661,8 +665,8 @@
               <p v-if="notice" class="doc-help" role="status">{{ notice }}</p>
               <footer class="doc-output-bar">
                 <div>
-                  <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'activo' : 'activos' }}</strong>
-                  <p>El PDF, CSV o Excel se genera como un trabajo real y queda disponible para descargar.</p>
+                  <strong>{{ $t('ui.reports.selected_assets', { count: selectedCount }) }}</strong>
+                  <p>{{ $t('ui.reports.generate_note') }}</p>
                 </div>
                 <button type="button" class="btn btn--primary" :disabled="!selectedCount || !draft || !canGenerate" data-od-id="generate-report" @click="generate">
                   <app-icon name="file-text"></app-icon>Generar {{ outputLabel(output) }}
@@ -676,54 +680,54 @@
           <div v-if="activeJob" class="doc-preview-area" data-od-id="active-report-job">
             <header class="doc-preview-toolbar">
               <div>
-                <p class="eyebrow">Trabajo activo</p>
+                <p class="eyebrow">{{ $t('ui.reports.active_job') }}</p>
                 <h2>{{ jobLabel(activeJob.status) }}</h2>
-                <p>{{ activeJob.processed }} / {{ activeJob.total }} procesados · {{ date(activeJob.createdAt) }}</p>
+                <p>{{ $t('ui.reports.job_progress', { done: activeJob.processed, total: activeJob.total, date: date(activeJob.createdAt) }) }}</p>
               </div>
-              <button type="button" class="btn btn--ghost btn--small" :disabled="state.activeJob.loading" @click="app.phase9LoadJob(activeJob.id)">Actualizar</button>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="state.activeJob.loading" @click="app.phase9LoadJob(activeJob.id)">{{ $t('ui.reports.refresh') }}</button>
             </header>
             <div style="padding:20px 24px">
-              <progress :value="activeJob.processed" :max="Math.max(1, activeJob.total)" style="width:100%" aria-label="Progreso del trabajo"></progress>
+              <progress :value="activeJob.processed" :max="Math.max(1, activeJob.total)" style="width:100%" :aria-label="$t('ui.reports.progress_aria')"></progress>
               <ul v-if="activeJob.errors.length" class="doc-error" role="alert">
                 <li v-for="(item, index) in activeJob.errors" :key="index">{{ item }}</li>
               </ul>
               <table v-if="jobDocuments.length" class="asset-table">
-                <thead><tr><th>Documento</th><th>Formato</th><th>Tamaño</th><th></th></tr></thead>
+                <thead><tr><th>{{ $t('ui.reports.col_document') }}</th><th>{{ $t('ui.reports.col_format') }}</th><th>{{ $t('ui.reports.col_size') }}</th><th></th></tr></thead>
                 <tbody>
                   <tr v-for="document in jobDocuments" :key="document.id">
                     <td>{{ document.name }}</td>
                     <td class="mono">{{ document.mime }}</td>
                     <td>{{ size(document.size) }}</td>
-                    <td><button type="button" class="btn btn--ghost btn--small" :disabled="state.download.loading" @click="download(document)">Descargar</button></td>
+                    <td><button type="button" class="btn btn--ghost btn--small" :disabled="state.download.loading" @click="download(document)">{{ $t('ui.reports.download') }}</button></td>
                   </tr>
                 </tbody>
               </table>
-              <p v-else-if="activeJob.status === 'completed'" class="doc-help">El trabajo no produjo documentos.</p>
-              <p v-else class="doc-help">El documento aparecerá cuando el trabajo termine.</p>
+              <p v-else-if="activeJob.status === 'completed'" class="doc-help">{{ $t('ui.reports.no_documents') }}</p>
+              <p v-else class="doc-help">{{ $t('ui.reports.document_pending') }}</p>
             </div>
           </div>
 
           <div class="table-panel" style="margin-top:24px">
-            <header class="panel-head"><div><p class="eyebrow">Historial del servidor</p><h2>Documentos recientes</h2></div><button type="button" class="text-button" @click="app.phase9LoadJobs()">Actualizar</button></header>
+            <header class="panel-head"><div><p class="eyebrow">{{ $t('ui.reports.history_eyebrow') }}</p><h2>{{ $t('ui.reports.recent_documents') }}</h2></div><button type="button" class="text-button" @click="app.phase9LoadJobs()">{{ $t('ui.reports.refresh') }}</button></header>
             <table class="asset-table" v-if="documents.length">
-              <thead><tr><th>Documento</th><th>Trabajo</th><th>Creado</th><th>Tamaño</th><th></th></tr></thead>
+              <thead><tr><th>{{ $t('ui.reports.col_document') }}</th><th>{{ $t('ui.reports.col_job') }}</th><th>{{ $t('ui.reports.col_created') }}</th><th>{{ $t('ui.reports.col_size') }}</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="document in documents" :key="document.id">
                   <td>{{ document.name }}<small class="mono" style="display:block">{{ document.mime }}</small></td>
                   <td class="mono">{{ document.jobId }}</td>
                   <td>{{ date(document.jobCreatedAt) }}</td>
                   <td>{{ size(document.size) }}</td>
-                  <td><button type="button" class="btn btn--ghost btn--small" :disabled="state.download.loading" @click="download(document)">Descargar</button></td>
+                  <td><button type="button" class="btn btn--ghost btn--small" :disabled="state.download.loading" @click="download(document)">{{ $t('ui.reports.download') }}</button></td>
                 </tr>
               </tbody>
             </table>
-            <p v-else class="doc-empty">Todavía no hay documentos generados.</p>
+            <p v-else class="doc-empty">{{ $t('ui.reports.no_documents_yet') }}</p>
           </div>
 
           <div class="table-panel" style="margin-top:24px">
-            <header class="panel-head"><div><p class="eyebrow">Cola del servidor</p><h2>Trabajos</h2></div></header>
+            <header class="panel-head"><div><p class="eyebrow">{{ $t('ui.reports.queue_eyebrow') }}</p><h2>{{ $t('ui.reports.jobs_title') }}</h2></div></header>
             <table class="asset-table" v-if="jobs.length">
-              <thead><tr><th>Trabajo</th><th>Estado</th><th>Progreso</th><th>Errores</th><th>Creado</th><th></th></tr></thead>
+              <thead><tr><th>{{ $t('ui.reports.col_job') }}</th><th>{{ $t('ui.people.col_status') }}</th><th>{{ $t('ui.reports.col_progress') }}</th><th>{{ $t('ui.reports.col_errors') }}</th><th>{{ $t('ui.reports.col_created') }}</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="job in jobs" :key="job.id">
                   <td class="mono">{{ job.id }}</td>
@@ -731,11 +735,11 @@
                   <td>{{ job.processed }} / {{ job.total }}</td>
                   <td>{{ job.errors.length }}</td>
                   <td>{{ date(job.createdAt) }}</td>
-                  <td><button type="button" class="btn btn--ghost btn--small" @click="openJob(job)">Ver</button></td>
+                  <td><button type="button" class="btn btn--ghost btn--small" @click="openJob(job)">{{ $t('ui.reports.view') }}</button></td>
                 </tr>
               </tbody>
             </table>
-            <p v-else class="doc-empty">No hay trabajos de reportes.</p>
+            <p v-else class="doc-empty">{{ $t('ui.reports.no_jobs') }}</p>
             <p v-if="state.jobs.error" class="doc-error" role="alert">{{ state.jobs.error }}</p>
           </div>
         </template>
@@ -822,9 +826,9 @@
     template: `
       <section class="config-section doc-settings" data-od-id="report-settings">
         <header class="config-section-head">
-          <p class="eyebrow">Documentos e identidad</p>
-          <h2>Reportes y URL base</h2>
-          <p>La identidad visual y la dirección de los códigos QR pertenecen a la organización activa. Sin configuración se usa el tema genérico del motor.</p>
+          <p class="eyebrow">{{ $t('ui.reports.settings_eyebrow') }}</p>
+          <h2>{{ $t('ui.reports.settings_title') }}</h2>
+          <p>{{ $t('ui.reports.settings_lead') }}</p>
         </header>
         <form class="qr-settings-form" @submit.prevent="save">
           <label class="doc-field">URL base de los reportes
@@ -832,15 +836,15 @@
             <small v-if="fieldErrors.baseUrl" class="doc-error">{{ fieldErrors.baseUrl }}</small>
           </label>
           <div class="doc-form-grid">
-            <label class="doc-field">Nombre de la organización<input v-model="draft.branding.name" maxlength="120"></label>
-            <label class="doc-field">ID de adjunto del logotipo<input v-model="draft.branding.logoAttachmentId" maxlength="120" placeholder="Adjunto raster autorizado"></label>
-            <label class="doc-field">Color principal<input v-model="draft.branding.primary" maxlength="7" placeholder="#0d766e"><small v-if="fieldErrors.primary" class="doc-error">{{ fieldErrors.primary }}</small></label>
-            <label class="doc-field">Color de acento<input v-model="draft.branding.accent" maxlength="7" placeholder="#147c73"><small v-if="fieldErrors.accent" class="doc-error">{{ fieldErrors.accent }}</small></label>
+            <label class="doc-field">{{ $t('ui.reports.org_name') }}<input v-model="draft.branding.name" maxlength="120"></label>
+            <label class="doc-field">{{ $t('ui.reports.logo_attachment') }}<input v-model="draft.branding.logoAttachmentId" maxlength="120" :placeholder="$t('ui.reports.logo_attachment_placeholder')"></label>
+            <label class="doc-field">{{ $t('ui.reports.color_primary') }}<input v-model="draft.branding.primary" maxlength="7" placeholder="#0d766e"><small v-if="fieldErrors.primary" class="doc-error">{{ fieldErrors.primary }}</small></label>
+            <label class="doc-field">{{ $t('ui.reports.color_accent') }}<input v-model="draft.branding.accent" maxlength="7" placeholder="#147c73"><small v-if="fieldErrors.accent" class="doc-error">{{ fieldErrors.accent }}</small></label>
           </div>
-          <label class="doc-field">Encabezado del documento<textarea v-model="draft.branding.header" maxlength="300" rows="3"></textarea></label>
-          <label class="doc-field">Pie del documento<textarea v-model="draft.branding.footer" maxlength="300" rows="3"></textarea></label>
-          <p class="doc-help">El logotipo debe ser un adjunto raster existente y autorizado. No se aceptan HTML, CSS, rutas del sistema ni direcciones de red arbitrarias.</p>
-          <p v-if="!canSave" class="doc-help">Necesitas el permiso de configuración general para guardar.</p>
+          <label class="doc-field">{{ $t('ui.reports.header_field') }}<textarea v-model="draft.branding.header" maxlength="300" rows="3"></textarea></label>
+          <label class="doc-field">{{ $t('ui.reports.footer_field') }}<textarea v-model="draft.branding.footer" maxlength="300" rows="3"></textarea></label>
+          <p class="doc-help">{{ $t('ui.reports.logo_note') }}</p>
+          <p v-if="!canSave" class="doc-help">{{ $t('ui.reports.need_config') }}</p>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
           <button class="btn btn--primary" type="submit" :disabled="!canSave || state.saving">{{ state.saving ? 'Guardando…' : (saved ? 'Configuración guardada' : 'Guardar configuración') }}</button>
         </form>

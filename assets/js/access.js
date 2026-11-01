@@ -14,102 +14,112 @@
   const CATALOG_SOURCE = [
     {
       id: 'assets',
-      label: 'Activos',
+      labelKey: 'ui.access.module_assets',
       icon: 'desktop',
       permissions: [
-        { id: 'assets.view', label: 'Ver' },
-        { id: 'assets.edit', label: 'Editar' },
-        { id: 'assets.assign', label: 'Asignar responsables' },
-        { id: 'assets.remote', label: 'Acceso remoto' },
-        { id: 'assets.purge', label: 'Eliminar definitivamente' }
+        { id: 'assets.view', labelKey: 'ui.access.perm_assets_view' },
+        { id: 'assets.edit', labelKey: 'ui.access.perm_assets_edit' },
+        { id: 'assets.assign', labelKey: 'ui.access.perm_assets_assign' },
+        { id: 'assets.remote', labelKey: 'ui.access.perm_assets_remote' },
+        { id: 'assets.purge', labelKey: 'ui.access.perm_assets_purge' }
       ]
     },
     {
       id: 'reports',
-      label: 'Reportes',
+      labelKey: 'ui.access.module_reports',
       icon: 'file-text',
       permissions: [
-        { id: 'reports.share', label: 'Compartir reportes públicos' }
+        { id: 'reports.share', labelKey: 'ui.access.perm_reports_share' }
       ]
     },
     {
       id: 'people',
-      label: 'Personas',
+      labelKey: 'ui.access.module_people',
       icon: 'user',
       permissions: [
-        { id: 'people.view', label: 'Ver' },
-        { id: 'people.create', label: 'Crear' },
-        { id: 'people.edit', label: 'Editar' }
+        { id: 'people.view', labelKey: 'ui.access.perm_people_view' },
+        { id: 'people.create', labelKey: 'ui.access.perm_people_create' },
+        { id: 'people.edit', labelKey: 'ui.access.perm_people_edit' }
       ]
     },
     {
       id: 'config',
-      label: 'Configuración',
+      labelKey: 'ui.access.module_config',
       icon: 'sliders',
       permissions: [
-        { id: 'config.general', label: 'General' },
-        { id: 'config.categories', label: 'Categorías' },
-        { id: 'config.sites', label: 'Sedes y ubicaciones' },
-        { id: 'config.departments', label: 'Departamentos' },
-        { id: 'config.integrations', label: 'Integraciones' }
+        { id: 'config.general', labelKey: 'ui.access.perm_config_general' },
+        { id: 'config.categories', labelKey: 'ui.access.perm_config_categories' },
+        { id: 'config.sites', labelKey: 'ui.access.perm_config_sites' },
+        { id: 'config.departments', labelKey: 'ui.access.perm_config_departments' },
+        { id: 'config.integrations', labelKey: 'ui.access.perm_config_integrations' }
       ]
     },
     {
       id: 'agents',
-      label: 'Inteligencia artificial',
+      labelKey: 'ui.access.module_agents',
       icon: 'layers',
       permissions: [
-        { id: 'agents.providers.personal', label: 'Administrar proveedores propios' }
+        { id: 'agents.providers.personal', labelKey: 'ui.access.perm_agents_providers_personal' }
       ]
     },
     {
       // Installation ownership: these grants are reserved for the human
       // Superadmin and never imply business administration.
       id: 'system',
-      label: 'Sistema',
+      labelKey: 'ui.access.module_system',
       icon: 'server',
       permissions: [
-        { id: 'system.view', label: 'Ver estado' },
-        { id: 'system.providers', label: 'Proveedores de IA' },
-        { id: 'system.modules', label: 'Módulos' },
-        { id: 'system.configure', label: 'Configuración del despliegue' },
-        { id: 'system.backup', label: 'Respaldos' },
-        { id: 'system.update', label: 'Actualizaciones' }
+        { id: 'system.view', labelKey: 'ui.access.perm_system_view' },
+        { id: 'system.providers', labelKey: 'ui.access.perm_system_providers' },
+        { id: 'system.modules', labelKey: 'ui.access.perm_system_modules' },
+        { id: 'system.configure', labelKey: 'ui.access.perm_system_configure' },
+        { id: 'system.backup', labelKey: 'ui.access.perm_system_backup' },
+        { id: 'system.update', labelKey: 'ui.access.perm_system_update' }
       ]
     },
     {
       id: 'users',
-      label: 'Usuarios',
+      labelKey: 'ui.access.module_users',
       icon: 'user',
       permissions: [
-        { id: 'users.view', label: 'Ver' },
-        { id: 'users.create', label: 'Crear' },
-        { id: 'users.edit', label: 'Editar' }
+        { id: 'users.view', labelKey: 'ui.access.perm_users_view' },
+        { id: 'users.create', labelKey: 'ui.access.perm_users_create' },
+        { id: 'users.edit', labelKey: 'ui.access.perm_users_edit' }
       ]
     },
     {
       id: 'roles',
-      label: 'Roles y permisos',
+      labelKey: 'ui.access.module_roles',
       icon: 'shield',
       permissions: [
-        { id: 'roles.manage', label: 'Administrar' }
+        { id: 'roles.manage', labelKey: 'ui.access.perm_roles_manage' }
       ]
     },
     {
       id: 'sessions',
-      label: 'Sesiones',
+      labelKey: 'ui.access.module_sessions',
       icon: 'lock',
       permissions: [
-        { id: 'sessions.manage', label: 'Administrar' }
+        { id: 'sessions.manage', labelKey: 'ui.access.perm_sessions_manage' }
       ]
     }
   ];
   // The permission catalog is a display snapshot of server-issued grants; it
   // is never authority. Extension groups are merged from discovery so a human
   // Superadmin can review revoked/disabled module permissions in role details.
-  const CATALOG = window.Vue && typeof window.Vue.reactive === 'function'
+  // Catalog labels are catalog keys, resolved on read so a locale change
+  // re-renders them; the ids stay the stable authority.
+  const CATALOG = (window.Vue && typeof window.Vue.reactive === 'function'
     ? window.Vue.reactive(CATALOG_SOURCE)
-    : CATALOG_SOURCE;
+    : CATALOG_SOURCE).map((module) => ({
+    id: module.id,
+    icon: module.icon,
+    get label() { return tr(module.labelKey); },
+    permissions: module.permissions.map((permission) => ({
+      id: permission.id,
+      get label() { return tr(permission.labelKey); }
+    }))
+  }));
 
   const PERMISSION_IDS = CATALOG.reduce((result, group) => {
     group.permissions.forEach((permission) => result.push(permission.id));
@@ -375,7 +385,7 @@
       try { payload = await response.json(); } catch (_) { /* non-JSON failures use the status mapping */ }
       throw responseError(vm, path, response, payload);
     }
-    if (!response.body || typeof response.body.getReader !== 'function') throw new Error('El servidor no envió un flujo de eventos.');
+    if (!response.body || typeof response.body.getReader !== 'function') throw new Error(tr('ui.errors.stream_unavailable'));
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
