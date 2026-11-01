@@ -230,12 +230,6 @@
         ...window.AssetExtensions.data(),
         bulk: { ids: [], open: false },
         assetConfigTab: 'campos',
-        assetConfigTabs: [
-          { id: 'campos', label: 'Campos', icon: 'sliders' },
-          { id: 'formularios', label: 'Formularios', icon: 'file-text' },
-          { id: 'estados', label: 'Estados', icon: 'activity' },
-          { id: 'identificacion', label: 'Identificación', icon: 'inventory' }
-        ],
         assetEditor: {
           open: false,
           mode: 'create',
@@ -263,83 +257,10 @@
         formDraftError: '',
         retireReasons: window.AssetAdminReasons || [],
         fieldTypes: window.AssetSchema.FIELD_TYPES,
-        statusTones: [
-          { value: 'ok', label: 'Operativo' },
-          { value: 'warn', label: 'Atención' },
-          { value: 'hold', label: 'Sin asignar' },
-          { value: 'down', label: 'Baja' }
-        ],
         people: initial.people,
         authenticated: initial.authenticated,
         route: { name: 'login', assetId: null, personId: null, section: null },
         prefs: initial.prefs,
-        sortOptions: [
-          { value: 'id-asc', label: 'Código' },
-          { value: 'name-asc', label: 'Nombre A–Z' },
-          { value: 'name-desc', label: 'Nombre Z–A' },
-          { value: 'site-asc', label: 'Sede' },
-          { value: 'assignee-asc', label: 'Responsable' },
-          { value: 'type-asc', label: 'Tipo' }
-        ],
-        configSections: [
-          // Installation ownership stays a filtered section of the existing
-          // Configuración nav; it never becomes a second navigation level.
-          { id: 'sistema', label: 'Sistema', hint: 'Estado, respaldos y actualización', icon: 'server' },
-          { id: 'extensiones', label: 'Extensiones', hint: 'Paquetes, confianza y aprobación', icon: 'package' },
-          { id: 'seguridad', label: 'Usuarios y permisos', hint: 'Roles y sesiones', icon: 'user' },
-          { id: 'general', label: 'General', hint: 'Identidad y marca', icon: 'sliders' },
-          { id: 'ia', label: 'IA', hint: 'Motores, modelos e integraciones', icon: 'layers' },
-          { id: 'apariencia', label: 'Apariencia', hint: 'Branding, temas y presets', icon: 'sliders' },
-          { id: 'categorias', label: 'Categorías', hint: 'Catálogo de equipos', icon: 'grid' },
-          { id: 'activos', label: 'Activos', hint: 'Campos, formularios y códigos', icon: 'box' },
-          { id: 'sedes', label: 'Sedes y ubicaciones', hint: 'Estructura física', icon: 'building' },
-          { id: 'personas', label: 'Personas', hint: 'Departamentos y áreas', icon: 'user' },
-          { id: 'integraciones', label: 'Integraciones', hint: 'AnyDesk y Tactical RMM', icon: 'remote' },
-          { id: 'relaciones', label: 'Relaciones', hint: 'Vínculos y grafo', icon: 'network' },
-          { id: 'mantenimiento', label: 'Mantenimiento', hint: 'Plantillas e intervalos', icon: 'refresh' },
-          { id: 'supervision', label: 'Supervisión', hint: 'Comprobaciones y umbrales', icon: 'gauge' },
-          { id: 'alertas', label: 'Alertas', hint: 'Silencios y ventanas', icon: 'bell' },
-          { id: 'notificaciones', label: 'Notificaciones', hint: 'Canales y escalamiento', icon: 'send' },
-          { id: 'mapas', label: 'Mapas y planos', hint: 'Sedes, planos y capas', icon: 'map-pin' },
-          { id: 'datos', label: 'Datos e importación', hint: 'Perfiles, formatos e historial', icon: 'upload' },
-          { id: 'reportes', label: 'Reportes', hint: 'Plantillas y composición', icon: 'file-text' },
-          { id: 'garantias', label: 'Garantías', hint: 'Plazos y vencimientos', icon: 'shield' },
-          { id: 'qr', label: 'Códigos QR', hint: 'URL base y acceso', icon: 'grid' },
-          { id: 'etiquetas', label: 'Etiquetas', hint: 'Formatos de impresión', icon: 'printer' }
-        ],
-        deviceImagePresets: [
-          { label: 'Computadora', icon: 'desktop', src: 'assets/svg/devices/desktop.svg' },
-          { label: 'Notebook', icon: 'laptop', src: 'assets/svg/devices/notebook.svg' },
-          { label: 'Servidor', icon: 'server', src: 'assets/svg/devices/server.svg' },
-          { label: 'Impresora', icon: 'printer', src: 'assets/svg/devices/printer.svg' },
-          { label: 'Switch', icon: 'network', src: 'assets/svg/devices/switch.svg' },
-          { label: 'Monitor', icon: 'display', src: 'assets/svg/devices/monitor.svg' },
-          { label: 'Cámara IP', icon: 'camera', src: 'assets/svg/devices/camera.svg' },
-          { label: 'UPS', icon: 'battery', src: 'assets/svg/devices/ups.svg' },
-          { label: 'Máquina virtual', icon: 'layers', src: 'assets/svg/devices/vm.svg' },
-          { label: 'Contenedor', icon: 'box', src: 'assets/svg/devices/container.svg' },
-          { label: 'Otros equipos', icon: 'package', src: 'assets/svg/devices/other.svg' }
-        ],
-        integrationDefinitions: [
-          {
-            id: 'anydesk',
-            name: 'AnyDesk',
-            icon: 'remote',
-            description: 'Acceso remoto puntual para soporte y asistencia.',
-            urlLabel: 'Dirección base de AnyDesk',
-            placeholder: 'https://anydesk.com/es/remote-support',
-            hint: 'Los identificadores numéricos se asignan en cada activo.'
-          },
-          {
-            id: 'rmm',
-            name: 'Tactical RMM',
-            icon: 'activity',
-            description: 'Gestión de agentes, monitoreo y mantenimiento.',
-            urlLabel: 'URL de la instancia RMM',
-            placeholder: 'https://rmm.assetmanager.local/agents/',
-            hint: 'El identificador del agente se añade al final de esta dirección.'
-          }
-        ],
         mobileNavOpen: false,
         sidebarPinnedPref: window.AssetSidebar ? window.AssetSidebar.isPinned() : false,
         sidebarDockable: window.AssetSidebar ? window.AssetSidebar.canDock() : false,
@@ -449,9 +370,103 @@
       settings() {
         return Store.settingsFromConfig(this.config);
       },
+      // Copy-bearing navigation and form data lives in computed properties so a
+      // language switch re-renders labels while ids, tones, icons and image
+      // sources stay stable for stored state, routes and server payloads.
+      assetConfigTabs() {
+        return [
+          { id: 'campos', label: tr('ui.shell.tab_fields'), icon: 'sliders' },
+          { id: 'formularios', label: tr('ui.shell.tab_forms'), icon: 'file-text' },
+          { id: 'estados', label: tr('ui.shell.tab_statuses'), icon: 'activity' },
+          { id: 'identificacion', label: tr('ui.shell.tab_identification'), icon: 'inventory' }
+        ];
+      },
+      statusTones() {
+        return [
+          { value: 'ok', label: tr('ui.shell.tone_ok') },
+          { value: 'warn', label: tr('ui.shell.tone_warn') },
+          { value: 'hold', label: tr('ui.shell.tone_hold') },
+          { value: 'down', label: tr('ui.shell.tone_down') }
+        ];
+      },
+      sortOptions() {
+        return [
+          { value: 'id-asc', label: tr('ui.shell.sort_code') },
+          { value: 'name-asc', label: tr('ui.shell.sort_name_asc') },
+          { value: 'name-desc', label: tr('ui.shell.sort_name_desc') },
+          { value: 'site-asc', label: tr('ui.shell.sort_site') },
+          { value: 'assignee-asc', label: tr('ui.shell.sort_assignee') },
+          { value: 'type-asc', label: tr('ui.shell.sort_type') }
+        ];
+      },
+      configSections() {
+        // Installation ownership stays a filtered section of the existing
+        // Configuración nav; it never becomes a second navigation level.
+        return [
+          { id: 'sistema', label: tr('ui.shell.config_section_sistema'), hint: tr('ui.shell.config_section_sistema_hint'), icon: 'server' },
+          { id: 'extensiones', label: tr('ui.shell.config_section_extensiones'), hint: tr('ui.shell.config_section_extensiones_hint'), icon: 'package' },
+          { id: 'seguridad', label: tr('ui.shell.config_section_seguridad'), hint: tr('ui.shell.config_section_seguridad_hint'), icon: 'user' },
+          { id: 'general', label: tr('ui.shell.config_section_general'), hint: tr('ui.shell.config_section_general_hint'), icon: 'sliders' },
+          { id: 'ia', label: tr('ui.shell.config_section_ia'), hint: tr('ui.shell.config_section_ia_hint'), icon: 'layers' },
+          { id: 'apariencia', label: tr('ui.shell.config_section_apariencia'), hint: tr('ui.shell.config_section_apariencia_hint'), icon: 'sliders' },
+          { id: 'categorias', label: tr('ui.shell.config_section_categorias'), hint: tr('ui.shell.config_section_categorias_hint'), icon: 'grid' },
+          { id: 'activos', label: tr('ui.shell.config_section_activos'), hint: tr('ui.shell.config_section_activos_hint'), icon: 'box' },
+          { id: 'sedes', label: tr('ui.shell.config_section_sedes'), hint: tr('ui.shell.config_section_sedes_hint'), icon: 'building' },
+          { id: 'personas', label: tr('ui.shell.config_section_personas'), hint: tr('ui.shell.config_section_personas_hint'), icon: 'user' },
+          { id: 'integraciones', label: tr('ui.shell.config_section_integraciones'), hint: tr('ui.shell.config_section_integraciones_hint'), icon: 'remote' },
+          { id: 'relaciones', label: tr('ui.shell.config_section_relaciones'), hint: tr('ui.shell.config_section_relaciones_hint'), icon: 'network' },
+          { id: 'mantenimiento', label: tr('ui.shell.config_section_mantenimiento'), hint: tr('ui.shell.config_section_mantenimiento_hint'), icon: 'refresh' },
+          { id: 'supervision', label: tr('ui.shell.config_section_supervision'), hint: tr('ui.shell.config_section_supervision_hint'), icon: 'gauge' },
+          { id: 'alertas', label: tr('ui.shell.config_section_alertas'), hint: tr('ui.shell.config_section_alertas_hint'), icon: 'bell' },
+          { id: 'notificaciones', label: tr('ui.shell.config_section_notificaciones'), hint: tr('ui.shell.config_section_notificaciones_hint'), icon: 'send' },
+          { id: 'mapas', label: tr('ui.shell.config_section_mapas'), hint: tr('ui.shell.config_section_mapas_hint'), icon: 'map-pin' },
+          { id: 'datos', label: tr('ui.shell.config_section_datos'), hint: tr('ui.shell.config_section_datos_hint'), icon: 'upload' },
+          { id: 'reportes', label: tr('ui.shell.config_section_reportes'), hint: tr('ui.shell.config_section_reportes_hint'), icon: 'file-text' },
+          { id: 'garantias', label: tr('ui.shell.config_section_garantias'), hint: tr('ui.shell.config_section_garantias_hint'), icon: 'shield' },
+          { id: 'qr', label: tr('ui.shell.config_section_qr'), hint: tr('ui.shell.config_section_qr_hint'), icon: 'grid' },
+          { id: 'etiquetas', label: tr('ui.shell.config_section_etiquetas'), hint: tr('ui.shell.config_section_etiquetas_hint'), icon: 'printer' }
+        ];
+      },
+      deviceImagePresets() {
+        return [
+          { label: tr('ui.shell.device_desktop'), icon: 'desktop', src: 'assets/svg/devices/desktop.svg' },
+          { label: tr('ui.shell.device_notebook'), icon: 'laptop', src: 'assets/svg/devices/notebook.svg' },
+          { label: tr('ui.shell.device_server'), icon: 'server', src: 'assets/svg/devices/server.svg' },
+          { label: tr('ui.shell.device_printer'), icon: 'printer', src: 'assets/svg/devices/printer.svg' },
+          { label: tr('ui.shell.device_switch'), icon: 'network', src: 'assets/svg/devices/switch.svg' },
+          { label: tr('ui.shell.device_monitor'), icon: 'display', src: 'assets/svg/devices/monitor.svg' },
+          { label: tr('ui.shell.device_camera'), icon: 'camera', src: 'assets/svg/devices/camera.svg' },
+          { label: tr('ui.shell.device_ups'), icon: 'battery', src: 'assets/svg/devices/ups.svg' },
+          { label: tr('ui.shell.device_vm'), icon: 'layers', src: 'assets/svg/devices/vm.svg' },
+          { label: tr('ui.shell.device_container'), icon: 'box', src: 'assets/svg/devices/container.svg' },
+          { label: tr('ui.shell.device_other'), icon: 'package', src: 'assets/svg/devices/other.svg' }
+        ];
+      },
+      integrationDefinitions() {
+        return [
+          {
+            id: 'anydesk',
+            name: 'AnyDesk',
+            icon: 'remote',
+            description: tr('ui.shell.integration_anydesk_description'),
+            urlLabel: tr('ui.shell.integration_anydesk_url_label'),
+            placeholder: 'https://anydesk.com/es/remote-support',
+            hint: tr('ui.shell.integration_anydesk_hint')
+          },
+          {
+            id: 'rmm',
+            name: 'Tactical RMM',
+            icon: 'activity',
+            description: tr('ui.shell.integration_rmm_description'),
+            urlLabel: tr('ui.shell.integration_rmm_url_label'),
+            placeholder: 'https://rmm.assetmanager.local/agents/',
+            hint: tr('ui.shell.integration_rmm_hint')
+          }
+        ];
+      },
       configSectionLabel() {
         const section = this.configSections.find((item) => item.id === (this.route.section || 'general'));
-        return section ? section.label : 'Configuración';
+        return section ? section.label : tr('ui.shell.config_fallback');
       },
       anyIntegrationEnabled() {
         return this.settings.anydeskEnabled || this.settings.rmmEnabled;

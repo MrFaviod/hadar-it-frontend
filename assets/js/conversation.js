@@ -17,21 +17,46 @@
   const MAX_ATTACHMENTS = 4;
   const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
   const MAX_SESSION_ATTACHMENTS = 20;
-  const ATTACHMENT_KIND_LABELS = { image: 'Imagen', file: 'PDF o documento', text: 'Texto' };
   const IMAGE_NAME_RE = /\.(png|jpe?g|webp|gif)$/i;
   const PDF_NAME_RE = /\.pdf$/i;
   const TEXT_NAME_RE = /\.(txt|csv)$/i;
-  const UNAVAILABLE = 'El agente no está disponible: el servidor no tiene un modelo configurado.';
-  const EXPIRED = 'La sesión no está disponible. Inicia sesión de nuevo.';
-  const MAX_MESSAGE_ERROR = 'El mensaje supera los ' + MAX_MESSAGE + ' caracteres.';
-  const NO_ENGINE = 'No hay un motor habilitado. Elige una instancia en Configuración → IA.';
-  const NO_MODEL = 'La instancia seleccionada no ofrece modelos disponibles. Elige otro motor.';
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  const ACTION_LABELS = {
-    completed: 'Completada',
-    failed: 'Fallida',
-    denied: 'Denegada'
+  // Visible copy resolves through the shipped runtime so a language switch
+  // re-renders the surface without losing the conversation state. The module
+  // stays loadable without it (isolated tests), where a key renders empty.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
+  // Stable status ids map to literal catalog keys; a key is never built from
+  // data at runtime.
+  const ATTACHMENT_KIND_KEYS = {
+    image: 'ui.chat.kind_image',
+    file: 'ui.chat.kind_file',
+    text: 'ui.chat.kind_text'
+  };
+
+  const ACTION_STATUS_KEYS = {
+    completed: 'ui.chat.status_completed',
+    failed: 'ui.chat.status_failed',
+    denied: 'ui.chat.status_denied'
+  };
+
+  const TOOL_STATUS_KEYS = {
+    running: 'ui.chat.status_running',
+    pending: 'ui.chat.status_running',
+    completed: 'ui.chat.status_completed',
+    failed: 'ui.chat.status_failed',
+    denied: 'ui.chat.status_denied'
+  };
+
+  const ASSET_STATUS_KEYS = {
+    in_use: 'ui.chat.status_in_use',
+    in_storage: 'ui.chat.status_in_storage',
+    maintenance: 'ui.chat.status_maintenance',
+    retired: 'ui.chat.status_retired'
   };
 
   const ACTION_TONES = {
@@ -40,27 +65,12 @@
     denied: 'warn'
   };
 
-  const TOOL_LABELS = {
-    running: 'En curso',
-    pending: 'En curso',
-    completed: 'Completada',
-    failed: 'Fallida',
-    denied: 'Denegada'
-  };
-
   const TOOL_TONES = {
     running: 'hold',
     pending: 'hold',
     completed: 'ok',
     failed: 'down',
     denied: 'warn'
-  };
-
-  const STATUS_LABELS = {
-    in_use: 'Asignado',
-    in_storage: 'En resguardo',
-    maintenance: 'Mantenimiento',
-    retired: 'Dado de baja'
   };
 
   function isPermanentId(value) {
@@ -175,6 +185,9 @@
       maxMessageLength() {
         return MAX_MESSAGE;
       },
+      maxSessionAttachments() {
+        return MAX_SESSION_ATTACHMENTS;
+      },
       useAgentSessions() {
         return !this.legacyFallback && this.agentEnginesAvailable;
       },
@@ -260,10 +273,10 @@
         const support = this.chatAttachmentSupport;
         if (!support.supported) return '';
         const formats = [];
-        if (support.image) formats.push('imágenes PNG, JPEG, WebP o GIF');
-        if (support.file) formats.push('PDF');
-        formats.push('texto o CSV');
-        return 'Hasta ' + MAX_ATTACHMENTS + ' archivos de 4 MiB en total por mensaje: ' + formats.join(', ') + '.';
+        if (support.image) formats.push(tr('ui.chat.formats_images'));
+        if (support.file) formats.push(tr('ui.chat.formats_pdf'));
+        formats.push(tr('ui.chat.formats_text'));
+        return tr('ui.chat.attachment_help', { max: MAX_ATTACHMENTS, formats: formats.join(', ') });
       },
       hasPendingAttachments() {
         return this.attachments.length > 0 || this.selectedAssetAttachmentIds.length > 0;
@@ -431,7 +444,7 @@
         if (!this.isCurrent(epoch)) return;
         const asset = this.app.inventoryDetail && this.app.inventoryDetail.asset;
         if (loaded && asset && asset.serverAsset === true && asset.id === id) this.retainedAsset = Object.assign({}, asset);
-        else this.error = (this.app.inventoryDetail && this.app.inventoryDetail.error) || 'El activo en contexto no está disponible en el servidor.';
+        else this.error = (this.app.inventoryDetail && this.app.inventoryDetail.error) || tr('ui.chat.asset_unavailable');
       },
       async loadSavedSessions() {
         const epoch = this.epoch;
@@ -443,7 +456,7 @@
           this.savedSessions = payload && Array.isArray(payload.sessions) ? payload.sessions.filter(session => session && typeof session.id === 'string') : [];
           return true;
         } catch (error) {
-          if (this.isCurrent(epoch)) this.sessionsError = error.serverMessage || error.message || 'No se pudieron consultar tus conversaciones.';
+          if (this.isCurrent(epoch)) this.sessionsError = error.serverMessage || error.message || tr('ui.chat.sessions_error');
           return false;
         } finally {
           if (this.isCurrent(epoch)) this.sessionsLoading = false;
@@ -471,7 +484,7 @@
         try {
           const session = await window.AssetAgentApi.getSession(this.app, id, { signal: controller.signal });
           if (!this.isCurrent(epoch)) return false;
-          if (!session || session.id !== id) throw new Error('El servidor no devolvió la conversación seleccionada.');
+          if (!session || session.id !== id) throw new Error(tr('ui.chat.resume_wrong_session'));
           this.startNewSession();
           this.sessionId = id;
           this.applySessionSnapshot(session);
@@ -481,14 +494,14 @@
           this.error = '';
           return true;
         } catch (error) {
-          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.sessionsError = error.serverMessage || error.message || 'No se pudo abrir la conversación.';
+          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.sessionsError = error.serverMessage || error.message || tr('ui.chat.resume_failed');
           return false;
         } finally {
           if (this.isCurrent(epoch)) { this.resuming = false; this.request = null; }
         }
       },
       savedSessionLabel(session) {
-        return session.title || session.preview || ('Conversación · ' + (session.updatedAt || session.createdAt || session.id));
+        return session.title || session.preview || tr('ui.chat.session_fallback_title', { date: session.updatedAt || session.createdAt || session.id });
       },
       isCurrent(epoch) {
         return epoch === this.epoch && this.disposed !== true && this.app.authenticated !== false;
@@ -618,10 +631,10 @@
         return this.attachments.map(item => item.id);
       },
       attachmentKindLabel(kind) {
-        return ATTACHMENT_KIND_LABELS[kind] || 'Archivo';
+        return tr(ATTACHMENT_KIND_KEYS[kind] || 'ui.chat.kind_other');
       },
       attachmentSizeText(item) {
-        if (!item || item.sizeKnown === false) return 'Tamaño no informado';
+        if (!item || item.sizeKnown === false) return tr('ui.chat.size_unknown');
         return bytesText(attachmentBytes(item.size));
       },
       selectedAssetAttachmentBytes() {
@@ -656,10 +669,10 @@
       },
       attachmentErrorMessage(error) {
         const code = error && (error.code || '');
-        if (code === 'model_modality_unsupported') return 'El modelo seleccionado no admite ese tipo de adjunto.';
-        if (code === 'engine_attachments_unsupported') return 'El motor seleccionado no admite adjuntos en el chat.';
-        if (error && error.status === 401) return EXPIRED;
-        return (error && (error.serverMessage || error.message)) || 'No se pudo adjuntar el archivo.';
+        if (code === 'model_modality_unsupported') return tr('ui.chat.error_modality');
+        if (code === 'engine_attachments_unsupported') return tr('ui.chat.error_engine_attachments');
+        if (error && error.status === 401) return tr('ui.chat.session_expired');
+        return (error && (error.serverMessage || error.message)) || tr('ui.chat.error_attach');
       },
       clearAttachments() {
         this.attachments = [];
@@ -678,25 +691,25 @@
       attachmentBatchError(files) {
         const selectedBytes = this.selectedAssetAttachmentBytes();
         if (selectedBytes === null) {
-          return 'El servidor no informó el tamaño de un adjunto del activo, así que no se puede verificar el límite de 4 MiB.';
+          return tr('ui.chat.error_asset_size_unknown');
         }
         if (this.combinedAttachmentCount + files.length > MAX_ATTACHMENTS) {
-          return 'Puedes adjuntar hasta ' + MAX_ATTACHMENTS + ' archivos por mensaje.';
+          return tr('ui.chat.error_too_many_attachments', { max: MAX_ATTACHMENTS });
         }
         if (this.sessionAttachmentCount + files.length > MAX_SESSION_ATTACHMENTS) {
-          return 'Esta conversación admite hasta ' + MAX_SESSION_ATTACHMENTS + ' adjuntos.';
+          return tr('ui.chat.error_session_attachment_limit', { max: MAX_SESSION_ATTACHMENTS });
         }
         const support = this.chatAttachmentSupport;
         let total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0) + selectedBytes;
         for (const file of files) {
           const size = attachmentBytes(file && file.size);
-          if (size > MAX_ATTACHMENT_BYTES) return 'Cada archivo debe pesar 4 MiB o menos.';
+          if (size > MAX_ATTACHMENT_BYTES) return tr('ui.chat.error_file_size');
           total += size;
           const kind = attachmentKindFor(file && file.name);
-          if (kind === 'image' && !support.image) return 'El modelo seleccionado no admite imágenes.';
-          if (kind === 'file' && !support.file) return 'El modelo seleccionado no admite PDF ni documentos.';
+          if (kind === 'image' && !support.image) return tr('ui.chat.error_no_images');
+          if (kind === 'file' && !support.file) return tr('ui.chat.error_no_documents');
         }
-        if (total > MAX_ATTACHMENT_BYTES) return 'Los adjuntos de un mensaje no pueden superar 4 MiB en total.';
+        if (total > MAX_ATTACHMENT_BYTES) return tr('ui.chat.error_total_size');
         return '';
       },
       async attachFiles(event) {
@@ -711,7 +724,7 @@
         if (!files.length) return false;
         if (this.busy || this.attachmentBusy || this.resuming || this.selecting || this.sessionRunning) return false;
         if (!this.engineReady) {
-          this.attachmentError = NO_MODEL;
+          this.attachmentError = tr('ui.chat.no_model');
           return false;
         }
         const batchError = this.attachmentBatchError(files);
@@ -730,7 +743,7 @@
       async storeAttachment(file) {
         const filename = safeFilename(file && file.name);
         if (!filename) {
-          this.attachmentError = 'Selecciona un archivo con nombre.';
+          this.attachmentError = tr('ui.chat.error_filename');
           return false;
         }
         const epoch = this.epoch;
@@ -743,7 +756,7 @@
           const payload = await window.AssetAgentApi.uploadSessionAttachment(this.app, this.sessionId, filename, bytes);
           if (!this.isCurrent(epoch)) return false;
           const item = this.mapAttachments([payload])[0];
-          if (!item) throw new Error('El servidor no devolvió el adjunto creado.');
+          if (!item) throw new Error(tr('ui.chat.error_upload_response'));
           this.attachments = this.attachments.concat([item]);
           this.sessionAttachmentCount += 1;
           return true;
@@ -764,11 +777,11 @@
         const instance = this.agentActiveInstance;
         const model = this.agentPreference.model;
         if (!instance || instance.enabled === false) {
-          this.attachmentError = NO_ENGINE;
+          this.attachmentError = tr('ui.chat.no_engine');
           return false;
         }
         if (!model) {
-          this.attachmentError = NO_MODEL;
+          this.attachmentError = tr('ui.chat.no_model');
           return false;
         }
         try {
@@ -820,8 +833,8 @@
           if (!this.isCurrent(epoch)) return false;
           if (error && error.name === 'AbortError') return false;
           this.assetAttachmentsError = error && error.status === 401
-            ? EXPIRED
-            : ((error && (error.serverMessage || error.message)) || 'No se pudieron consultar los adjuntos del activo.');
+            ? tr('ui.chat.session_expired')
+            : ((error && (error.serverMessage || error.message)) || tr('ui.chat.error_asset_attachments'));
           return false;
         } finally {
           if (this.isCurrent(epoch)) this.assetAttachmentsLoading = false;
@@ -842,18 +855,18 @@
         }
         if (this.selectedAssetAttachmentIds.includes(value)) return true;
         if (row.sizeKnown === false) {
-          this.attachmentError = 'El servidor no informó el tamaño de este adjunto, así que no se puede verificar el límite de 4 MiB.';
+          this.attachmentError = tr('ui.chat.error_asset_attachment_size');
           return false;
         }
         if (this.combinedAttachmentCount + 1 > MAX_ATTACHMENTS) {
-          this.attachmentError = 'Puedes adjuntar hasta ' + MAX_ATTACHMENTS + ' archivos por mensaje.';
+          this.attachmentError = tr('ui.chat.error_too_many_attachments', { max: MAX_ATTACHMENTS });
           return false;
         }
         const selectedBytes = this.selectedAssetAttachmentBytes() || 0;
         const total = this.attachments.reduce((sum, item) => sum + attachmentBytes(item.size), 0) +
           selectedBytes + attachmentBytes(row.size);
         if (total > MAX_ATTACHMENT_BYTES) {
-          this.attachmentError = 'Los adjuntos de un mensaje no pueden superar 4 MiB en total.';
+          this.attachmentError = tr('ui.chat.error_total_size');
           return false;
         }
         this.selectedAssetAttachmentIds = this.selectedAssetAttachmentIds.concat([value]);
@@ -890,12 +903,12 @@
         const hasContent = !!message || attachmentIds.length > 0 || assetAttachmentIds.length > 0;
         if (!hasContent || this.busy || this.resuming || this.selecting || this.sessionRunning || this.disposed) return false;
         if (!this.app.authenticated) {
-          this.error = EXPIRED;
+          this.error = tr('ui.chat.session_expired');
           return false;
         }
         if (this.attachmentBusy) return false;
         if (message.length > MAX_MESSAGE) {
-          this.error = MAX_MESSAGE_ERROR;
+          this.error = tr('ui.chat.message_too_long', { max: MAX_MESSAGE });
           return false;
         }
         if (this.useAgentSessions) return this.sendSession(message);
@@ -931,9 +944,9 @@
           return true;
         } catch (error) {
           if (requestId !== this.requestId || this.disposed) return false;
-          if (error && error.status === 503) this.error = error.serverMessage || UNAVAILABLE;
-          else if (error && error.status === 401) this.error = EXPIRED;
-          else this.error = (error && (error.serverMessage || error.message)) || 'No se pudo enviar el mensaje al agente.';
+          if (error && error.status === 503) this.error = error.serverMessage || tr('ui.chat.agent_unavailable');
+          else if (error && error.status === 401) this.error = tr('ui.chat.session_expired');
+          else this.error = (error && (error.serverMessage || error.message)) || tr('ui.chat.error_send_agent');
           return false;
         } finally {
           if (requestId === this.requestId) {
@@ -946,12 +959,12 @@
       async sendSession(message) {
         const instance = this.agentActiveInstance;
         if (!instance || instance.enabled === false) {
-          this.error = NO_ENGINE;
+          this.error = tr('ui.chat.no_engine');
           return false;
         }
         const model = this.agentPreference.model;
         if (!model) {
-          this.error = NO_MODEL;
+          this.error = tr('ui.chat.no_model');
           return false;
         }
         const assetId = this.contextAssetId();
@@ -983,7 +996,7 @@
           await this.ensureSession(instance, model, this.history(), assetId, epoch, controller ? controller.signal : undefined);
           if (!this.isCurrent(epoch)) return false;
           if (this.cancelRequested) {
-            this.streamStatus = 'Solicitud cancelada.';
+            this.streamStatus = tr('ui.chat.cancelled');
             return false;
           }
           this.messages.push({ role: 'user', content: message, attachments: sentAttachments });
@@ -1009,7 +1022,7 @@
             }
           }
           if (!this.isCurrent(epoch)) return false;
-          if (!done && !this.error) this.streamStatus = 'La conexión terminó sin un evento de cierre.';
+          if (!done && !this.error) this.streamStatus = tr('ui.chat.stream_incomplete');
           this.finishStreamingMessage();
           return true;
         } catch (error) {
@@ -1024,10 +1037,10 @@
             this.attachments = sentAttachments;
             this.selectedAssetAttachmentIds = assetAttachmentIds;
           }
-          if (error && error.status === 401) this.error = EXPIRED;
+          if (error && error.status === 401) this.error = tr('ui.chat.session_expired');
           else if (error && (error.status === 503 || error.status === 429)) this.error = error.serverMessage || error.message;
-          else if (error && error.status === 409) this.error = (error.serverMessage || error.message) + ' La ejecución anterior sigue activa; puedes cancelarla o reconectar sin reenviar el mensaje.';
-          else this.error = (error && (error.serverMessage || error.message)) || 'No se pudo enviar el mensaje al motor.';
+          else if (error && error.status === 409) this.error = (error.serverMessage || error.message) + tr('ui.chat.busy_409');
+          else this.error = (error && (error.serverMessage || error.message)) || tr('ui.chat.error_send_engine');
           this.retryable = !!(error && (error.status === 503 || error.status === 429 || error.status === 0 || !error.status));
           this.finishStreamingMessage();
           return false;
@@ -1064,7 +1077,7 @@
         if (assetId) body.assetId = assetId;
         const session = await window.AssetAgentApi.createSession(this.app, body, { signal });
         if (!this.isCurrent(epoch)) return;
-        if (!session || !session.id) throw new Error('El servidor no devolvió la sesión creada.');
+        if (!session || !session.id) throw new Error(tr('ui.chat.error_session_created'));
         this.sessionId = session.id;
         this.sessionInstanceId = session.instanceId || instance.id;
         this.sessionModel = session.model || model;
@@ -1162,7 +1175,7 @@
           if (!option.value) await this.persistAgentPreference(instance.id, applied);
           return true;
         } catch (error) {
-          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.error = error.status === 401 ? EXPIRED : (error.serverMessage || error.message || 'No se pudo cambiar el proveedor.');
+          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.error = error.status === 401 ? tr('ui.chat.session_expired') : (error.serverMessage || error.message || tr('ui.chat.error_change_provider'));
           this.agentResetSelection(event, this.managedProviderId);
           return false;
         } finally {
@@ -1175,7 +1188,7 @@
         // session that accepted them until the person sends or removes them.
         if (this.hasPendingAttachments) return false;
         if (this.sessionId && !model) {
-          this.agentSelectionNotice = 'La instancia seleccionada no anunció modelos. La conversación actual no ha cambiado.';
+          this.agentSelectionNotice = tr('ui.chat.notice_models_none');
           return false;
         }
         const epoch = this.epoch;
@@ -1199,10 +1212,10 @@
           this.agentPreference = { instanceId: instance.id, model };
           if (!this.managedProviderId) await this.persistAgentPreference(instance.id, model);
           if (!this.isCurrent(epoch)) return false;
-          if (!model) this.agentSelectionNotice = 'La instancia seleccionada no anunció modelos. Revisa su conexión o elige otro motor antes de conversar.';
+          if (!model) this.agentSelectionNotice = tr('ui.chat.notice_models_none_review');
           return true;
         } catch (error) {
-          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.error = error.status === 401 ? EXPIRED : (error.serverMessage || error.message || 'No se pudo cambiar el motor o modelo.');
+          if (this.isCurrent(epoch) && error.name !== 'AbortError') this.error = error.status === 401 ? tr('ui.chat.session_expired') : (error.serverMessage || error.message || tr('ui.chat.error_change_engine'));
           return false;
         } finally {
           if (this.isCurrent(epoch)) { this.selecting = false; this.request = null; }
@@ -1213,7 +1226,7 @@
         if (!this.useAgentSessions || !this.sessionId) {
           this.cancelRequested = true;
           this.cancelRequest();
-          this.streamStatus = 'Solicitud cancelada.';
+          this.streamStatus = tr('ui.chat.cancelled');
           return true;
         }
         if (this.cancelPending) return false;
@@ -1227,7 +1240,7 @@
             this.cancelPending = false;
             this.cancelReason = (result && typeof result.reason === 'string' && result.reason.trim())
               ? result.reason.trim()
-              : 'El motor no permite interrumpir la ejecución.';
+              : tr('ui.chat.cancel_not_supported');
             this.streamStatus = this.cancelReason;
             return false;
           }
@@ -1235,7 +1248,7 @@
         } catch (error) {
           if (!this.isCurrent(epoch)) return false;
           this.cancelPending = false;
-          this.error = (error && error.message) || 'No se pudo cancelar la ejecución.';
+          this.error = (error && error.message) || tr('ui.chat.error_cancel');
           return false;
         }
       },
@@ -1253,7 +1266,7 @@
           return true;
         } catch (error) {
           if (!this.isCurrent(epoch)) return false;
-          this.error = (error && error.message) || 'No se pudo consultar el estado de la sesión.';
+          this.error = (error && error.message) || tr('ui.chat.error_session_status');
           return false;
         } finally {
           if (this.isCurrent(epoch)) this.reconnecting = false;
@@ -1281,7 +1294,7 @@
           this.sessionProviderId = payload.providerId || '';
           this.managedProviderId = this.sessionProviderId;
         }
-        if (payload.status === 'running') this.streamStatus = 'El servidor indica una ejecución en curso.';
+        if (payload.status === 'running') this.streamStatus = tr('ui.chat.status_running_server');
         this.sessionRunning = payload.status === 'running';
       },
       applyAgentEvent(event) {
@@ -1304,7 +1317,7 @@
         } else if (event.type === 'error') {
           this.error = typeof event.message === 'string' && event.message.trim()
             ? event.message.trim()
-            : 'El motor informó un error durante la ejecución.';
+            : tr('ui.chat.error_engine_stream');
           this.retryable = event.retryable === true;
         } else if (event.type === 'done') {
           this.applyDone(event);
@@ -1332,12 +1345,12 @@
         this.sessionRunning = false;
         const wasPending = this.cancelPending;
         this.cancelPending = false;
-        if (event.cancelled === true) this.streamStatus = 'Ejecución cancelada.';
+        if (event.cancelled === true) this.streamStatus = tr('ui.chat.status_cancelled');
         else if (wasPending && this.cancelReason) this.streamStatus = this.cancelReason;
-        else if (this.error) this.streamStatus = 'La ejecución terminó con un error informado por el motor.';
+        else if (this.error) this.streamStatus = tr('ui.chat.status_failed_stream');
       },
       applyToolEvent(event) {
-        const tool = typeof event.tool === 'string' && event.tool.trim() ? event.tool.trim() : 'herramienta';
+        const tool = typeof event.tool === 'string' && event.tool.trim() ? event.tool.trim() : tr('ui.chat.tool_fallback');
         const status = this.normalizeToolStatus(event.status);
         let index = -1;
         for (let cursor = this.tools.length - 1; cursor >= 0; cursor -= 1) {
@@ -1383,32 +1396,34 @@
         };
       },
       toolStatusLabel(status) {
-        return TOOL_LABELS[status] || 'Registrada';
+        return tr(TOOL_STATUS_KEYS[status] || 'ui.chat.status_recorded');
       },
       toolTone(status) {
         return toolTone(status);
       },
       tokenCount(value) {
-        return value === null || value === undefined ? 'no disponible' : Number(value).toLocaleString('es-ES');
+        const runtime = window.ItsmI18n;
+        return value === null || value === undefined ? tr('ui.chat.value_unavailable')
+          : (runtime ? runtime.number(value) : String(value));
       },
       usagePrecisionLabel() {
         if (!this.usage) return '';
-        if (this.usage.precision === 'measured') return 'medido';
-        if (this.usage.precision === 'estimated') return 'estimado';
-        return 'no disponible';
+        if (this.usage.precision === 'measured') return tr('ui.chat.precision_measured');
+        if (this.usage.precision === 'estimated') return tr('ui.chat.precision_estimated');
+        return tr('ui.chat.value_unavailable');
       },
       usageSourceLabel() {
         if (!this.usage) return '';
-        if (this.usage.source === 'provider') return 'proveedor';
-        if (this.usage.source === 'engine') return 'motor';
-        if (this.usage.source === 'estimate') return 'estimación';
-        return 'no disponible';
+        if (this.usage.source === 'provider') return tr('ui.chat.source_provider');
+        if (this.usage.source === 'engine') return tr('ui.chat.source_engine');
+        if (this.usage.source === 'estimate') return tr('ui.chat.source_estimate');
+        return tr('ui.chat.value_unavailable');
       },
       usageInclusionLabel(value) {
-        return value === true ? 'sí' : (value === false ? 'no' : 'no disponible');
+        return value === true ? tr('ui.chat.value_yes') : (value === false ? tr('ui.chat.value_no') : tr('ui.chat.value_unavailable'));
       },
       actionStatusLabel(status) {
-        return ACTION_LABELS[status] || 'Registrada';
+        return tr(ACTION_STATUS_KEYS[status] || 'ui.chat.status_recorded');
       },
       assetHref(id) {
         return '#/activo/' + encodeURIComponent(id);
@@ -1424,142 +1439,188 @@
         return parts.join(' · ');
       },
       resultStatus(result) {
-        return STATUS_LABELS[result.status] || 'Sin estado';
+        return tr(ASSET_STATUS_KEYS[result.status] || 'ui.chat.status_none');
+      },
+      quotaPeriodText() {
+        const day = this.quotaPeriodDay || tr('ui.chat.day_not_reported');
+        const zone = this.quotaTimezone || tr('ui.chat.zone_not_reported');
+        let text = tr('ui.chat.quota_period', { day, zone });
+        if (this.quotaPendingTimezone) {
+          text += tr('ui.chat.quota_pending_change', {
+            zone: this.quotaPendingTimezone,
+            day: this.quotaPendingEffectiveDay || tr('ui.chat.quota_next_safe_limit')
+          });
+        }
+        return text;
+      },
+      // One message keeps the optional fragments inside the translated
+      // sentence instead of concatenating translated pieces.
+      usageText() {
+        const usage = this.usage;
+        if (!usage) return '';
+        let text = tr('ui.chat.usage_line', {
+          precision: this.usagePrecisionLabel(),
+          source: this.usageSourceLabel(),
+          input: this.tokenCount(usage.inputTokens),
+          output: this.tokenCount(usage.outputTokens),
+          cacheRead: this.tokenCount(usage.cacheReadTokens),
+          cacheWrite: this.tokenCount(usage.cacheWriteTokens),
+          reasoning: this.tokenCount(usage.reasoningTokens),
+          total: this.tokenCount(usage.totalTokens)
+        });
+        if (usage.totalSource) {
+          text += tr(usage.totalSource === 'provider' ? 'ui.chat.usage_total_provider' : 'ui.chat.usage_total_derived');
+        }
+        text += tr('ui.chat.usage_inclusion', {
+          cache: this.usageInclusionLabel(usage.inputIncludesCache),
+          reasoning: this.usageInclusionLabel(usage.outputIncludesReasoning)
+        });
+        if (usage.estimationMethod) text += tr('ui.chat.usage_estimation', { method: usage.estimationMethod });
+        if (usage.cost) text += tr('ui.chat.usage_cost', { cost: usage.cost });
+        return text + tr('ui.chat.usage_not_total');
+      },
+      assetAttachmentsCountText() {
+        let text = tr('ui.chat.asset_attachments_examined', {
+          examined: this.assetAttachments.length,
+          total: this.assetAttachmentsTotal
+        });
+        if (this.assetAttachmentsHasMore) text += tr('ui.chat.asset_attachments_more');
+        return text + '.';
       }
     },
     template: [
       '<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute }">',
-      '  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? \'Cerrar conversación\' : \'Abrir conversación\'" aria-controls="conversation-surface" :aria-expanded="panelOpen" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon> Conversación<span v-if="busy" class="sr-only"> · Respuesta en curso</span></button>',
+      '  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon> {{ $t(\'ui.chat.title\') }}<span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
       '<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
       '  <header class="page-head conversation__head">',
       '    <div>',
-      '      <p class="eyebrow">Asistente de inventario</p>',
-      '      <h1 v-if="isConversationRoute" id="conversation-title">Conversación</h1>',
-      '      <h2 v-else id="conversation-title">Conversación</h2>',
-      '      <p v-if="isConversationRoute" class="page-sub">Consulta o cambia activos del inventario. El servidor decide qué operaciones ejecutar y pide los datos que falten.</p>',
+      '      <p class="eyebrow">{{ $t(\'ui.chat.eyebrow\') }}</p>',
+      '      <h1 v-if="isConversationRoute" id="conversation-title">{{ $t(\'ui.chat.title\') }}</h1>',
+      '      <h2 v-else id="conversation-title">{{ $t(\'ui.chat.title\') }}</h2>',
+      '      <p v-if="isConversationRoute" class="page-sub">{{ $t(\'ui.chat.lead\') }}</p>',
       '    </div>',
       '    <div class="conversation__window-actions">',
-      '      <button v-if="!isConversationRoute" id="conversation-expand" type="button" class="btn btn--ghost btn--small" @click="expandConversation">Ampliar conversación</button>',
-      '      <button v-else id="conversation-collapse" type="button" class="btn btn--ghost btn--small" @click="collapseConversation">Volver al chat compacto</button>',
-      '      <button v-if="!isConversationRoute" type="button" class="icon-button" aria-label="Cerrar conversación" @click="closePanel"><app-icon name="close"></app-icon></button>',
+      '      <button v-if="!isConversationRoute" id="conversation-expand" type="button" class="btn btn--ghost btn--small" @click="expandConversation">{{ $t(\'ui.chat.expand\') }}</button>',
+      '      <button v-else id="conversation-collapse" type="button" class="btn btn--ghost btn--small" @click="collapseConversation">{{ $t(\'ui.chat.collapse\') }}</button>',
+      '      <button v-if="!isConversationRoute" type="button" class="icon-button" :aria-label="$t(\'ui.chat.close_panel\')" @click="closePanel"><app-icon name="close"></app-icon></button>',
       '    </div>',
       '  </header>',
       '  <div class="conversation__body">',
       '  <div v-if="useAgentSessions" class="conversation__field">',
-      '    <label class="conversation__label" for="conversation-session">Tus conversaciones</label>',
+      '    <label class="conversation__label" for="conversation-session">{{ $t(\'ui.chat.sessions_label\') }}</label>',
       '    <select id="conversation-session" class="conversation__select" :value="sessionId" :disabled="busy || selecting || resuming || sessionsLoading || hasPendingAttachments" @change="resumeSession($event.target.value)">',
-      '      <option value="">Nueva conversación</option>',
-      '      <option v-if="sessionId && !savedSessions.some(item => item.id === sessionId)" :value="sessionId">Conversación actual</option>',
+      '      <option value="">{{ $t(\'ui.chat.session_new\') }}</option>',
+      '      <option v-if="sessionId && !savedSessions.some(item => item.id === sessionId)" :value="sessionId">{{ $t(\'ui.chat.session_current\') }}</option>',
       '      <option v-for="session in savedSessions" :key="session.id" :value="session.id">{{ savedSessionLabel(session) }}</option>',
       '    </select>',
-      '    <p v-if="sessionsLoading || resuming" class="conversation__help" role="status">Consultando conversaciones…</p>',
+      '    <p v-if="sessionsLoading || resuming" class="conversation__help" role="status">{{ $t(\'ui.chat.sessions_loading\') }}</p>',
       '    <p v-if="sessionsError" class="conversation__error" role="alert">{{ sessionsError }}</p>',
-      '    <button v-if="sessionsError" type="button" class="btn btn--ghost btn--small" @click="loadSavedSessions">Volver a consultar conversaciones</button>',
+      '    <button v-if="sessionsError" type="button" class="btn btn--ghost btn--small" @click="loadSavedSessions">{{ $t(\'ui.chat.sessions_retry\') }}</button>',
       '  </div>',
       '  <section v-if="!legacyFallback" class="conversation__engine" aria-labelledby="conversation-engine-title">',
       '    <div class="conversation__engine-head">',
-      '      <h2 id="conversation-engine-title" class="conversation__heading">Motor y modelo</h2>',
-      '      <span v-if="agentEnginesLoading" class="conversation__meta" role="status">Consultando motores…</span>',
+      '      <h2 id="conversation-engine-title" class="conversation__heading">{{ $t(\'ui.chat.engine_title\') }}</h2>',
+      '      <span v-if="agentEnginesLoading" class="conversation__meta" role="status">{{ $t(\'ui.chat.engines_loading\') }}</span>',
       '    </div>',
       '    <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
       '    <div v-if="agentInstanceList.length" class="conversation__engine-grid">',
       '      <div class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-engine">Motor</label>',
+      '        <label class="conversation__label" for="conversation-engine">{{ $t(\'ui.chat.engine_label\') }}</label>',
       '        <select id="conversation-engine" class="conversation__select" :value="agentEngineValue" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeEngineChoice($event)">',
-      '          <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? \' · Deshabilitada\' : \'\' }}</option>',
+      '          <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
       '        </select>',
       '      </div>',
       '      <div v-if="agentProfileSelectorVisible" class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-profile">Perfil</label>',
+      '        <label class="conversation__label" for="conversation-profile">{{ $t(\'ui.chat.profile_label\') }}</label>',
       '        <select id="conversation-profile" class="conversation__select" aria-describedby="conversation-profile-help" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProfile($event)">',
-      '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? \' · Deshabilitada\' : \'\' }}</option>',
+      '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
       '        </select>',
       '      </div>',
       '      <div v-if="agentProviderSelectorVisible" class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-provider">Proveedor</label>',
+      '        <label class="conversation__label" for="conversation-provider">{{ $t(\'ui.chat.provider_label\') }}</label>',
       '        <select id="conversation-provider" class="conversation__select" aria-describedby="conversation-provider-help" :value="managedProviderId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProvider($event)">',
       '          <option v-for="option in agentProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>',
       '        </select>',
       '      </div>',
       '      <div class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-model">Modelo</label>',
+      '        <label class="conversation__label" for="conversation-model">{{ $t(\'ui.chat.model_label\') }}</label>',
       '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
-      '          <option v-if="!agentModels.length" value="">Sin modelos anunciados</option>',
+      '          <option v-if="!agentModels.length" value="">{{ $t(\'ui.chat.models_none\') }}</option>',
       '          <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
       '        </select>',
       '      </div>',
       '    </div>',
-      '    <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">Quita los adjuntos pendientes o envíalos para cambiar de conversación, motor, proveedor o modelo.</p>',
-      '    <p v-if="agentProviderSelectorVisible" id="conversation-provider-help" class="conversation__help">El proveedor de la organización usa el presupuesto diario de la empresa. Tu clave no consume el presupuesto de la empresa: su consumo se registra aparte.</p>',
-      '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">Cambiar de perfil conserva los mensajes ITSM de esta conversación y reinicia solo la sesión nativa del motor. No cambia el perfil global de Hermes.</p>',
-      '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" aria-label="Errores de descubrimiento de motores">',
+      '    <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">{{ $t(\'ui.chat.attachment_lock\') }}</p>',
+      '    <p v-if="agentProviderSelectorVisible" id="conversation-provider-help" class="conversation__help">{{ $t(\'ui.chat.provider_help\') }}</p>',
+      '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">{{ $t(\'ui.chat.profile_help\') }}</p>',
+      '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" :aria-label="$t(\'ui.chat.discovery_errors_aria\')">',
       '      <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
       '    </ul>',
       '    <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
-      '    <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="conversation__help" role="status">El servidor no anunció motores de sesión. Crea una instancia en Configuración → IA para conversar.</p>',
-      '    <p v-else-if="agentEnginesLoaded && !agentActiveInstance" class="conversation__help" role="status">No hay un motor habilitado. Habilita una instancia en Configuración → IA.</p>',
+      '    <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="conversation__help" role="status">{{ $t(\'ui.chat.no_engines\') }}</p>',
+      '    <p v-else-if="agentEnginesLoaded && !agentActiveInstance" class="conversation__help" role="status">{{ $t(\'ui.chat.no_enabled_engine\') }}</p>',
       '    <div v-if="agentCapabilityList.length" class="conversation__tags">',
       '      <span v-for="capability in agentCapabilityList" :key="capability.key" class="chip chip--muted">{{ capability.label }}</span>',
       '    </div>',
       '    <p v-if="agentBudgetSummary" class="conversation__usage">{{ agentBudgetSummary }}</p>',
       '  </section>',
-      '  <p v-else-if="agentEnginesLoaded" class="conversation__help">El servidor no anunció motores de sesión; se usa el chat compatible del servidor.</p>',
+      '  <p v-else-if="agentEnginesLoaded" class="conversation__help">{{ $t(\'ui.chat.legacy_engines\') }}</p>',
       '  <section v-if="app.authenticated" id="conversation-quota" class="conversation__quota" aria-labelledby="conversation-quota-title">',
       '    <div class="conversation__engine-head">',
-      '      <h2 id="conversation-quota-title" class="conversation__heading">Tu cuota diaria de IA</h2>',
-      '      <button id="conversation-quota-refresh" type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? \'Actualizando…\' : \'Actualizar cuota\' }}</button>',
+      '      <h2 id="conversation-quota-title" class="conversation__heading">{{ $t(\'ui.chat.quota_title\') }}</h2>',
+      '      <button id="conversation-quota-refresh" type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? $t(\'ui.chat.quota_refreshing\') : $t(\'ui.chat.quota_refresh\') }}</button>',
       '    </div>',
-      '    <p v-if="quotaLoading && !quotaHasData" class="conversation__help" role="status">Consultando tu cuota…</p>',
+      '    <p v-if="quotaLoading && !quotaHasData" class="conversation__help" role="status">{{ $t(\'ui.chat.quota_loading\') }}</p>',
       '    <p v-if="quotaError" class="conversation__error" role="alert">{{ quotaError }}</p>',
-      '    <p v-if="quotaUnavailable" class="conversation__help" role="status">La cuota no está disponible en este momento; no se muestra como cero.</p>',
+      '    <p v-if="quotaUnavailable" class="conversation__help" role="status">{{ $t(\'ui.chat.quota_unavailable\') }}</p>',
       '    <template v-if="quotaHasData">',
-      '      <p class="conversation__meta">Día {{ quotaPeriodDay || \'no informado\' }} · Zona {{ quotaTimezone || \'no informada\' }}<template v-if="quotaPendingTimezone"> · cambio pendiente a {{ quotaPendingTimezone }} para {{ quotaPendingEffectiveDay || \'el siguiente límite seguro\' }}</template></p>',
+      '      <p class="conversation__meta">{{ quotaPeriodText() }}</p>',
       '      <ul class="conversation__quota-list">',
       '        <li v-for="account in quotaAccounts" :key="account.scope" class="conversation__quota-account">',
-      '          <p><strong>{{ account.label }}</strong><span v-if="account.selected" class="chip chip--muted">Contexto actual</span></p>',
-      '          <p class="conversation__meta">Límite: {{ quotaLimitText(account.balance) }} · {{ quotaLimitSourceLabel(account.balance && account.balance.limitSource) }}</p>',
-      '          <p class="conversation__meta">Consumido: {{ quotaAmountText(account.balance && account.balance.consumed) }} · Reservado: {{ quotaAmountText(account.balance && account.balance.reserved) }} · Disponible: {{ quotaAvailableText(account.balance) }}</p>',
-      '          <p class="conversation__meta">Retenciones pendientes: {{ quotaTokenText(account.balance && account.balance.pendingCount) }} · Precisión: {{ quotaPrecisionText(account.balance) }}</p>',
-      '          <p class="conversation__meta">Legado sin atribuir: {{ quotaAmountText(account.balance && account.balance.legacy) }}</p>',
+      '          <p><strong>{{ account.label }}</strong><span v-if="account.selected" class="chip chip--muted">{{ $t(\'ui.chat.current_context\') }}</span></p>',
+      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_limit_line\', { limit: quotaLimitText(account.balance), source: quotaLimitSourceLabel(account.balance && account.balance.limitSource) }) }}</p>',
+      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_usage_line\', { consumed: quotaAmountText(account.balance && account.balance.consumed), reserved: quotaAmountText(account.balance && account.balance.reserved), available: quotaAvailableText(account.balance) }) }}</p>',
+      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_pending_line\', { pending: quotaTokenText(account.balance && account.balance.pendingCount), precision: quotaPrecisionText(account.balance) }) }}</p>',
+      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_legacy_line\', { amount: quotaAmountText(account.balance && account.balance.legacy) }) }}</p>',
       '        </li>',
       '      </ul>',
       '      <p v-if="quotaSelectedNotice" class="conversation__help" role="status">{{ quotaSelectedNotice }}</p>',
       '    </template>',
       '  </section>',
       '  <div class="conversation__log" role="log" aria-live="polite" aria-relevant="additions text">',
-      '    <p v-if="!hasMessages && !busy" class="conversation__empty">Todavía no hay mensajes. Escribe una consulta para empezar.</p>',
+      '    <p v-if="!hasMessages && !busy" class="conversation__empty">{{ $t(\'ui.chat.empty\') }}</p>',
       '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
-      '      <p class="conversation__role">{{ message.role === \'user\' ? \'Tú\' : \'Agente\' }}</p>',
+      '      <p class="conversation__role">{{ message.role === "user" ? $t(\'ui.chat.role_user\') : $t(\'ui.chat.role_agent\') }}</p>',
       '      <p class="conversation__text">{{ message.content }}<span v-if="message.streaming" class="conversation__streaming" aria-hidden="true">…</span></p>',
-      '      <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" aria-label="Adjuntos del mensaje">',
+      '      <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.message_attachments_aria\')">',
       '        <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
       '          <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
       '          <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment) }}</span>',
       '        </li>',
       '      </ul>',
       '    </article>',
-      '    <p v-if="busy && !streaming" class="conversation__pending" role="status">Preparando la sesión del motor…</p>',
-      '    <p v-if="streaming" class="conversation__pending" role="status">Recibiendo la respuesta del agente…</p>',
+      '    <p v-if="busy && !streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.preparing\') }}</p>',
+      '    <p v-if="streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.receiving\') }}</p>',
       '  </div>',
       '  <div v-if="error" class="conversation__error-box">',
       '    <p class="conversation__error" role="alert">{{ error }}</p>',
-      '    <p v-if="retryable && !busy" class="conversation__help">La ejecución se interrumpió; el mensaje no se reenvió automáticamente.</p>',
-      '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? \'Consultando…\' : \'Reconectar y consultar el estado\' }}</button>',
+      '    <p v-if="retryable && !busy" class="conversation__help">{{ $t(\'ui.chat.retry_help\') }}</p>',
+      '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.reconnect\') }}</button>',
       '  </div>',
       '  <p v-if="streamStatus" class="conversation__help" role="status">{{ streamStatus }}</p>',
-      '  <p v-if="approvalPending" class="conversation__approval" role="status">La última operación queda pendiente de aprobación en el servidor.</p>',
+      '  <p v-if="approvalPending" class="conversation__approval" role="status">{{ $t(\'ui.chat.approval_pending\') }}</p>',
       '  <section v-if="extensionReviews.length" id="conversation-extension-reviews" class="conversation__section" aria-labelledby="conversation-extension-reviews-title">',
-      '    <h2 id="conversation-extension-reviews-title" class="conversation__heading">Extensiones pendientes de revisión</h2>',
-      '    <p class="conversation__help">Revisa el paquete y sus permisos. El agente no lo ha instalado.</p>',
+      '    <h2 id="conversation-extension-reviews-title" class="conversation__heading">{{ $t(\'ui.chat.reviews_title\') }}</h2>',
+      '    <p class="conversation__help">{{ $t(\'ui.chat.reviews_help\') }}</p>',
       '    <ul class="conversation__actions">',
       '      <li v-for="review in extensionReviews" :key="review.candidateId" class="conversation__action">',
-      '        <a :id="\'conversation-extension-review-\' + review.candidateId" class="conversation__result-link" :href="review.href">Revisar {{ review.extensionId }} · {{ review.version }}</a>',
+      '        <a :id="\'conversation-extension-review-\' + review.candidateId" class="conversation__result-link" :href="review.href">{{ $t(\'ui.chat.review_link\', { extension: review.extensionId, version: review.version }) }}</a>',
       '        <span class="conversation__meta">SHA-256: {{ review.digest }}</span>',
       '      </li>',
       '    </ul>',
       '  </section>',
       '  <section v-if="tools.length" class="conversation__section" aria-labelledby="conversation-tools">',
-      '    <h2 id="conversation-tools" class="conversation__heading">Herramientas</h2>',
+      '    <h2 id="conversation-tools" class="conversation__heading">{{ $t(\'ui.chat.tools_title\') }}</h2>',
       '    <ul class="conversation__actions">',
       '      <li v-for="(tool, index) in tools" :key="index" class="conversation__action">',
       '        <span class="conversation__action-tool">{{ tool.tool }}</span>',
@@ -1568,9 +1629,9 @@
       '      </li>',
       '    </ul>',
       '  </section>',
-      '  <p v-if="usage" id="conversation-usage" class="conversation__usage" role="status">Última llamada · Consumo {{ usagePrecisionLabel() }} · origen: {{ usageSourceLabel() }}. Entrada: {{ tokenCount(usage.inputTokens) }} · salida: {{ tokenCount(usage.outputTokens) }} · caché leída: {{ tokenCount(usage.cacheReadTokens) }} · caché escrita: {{ tokenCount(usage.cacheWriteTokens) }} · razonamiento: {{ tokenCount(usage.reasoningTokens) }} · total: {{ tokenCount(usage.totalTokens) }}<template v-if="usage.totalSource"> ({{ usage.totalSource === \'provider\' ? \'del proveedor\' : \'derivado por el servidor\' }})</template>. Caché incluida en entrada: {{ usageInclusionLabel(usage.inputIncludesCache) }} · razonamiento incluido en salida: {{ usageInclusionLabel(usage.outputIncludesReasoning) }}.<template v-if="usage.estimationMethod"> Método de estimación: {{ usage.estimationMethod }}.</template><template v-if="usage.cost"> Coste: {{ usage.cost }}.</template> No es el total de la ejecución.</p>',
+      '  <p v-if="usage" id="conversation-usage" class="conversation__usage" role="status">{{ usageText() }}</p>',
       '  <section v-if="actions.length" class="conversation__section" aria-labelledby="conversation-actions">',
-      '    <h2 id="conversation-actions" class="conversation__heading">Acciones ejecutadas</h2>',
+      '    <h2 id="conversation-actions" class="conversation__heading">{{ $t(\'ui.chat.actions_title\') }}</h2>',
       '    <ul class="conversation__actions">',
       '      <li v-for="(action, index) in actions" :key="index" class="conversation__action">',
       '        <span class="conversation__action-tool">{{ action.tool }}</span>',
@@ -1579,7 +1640,7 @@
       '    </ul>',
       '  </section>',
       '  <section v-if="results.length" class="conversation__section" aria-labelledby="conversation-results">',
-      '    <h2 id="conversation-results" class="conversation__heading">Activos mencionados</h2>',
+      '    <h2 id="conversation-results" class="conversation__heading">{{ $t(\'ui.chat.results_title\') }}</h2>',
       '    <ul class="conversation__results">',
       '      <li v-for="result in results" :key="result.id" class="conversation__result">',
       '        <a class="conversation__result-link" :href="assetHref(result.id)">{{ resultName(result) }}</a>',
@@ -1588,24 +1649,24 @@
       '      </li>',
       '    </ul>',
       '  </section>',
-      '  <button v-if="currentContextAsset" id="conversation-use-asset" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="useCurrentAsset">Usar activo: {{ currentContextAsset.name || currentContextAsset.id }}</button>',
-      '  <p v-if="demoAlertContext" class="conversation__help">Las alertas de demostración no se adjuntan al chat como una integración del servidor.</p>',
+      '  <button v-if="currentContextAsset" id="conversation-use-asset" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="useCurrentAsset">{{ $t(\'ui.chat.use_asset\', { name: currentContextAsset.name || currentContextAsset.id }) }}</button>',
+      '  <p v-if="demoAlertContext" class="conversation__help">{{ $t(\'ui.chat.demo_alert\') }}</p>',
       '  <div v-if="assetContextOptions.length" class="conversation__context">',
-      '    <label class="conversation__label" for="conversation-asset">Activo en contexto (opcional)</label>',
+      '    <label class="conversation__label" for="conversation-asset">{{ $t(\'ui.chat.context_label\') }}</label>',
       '    <select id="conversation-asset" v-model="selectedAssetId" :disabled="busy" class="conversation__select">',
-      '      <option value="">Sin activo seleccionado</option>',
+      '      <option value="">{{ $t(\'ui.chat.context_none\') }}</option>',
       '      <option v-for="asset in assetContextOptions" :key="asset.id" :value="asset.id">{{ asset.name }}<template v-if="asset.quickCode"> · {{ asset.quickCode }}</template></option>',
       '    </select>',
-      '    <p class="conversation__help">Se envía solo el identificador permanente del activo que elijas de la lista.</p>',
+      '    <p class="conversation__help">{{ $t(\'ui.chat.context_help\') }}</p>',
       '  </div>',
       '  <div v-if="canAttachFiles && contextAssetId()" class="conversation__context conversation__asset-attachments">',
-      '    <label class="conversation__label" for="conversation-load-asset-attachments">Adjuntos del activo</label>',
-      '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" aria-describedby="conversation-asset-attachments-help" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? \'Consultando…\' : \'Cargar adjuntos del activo\' }}</button>',
-      '    <p id="conversation-asset-attachments-help" class="conversation__help">Se listan solo cuando lo pides. El servidor comprueba tus permisos y vuelve a leer cada archivo que elijas.</p>',
+      '    <label class="conversation__label" for="conversation-load-asset-attachments">{{ $t(\'ui.chat.asset_attachments_label\') }}</label>',
+      '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" aria-describedby="conversation-asset-attachments-help" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.asset_attachments_load\') }}</button>',
+      '    <p id="conversation-asset-attachments-help" class="conversation__help">{{ $t(\'ui.chat.asset_attachments_help\') }}</p>',
       '    <p v-if="assetAttachmentsError" class="conversation__error" role="alert">{{ assetAttachmentsError }}</p>',
-      '    <p v-if="assetAttachmentsLoaded" class="conversation__meta">Examinados {{ assetAttachments.length }} de {{ assetAttachmentsTotal }}<template v-if="assetAttachmentsHasMore"> · hay más adjuntos sin listar</template>.</p>',
-      '    <p v-if="assetAttachmentsLoaded && !assetAttachments.length" class="conversation__help" role="status">El activo no tiene adjuntos.</p>',
-      '    <ul v-if="assetAttachments.length" class="conversation__attachment-list" aria-label="Adjuntos disponibles del activo">',
+      '    <p v-if="assetAttachmentsLoaded" class="conversation__meta">{{ assetAttachmentsCountText() }}</p>',
+      '    <p v-if="assetAttachmentsLoaded && !assetAttachments.length" class="conversation__help" role="status">{{ $t(\'ui.chat.asset_attachments_empty\') }}</p>',
+      '    <ul v-if="assetAttachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.asset_attachments_aria\')">',
       '      <li v-for="item in assetAttachments" :key="item.id" class="conversation__attachment">',
       '        <input :id="\'conversation-asset-attachment-\' + item.id" type="checkbox" :checked="selectedAssetAttachmentIds.includes(item.id)" :disabled="busy" @change="toggleAssetAttachment(item.id, $event)">',
       '        <label :for="\'conversation-asset-attachment-\' + item.id" class="conversation__attachment-name">{{ item.filename }}</label>',
@@ -1615,27 +1676,27 @@
       '  </div>',
       '  </div>',
       '  <form id="conversation-form" class="conversation__form" @submit.prevent="send">',
-      '    <label class="conversation__label" for="conversation-input">Mensaje</label>',
-      '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" aria-describedby="conversation-help" placeholder="Ej.: Muéstrame los servidores de Matriz"></textarea>',
-      '    <p id="conversation-help" class="conversation__help">El agente pide los datos que falten antes de cambiar un activo.</p>',
+      '    <label class="conversation__label" for="conversation-input">{{ $t(\'ui.chat.message_label\') }}</label>',
+      '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" aria-describedby="conversation-help" :placeholder="$t(\'ui.chat.message_placeholder\')"></textarea>',
+      '    <p id="conversation-help" class="conversation__help">{{ $t(\'ui.chat.message_help\') }}</p>',
       '    <div v-if="canAttachFiles" class="conversation__attachments">',
-      '      <label class="conversation__label" for="conversation-attachment">Adjuntos</label>',
+      '      <label class="conversation__label" for="conversation-attachment">{{ $t(\'ui.chat.attachments_label\') }}</label>',
       '      <input id="conversation-attachment" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" @change="attachFiles($event)">',
       '      <p id="conversation-attachment-help" class="conversation__help">{{ attachmentHelp }}</p>',
-      '      <p v-if="attachmentBusy" class="conversation__help" role="status">Subiendo adjunto…</p>',
+      '      <p v-if="attachmentBusy" class="conversation__help" role="status">{{ $t(\'ui.chat.attaching\') }}</p>',
       '      <p v-if="attachmentError" class="conversation__error" role="alert">{{ attachmentError }}</p>',
-      '      <ul v-if="attachments.length" class="conversation__attachment-list" aria-label="Adjuntos pendientes">',
+      '      <ul v-if="attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.pending_attachments_aria\')">',
       '        <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
       '          <span class="conversation__attachment-name">{{ item.filename }}</span>',
       '          <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
-      '          <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="\'Quitar \' + item.filename" @click="removeAttachment(item.id)">Quitar</button>',
+      '          <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="$t(\'ui.chat.remove_attachment\', { filename: item.filename })" @click="removeAttachment(item.id)">{{ $t(\'ui.chat.remove\') }}</button>',
       '        </li>',
       '      </ul>',
-      '      <p v-if="sessionAttachmentCount" class="conversation__meta">Adjuntos en esta conversación: {{ sessionAttachmentCount }} de 20.</p>',
+      '      <p v-if="sessionAttachmentCount" class="conversation__meta">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
       '    </div>',
       '    <div class="conversation__form-actions">',
-      '      <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? \'Enviando…\' : \'Enviar\' }}</button>',
-      '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? \'Cancelando…\' : \'Cancelar\' }}</button>',
+      '      <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</button>',
+      '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</button>',
       '    </div>',
       '  </form>',
       '</section>',
