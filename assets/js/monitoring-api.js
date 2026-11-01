@@ -19,44 +19,76 @@
   const CHANNEL_KEYS = ['id', 'kind', 'name', 'enabled', 'secretRef', 'config'];
   const RULE_KEYS = ['id', 'name', 'enabled', 'minimumSeverity', 'recipientIds', 'channelIds', 'escalationRecipientIds', 'schedule', 'acknowledgeAfterSeconds', 'retryIntervalSeconds', 'escalateAfterSeconds', 'maxAttempts'];
   const RAW_SECRET_KEYS = ['token', 'password', 'secret', 'webhook', 'webhookurl', 'bottoken', 'apikey', 'api_key', 'authorization', 'url'];
-  const STATUS_META = {
-    up: { label: 'Disponible', tone: 'ok', icon: 'check' },
-    degraded: { label: 'Degradado', tone: 'warn', icon: 'alert' },
-    down: { label: 'No disponible', tone: 'down', icon: 'x-circle' },
-    unmonitored: { label: 'Sin supervisión', tone: 'neutral', icon: 'minus' },
-    no_data: { label: 'Sin datos', tone: 'neutral', icon: 'clock' },
-    unavailable: { label: 'Sin lectura', tone: 'neutral', icon: 'plug' }
-  };
-  const SEVERITY_META = {
-    critical: { label: 'Crítica', tone: 'down' },
-    warning: { label: 'Alta', tone: 'warn' },
-    info: { label: 'Media', tone: 'hold' }
-  };
-  const ALERT_STATE_META = {
-    pending: { label: 'Pendiente', tone: 'hold', icon: 'clock' },
-    firing: { label: 'Activa', tone: 'down', icon: 'alert' },
-    resolved: { label: 'Resuelta', tone: 'ok', icon: 'check' }
-  };
+  function runtime() {
+    return typeof window !== 'undefined' ? window.ItsmI18n : null;
+  }
+
+  // Every visible label below is a catalog key resolved on read, so the same
+  // adapter serves both shipped languages and any installed pack (D2, D3).
+  function tr(key, params) {
+    const api = runtime();
+    return api ? api.t(key, params) : '';
+  }
+
+  function localized(source) {
+    const entry = {};
+    Object.keys(source).forEach(function (key) {
+      if (key === 'labelKey') {
+        Object.defineProperty(entry, 'label', {
+          enumerable: true,
+          get: function () { return tr(source.labelKey); }
+        });
+        return;
+      }
+      entry[key] = source[key];
+    });
+    return entry;
+  }
+
+  function localizedMap(source) {
+    const map = {};
+    Object.keys(source).forEach(function (id) { map[id] = localized(source[id]); });
+    return map;
+  }
+
+  const STATUS_META = localizedMap({
+    up: { labelKey: 'ui.monitoring.status.up', tone: 'ok', icon: 'check' },
+    degraded: { labelKey: 'ui.monitoring.status.degraded', tone: 'warn', icon: 'alert' },
+    down: { labelKey: 'ui.monitoring.status.down', tone: 'down', icon: 'x-circle' },
+    unmonitored: { labelKey: 'ui.monitoring.status.unmonitored', tone: 'neutral', icon: 'minus' },
+    no_data: { labelKey: 'ui.monitoring.status.no_data', tone: 'neutral', icon: 'clock' },
+    unavailable: { labelKey: 'ui.monitoring.status.unavailable', tone: 'neutral', icon: 'plug' }
+  });
+  const SEVERITY_META = localizedMap({
+    critical: { labelKey: 'ui.monitoring.severity.critical', tone: 'down' },
+    warning: { labelKey: 'ui.monitoring.severity.warning', tone: 'warn' },
+    info: { labelKey: 'ui.monitoring.severity.info', tone: 'hold' }
+  });
+  const ALERT_STATE_META = localizedMap({
+    pending: { labelKey: 'ui.monitoring.alert_state.pending', tone: 'hold', icon: 'clock' },
+    firing: { labelKey: 'ui.monitoring.alert_state.firing', tone: 'down', icon: 'alert' },
+    resolved: { labelKey: 'ui.monitoring.alert_state.resolved', tone: 'ok', icon: 'check' }
+  });
   const EVENT_LABELS = {
-    opened: 'Alerta abierta',
-    fired: 'Alerta activa',
-    acknowledged: 'Alerta reconocida',
-    resolved: 'Alerta resuelta',
-    silenced: 'Alerta silenciada',
-    unsilenced: 'Silencio retirado',
-    incident_linked: 'Incidente vinculado',
-    incident_created: 'Incidente creado',
-    maintenance_prepared: 'Mantenimiento preparado'
+    opened: 'ui.monitoring.event.opened',
+    fired: 'ui.monitoring.event.fired',
+    acknowledged: 'ui.monitoring.event.acknowledged',
+    resolved: 'ui.monitoring.event.resolved',
+    silenced: 'ui.monitoring.event.silenced',
+    unsilenced: 'ui.monitoring.event.unsilenced',
+    incident_linked: 'ui.monitoring.event.incident_linked',
+    incident_created: 'ui.monitoring.event.incident_created',
+    maintenance_prepared: 'ui.monitoring.event.maintenance_prepared'
   };
-  const CHECK_META = {
-    icmp: { label: 'ICMP', icon: 'activity' },
-    http: { label: 'HTTP(S)', icon: 'globe' },
-    tcp: { label: 'TCP', icon: 'network' },
-    dns: { label: 'DNS', icon: 'search' },
-    snmp: { label: 'SNMP', icon: 'server' },
-    node: { label: 'Node exporter', icon: 'server' },
-    windows: { label: 'Windows exporter', icon: 'monitor' }
-  };
+  const CHECK_META = localizedMap({
+    icmp: { labelKey: 'ui.monitoring.check.icmp', icon: 'activity' },
+    http: { labelKey: 'ui.monitoring.check.http', icon: 'globe' },
+    tcp: { labelKey: 'ui.monitoring.check.tcp', icon: 'network' },
+    dns: { labelKey: 'ui.monitoring.check.dns', icon: 'search' },
+    snmp: { labelKey: 'ui.monitoring.check.snmp', icon: 'server' },
+    node: { labelKey: 'ui.monitoring.check.node', icon: 'server' },
+    windows: { labelKey: 'ui.monitoring.check.windows', icon: 'monitor' }
+  });
 
   function text(value, fallback) {
     return typeof value === 'string' && value.trim() ? value.trim() : (fallback === undefined ? '' : fallback);
@@ -132,13 +164,13 @@
   }
 
   function checkMeta(id) {
-    return CHECK_META[id] || { label: id ? String(id) : 'Comprobación', icon: 'activity' };
+    return CHECK_META[id] || { label: id ? String(id) : tr('ui.monitoring.check.generic'), icon: 'activity' };
   }
 
   function reasonLabel(reason) {
     if (!reason) return '';
-    if (reason === 'target_missing') return 'Sin destino configurado';
-    if (reason === 'prometheus_unavailable') return 'Prometheus no disponible';
+    if (reason === 'target_missing') return tr('ui.monitoring.reason.target_missing');
+    if (reason === 'prometheus_unavailable') return tr('ui.monitoring.reason.prometheus_unavailable');
     return String(reason);
   }
 
@@ -157,7 +189,7 @@
       : period === '7d'
         ? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }
         : { hour: '2-digit', minute: '2-digit' };
-    return at.toLocaleString('es-ES', options).replace(',', '');
+    return runtime() ? runtime().formatDate(at, options) : '';
   }
 
   function mapAsset(source, fallback) {
@@ -275,7 +307,7 @@
       actor,
       source: text(event && event.source),
       note,
-      label: EVENT_LABELS[action] || action,
+      label: EVENT_LABELS[action] ? tr(EVENT_LABELS[action]) : action,
       text: [EVENT_LABELS[action] || action, transition, note, actor ? 'por ' + actor : ''].filter(Boolean).join(' · ')
     };
   }
@@ -567,7 +599,7 @@
   function hasRawSecret(value, depth) {
     if (!value || typeof value !== 'object' || depth > 3) return false;
     return Object.keys(value).some((key) => {
-      if (RAW_SECRET_KEYS.indexOf(key.toLocaleLowerCase('en')) !== -1) return true;
+      if (RAW_SECRET_KEYS.indexOf(key.toLocaleLowerCase()) !== -1) return true;
       return hasRawSecret(value[key], (depth || 0) + 1);
     });
   }
@@ -604,7 +636,7 @@
   }
 
   function errorMessage(error, fallback) {
-    return (error && (error.message || error.error)) || fallback || 'No se pudo consultar la supervisión.';
+    return (error && (error.message || error.error)) || fallback || tr('ui.monitoring.error.query');
   }
 
   const methods = {
@@ -658,7 +690,7 @@
     },
     monitoringDenied(permission) {
       if (this.can && this.can(permission)) return null;
-      const error = 'No tienes permisos para realizar esta acción.';
+      const error = tr('ui.monitoring.error.permission');
       if (this.showToast) this.showToast(error);
       return { ok: false, error };
     },
@@ -703,7 +735,7 @@
         if (error && error.status === 404) {
           target.missing = true;
           target.record = null;
-          target.error = target === this.monitoringApi.inbox ? 'El aviso no está disponible.' : 'El registro solicitado no está disponible.';
+          target.error = target === this.monitoringApi.inbox ? tr('ui.monitoring.error.notification_missing') : tr('ui.monitoring.error.record_missing');
         } else {
           target.error = errorMessage(error);
         }
@@ -942,11 +974,11 @@
     /* ------------------------------------------------------------ writes */
     async monitoringWrite(path, method, body) {
       const token = this.monitoringToken();
-      if (!this.monitoringTokenOpen(token)) return { ok: false, cancelled: true, error: 'La sesión cambió; la operación se canceló.' };
+      if (!this.monitoringTokenOpen(token)) return { ok: false, cancelled: true, error: tr('ui.monitoring.error.session_changed') };
       this.monitoringRefreshSession();
       try {
         const payload = await window.AssetAccess.request(this, path, { method, body });
-        if (!this.monitoringTokenOpen(token)) return { ok: false, cancelled: true, error: 'La sesión cambió; la operación se canceló.' };
+        if (!this.monitoringTokenOpen(token)) return { ok: false, cancelled: true, error: tr('ui.monitoring.error.session_changed') };
         return { ok: true, payload, fieldErrors: {} };
       } catch (error) {
         if (error && error.status === 401) this.clearMonitoringState();
@@ -977,7 +1009,7 @@
       const denied = this.monitoringDenied('config.categories');
       if (denied) return denied;
       const id = text(category);
-      if (!id) return { ok: false, error: 'Falta la categoría del perfil.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.profile_category') };
       const result = await this.monitoringWrite('/monitoring/profiles/' + encodeURIComponent(id), 'PUT', pick(values, PROFILE_KEYS));
       if (!result.ok) return result;
       await this.loadMonitoringConfig();
@@ -987,7 +1019,7 @@
       const denied = this.monitoringDenied('config.integrations');
       if (denied) return denied;
       const body = pick(values, ['id', 'name', 'kind', 'module', 'address', 'enabled']);
-      if (!text(body.name) || !text(body.kind) || !text(body.module)) return { ok: false, error: 'El exportador necesita nombre, tipo y módulo.' };
+      if (!text(body.name) || !text(body.kind) || !text(body.module)) return { ok: false, error: tr('ui.monitoring.error.exporter_fields') };
       const result = await this.monitoringWrite('/monitoring/exporters', 'POST', body);
       if (!result.ok) return result;
       await this.loadMonitoringConfig();
@@ -1101,7 +1133,7 @@
       const body = cleanChannel(input);
       if (!text(body.name) || !text(body.kind)) return { ok: false, error: 'El canal necesita nombre y tipo.' };
       if (body.secretRef && !/^[A-Za-z0-9_.-]+$/.test(body.secretRef)) {
-        const error = 'La referencia de credencial no es válida.';
+        const error = tr('ui.monitoring.error.secret_ref');
         if (this.showToast) this.showToast(error);
         return { ok: false, error };
       }
