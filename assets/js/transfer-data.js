@@ -8,40 +8,46 @@
 
   /* Campos destino ------------------------------------------------------- */
 
-  const TARGETS = [
-    { key: 'name', label: 'Nombre', group: 'Identificación', hint: 'Denominación del activo' },
-    { key: 'type', label: 'Tipo', group: 'Identificación' },
-    { key: 'category', label: 'Categoría', group: 'Identificación' },
-    { key: 'brand', label: 'Marca', group: 'Identificación' },
-    { key: 'model', label: 'Modelo', group: 'Identificación' },
-    { key: 'serial', label: 'Número de serie', group: 'Identificación' },
-    { key: 'ip', label: 'Dirección IP', group: 'Red' },
-    { key: 'mac', label: 'Dirección MAC', group: 'Red' },
-    { key: 'site', label: 'Sede', group: 'Ubicación' },
-    { key: 'location', label: 'Ubicación', group: 'Ubicación' },
-    { key: 'assignee', label: 'Responsable', group: 'Asignación' },
-    { key: 'cost', label: 'Coste', group: 'Económica' },
-    { key: 'warrantyUntil', label: 'Garantía hasta', group: 'Garantía' },
-    { key: 'warrantyProvider', label: 'Proveedor de garantía', group: 'Garantía' },
-    { key: 'os', label: 'Sistema operativo', group: 'Técnica' },
-    { key: 'cpu', label: 'Procesador', group: 'Técnica' },
-    { key: 'ram', label: 'Memoria RAM', group: 'Técnica' },
-    { key: 'anydeskId', label: 'AnyDesk', group: 'Acceso remoto' },
-    { key: 'rmmAgentId', label: 'Agente RMM', group: 'Acceso remoto' }
-  ];
+  // Display copy comes from the ui.transfer.* catalog. Ids, target keys, file
+  // names and CSV headers stay stable; the getters below resolve the active
+  // locale on read so a locale switch re-renders the labels.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
 
+  const TARGETS = [
+    { key: 'name', get label() { return tr('ui.transfer.field.asset_name'); }, get group() { return tr('ui.transfer.group.identification'); }, get hint() { return tr('ui.transfer.field.asset_name_hint'); } },
+    { key: 'type', get label() { return tr('ui.transfer.field.type'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'category', get label() { return tr('ui.transfer.field.category'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'brand', get label() { return tr('ui.transfer.field.brand'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'model', get label() { return tr('ui.transfer.field.model'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'serial', get label() { return tr('ui.transfer.field.serial'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'ip', get label() { return tr('ui.transfer.field.ip'); }, get group() { return tr('ui.transfer.group.network'); } },
+    { key: 'mac', get label() { return tr('ui.transfer.field.mac'); }, get group() { return tr('ui.transfer.group.network'); } },
+    { key: 'site', get label() { return tr('ui.transfer.field.site'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'location', get label() { return tr('ui.transfer.field.location'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'assignee', get label() { return tr('ui.transfer.field.assignee'); }, get group() { return tr('ui.transfer.group.assignment'); } },
+    { key: 'cost', get label() { return tr('ui.transfer.field.cost'); }, get group() { return tr('ui.transfer.group.financial'); } },
+    { key: 'warrantyUntil', get label() { return tr('ui.transfer.field.warranty_until'); }, get group() { return tr('ui.transfer.group.warranty'); } },
+    { key: 'warrantyProvider', get label() { return tr('ui.transfer.field.warranty_provider'); }, get group() { return tr('ui.transfer.group.warranty'); } },
+    { key: 'os', get label() { return tr('ui.transfer.field.os'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'cpu', get label() { return tr('ui.transfer.field.cpu'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'ram', get label() { return tr('ui.transfer.field.ram'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'anydeskId', get label() { return tr('ui.transfer.field.anydesk'); }, get group() { return tr('ui.transfer.group.remote'); } },
+    { key: 'rmmAgentId', get label() { return tr('ui.transfer.field.rmm'); }, get group() { return tr('ui.transfer.group.remote'); } }
+  ];
   const TARGET_BY_KEY = TARGETS.reduce((result, target) => {
     result[target.key] = target;
     return result;
   }, {});
 
   const IDENTIFICATION_FIELDS = [
-    { key: 'serial', label: 'Número de serie', strength: 'strong' },
-    { key: 'ip', label: 'Dirección IP', strength: 'strong' },
-    { key: 'code', label: 'Código del activo', strength: 'strong' },
-    { key: 'name', label: 'Nombre del activo', strength: 'weak' }
+    { key: 'serial', get label() { return tr('ui.transfer.field.serial'); }, get strength() { return 'strong'; } },
+    { key: 'ip', get label() { return tr('ui.transfer.field.ip'); }, get strength() { return 'strong'; } },
+    { key: 'code', get label() { return tr('ui.transfer.field.code'); }, get strength() { return 'strong'; } },
+    { key: 'name', get label() { return tr('ui.transfer.field.asset_name'); }, get strength() { return 'weak'; } }
   ];
-
   /* Normalización y detección -------------------------------------------- */
 
   function norm(value) {
@@ -164,8 +170,8 @@
       name: 'inventario_sedes_2026.xlsx',
       format: 'xlsx',
       size: '38 KB',
-      updated: 'hace 2 días',
-      origin: 'Exportación del sistema anterior, enviada por soporte',
+      get updated() { return tr('ui.transfer.file.updated_two_days'); },
+      get origin() { return tr('ui.transfer.file.origin_previous_system'); },
       profileId: 'inventario-sedes',
       sheets: [
         {
@@ -213,8 +219,8 @@
       name: 'altas_proveedor_2026.csv',
       format: 'csv',
       size: '6 KB',
-      updated: 'ayer',
-      origin: 'Listado de altas remitido por el proveedor',
+      get updated() { return tr('ui.transfer.file.updated_yesterday'); },
+      get origin() { return tr('ui.transfer.file.origin_supplier'); },
       profileId: 'altas-proveedor',
       sheets: [
         {
@@ -236,8 +242,8 @@
       name: 'inventario_red_2026.csv',
       format: 'csv',
       size: '4 KB',
-      updated: 'hace 5 días',
-      origin: 'Volcado manual del equipo de redes',
+      get updated() { return tr('ui.transfer.file.updated_five_days'); },
+      get origin() { return tr('ui.transfer.file.origin_network'); },
       profileId: 'red-switches',
       sheets: [
         {
@@ -261,10 +267,10 @@
     {
       id: 'inventario-sedes',
       kind: 'import',
-      name: 'Inventario de sedes',
+      get name() { return tr('ui.transfer.profile.sites.name'); },
       builtin: true,
       fileId: 'sedes-2026',
-      description: 'Excel con una hoja por sede. Coincidencia por serie, IP y nombre.',
+      get description() { return tr('ui.transfer.profile.sites.description'); },
       identification: ['serial', 'ip', 'name'],
       mapping: {
         hostname: 'name',
@@ -291,10 +297,10 @@
     {
       id: 'altas-proveedor',
       kind: 'import',
-      name: 'Altas de proveedor',
+      get name() { return tr('ui.transfer.profile.supplier.name'); },
       builtin: true,
       fileId: 'altas-2026',
-      description: 'CSV de altas con descripción, serie, tipo e importe.',
+      get description() { return tr('ui.transfer.profile.supplier.description'); },
       identification: ['serial', 'ip', 'name'],
       mapping: {
         descripcion: 'name',
@@ -311,10 +317,10 @@
     {
       id: 'red-switches',
       kind: 'import',
-      name: 'Red y switches',
+      get name() { return tr('ui.transfer.profile.network.name'); },
       builtin: true,
       fileId: 'red-2026',
-      description: 'CSV de red: identifica equipos por IP y serie.',
+      get description() { return tr('ui.transfer.profile.network.description'); },
       identification: ['ip', 'serial'],
       mapping: {
         hostname: 'name',
@@ -330,65 +336,65 @@
   ];
 
   const EXPORT_FIELDS = [
-    { key: 'id', label: 'ID permanente', group: 'Identificación' },
-    { key: 'code', label: 'Código', group: 'Identificación' },
-    { key: 'name', label: 'Nombre', group: 'Identificación' },
-    { key: 'category', label: 'Categoría', group: 'Identificación' },
-    { key: 'type', label: 'Tipo', group: 'Identificación' },
-    { key: 'brand', label: 'Marca', group: 'Identificación' },
-    { key: 'model', label: 'Modelo', group: 'Identificación' },
-    { key: 'serial', label: 'Número de serie', group: 'Identificación' },
-    { key: 'ip', label: 'Dirección IP', group: 'Red' },
-    { key: 'mac', label: 'Dirección MAC', group: 'Red' },
-    { key: 'site', label: 'Sede', group: 'Ubicación' },
-    { key: 'location', label: 'Ubicación', group: 'Ubicación' },
-    { key: 'assignee', label: 'Responsable', group: 'Asignación' },
-    { key: 'status', label: 'Estado', group: 'Estado' },
-    { key: 'cost', label: 'Coste', group: 'Económica' },
-    { key: 'warrantyUntil', label: 'Garantía hasta', group: 'Garantía' },
-    { key: 'warrantyProvider', label: 'Proveedor de garantía', group: 'Garantía' },
-    { key: 'os', label: 'Sistema operativo', group: 'Técnica' },
-    { key: 'cpu', label: 'Procesador', group: 'Técnica' },
-    { key: 'ram', label: 'Memoria RAM', group: 'Técnica' },
-    { key: 'anydeskId', label: 'AnyDesk', group: 'Acceso remoto' },
-    { key: 'rmmAgentId', label: 'Agente RMM', group: 'Acceso remoto' },
-    { key: 'updatedAt', label: 'Última actualización', group: 'Trazabilidad' }
+    { key: 'id', get label() { return tr('ui.transfer.field.id'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'code', get label() { return tr('ui.transfer.field.code_short'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'name', get label() { return tr('ui.transfer.field.name'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'category', get label() { return tr('ui.transfer.field.category'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'type', get label() { return tr('ui.transfer.field.type'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'brand', get label() { return tr('ui.transfer.field.brand'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'model', get label() { return tr('ui.transfer.field.model'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'serial', get label() { return tr('ui.transfer.field.serial'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'ip', get label() { return tr('ui.transfer.field.ip'); }, get group() { return tr('ui.transfer.group.network'); } },
+    { key: 'mac', get label() { return tr('ui.transfer.field.mac'); }, get group() { return tr('ui.transfer.group.network'); } },
+    { key: 'site', get label() { return tr('ui.transfer.field.site'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'location', get label() { return tr('ui.transfer.field.location'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'assignee', get label() { return tr('ui.transfer.field.assignee'); }, get group() { return tr('ui.transfer.group.assignment'); } },
+    { key: 'status', get label() { return tr('ui.transfer.field.status'); }, get group() { return tr('ui.transfer.group.status'); } },
+    { key: 'cost', get label() { return tr('ui.transfer.field.cost'); }, get group() { return tr('ui.transfer.group.financial'); } },
+    { key: 'warrantyUntil', get label() { return tr('ui.transfer.field.warranty_until'); }, get group() { return tr('ui.transfer.group.warranty'); } },
+    { key: 'warrantyProvider', get label() { return tr('ui.transfer.field.warranty_provider'); }, get group() { return tr('ui.transfer.group.warranty'); } },
+    { key: 'os', get label() { return tr('ui.transfer.field.os'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'cpu', get label() { return tr('ui.transfer.field.cpu'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'ram', get label() { return tr('ui.transfer.field.ram'); }, get group() { return tr('ui.transfer.group.technical'); } },
+    { key: 'anydeskId', get label() { return tr('ui.transfer.field.anydesk'); }, get group() { return tr('ui.transfer.group.remote'); } },
+    { key: 'rmmAgentId', get label() { return tr('ui.transfer.field.rmm'); }, get group() { return tr('ui.transfer.group.remote'); } },
+    { key: 'updatedAt', get label() { return tr('ui.transfer.field.updated_at'); }, get group() { return tr('ui.transfer.group.traceability'); } }
   ];
 
   const EXPORT_PROFILES = [
     {
       id: 'inventario-completo',
       kind: 'export',
-      name: 'Inventario completo',
+      get name() { return tr('ui.transfer.profile.full.name'); },
       builtin: true,
-      description: 'Una fila por activo con identificación, ubicación y estado.',
+      get description() { return tr('ui.transfer.profile.full.description'); },
       format: 'csv',
       fields: ['id', 'code', 'name', 'category', 'brand', 'model', 'serial', 'ip', 'site', 'location', 'assignee', 'status', 'cost']
     },
     {
       id: 'ficha-tecnica',
       kind: 'export',
-      name: 'Ficha técnica',
+      get name() { return tr('ui.transfer.profile.technical.name'); },
       builtin: true,
-      description: 'Hardware y garantía para el equipo de soporte.',
+      get description() { return tr('ui.transfer.profile.technical.description'); },
       format: 'csv',
       fields: ['id', 'name', 'brand', 'model', 'serial', 'os', 'cpu', 'ram', 'warrantyUntil', 'warrantyProvider']
     },
     {
       id: 'red-accesos',
       kind: 'export',
-      name: 'Red y accesos',
+      get name() { return tr('ui.transfer.profile.network_access.name'); },
       builtin: true,
-      description: 'Direcciones, ubicación e identificadores remotos.',
+      get description() { return tr('ui.transfer.profile.network_access.description'); },
       format: 'csv',
       fields: ['id', 'name', 'ip', 'mac', 'site', 'location', 'anydeskId', 'rmmAgentId']
     },
     {
       id: 'control-garantias',
       kind: 'export',
-      name: 'Control de garantías',
+      get name() { return tr('ui.transfer.profile.warranty.name'); },
       builtin: true,
-      description: 'Coste, responsable y vencimiento de la cobertura.',
+      get description() { return tr('ui.transfer.profile.warranty.description'); },
       format: 'csv',
       fields: ['id', 'name', 'category', 'site', 'assignee', 'cost', 'warrantyUntil', 'warrantyProvider']
     }
@@ -561,8 +567,13 @@
   function formatBytes(bytes) {
     const size = Number(bytes) || 0;
     if (size < 1024) return size + ' B';
-    if (size < 1024 * 1024) return (size / 1024).toFixed(1).replace('.', ',') + ' KB';
-    return (size / (1024 * 1024)).toFixed(1).replace('.', ',') + ' MB';
+    const kilobytes = size < 1024 * 1024;
+    const value = kilobytes ? size / 1024 : size / (1024 * 1024);
+    // The decimal separator follows the active locale; the unit is a symbol.
+    const formatted = window.ItsmI18n
+      ? window.ItsmI18n.number(value, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+      : value.toFixed(1).replace('.', ',');
+    return formatted + (kilobytes ? ' KB' : ' MB');
   }
 
   function csvCell(value, separator) {
