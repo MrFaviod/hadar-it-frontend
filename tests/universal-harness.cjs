@@ -84,7 +84,11 @@ function setup(entry='index.html'){
   const source=c.options.components[name];assert.ok(source, name+' is registered');
   // Replace only DOM-only modal/transition infrastructure with transparent test components.
   function adapt(comp){if(!comp||typeof comp!=='object')return comp;const out={...comp,components:{...(comp.components||{})}};if(out.template)out.template=out.template.replace(/<transition name="fade">/g,'<template>').replace(/<\/transition>/g,'</template>');for(const [key,value] of Object.entries(out.components))out.components[key]=key==='ModalShell'?{props:['open'],template:'<div v-if="open"><slot></slot><slot name="footer"></slot></div>'}:adapt(value);return out;}
-  const root={children:[]},r=Vue.createRenderer(host),a=r.createApp(adapt(source),{app,...props});a.config.errorHandler=e=>errors.push(e);const instance=a.mount(root);return {instance,root,unmount:()=>a.unmount()};
+  const root={children:[]},r=Vue.createRenderer(host),a=r.createApp(adapt(source),{app,...props});
+  // The shipped root installs the i18n plugin; mounting a component directly must
+  // expose the same `$t`/`$n`/`$d` surface the application provides.
+  if(c.ItsmI18n&&c.ItsmI18n.i18n)a.use(c.ItsmI18n.i18n);
+  a.config.errorHandler=e=>errors.push(e);const instance=a.mount(root);return {instance,root,unmount:()=>a.unmount()};
  }
  return {c,app,html,mount,errors,server,settle,tick:Vue.nextTick};
 }

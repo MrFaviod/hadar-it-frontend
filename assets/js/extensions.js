@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // Catalog access: every visible string comes from `assets/i18n`; modules keep
+  // working without the i18n runtime and render nothing for untranslated copy.
+  const i18n = typeof window !== 'undefined' ? window.ItsmI18n : null;
+  function tr(key, params) {
+    return i18n && typeof i18n.t === 'function' ? i18n.t(key, params) : '';
+  }
+
   const SDK_VERSION = 2;
   const DIGEST_RE = /^[a-f0-9]{64}$/;
   const EXTENSION_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -735,12 +742,12 @@
         return !!(this.page && typeof this.app.can === 'function' && this.app.can(this.page.permission));
       },
       title() {
-        return this.page ? this.page.label : 'Extensión';
+        return this.page ? this.page.label : tr('ui.extensions.page.eyebrow');
       },
       stateLabel() {
-        if (!this.item) return 'No disponible';
-        if (this.item.requiresUpgrade) return 'Requiere actualización';
-        return 'Activa';
+        if (!this.item) return tr('ui.extensions.page.not_available');
+        if (this.item.requiresUpgrade) return tr('ui.extensions.page.upgrade');
+        return tr('ui.extensions.page.active');
       },
       stateClass() {
         if (!this.item) return 'status--hold';
@@ -751,40 +758,40 @@
       <section class="page extension-page" aria-labelledby="extension-page-title">
         <header class="page-head">
           <div class="page-head__copy">
-            <p class="eyebrow"><span class="eyebrow__line"></span> Extensión</p>
+            <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.extensions.page.eyebrow') }}</p>
             <h1 id="extension-page-title">{{ title }}</h1>
-            <p>{{ item ? (item.manifest.name || item.id) : 'Módulo no instalado o no autorizado' }}</p>
+            <p>{{ item ? (item.manifest.name || item.id) : $t('ui.extensions.page.module_missing') }}</p>
           </div>
-          <div class="page-head__meta" aria-label="Estado de la extensión">
+          <div class="page-head__meta" :aria-label="$t('ui.extensions.page.state_aria')">
             <span class="status-pill" :class="stateClass">{{ stateLabel }}</span>
           </div>
         </header>
 
         <div v-if="!item" class="config-empty" role="status">
           <span class="config-empty__icon"><app-icon name="package"></app-icon></span>
-          <h2>Extensión no disponible</h2>
-          <p>El servidor no ofrece esta extensión a tu sesión. Puede estar desactivada o retirada.</p>
-          <a class="btn btn--secondary" href="#/panel">Volver al panel</a>
+          <h2>{{ $t('ui.extensions.page.unavailable') }}</h2>
+          <p>{{ $t('ui.extensions.page.unavailable_lead') }}</p>
+          <a class="btn btn--secondary" href="#/panel">{{ $t('ui.extensions.page.back') }}</a>
         </div>
         <div v-else-if="item.requiresUpgrade" class="config-empty" role="status">
           <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
-          <h2>Requiere actualización</h2>
-          <p>Esta versión usa el SDK 1 y el host ya no ejecuta su código dentro de la página. Actualiza el paquete para volver a usar sus páginas; sus datos se conservan.</p>
-          <a class="btn btn--secondary" href="#/configuracion/extensiones">Revisar extensiones</a>
+          <h2>{{ $t('ui.extensions.page.upgrade') }}</h2>
+          <p>{{ $t('ui.extensions.page.upgrade_lead') }}</p>
+          <a class="btn btn--secondary" href="#/configuracion/extensiones">{{ $t('ui.extensions.page.review') }}</a>
         </div>
         <div v-else-if="item.invalid" class="form-alert" role="alert">
           <app-icon name="alert"></app-icon>
-          <div><strong>El paquete no es válido.</strong><p>{{ item.invalid }}</p></div>
+          <div><strong>{{ $t('ui.extensions.page.invalid_package') }}</strong><p>{{ item.invalid }}</p></div>
         </div>
         <div v-else-if="!page" class="config-empty" role="status">
           <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
-          <h2>Página no declarada</h2>
-          <p>La extensión activa no publica la página {{ pageId }}.</p>
+          <h2>{{ $t('ui.extensions.page.page_missing') }}</h2>
+          <p>{{ $t('ui.extensions.page.page_unknown', { page: pageId }) }}</p>
         </div>
         <div v-else-if="!allowed" class="config-empty" role="status">
           <span class="config-empty__icon"><app-icon name="lock"></app-icon></span>
-          <h2>Sin permiso para esta página</h2>
-          <p>La extensión exige el permiso <code>{{ page.permission }}</code>. El servidor vuelve a comprobarlo en cada operación.</p>
+          <h2>{{ $t('ui.extensions.page.page_forbidden') }}</h2>
+          <p>{{ $t('ui.extensions.page.permission_required', { permission: page.permission }) }}</p>
         </div>
         <extension-view v-else :app="app" :item="item" :view="page.view"></extension-view>
       </section>
@@ -816,20 +823,20 @@
         <section v-for="entry in panels" :key="entry.key" class="panel extension-panel" :aria-labelledby="panelTitle(entry)">
           <header class="panel-head">
             <div>
-              <p class="eyebrow">Extensión</p>
+              <p class="eyebrow">{{ $t('ui.extensions.page.eyebrow') }}</p>
               <h2 :id="panelTitle(entry)">{{ entry.panel.label }}</h2>
               <p>{{ entry.item.manifest.name || entry.item.id }}</p>
             </div>
-            <span v-if="entry.item.requiresUpgrade" class="status-pill status--warn">Requiere actualización</span>
+            <span v-if="entry.item.requiresUpgrade" class="status-pill status--warn">{{ $t('ui.extensions.page.upgrade') }}</span>
             <span v-else class="chip chip--muted">{{ entry.item.version }}</span>
           </header>
           <p v-if="entry.item.requiresUpgrade" class="config-note" role="status">
             <app-icon name="alert"></app-icon>
-            Esta versión usa el SDK 1 y no se ejecuta en la página. Actualiza el paquete para recuperar el panel.
+            {{ $t('ui.extensions.page.sdk1_panel') }}
           </p>
           <div v-else-if="entry.item.invalid" class="form-alert" role="alert">
             <app-icon name="alert"></app-icon>
-            <div><strong>El panel no es válido.</strong><p>{{ entry.item.invalid }}</p></div>
+            <div><strong>{{ $t('ui.extensions.page.invalid_panel') }}</strong><p>{{ entry.item.invalid }}</p></div>
           </div>
           <extension-view v-else :app="app" :item="entry.item" :view="entry.panel.view" :asset="assetSnapshot"></extension-view>
         </section>
@@ -1341,35 +1348,35 @@
       <section class="config-section extension-review" aria-labelledby="extension-review-title">
         <header class="config-section__head">
           <div>
-            <p class="eyebrow">Extensiones nativas</p>
-            <h2 id="extension-review-title">Revisión e instalación</h2>
-            <p>El servidor prepara cada candidato. Un Superadmin humano revisa el paquete exacto y decide. El texto de un agente nunca es una aprobación.</p>
+            <p class="eyebrow">{{ $t('ui.extensions.page.native') }}</p>
+            <h2 id="extension-review-title">{{ $t('ui.extensions.review.title') }}</h2>
+            <p>{{ $t('ui.extensions.review.lead') }}</p>
           </div>
           <button type="button" class="btn btn--secondary" :disabled="review.loading" @click="reviewLoad({ force: true })">
-            <app-icon name="refresh"></app-icon> Actualizar
+            <app-icon name="refresh"></app-icon> {{ $t('ui.extensions.review.refresh') }}
           </button>
         </header>
 
         <div class="form-note extension-trust" role="note">
           <app-icon name="shield"></app-icon>
           <div>
-            <strong>Cada extensión queda aislada del núcleo.</strong>
-            <p>Las vistas declarativas no ejecutan código del módulo en esta página. El código visual propio corre en un marco aislado sin acceso a tu sesión. El código del servidor corre en un proceso restringido, sin red, sin secretos y sin acceso a la base del núcleo, y guarda sus datos en una base SQLite propia. Los cambios en activos e incidentes pasan por los servicios públicos con tus permisos. Revisa el digest, los permisos, las migraciones y el historial antes de aprobar.</p>
+            <strong>{{ $t('ui.extensions.review.isolation') }}</strong>
+            <p>{{ $t('ui.extensions.review.isolation_lead') }}</p>
           </div>
         </div>
 
         <div v-if="!canManage" class="form-alert" role="alert">
           <app-icon name="lock"></app-icon>
-          <div><strong>Vista de solo lectura.</strong><p>Necesitas el permiso de módulos del sistema para aprobar, instalar o cambiar el estado. El servidor exige además un Superadmin humano.</p></div>
+          <div><strong>{{ $t('ui.extensions.review.readonly') }}</strong><p>{{ $t('ui.extensions.review.permission_note') }}</p></div>
         </div>
 
         <div v-if="review.stale" class="form-alert" role="alert">
           <app-icon name="alert"></app-icon>
-          <div><strong>El catálogo cambió durante la operación.</strong><p>No se aplicó ningún cambio local. Actualiza y revisa los datos exactos antes de volver a intentarlo.</p></div>
+          <div><strong>{{ $t('ui.extensions.review.catalog_changed') }}</strong><p>{{ $t('ui.extensions.review.catalog_changed_note') }}</p></div>
         </div>
         <div v-if="review.error" class="form-alert" role="alert">
           <app-icon name="alert"></app-icon>
-          <div><strong>No se pudo consultar el catálogo.</strong><p>{{ review.error }}</p></div>
+          <div><strong>{{ $t('ui.extensions.review.catalog_failed') }}</strong><p>{{ review.error }}</p></div>
         </div>
         <p v-if="action.message" class="config-note" role="status"><app-icon name="check"></app-icon> {{ action.message }}</p>
         <p v-if="action.error" class="form-alert" role="alert"><app-icon name="alert"></app-icon> {{ action.error }}</p>
@@ -1377,18 +1384,18 @@
         <div class="extension-review__grid">
           <section class="extension-review__inbox" aria-labelledby="extension-candidates-title">
             <header class="panel-head">
-              <div><p class="eyebrow">Bandeja</p><h3 id="extension-candidates-title">Candidatos</h3></div>
+              <div><p class="eyebrow">{{ $t('ui.extensions.review.inbox') }}</p><h3 id="extension-candidates-title">{{ $t('ui.extensions.review.candidates') }}</h3></div>
               <span class="config-badge">{{ candidates.length }}</span>
             </header>
-            <div class="extension-filters" role="group" aria-label="Filtrar candidatos">
+            <div class="extension-filters" role="group" :aria-label="$t('ui.extensions.review.filter_aria')">
               <button v-for="filter in ['pending', 'installed', 'superseded', 'all']" :key="filter" type="button"
                       class="chip" :class="{ 'chip--active': review.filter === filter }"
                       :aria-pressed="review.filter === filter" @click="review.filter = filter">
                 {{ reviewFilterLabel(filter) }}
               </button>
             </div>
-            <p v-if="review.loading" class="config-note" role="status"><app-icon name="refresh"></app-icon> Consultando candidatos…</p>
-            <p v-else-if="!candidates.length" class="config-note">No hay candidatos en este filtro. El servidor no ha recibido paquetes nuevos.</p>
+            <p v-if="review.loading" class="config-note" role="status"><app-icon name="refresh"></app-icon> {{ $t('ui.extensions.review.loading_candidates') }}</p>
+            <p v-else-if="!candidates.length" class="config-note">{{ $t('ui.extensions.review.empty_inbox') }}</p>
             <ul v-else class="extension-candidates">
               <li v-for="candidate in candidates" :key="candidate.id">
                 <button type="button" class="extension-candidate" :class="{ 'is-active': review.selectedId === candidate.id }"
@@ -1397,22 +1404,22 @@
                     <strong>{{ candidate.extensionId }} {{ candidate.version }}</strong>
                     <span class="config-badge">{{ candidateStateLabel(candidate.state) }}</span>
                   </span>
-                  <span class="cell-note">Validación: {{ validationStatusLabel(candidate.validationStatus) }} · {{ formatDate(candidate.submittedAt) }}</span>
-                  <span class="cell-note">Activa: {{ candidate.currentVersion || 'Sin instalar' }} · revisión {{ candidate.currentRevision === null ? '—' : candidate.currentRevision }}</span>
+                  <span class="cell-note">{{ $t('ui.extensions.review.validation_line', { status: validationStatusLabel(candidate.validationStatus), date: formatDate(candidate.submittedAt) }) }}</span>
+                  <span class="cell-note">{{ $t('ui.extensions.candidate.active_line', { version: candidate.currentVersion || $t('ui.extensions.candidate.not_installed'), revision: candidate.currentRevision === null ? '—' : candidate.currentRevision }) }}</span>
                 </button>
               </li>
             </ul>
           </section>
 
           <section class="extension-review__detail" aria-labelledby="extension-detail-title">
-            <h3 id="extension-detail-title" class="sr-only">Detalle del candidato</h3>
-            <p v-if="review.detailLoading" class="config-note" role="status"><app-icon name="refresh"></app-icon> Consultando el paquete exacto…</p>
-            <div v-else-if="review.detailError" class="form-alert" role="alert"><app-icon name="alert"></app-icon><div><strong>No se pudo abrir el candidato.</strong><p>{{ review.detailError }}</p></div></div>
-            <p v-else-if="!detail" class="config-empty">Selecciona un candidato de la bandeja para revisar su digest, permisos y validación.</p>
+            <h3 id="extension-detail-title" class="sr-only">{{ $t('ui.extensions.candidate.detail') }}</h3>
+            <p v-if="review.detailLoading" class="config-note" role="status"><app-icon name="refresh"></app-icon> {{ $t('ui.extensions.candidate.loading') }}</p>
+            <div v-else-if="review.detailError" class="form-alert" role="alert"><app-icon name="alert"></app-icon><div><strong>{{ $t('ui.extensions.candidate.failed') }}</strong><p>{{ review.detailError }}</p></div></div>
+            <p v-else-if="!detail" class="config-empty">{{ $t('ui.extensions.candidate.pick') }}</p>
             <div v-else class="extension-detail">
               <header class="extension-detail__head">
                 <div>
-                  <p class="eyebrow">Paquete exacto</p>
+                  <p class="eyebrow">{{ $t('ui.extensions.candidate.package') }}</p>
                   <h3>{{ detail.extensionId }} {{ detail.version }}</h3>
                   <p class="cell-muted">{{ detail.manifest.name || detail.extensionId }}</p>
                 </div>
@@ -1420,23 +1427,23 @@
               </header>
 
               <dl class="extension-facts">
-                <div><dt>Digest SHA-256</dt><dd class="mono extension-digest">{{ detail.digest }}</dd></div>
-                <div><dt>Versión activa</dt><dd>{{ detail.currentVersion || 'Ninguna' }} · revisión {{ detail.currentRevision === null ? '—' : detail.currentRevision }}</dd></div>
-                <div><dt>Revisión del candidato</dt><dd>{{ detail.revision }}</dd></div>
-                <div><dt>Enviado</dt><dd>{{ detail.submittedBy || 'Sin identificar' }} · {{ formatDate(detail.submittedAt) }}</dd></div>
-                <div><dt>Ejecución</dt><dd>{{ runtimeLabel(detail.manifest.runtime) }}</dd></div>
-                <div><dt>Almacenamiento</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? 'Base SQLite propia' : 'Sin almacenamiento declarado' }}</dd></div>
-                <div><dt>Capacidades</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : 'Ninguna' }}</dd></div>
-                <div><dt>Rollback</dt><dd>{{ detail.rollbackCompatible ? 'Compatible con los datos actuales' : 'Requiere restaurar la copia de datos previa' }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.digest') }}</dt><dd class="mono extension-digest">{{ detail.digest }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.active_version') }}</dt><dd>{{ $t('ui.extensions.candidate.version_line', { version: detail.currentVersion || $t('ui.extensions.candidate.version_none'), revision: detail.currentRevision === null ? '—' : detail.currentRevision }) }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.revision') }}</dt><dd>{{ detail.revision }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.submitted') }}</dt><dd>{{ detail.submittedBy || 'Sin identificar' }} · {{ formatDate(detail.submittedAt) }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.runtime') }}</dt><dd>{{ runtimeLabel(detail.manifest.runtime) }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.storage') }}</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? 'Base SQLite propia' : 'Sin almacenamiento declarado' }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.capabilities') }}</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : 'Ninguna' }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.rollback') }}</dt><dd>{{ detail.rollbackCompatible ? 'Compatible con los datos actuales' : 'Requiere restaurar la copia de datos previa' }}</dd></div>
               </dl>
 
               <section class="extension-block" aria-labelledby="extension-trust-title">
-                <h4 id="extension-trust-title">Modelo de confianza</h4>
+                <h4 id="extension-trust-title">{{ $t('ui.extensions.trust.title') }}</h4>
                 <p>{{ detailTrustNotice() }}</p>
                 <ul class="extension-checks">
-                  <li>Declarativa: las vistas son datos y el módulo no ejecuta código en la página.</li>
-                  <li>Código aislado: el frontend se ejecuta en un marco sin acceso a la sesión, al DOM del host ni a su almacenamiento.</li>
-                  <li>Servidor: el backend se ejecuta en un proceso restringido con las capacidades declaradas.</li>
+                  <li>{{ $t('ui.extensions.trust.declarative') }}</li>
+                  <li>{{ $t('ui.extensions.trust.sandboxed') }}</li>
+                  <li>{{ $t('ui.extensions.trust.server') }}</li>
                 </ul>
                 <ul v-if="(detail.manifest.capabilities || []).length" class="extension-checks">
                   <li v-for="capability in detail.manifest.capabilities" :key="capability"><code>{{ capability }}</code> — {{ capabilityLabel(capability) }}</li>
@@ -1444,9 +1451,9 @@
               </section>
 
               <section class="extension-block" aria-labelledby="extension-validation-title">
-                <h4 id="extension-validation-title">Validación aislada</h4>
+                <h4 id="extension-validation-title">{{ $t('ui.extensions.validation.title') }}</h4>
                 <template v-if="detail.validation">
-                  <p>Resultado: <strong>{{ validationStatusLabel(detail.validation.status) }}</strong> · digest {{ shortDigest(detail.validation.digest) }} · contenedor {{ detail.validation.container && detail.validation.container.image || 'no informado' }} · motor {{ detail.validation.container && detail.validation.container.engine || 'no informado' }}</p>
+                  <p>{{ $t('ui.extensions.validation.result') }} <strong>{{ validationStatusLabel(detail.validation.status) }}</strong> · {{ $t('ui.extensions.validation.digest_label') }} {{ shortDigest(detail.validation.digest) }} · {{ $t('ui.extensions.validation.container_label') }} {{ detail.validation.container && detail.validation.container.image || $t('ui.extensions.validation.unknown') }} · {{ $t('ui.extensions.validation.engine_label') }} {{ detail.validation.container && detail.validation.container.engine || $t('ui.extensions.validation.unknown') }}</p>
                   <ul class="extension-checks">
                     <li v-for="check in detail.validation.checks" :key="check.name">
                       <span class="status-pill" :class="check.status === 'passed' ? 'status--ok' : 'status--down'">{{ check.status === 'passed' ? 'Correcto' : 'Fallo' }}</span>
@@ -1456,69 +1463,69 @@
                   <ul v-if="detail.validation.errors && detail.validation.errors.length" class="extension-errors" role="alert">
                     <li v-for="error in detail.validation.errors" :key="error">{{ error }}</li>
                   </ul>
-                  <p class="cell-muted">Completada: {{ formatDate(detail.validation.completedAt) }}</p>
+                  <p class="cell-muted">{{ $t('ui.extensions.validation.completed') }} {{ formatDate(detail.validation.completedAt) }}</p>
                 </template>
-                <p v-else class="config-note">El servidor no adjuntó un informe de validación. No se puede aprobar.</p>
+                <p v-else class="config-note">{{ $t('ui.extensions.validation.missing') }}</p>
               </section>
 
               <section class="extension-block" aria-labelledby="extension-permissions-title">
-                <h4 id="extension-permissions-title">Cambios de permisos</h4>
-                <p>Los permisos de la extensión se conceden con la aprobación y los aplica el servidor. El navegador no los guarda como autoridad.</p>
-                <p class="cell-note">Concedidos a: {{ detail.permissionDelta.grantedTo || 'Superadmin' }}</p>
+                <h4 id="extension-permissions-title">{{ $t('ui.extensions.permissions.title') }}</h4>
+                <p>{{ $t('ui.extensions.permissions.note') }}</p>
+                <p class="cell-note">{{ $t('ui.extensions.permissions.granted_to') }} {{ detail.permissionDelta.grantedTo || 'Superadmin' }}</p>
                 <div class="extension-permission-columns">
-                  <div><strong>Permisos nuevos</strong><ul v-if="detail.permissionDelta.added.length"><li v-for="permission in detail.permissionDelta.added" :key="'add-' + permission.code"><code>{{ permission.code }}</code> · {{ permission.label }}<p v-if="permission.description" class="cell-note">{{ permission.description }}</p></li></ul><p v-else class="cell-muted">Ninguno.</p></div>
-                  <div><strong>Permisos retirados</strong><ul v-if="detail.permissionDelta.removed.length"><li v-for="code in detail.permissionDelta.removed" :key="'rem-' + code"><code>{{ code }}</code> · {{ permissionLabel(code) }}</li></ul><p v-else class="cell-muted">Ninguno.</p></div>
+                  <div><strong>{{ $t('ui.extensions.permissions.new') }}</strong><ul v-if="detail.permissionDelta.added.length"><li v-for="permission in detail.permissionDelta.added" :key="'add-' + permission.code"><code>{{ permission.code }}</code> · {{ permission.label }}<p v-if="permission.description" class="cell-note">{{ permission.description }}</p></li></ul><p v-else class="cell-muted">{{ $t('ui.extensions.permissions.none') }}</p></div>
+                  <div><strong>{{ $t('ui.extensions.permissions.removed') }}</strong><ul v-if="detail.permissionDelta.removed.length"><li v-for="code in detail.permissionDelta.removed" :key="'rem-' + code"><code>{{ code }}</code> · {{ permissionLabel(code) }}</li></ul><p v-else class="cell-muted">{{ $t('ui.extensions.permissions.none') }}</p></div>
                 </div>
-                <p v-if="detail.permissionDelta.core && detail.permissionDelta.core.length" class="cell-note">Permisos del núcleo implicados: <span class="mono">{{ detail.permissionDelta.core.join(', ') }}</span></p>
+                <p v-if="detail.permissionDelta.core && detail.permissionDelta.core.length" class="cell-note">{{ $t('ui.extensions.permissions.core') }} <span class="mono">{{ detail.permissionDelta.core.join(', ') }}</span></p>
                 <p v-if="detail.permissionDelta.note" class="cell-note">{{ detail.permissionDelta.note }}</p>
               </section>
 
               <section class="extension-block" aria-labelledby="extension-contributions-title">
-                <h4 id="extension-contributions-title">Aportaciones del paquete</h4>
-                <p class="cell-note">SDK {{ detail.manifest.sdkVersion }} · esquema {{ detail.manifest.schemaVersion }}. Estos son los recursos declarados del paquete exacto que estás revisando.</p>
-                <h5>Páginas, paneles y widgets</h5>
+                <h4 id="extension-contributions-title">{{ $t('ui.extensions.contributions.title') }}</h4>
+                <p class="cell-note">{{ $t('ui.extensions.contributions.sdk_line', { sdk: detail.manifest.sdkVersion, schema: detail.manifest.schemaVersion }) }}</p>
+                <h5>{{ $t('ui.extensions.contributions.sections') }}</h5>
                 <ul class="extension-contributions">
                   <li v-for="page in detail.manifest.frontend && detail.manifest.frontend.pages || []" :key="'page-' + page.id">
-                    Página <strong>{{ page.label }}</strong> · <code>{{ page.id }}</code> · {{ viewSummary(page.view) }} · permiso <code>{{ page.permission }}</code>
+                    {{ $t('ui.extensions.contributions.page') }} <strong>{{ page.label }}</strong> · <code>{{ page.id }}</code> · {{ viewSummary(page.view) }} · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ page.permission }}</code>
                   </li>
                   <li v-for="panel in detail.manifest.frontend && detail.manifest.frontend.assetPanels || []" :key="'panel-' + panel.id">
-                    Panel <strong>{{ panel.label }}</strong> · <code>{{ panel.id }}</code> · {{ viewSummary(panel.view) }} · permiso <code>{{ panel.permission }}</code>
+                    {{ $t('ui.extensions.contributions.panel') }} <strong>{{ panel.label }}</strong> · <code>{{ panel.id }}</code> · {{ viewSummary(panel.view) }} · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ panel.permission }}</code>
                   </li>
                   <li v-for="widget in detail.manifest.frontend && detail.manifest.frontend.widgets || []" :key="'widget-' + widget.id">
-                    Widget <strong>{{ widget.label }}</strong> · <code>{{ widget.id }}</code> · {{ viewSummary(widget.view) }} · permiso <code>{{ widget.permission }}</code>
+                    {{ $t('ui.extensions.contributions.widget') }} <strong>{{ widget.label }}</strong> · <code>{{ widget.id }}</code> · {{ viewSummary(widget.view) }} · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ widget.permission }}</code>
                   </li>
                   <li v-for="action in detail.manifest.frontend && detail.manifest.frontend.actions || []" :key="'action-' + action.id">
-                    Acción <strong>{{ action.label }}</strong> · <code>{{ action.id }}</code> · operación <code>{{ action.operation }}</code> · permiso <code>{{ action.permission }}</code>
+                    {{ $t('ui.extensions.contributions.action') }} <strong>{{ action.label }}</strong> · <code>{{ action.id }}</code> · {{ $t('ui.extensions.contributions.operation_label') }} <code>{{ action.operation }}</code> · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ action.permission }}</code>
                   </li>
                 </ul>
-                <h5>Operaciones</h5>
-                <p v-if="!detail.manifest.operations || !detail.manifest.operations.length" class="cell-note">No declara operaciones.</p>
+                <h5>{{ $t('ui.extensions.contributions.operations') }}</h5>
+                <p v-if="!detail.manifest.operations || !detail.manifest.operations.length" class="cell-note">{{ $t('ui.extensions.contributions.no_operations') }}</p>
                 <ul v-else class="extension-contributions">
                   <li v-for="operation in detail.manifest.operations" :key="operation.name">
-                    <code>{{ operation.name }}</code> · {{ operation.description }} · permiso <code>{{ operation.permission }}</code> · {{ operation.mutation ? 'modifica datos' : 'consulta' }}
+                    <code>{{ operation.name }}</code> · {{ operation.description }} · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ operation.permission }}</code> · {{ operation.mutation ? 'modifica datos' : 'consulta' }}
                   </li>
                 </ul>
-                <h5>Persistencia y tareas periódicas</h5>
+                <h5>{{ $t('ui.extensions.contributions.scheduled') }}</h5>
                 <ul class="extension-contributions">
                   <li v-for="collection in detail.manifest.collections || []" :key="'collection-' + collection.name">
-                    Colección <code>{{ collection.name }}</code> · {{ collection.description }}
+                    {{ $t('ui.extensions.contributions.collection') }} <code>{{ collection.name }}</code> · {{ collection.description }}
                   </li>
                   <li v-for="schedule in detail.manifest.schedules || []" :key="'schedule-' + schedule.name">
-                    Tarea <code>{{ schedule.name }}</code> · cada {{ schedule.intervalSeconds }} segundos · permiso <code>{{ schedule.permission }}</code>
+                    {{ $t('ui.extensions.contributions.task') }} <code>{{ schedule.name }}</code> · {{ $t('ui.extensions.contributions.every') }} {{ schedule.intervalSeconds }} {{ $t('ui.extensions.contributions.seconds') }} · {{ $t('ui.extensions.contributions.permission_label') }} <code>{{ schedule.permission }}</code>
                   </li>
                 </ul>
-                <h5>Referencias para agentes</h5>
-                <p v-if="!detail.manifest.skills || !detail.manifest.skills.length" class="cell-note">No declara skills.</p>
+                <h5>{{ $t('ui.extensions.contributions.agents') }}</h5>
+                <p v-if="!detail.manifest.skills || !detail.manifest.skills.length" class="cell-note">{{ $t('ui.extensions.contributions.no_skills') }}</p>
                 <ul v-else class="extension-contributions">
                   <li v-for="skill in detail.manifest.skills" :key="skill.name"><code>{{ skill.name }}</code> · {{ skill.description }} · <code>{{ skill.path }}</code></li>
                 </ul>
               </section>
 
               <section class="extension-block" aria-labelledby="extension-migrations-title">
-                <h4 id="extension-migrations-title">Plan de migraciones</h4>
-                <p v-if="!detail.migrationPlan || !detail.migrationPlan.required">No se aplicarán migraciones para este candidato.</p>
+                <h4 id="extension-migrations-title">{{ $t('ui.extensions.migrations.title') }}</h4>
+                <p v-if="!detail.migrationPlan || !detail.migrationPlan.required">{{ $t('ui.extensions.migrations.none') }}</p>
                 <template v-else>
-                  <p>Esquema {{ detail.migrationPlan.from }} → {{ detail.migrationPlan.to }} · {{ detail.migrationPlan.compatible ? 'Compatible' : 'No compatible' }}. El rollback queda bloqueado si el esquema de datos deja de ser compatible.</p>
+                  <p>{{ $t('ui.extensions.migrations.line', { from: detail.migrationPlan.from, to: detail.migrationPlan.to, state: detail.migrationPlan.compatible ? $t('ui.extensions.migrations.compatible') : $t('ui.extensions.migrations.incompatible') }) }}</p>
                   <ol class="extension-migrations">
                     <li v-for="revision in detail.migrationPlan.steps" :key="revision.from + '-' + revision.to">
                       {{ revision.from }} → {{ revision.to }} · <code>{{ revision.handler }}</code>
@@ -1529,15 +1536,15 @@
 
               <div v-if="canManage" class="extension-actions">
                 <button v-if="detail.state === 'pending'" type="button" class="btn btn--primary" @click="askApprove">
-                  <app-icon name="check"></app-icon> Aprobar e instalar
+                  <app-icon name="check"></app-icon> {{ $t('ui.extensions.approval.title') }}
                 </button>
-                <p v-if="detail.state === 'pending'" class="config-note">La aprobación humana instala este digest y activa una primera instalación. Una actualización conserva el estado activo o desactivado. Si el catálogo cambió, el servidor rechaza la operación como obsoleta.</p>
-                <p v-else class="config-note">Este candidato ya está {{ candidateStateLabel(detail.state).toLowerCase() }}. Los cambios se gestionan desde los módulos instalados.</p>
+                <p v-if="detail.state === 'pending'" class="config-note">{{ $t('ui.extensions.approval.lead') }}</p>
+                <p v-else class="config-note">{{ $t('ui.extensions.approval.already_installed', { state: candidateStateLabel(detail.state).toLowerCase() }) }}</p>
               </div>
 
               <section class="extension-block" aria-labelledby="extension-history-title">
-                <h4 id="extension-history-title">Historial</h4>
-                <p v-if="!history.length" class="config-note">El servidor no adjuntó historial para este candidato.</p>
+                <h4 id="extension-history-title">{{ $t('ui.extensions.history.title') }}</h4>
+                <p v-if="!history.length" class="config-note">{{ $t('ui.extensions.history.empty') }}</p>
                 <ol v-else class="extension-history">
                   <li v-for="entry in history" :key="entry.id">
                     <div>
@@ -1558,32 +1565,32 @@
 
         <section class="extension-installed" aria-labelledby="extension-installed-title">
           <header class="panel-head">
-            <div><p class="eyebrow">Estado del servidor</p><h3 id="extension-installed-title">Módulos instalados</h3></div>
+            <div><p class="eyebrow">{{ $t('ui.extensions.installed.title') }}</p><h3 id="extension-installed-title">{{ $t('ui.extensions.installed.modules') }}</h3></div>
             <span class="config-badge">{{ installedItems.length }}</span>
           </header>
-          <p class="config-note">Desactivar retira la interfaz y bloquea operaciones sin borrar datos. El servidor conserva el paquete y su historial para poder reactivarlo.</p>
-          <p v-if="!installedItems.length" class="config-empty">No hay módulos instalados en este servidor.</p>
+          <p class="config-note">{{ $t('ui.extensions.installed.note') }}</p>
+          <p v-if="!installedItems.length" class="config-empty">{{ $t('ui.extensions.installed.empty') }}</p>
           <ul v-else class="extension-installed__list">
             <li v-for="item in installedItems" :key="item.id">
               <div class="extension-installed__copy">
                 <strong>{{ item.manifest.name || item.id }}</strong>
-                <span class="cell-note"><code>{{ item.id }}</code> · {{ item.version }} · revisión {{ item.revision === null ? 'no informada' : item.revision }}</span>
-                <span class="cell-note">Operaciones autorizadas: {{ item.operations.length }} · esquema {{ item.schemaVersion }}</span>
+                <span class="cell-note">{{ $t('ui.extensions.installed.line', { id: item.id, version: item.version, revision: item.revision === null ? $t('ui.extensions.validation.unknown') : item.revision }) }}</span>
+                <span class="cell-note">{{ $t('ui.extensions.contributions.operations_line', { count: item.operations.length, schema: item.schemaVersion }) }}</span>
                 <span class="mono extension-digest">{{ item.digest }}</span>
               </div>
               <div class="extension-installed__actions">
-                <span v-if="item.requiresUpgrade" class="status-pill status--warn">Requiere actualización</span>
+                <span v-if="item.requiresUpgrade" class="status-pill status--warn">{{ $t('ui.extensions.page.upgrade') }}</span>
                 <span v-else class="status-pill" :class="item.enabled ? 'status--ok' : 'status--hold'">{{ item.enabled ? 'Activa' : 'Desactivada' }}</span>
-                <button v-if="item.requiresUpgrade" type="button" class="btn btn--secondary btn--small" @click="loadStatus(item)">Ver estado</button>
+                <button v-if="item.requiresUpgrade" type="button" class="btn btn--secondary btn--small" @click="loadStatus(item)">{{ $t('ui.extensions.installed.status') }}</button>
                 <template v-else>
-                  <button v-if="item.enabled" type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, false)">Desactivar</button>
-                  <button v-else type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, true)">Activar</button>
-                  <button type="button" class="btn btn--ghost btn--small" @click="loadStatus(item)">Ver estado</button>
-                  <button type="button" class="btn btn--ghost btn--small" :disabled="!Number.isInteger(item.revision)" @click="askUninstall(item)">Desinstalar</button>
+                  <button v-if="item.enabled" type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, false)">{{ $t('ui.extensions.installed.disable') }}</button>
+                  <button v-else type="button" class="btn btn--secondary btn--small" :disabled="!Number.isInteger(item.revision)" @click="askToggle(item, true)">{{ $t('ui.extensions.installed.enable') }}</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="loadStatus(item)">{{ $t('ui.extensions.installed.status') }}</button>
+                  <button type="button" class="btn btn--ghost btn--small" :disabled="!Number.isInteger(item.revision)" @click="askUninstall(item)">{{ $t('ui.extensions.installed.uninstall') }}</button>
                 </template>
               </div>
               <div v-if="status.byId[item.id] && (status.byId[item.id].loading || status.byId[item.id].loaded || status.byId[item.id].error)" class="extension-installed__status">
-                <p v-if="status.byId[item.id].loading" class="config-note" role="status">Consultando el estado de la extensión…</p>
+                <p v-if="status.byId[item.id].loading" class="config-note" role="status">{{ $t('ui.extensions.installed.loading') }}</p>
                 <p v-else-if="status.byId[item.id].error" class="form-alert" role="alert"><app-icon name="alert"></app-icon> {{ status.byId[item.id].error }}</p>
                 <dl v-else class="extension-facts">
                   <div v-for="fact in statusFacts(item)" :key="fact.label"><dt>{{ fact.label }}</dt><dd>{{ fact.value }}</dd></div>
@@ -1597,21 +1604,21 @@
           <div class="extension-confirm">
             <p>{{ confirm.summary }}</p>
             <dl v-if="confirm.payload" class="extension-facts">
-              <div v-if="confirm.payload.digest"><dt>Digest</dt><dd class="mono extension-digest">{{ confirm.payload.digest }}</dd></div>
-              <div v-if="confirm.payload.version"><dt>Versión destino</dt><dd>{{ confirm.payload.version }}</dd></div>
-              <div><dt>Revisión esperada del servidor</dt><dd>{{ confirm.payload.expectedVersion === null ? 'Primera instalación' : 'Revisión ' + confirm.payload.expectedVersion }}</dd></div>
+              <div v-if="confirm.payload.digest"><dt>{{ $t('ui.extensions.confirm.digest') }}</dt><dd class="mono extension-digest">{{ confirm.payload.digest }}</dd></div>
+              <div v-if="confirm.payload.version"><dt>{{ $t('ui.extensions.confirm.target') }}</dt><dd>{{ confirm.payload.version }}</dd></div>
+              <div><dt>{{ $t('ui.extensions.confirm.revision') }}</dt><dd>{{ confirm.payload.expectedVersion === null ? 'Primera instalación' : 'Revisión ' + confirm.payload.expectedVersion }}</dd></div>
             </dl>
             <div v-if="confirm.typedRequired" class="field">
-              <label for="extension-confirm-typed">Escribe <code>{{ confirm.typedRequired }}</code> para confirmar</label>
+              <label for="extension-confirm-typed">{{ $t('ui.extensions.confirm.type_id', { id: confirm.typedRequired }) }}</label>
               <div class="input-shell">
                 <input id="extension-confirm-typed" v-model="confirm.typedValue" type="text" autocomplete="off" spellcheck="false" :aria-describedby="'extension-confirm-typed-hint'">
               </div>
-              <p id="extension-confirm-typed-hint" class="field__hint">La confirmación escrita es obligatoria para restaurar los datos.</p>
+              <p id="extension-confirm-typed-hint" class="field__hint">{{ $t('ui.extensions.confirm.restore_note') }}</p>
             </div>
             <p v-if="confirm.error" class="form-alert" role="alert"><app-icon name="alert"></app-icon> {{ confirm.error }}</p>
           </div>
           <template #footer>
-            <button type="button" class="btn btn--ghost" :disabled="confirm.busy" @click="closeConfirm">Cancelar</button>
+            <button type="button" class="btn btn--ghost" :disabled="confirm.busy" @click="closeConfirm">{{ $t('ui.common.cancel') }}</button>
             <button type="button" class="btn btn--primary" :disabled="confirm.busy" @click="confirmRun">
               {{ confirm.busy ? 'Enviando…' : confirm.confirmLabel }}
             </button>

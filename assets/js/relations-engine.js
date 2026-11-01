@@ -16,13 +16,21 @@
   const RELATIONS_KEY = KEYS.relations || 'asset-manager.relations';
   const MAX_NOTE = 240;
 
+  // Catalog lookup for the copy this engine writes into history entries and
+  // validation errors. A standalone evaluation has no runtime, so it renders
+  // nothing instead of an invented source string.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   function nowIso() {
     return new Date().toISOString();
   }
 
   function actorOf(app) {
     const user = app && app.currentUser ? app.currentUser : null;
-    return user && user.name ? user.name : 'Administrador';
+    return user && user.name ? user.name : tr('ui.relations.actor_fallback');
   }
 
   function text(value, fallback) {
@@ -56,7 +64,7 @@
   }
 
   function typeLabel(type, outgoing) {
-    if (!type) return 'Relación';
+    if (!type) return tr('ui.relations.type_fallback');
     if (!outgoing && type.inverse) return type.inverse;
     return type.label;
   }
@@ -275,7 +283,7 @@
       actor: actorOf(app),
       changes: [{
         field: 'relations',
-        label: 'Relación',
+        label: tr('ui.relations.field_relation'),
         before: counterpart ? counterpart.label : '—',
         after: other ? other.name + ' (' + other.code + ')' : '—'
       }],
@@ -289,24 +297,24 @@
     const errors = { type: '', target: '', general: '' };
     const source = assetById(app, sourceId);
     if (!source) {
-      errors.general = 'El activo ya no está disponible.';
+      errors.general = tr('ui.relations.error.asset_unavailable');
       return errors;
     }
     if (source.retired) {
-      errors.general = 'Un activo dado de baja no admite vínculos nuevos.';
+      errors.general = tr('ui.relations.error.asset_retired');
       return errors;
     }
     const type = typeById(app, draft && draft.typeId);
-    if (!type) errors.type = 'Selecciona un tipo de relación.';
+    if (!type) errors.type = tr('ui.relations.error.type_required');
     const target = assetById(app, draft && draft.targetId);
     if (!draft || !draft.targetId) {
-      errors.target = 'Selecciona el activo relacionado.';
+      errors.target = tr('ui.relations.error.target_required');
     } else if (!target) {
-      errors.target = 'El activo seleccionado ya no está disponible.';
+      errors.target = tr('ui.relations.error.target_unavailable');
     } else if (target.id === source.id) {
-      errors.target = 'Un activo no puede relacionarse consigo mismo.';
+      errors.target = tr('ui.relations.error.self_link');
     } else if (target.retired) {
-      errors.target = 'No se puede vincular con un activo dado de baja.';
+      errors.target = tr('ui.relations.error.target_retired');
     } else if (type) {
       const duplicated = state(app).links.some(function (link) {
         if (link.type !== type.id) return false;
@@ -314,7 +322,7 @@
           || (link.from === target.id && link.to === source.id);
       });
       if (duplicated) {
-        errors.target = 'Ya existe «' + type.label + '» con ' + target.name + '.';
+        errors.target = tr('ui.relations.error.duplicate', { type: type.label, name: target.name });
       }
     }
     return errors;
@@ -352,14 +360,16 @@
     };
     relations.links = relations.links.concat([link]);
     pushHistory(source, historyFor(
-      app, source, 'Relación creada',
-      type.label + ' ' + target.name + ' (' + target.code + ').' + (link.note ? ' ' + link.note : ''),
-      target, { label: 'Sin vínculo' }
+      app, source, tr('ui.relations.history.created'),
+      link.note
+        ? tr('ui.relations.history.created_detail_note', { type: type.label, name: target.name, code: target.code, note: link.note })
+        : tr('ui.relations.history.created_detail', { type: type.label, name: target.name, code: target.code }),
+      target, { label: tr('ui.relations.history.no_link') }
     ));
     pushHistory(target, historyFor(
-      app, target, 'Relación creada',
-      typeLabel(type, false) + ' ' + source.name + ' (' + source.code + ').',
-      source, { label: 'Sin vínculo' }
+      app, target, tr('ui.relations.history.created'),
+      tr('ui.relations.history.created_detail', { type: typeLabel(type, false), name: source.name, code: source.code }),
+      source, { label: tr('ui.relations.history.no_link') }
     ));
     persist(app);
     return { ok: true, link: link };
@@ -368,21 +378,21 @@
   function removeLink(app, linkId) {
     const relations = state(app);
     const link = relations.links.find(function (item) { return item.id === linkId; });
-    if (!link) return { ok: false, error: 'El vínculo ya no existe.' };
+    if (!link) return { ok: false, error: tr('ui.relations.error.link_missing') };
     const source = assetById(app, link.from);
     const target = assetById(app, link.to);
     const type = typeById(app, link.type);
     relations.links = relations.links.filter(function (item) { return item.id !== linkId; });
     if (source && target && type) {
       pushHistory(source, historyFor(
-        app, source, 'Relación eliminada',
-        type.label + ' ' + target.name + ' (' + target.code + ') desvinculado.',
-        target, { label: 'Vínculo' }
+        app, source, tr('ui.relations.history.removed'),
+        tr('ui.relations.history.removed_detail', { type: type.label, name: target.name, code: target.code }),
+        target, { label: tr('ui.relations.history.link_label') }
       ));
       pushHistory(target, historyFor(
-        app, target, 'Relación eliminada',
-        typeLabel(type, false) + ' ' + source.name + ' (' + source.code + ') desvinculado.',
-        source, { label: 'Vínculo' }
+        app, target, tr('ui.relations.history.removed'),
+        tr('ui.relations.history.removed_detail', { type: typeLabel(type, false), name: source.name, code: source.code }),
+        source, { label: tr('ui.relations.history.link_label') }
       ));
     }
     persist(app);
@@ -399,7 +409,7 @@
     // form checks its own label error explicitly.
     const errors = { label: '', inverse: '', general: '' };
     const label = text(draft && draft.label, '');
-    if (!label) errors.label = 'Escribe la etiqueta del tipo.';
+    if (!label) errors.label = tr('ui.relations.error.type_label_required');
     const types = state(app).types;
     const editingId = draft && draft.id;
     const tones = ['network', 'virtual', 'physical', 'power', 'dependency', 'link'];
@@ -407,7 +417,7 @@
     if (editingId) {
       const index = types.findIndex(function (type) { return type.id === editingId; });
       if (index === -1) {
-        errors.general = 'El tipo de relación ya no existe.';
+        errors.general = tr('ui.relations.error.type_missing');
         return { ok: false, errors: errors };
       }
       if (errors.label || errors.general) return { ok: false, errors: errors };
@@ -451,7 +461,7 @@
     if (usage) {
       return {
         ok: false,
-        error: 'El tipo tiene ' + usage + (usage === 1 ? ' vínculo activo' : ' vínculos activos') + '. Elimínalos antes de borrar el tipo.'
+        error: tr('ui.relations.error.type_in_use', { count: usage })
       };
     }
     app.relations.types = state(app).types.filter(function (type) { return type.id !== typeId; });

@@ -13,6 +13,17 @@
 (function () {
   'use strict';
 
+  // Catalog lookups for the adapter copy (errors, toasts, history labels).
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
+  function levelLabel(level) {
+    const key = LEVEL_LABELS[text(level)];
+    return key ? tr(key) : text(level);
+  }
+
   const PAGE_LIMIT = 50;
   const MAX_LIMIT = 200;
   const HISTORY_LIMIT = 25;
@@ -23,10 +34,10 @@
   const STATUS_INACTIVE = 'inactive';
   const LEVELS = ['site', 'building', 'floor', 'room_zone'];
   const LEVEL_LABELS = {
-    site: 'Sede',
-    building: 'Edificio',
-    floor: 'Piso',
-    room_zone: 'Sala o zona'
+    site: 'ui.organization.level.site',
+    building: 'ui.organization.level.building',
+    floor: 'ui.organization.level.floor',
+    room_zone: 'ui.organization.level.room_zone'
   };
   // Visual vocabulary for the six default server types. Unknown custom types get
   // the neutral network tone; the icon is never invented from a label.
@@ -39,21 +50,21 @@
     associated_with: { icon: 'refresh', tone: 'link' }
   };
   const HISTORY_TITLES = {
-    created: 'Persona creada',
-    updated: 'Persona actualizada',
-    activated: 'Persona reactivada',
-    deactivated: 'Persona desactivada',
-    location_created: 'Ubicación creada',
-    location_updated: 'Ubicación actualizada',
-    department_created: 'Departamento creado',
-    department_updated: 'Departamento actualizado',
-    assigned: 'Responsable asignado',
-    returned: 'Responsable devuelto',
-    transferred: 'Activo trasladado',
-    relationship_created: 'Relación creada',
-    relationship_updated: 'Relación modificada',
-    relationship_removed: 'Relación eliminada',
-    host_moved: 'Host cambiado'
+    created: 'ui.organization.history.person_created',
+    updated: 'ui.organization.history.person_updated',
+    activated: 'ui.organization.history.person_activated',
+    deactivated: 'ui.organization.history.person_deactivated',
+    location_created: 'ui.organization.history.location_created',
+    location_updated: 'ui.organization.history.location_updated',
+    department_created: 'ui.organization.history.department_created',
+    department_updated: 'ui.organization.history.department_updated',
+    assigned: 'ui.organization.history.assigned',
+    returned: 'ui.organization.history.returned',
+    transferred: 'ui.organization.history.transferred',
+    relationship_created: 'ui.organization.history.relationship_created',
+    relationship_updated: 'ui.organization.history.relationship_updated',
+    relationship_removed: 'ui.organization.history.relationship_removed',
+    host_moved: 'ui.organization.history.host_moved'
   };
 
   // Monotonic epoch: never reset, so a cleared session can never match a late
@@ -267,7 +278,7 @@
     return {
       id: text(payload.id),
       level: LEVELS.indexOf(level) === -1 ? text(payload.level) : level,
-      levelLabel: LEVEL_LABELS[level] || text(payload.level),
+      levelLabel: levelLabel(payload.level),
       parentId: text(payload.parentId),
       name: text(payload.name),
       label: text(payload.name),
@@ -403,7 +414,7 @@
       entityId: text(payload.entityId),
       assetId: text(payload.assetId),
       action: text(payload.action),
-      title: HISTORY_TITLES[text(payload.action)] || 'Cambio registrado',
+      title: (HISTORY_TITLES[text(payload.action)] ? tr(HISTORY_TITLES[text(payload.action)]) : tr('ui.organization.history.fallback')),
       actorId: text(payload.actorId),
       actorUsername: text(payload.actorUsername),
       source: text(payload.source),
@@ -474,7 +485,7 @@
     const buildings = locations
       .filter(function (location) { return location.level === 'building'; })
       .map(function (location) {
-        return { id: location.id, site: location.parentId, name: location.name, kind: LEVEL_LABELS.building, address: '' };
+        return { id: location.id, site: location.parentId, name: location.name, kind: levelLabel('building'), address: '' };
       });
     const rootSiteOf = function (location) {
       let current = location;
@@ -513,8 +524,8 @@
           site: floor.site,
           building: floor.building,
           floor: floor.id,
-          name: floor.planRef || 'Plano sin referencia',
-          kind: 'Referencia del servidor',
+          name: floor.planRef || tr('ui.organization.map.plan_without_reference'),
+          kind: tr('ui.organization.map.server_reference'),
           // No plan file is uploaded or fetched: the reference stays metadata.
           src: '',
           width: DEFAULT_PLAN.width,
@@ -570,6 +581,7 @@
     HISTORY_LIMIT,
     LEVELS,
     LEVEL_LABELS,
+    levelLabel,
     DEFAULT_PLAN,
     mapDepartment,
     mapPerson,
@@ -849,8 +861,8 @@
         if (text(filters.search)) parts.push('"' + text(filters.search) + '"');
         if (chosenFilter(filters.department)) parts.push(this.departmentLabel(filters.department));
         if (chosenFilter(filters.site)) parts.push(this.siteLabel(filters.site));
-        if (filters.status === 'active') parts.push('Solo activas');
-        if (filters.status === 'inactive') parts.push('Solo inactivas');
+        if (filters.status === 'active') parts.push(tr('ui.organization.people.only_active'));
+        if (filters.status === 'inactive') parts.push(tr('ui.organization.people.only_inactive'));
         return parts.join(' · ');
       },
       /* Universal search keeps its prototype records only for demo sessions. Under
@@ -866,12 +878,12 @@
         if (!search || typeof search.record !== 'function') return kept;
         if (this.organizationDirectoryMode) {
           this.organization.people.items.forEach(function (person) {
-            kept.push(search.record('person', person.id, person.label, person.role || 'Persona del directorio', 'user', [person.name, person.role]));
+            kept.push(search.record('person', person.id, person.label, person.role || tr('ui.organization.people.directory_person'), 'user', [person.name, person.role]));
           });
         }
         if (this.organizationAssetsMode) {
           this.organizationServerSites.forEach(function (site) {
-            kept.push(search.record('site', site.id, site.label, 'Sede · Mapa', 'building', [site.short]));
+            kept.push(search.record('site', site.id, site.label, tr('ui.organization.search.site_map'), 'building', [site.short]));
           });
           this.organization.locations.items.forEach(function (location) {
             if (location.level === 'site') return;
@@ -984,7 +996,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = 'No tienes permiso para leer el directorio de personas.';
+          page.error = tr('ui.organization.error.people_read_forbidden');
           return false;
         }
         const limit = Math.min(MAX_LIMIT, number(options && options.limit, MAX_LIMIT));
@@ -1009,7 +1021,7 @@
           if (error && error.status === 401) return false;
           page.items = [];
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudieron cargar los departamentos del servidor.';
+          page.error = (error && error.message) || tr('ui.organization.error.departments_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1021,7 +1033,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = 'No tienes permiso para leer las ubicaciones del servidor.';
+          page.error = tr('ui.organization.error.locations_read_forbidden');
           return false;
         }
         const epoch = nextEpoch();
@@ -1048,7 +1060,7 @@
           if (epoch !== page.epoch || (error && error.name === 'AbortError')) return false;
           page.items = [];
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudieron cargar las ubicaciones del servidor.';
+          page.error = (error && error.message) || tr('ui.organization.error.locations_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1060,7 +1072,7 @@
           tree.roots = [];
           tree.nodeCount = 0;
           tree.loaded = false;
-          tree.error = 'No tienes permiso para leer la estructura de ubicaciones.';
+          tree.error = tr('ui.organization.error.location_tree_read_forbidden');
           return false;
         }
         const rootId = text(options && options.rootId);
@@ -1090,7 +1102,7 @@
           if (epoch !== tree.epoch || (error && error.name === 'AbortError')) return false;
           tree.roots = [];
           tree.loaded = false;
-          tree.error = (error && error.message) || 'No se pudo cargar el árbol de ubicaciones.';
+          tree.error = (error && error.message) || tr('ui.organization.error.location_tree_load_failed');
           return false;
         } finally {
           if (epoch === tree.epoch) tree.loading = false;
@@ -1115,7 +1127,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = 'No tienes permiso para leer el directorio de personas.';
+          page.error = tr('ui.organization.error.people_read_forbidden');
           return false;
         }
         const page = this.organization.people;
@@ -1145,7 +1157,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudieron cargar las personas del servidor.';
+          page.error = (error && error.message) || tr('ui.organization.error.people_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1157,7 +1169,7 @@
           totals.total = 0;
           totals.active = 0;
           totals.loaded = false;
-          totals.error = 'No tienes permiso para leer el directorio de personas.';
+          totals.error = tr('ui.organization.error.people_read_forbidden');
           return false;
         }
         const totals = this.organization.peopleTotals;
@@ -1177,7 +1189,7 @@
         } catch (error) {
           if (epoch !== totals.epoch) return false;
           totals.loaded = false;
-          totals.error = (error && error.message) || 'No se pudieron contar las personas del servidor.';
+          totals.error = (error && error.message) || tr('ui.organization.error.people_count_failed');
           return false;
         }
       },
@@ -1228,7 +1240,7 @@
           detail.id = personId;
           detail.record = null;
           detail.loading = false;
-          detail.error = 'No tienes permiso para consultar esta persona.';
+          detail.error = tr('ui.organization.error.person_read_forbidden');
           return false;
         }
         const detail = this.organization.personDetail;
@@ -1250,7 +1262,7 @@
           });
           if (epoch !== this.organization.personDetail.epoch || !this.authenticated) return false;
           const person = mapPerson(payload);
-          if (!person) throw new Error('El servidor no devolvió la persona solicitada.');
+          if (!person) throw new Error(tr('ui.organization.error.person_missing'));
           this.organization.personDetail.record = person;
           return true;
         } catch (error) {
@@ -1258,8 +1270,8 @@
           if (error && error.name === 'AbortError') return false;
           this.organization.personDetail.record = error && error.status === 404 ? null : this.organization.personDetail.record;
           this.organization.personDetail.error = error && error.status === 404
-            ? 'La persona solicitada ya no está disponible en el servidor.'
-            : (error && error.message) || 'No se pudo cargar la persona desde el servidor.';
+            ? tr('ui.organization.error.person_unavailable')
+            : (error && error.message) || tr('ui.organization.error.person_load_failed');
           return false;
         } finally {
           if (epoch === this.organization.personDetail.epoch) this.organization.personDetail.loading = false;
@@ -1273,7 +1285,7 @@
           denied.items = [];
           denied.total = 0;
           denied.loaded = false;
-          denied.error = 'No tienes permiso para leer los activos del servidor.';
+          denied.error = tr('ui.organization.error.assets_read_forbidden');
           return false;
         }
         const page = this.organization.personAssets;
@@ -1304,7 +1316,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudieron cargar los activos de la persona.';
+          page.error = (error && error.message) || tr('ui.organization.error.person_assets_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1348,7 +1360,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudo cargar el historial del servidor.';
+          page.error = (error && error.message) || tr('ui.organization.error.history_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1369,7 +1381,7 @@
           denied.items = [];
           denied.total = 0;
           denied.loaded = false;
-          denied.error = 'No tienes permiso para leer el historial de la persona.';
+          denied.error = tr('ui.organization.error.history_read_forbidden');
           return false;
         }
         const page = this.organization.personHistory;
@@ -1399,7 +1411,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudo cargar el historial de la persona.';
+          page.error = (error && error.message) || tr('ui.organization.error.person_history_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1424,13 +1436,13 @@
         if (!this.organizationDirectoryMode) {
           page.items = [];
           page.total = 0;
-          page.error = 'No tienes permiso para leer el directorio de personas.';
+          page.error = tr('ui.organization.error.people_read_forbidden');
           return false;
         }
         if (!this.organizationAvailable('assets.view')) {
           page.items = [];
           page.total = 0;
-          page.error = 'No tienes permiso para leer el historial de activos.';
+          page.error = tr('ui.organization.error.asset_history_read_forbidden');
           return false;
         }
         if (!this.organization.personAssets.loaded || (this.organization.personAssets.id !== id)) {
@@ -1474,7 +1486,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudo cargar el historial de activos de la persona.';
+          page.error = (error && error.message) || tr('ui.organization.error.asset_history_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -1487,8 +1499,8 @@
         const editing = dialog.mode === 'edit';
         const permission = editing ? 'people.edit' : 'people.create';
         if (!this.organizationAvailable(permission)) {
-          this.personErrors.general = 'No tienes permiso para guardar personas.';
-          if (this.showToast) this.showToast('No tienes permiso para guardar personas.', 'error');
+          this.personErrors.general = tr('ui.organization.error.person_save_forbidden');
+          if (this.showToast) this.showToast(tr('ui.organization.error.person_save_forbidden'), 'error');
           return false;
         }
         const body = {
@@ -1501,7 +1513,7 @@
           status: dialog.active ? STATUS_ACTIVE : STATUS_INACTIVE
         };
         if (!body.name) {
-          this.personErrors.name = 'Introduce el nombre de la persona.';
+          this.personErrors.name = tr('ui.organization.error.person_name_required');
           return false;
         }
         const state = this.organization;
@@ -1515,7 +1527,7 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const person = mapPerson(payload);
-          if (!person) throw new Error('El servidor no devolvió la persona guardada.');
+          if (!person) throw new Error(tr('ui.organization.error.person_saved_missing'));
           if (editing) {
             const index = state.people.items.findIndex(function (item) { return item.id === person.id; });
             if (index !== -1) state.people.items.splice(index, 1, person);
@@ -1527,11 +1539,11 @@
             if (person.active) state.peopleTotals.active += 1;
           }
           this.personDialog.open = false;
-          if (this.showToast) this.showToast(editing ? 'Persona actualizada.' : 'Persona creada.');
+          if (this.showToast) this.showToast(tr(editing ? 'ui.organization.toast.person_updated' : 'ui.organization.toast.person_created'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.personErrors.general = (error && error.message) || 'No se pudo guardar la persona.';
+          this.personErrors.general = (error && error.message) || tr('ui.organization.error.person_save_failed');
           return false;
         } finally {
           state.saveBusy = false;
@@ -1540,12 +1552,12 @@
       async saveOrganizationDepartment() {
         const dialog = this.departmentDialog || {};
         if (!this.organizationAvailable('config.departments')) {
-          this.departmentErrors.general = 'No tienes permiso para administrar departamentos.';
+          this.departmentErrors.general = tr('ui.organization.error.department_admin_forbidden');
           return false;
         }
         const name = text(dialog.label);
         if (!name) {
-          this.departmentErrors.label = 'Introduce un nombre para el departamento.';
+          this.departmentErrors.label = tr('ui.organization.error.department_name_required');
           return false;
         }
         const editing = dialog.mode === 'edit';
@@ -1557,7 +1569,7 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const department = mapDepartment(payload);
-          if (!department) throw new Error('El servidor no devolvió el departamento guardado.');
+          if (!department) throw new Error(tr('ui.organization.error.department_saved_missing'));
           const page = this.organization.departments;
           if (editing) {
             const index = page.items.findIndex(function (item) { return item.id === department.id; });
@@ -1567,17 +1579,17 @@
             page.total += 1;
           }
           this.departmentDialog.open = false;
-          if (this.showToast) this.showToast(editing ? 'Departamento actualizado.' : 'Departamento creado.');
+          if (this.showToast) this.showToast(tr(editing ? 'ui.organization.toast.department_updated' : 'ui.organization.toast.department_created'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.departmentErrors.general = (error && error.message) || 'No se pudo guardar el departamento.';
+          this.departmentErrors.general = (error && error.message) || tr('ui.organization.error.department_save_failed');
           return false;
         }
       },
       async setOrganizationPersonActive(person, active) {
         if (!person || !this.organizationAvailable('people.edit')) {
-          if (this.showToast) this.showToast('No tienes permiso para cambiar el estado de una persona.', 'error');
+          if (this.showToast) this.showToast(tr('ui.organization.error.person_status_forbidden'), 'error');
           return false;
         }
         const token = this.organizationWriteToken();
@@ -1588,25 +1600,25 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const updated = mapPerson(payload);
-          if (!updated) throw new Error('El servidor no devolvió la persona actualizada.');
+          if (!updated) throw new Error(tr('ui.organization.error.person_updated_missing'));
           const page = this.organization.people;
           const index = page.items.findIndex(function (item) { return item.id === updated.id; });
           if (index !== -1) page.items.splice(index, 1, updated);
           if (this.organization.personDetail.record && this.organization.personDetail.record.id === updated.id) {
             this.organization.personDetail.record = updated;
           }
-          if (this.showToast) this.showToast(updated.active ? 'Persona reactivada.' : 'Persona desactivada.');
+          if (this.showToast) this.showToast(tr(updated.active ? 'ui.organization.toast.person_reactivated' : 'ui.organization.toast.person_deactivated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.organizationShowError(error, 'No se pudo cambiar el estado de la persona.');
+          this.organizationShowError(error, tr('ui.organization.error.person_status_failed'));
           return false;
         }
       },
       /* -------------------------------------------------- location hierarchy */
       openOrganizationLocationDialog(options) {
         if (!this.organizationAvailable('config.sites')) {
-          this.showToast('No tienes permiso para administrar ubicaciones.', 'error');
+          this.showToast(tr('ui.organization.error.location_admin_forbidden'), 'error');
           return false;
         }
         const opts = options || {};
@@ -1650,7 +1662,7 @@
         dialog.error = '';
         dialog.fieldErrors = {};
         if (!this.organizationAvailable('config.sites')) {
-          dialog.error = 'No tienes permiso para administrar ubicaciones.';
+          dialog.error = tr('ui.organization.error.location_admin_forbidden');
           return false;
         }
         if (dialog.busy) return false;
@@ -1658,24 +1670,24 @@
         const level = text(dialog.level) || 'site';
         const name = text(dialog.name);
         if (!name) {
-          dialog.fieldErrors.name = 'Introduce un nombre para la ubicación.';
+          dialog.fieldErrors.name = tr('ui.organization.error.location_name_required');
           dialog.error = dialog.fieldErrors.name;
           return false;
         }
         if (name.length > 120) {
-          dialog.fieldErrors.name = 'El nombre no puede superar 120 caracteres.';
+          dialog.fieldErrors.name = tr('ui.organization.error.location_name_too_long');
           dialog.error = dialog.fieldErrors.name;
           return false;
         }
         const parentId = text(dialog.parentId);
         if (level !== 'site' && !parentId) {
-          dialog.fieldErrors.parentId = 'Selecciona la ubicación de nivel superior.';
+          dialog.fieldErrors.parentId = tr('ui.organization.error.location_parent_required');
           dialog.error = dialog.fieldErrors.parentId;
           return false;
         }
         if (level !== 'site' && !this.organizationLocationParentValid(level, parentId)) {
-          const wanted = { building: 'una sede', floor: 'un edificio', room_zone: 'un piso' }[level] || 'un nivel superior';
-          dialog.fieldErrors.parentId = 'La ubicación superior debe ser ' + wanted + '.';
+          const wanted = { building: 'ui.organization.level_article.site', floor: 'ui.organization.level_article.building', room_zone: 'ui.organization.level_article.floor' }[level] || 'ui.organization.level_article.parent';
+          dialog.fieldErrors.parentId = tr('ui.organization.error.parent_level', { level: tr(wanted) });
           dialog.error = dialog.fieldErrors.parentId;
           return false;
         }
@@ -1683,19 +1695,19 @@
         const longitude = text(dialog.longitude);
         if (latitude || longitude) {
           if (!latitude || !longitude) {
-            dialog.fieldErrors.latitude = 'Indica latitud y longitud juntas, o deja ambas vacías.';
+            dialog.fieldErrors.latitude = tr('ui.organization.error.coordinates_pair');
             dialog.error = dialog.fieldErrors.latitude;
             return false;
           }
           if (level !== 'site') {
-            dialog.fieldErrors.latitude = 'Solo una sede lleva coordenadas geográficas.';
+            dialog.fieldErrors.latitude = tr('ui.organization.error.coordinates_site_only');
             dialog.error = dialog.fieldErrors.latitude;
             return false;
           }
           const lat = Number(latitude);
           const lng = Number(longitude);
           if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
-            dialog.fieldErrors.latitude = 'Las coordenadas no son válidas.';
+            dialog.fieldErrors.latitude = tr('ui.organization.error.coordinates_invalid');
             dialog.error = dialog.fieldErrors.latitude;
             return false;
           }
@@ -1703,12 +1715,12 @@
         const planRef = text(dialog.planRef);
         const planPage = text(dialog.planPage);
         if (level === 'site' && (planRef || planPage)) {
-          dialog.fieldErrors.planRef = 'El plano pertenece a un piso, no a una sede.';
+          dialog.fieldErrors.planRef = tr('ui.organization.error.plan_floor_only');
           dialog.error = dialog.fieldErrors.planRef;
           return false;
         }
         if (planPage && !planRef) {
-          dialog.fieldErrors.planRef = 'Indica la referencia del plano antes de la página.';
+          dialog.fieldErrors.planRef = tr('ui.organization.error.plan_ref_before_page');
           dialog.error = dialog.fieldErrors.planRef;
           return false;
         }
@@ -1745,7 +1757,7 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const mapped = mapLocation(payload);
-          if (!mapped) throw new Error('El servidor no devolvió la ubicación guardada.');
+          if (!mapped) throw new Error(tr('ui.organization.error.location_saved_missing'));
           const page = this.organization.locations;
           if (editing) {
             const index = page.items.findIndex(function (item) { return item.id === mapped.id; });
@@ -1755,14 +1767,14 @@
             page.total += 1;
           }
           dialog.open = false;
-          this.showToast(editing ? 'Ubicación actualizada.' : 'Ubicación creada.');
+          this.showToast(tr(editing ? 'ui.organization.toast.location_updated' : 'ui.organization.toast.location_created'));
           if (!this.organizationWriteOpen(token)) return false;
           await this.loadOrganizationLocations();
           return true;
         } catch (error) {
           if (error && error.name === 'AbortError') return false;
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo guardar la ubicación.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.location_save_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -1770,7 +1782,7 @@
       },
       async setOrganizationLocationActive(location, active) {
         if (!location || !text(location.id) || !this.organizationAvailable('config.sites')) {
-          this.showToast('No tienes permiso para cambiar el estado de una ubicación.', 'error');
+          this.showToast(tr('ui.organization.error.location_status_forbidden'), 'error');
           return false;
         }
         const token = this.organizationWriteToken();
@@ -1781,21 +1793,21 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const mapped = mapLocation(payload);
-          if (!mapped) throw new Error('El servidor no devolvió la ubicación actualizada.');
+          if (!mapped) throw new Error(tr('ui.organization.error.location_updated_missing'));
           const page = this.organization.locations;
           const index = page.items.findIndex(function (item) { return item.id === mapped.id; });
           if (index !== -1) page.items.splice(index, 1, mapped);
-          this.showToast(mapped.active ? 'Ubicación activada.' : 'Ubicación desactivada.');
+          this.showToast(tr(mapped.active ? 'ui.organization.toast.location_activated' : 'ui.organization.toast.location_deactivated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.organizationShowError(error, 'No se pudo cambiar el estado de la ubicación.');
+          this.organizationShowError(error, tr('ui.organization.error.location_status_failed'));
           return false;
         }
       },
       async setOrganizationDepartmentActive(department, active) {
         if (!department || !text(department.id) || !this.organizationAvailable('config.departments')) {
-          this.showToast('No tienes permiso para cambiar el estado de un departamento.', 'error');
+          this.showToast(tr('ui.organization.error.department_status_forbidden'), 'error');
           return false;
         }
         const token = this.organizationWriteToken();
@@ -1806,15 +1818,15 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const mapped = mapDepartment(payload);
-          if (!mapped) throw new Error('El servidor no devolvió el departamento actualizado.');
+          if (!mapped) throw new Error(tr('ui.organization.error.department_updated_missing'));
           const page = this.organization.departments;
           const index = page.items.findIndex(function (item) { return item.id === mapped.id; });
           if (index !== -1) page.items.splice(index, 1, mapped);
-          this.showToast(mapped.active ? 'Departamento activado.' : 'Departamento desactivado.');
+          this.showToast(tr(mapped.active ? 'ui.organization.toast.department_activated' : 'ui.organization.toast.department_deactivated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.organizationShowError(error, 'No se pudo cambiar el estado del departamento.');
+          this.organizationShowError(error, tr('ui.organization.error.department_status_failed'));
           return false;
         }
       },
@@ -1823,7 +1835,7 @@
        * so the legacy flat layout and the canonical levels share one writer. */
       async saveOrganizationLocation(site, location) {
         if (!this.organizationAvailable('config.sites')) {
-          this.showToast('No tienes permiso para administrar ubicaciones.', 'error');
+          this.showToast(tr('ui.organization.error.location_admin_forbidden'), 'error');
           return false;
         }
         const record = location && text(location.id) ? this.organizationLocationById(location.id) : null;
@@ -1837,14 +1849,14 @@
       async confirmOrganizationAssignment() {
         const dialog = this.organization.dialogs.assign;
         if (!this.organizationAvailable('assets.assign')) {
-          dialog.error = 'No tienes permiso para asignar responsables.';
+          dialog.error = tr('ui.organization.error.assign_forbidden');
           return false;
         }
         if (!this.assetAccessReadyForWrite()) return false;
         const assetId = text(dialog.assetId);
         const personId = text(dialog.selectedId || dialog.personId);
         if (!assetId || !personId) {
-          dialog.error = 'Selecciona un activo y una persona.';
+          dialog.error = tr('ui.organization.error.assign_selection_required');
           return false;
         }
         if (dialog.busy) return false;
@@ -1856,7 +1868,7 @@
           if (text(dialog.effectiveAt)) {
             const effective = this.organizationEffectiveIso(dialog.effectiveAt);
             if (!effective) {
-              dialog.error = 'Indica una fecha efectiva válida con zona horaria.';
+              dialog.error = tr('ui.organization.error.effective_invalid_zone');
               return false;
             }
             body.effectiveAt = effective;
@@ -1867,15 +1879,15 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const asset = mapAsset(payload);
-          if (!asset) throw new Error('El servidor no devolvió el activo asignado.');
+          if (!asset) throw new Error(tr('ui.organization.error.assigned_missing'));
           await this.organizationAfterAssetChange(asset, personId);
           if (!this.organizationWriteOpen(token)) return false;
           dialog.open = false;
-          this.showToast('Responsable actualizado.');
+          this.showToast(tr('ui.organization.toast.responsible_updated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo asignar el responsable.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.assign_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -1883,7 +1895,7 @@
       },
       async returnOrganizationAssignment(asset, options) {
         if (!asset || !this.organizationAvailable('assets.assign')) {
-          this.showToast('No tienes permiso para devolver responsables.', 'error');
+          this.showToast(tr('ui.organization.error.return_forbidden'), 'error');
           return false;
         }
         const audit = options || {};
@@ -1893,7 +1905,7 @@
         if (text(audit.effectiveAt)) {
           const effective = this.organizationEffectiveIso(audit.effectiveAt);
           if (!effective) {
-            this.showToast('Indica una fecha efectiva válida.', 'error');
+            this.showToast(tr('ui.organization.error.effective_invalid'), 'error');
             return false;
           }
           body.effectiveAt = effective;
@@ -1906,21 +1918,21 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const updated = mapAsset(payload);
-          if (!updated) throw new Error('El servidor no devolvió el activo actualizado.');
+          if (!updated) throw new Error(tr('ui.organization.error.updated_missing'));
           await this.organizationAfterAssetChange(updated, '');
           if (!this.organizationWriteOpen(token)) return false;
-          this.showToast('Activo sin responsable.');
+          this.showToast(tr('ui.organization.toast.asset_unassigned'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.organizationShowError(error, 'No se pudo devolver el activo.');
+          this.organizationShowError(error, tr('ui.organization.error.return_failed'));
           return false;
         }
       },
       openOrganizationTransfer(asset) {
         if (!asset) return false;
         if (!this.organizationAvailable('assets.edit')) {
-          this.showToast('No tienes permiso para trasladar activos.', 'error');
+          this.showToast(tr('ui.organization.error.transfer_forbidden'), 'error');
           return false;
         }
         const siteId = text(asset.siteId);
@@ -1949,7 +1961,7 @@
       async confirmOrganizationTransfer() {
         const dialog = this.organization.dialogs.transfer;
         if (!this.organizationAvailable('assets.edit')) {
-          dialog.error = 'No tienes permiso para trasladar activos.';
+          dialog.error = tr('ui.organization.error.transfer_forbidden');
           return false;
         }
         if (!this.assetAccessReadyForWrite()) return false;
@@ -1959,13 +1971,13 @@
         const siteId = text(dialog.siteId);
         const locationId = text(dialog.locationId);
         if (!siteId && !locationId) {
-          dialog.fieldErrors = { siteId: 'Elige la sede o la ubicación de destino.' };
-          dialog.error = 'Selecciona la sede o la ubicación de destino.';
+          dialog.fieldErrors = { siteId: tr('ui.organization.error.transfer_target_choose') };
+          dialog.error = tr('ui.organization.error.transfer_target_select');
           return false;
         }
         if (siteId === text(dialog.originalSiteId) && locationId === text(dialog.originalLocationId)) {
-          dialog.fieldErrors = { locationId: 'El activo ya está en ese destino.' };
-          dialog.error = 'El activo ya está en esa ubicación.';
+          dialog.fieldErrors = { locationId: tr('ui.organization.error.transfer_same_site') };
+          dialog.error = tr('ui.organization.error.transfer_same_location');
           return false;
         }
         const body = {
@@ -1977,7 +1989,7 @@
         if (text(dialog.effectiveAt)) {
           const effective = this.organizationEffectiveIso(dialog.effectiveAt);
           if (!effective) {
-            dialog.error = 'Indica una fecha efectiva válida con zona horaria.';
+            dialog.error = tr('ui.organization.error.effective_invalid_zone');
             return false;
           }
           body.effectiveAt = effective;
@@ -1993,7 +2005,7 @@
           });
           if (!this.organizationWriteOpen(token) || this.organization.dialogs.transfer !== dialog) return false;
           const asset = mapAsset(payload);
-          if (!asset) throw new Error('El servidor no devolvió el activo trasladado.');
+          if (!asset) throw new Error(tr('ui.organization.error.transferred_missing'));
           await this.organizationAfterAssetChange(asset, '');
           if (!this.organizationWriteOpen(token)) return false;
           if (this.inventoryDetail && this.inventoryDetail.id === asset.id && typeof this.loadInventoryDetail === 'function') {
@@ -2002,12 +2014,12 @@
             if (typeof this.loadInventoryHistory === 'function') await this.loadInventoryHistory(asset.id);
           }
           dialog.open = false;
-          if (this.showToast) this.showToast('Activo trasladado.');
+          if (this.showToast) this.showToast(tr('ui.organization.toast.asset_transferred'));
           return true;
         } catch (error) {
           if (error && error.name === 'AbortError') return false;
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo trasladar el activo.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.transfer_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -2025,7 +2037,7 @@
       assetAccessReadyForWrite() {
         if (!this.authenticated) return false;
         if (!this.csrfToken) {
-          this.showToast('La sesión no está lista para escribir. Vuelve a iniciar sesión.', 'error');
+          this.showToast(tr('ui.organization.error.session_not_ready'), 'error');
           return false;
         }
         return true;
@@ -2085,7 +2097,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudo buscar en el inventario del servidor.';
+          page.error = (error && error.message) || tr('ui.organization.error.asset_search_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -2115,7 +2127,7 @@
         if (!this.organizationAvailable('assets.view')) {
           state.items = [];
           state.loaded = false;
-          state.error = 'No tienes permiso para leer los tipos de relación del servidor.';
+          state.error = tr('ui.organization.error.types_read_forbidden');
           return false;
         }
         if (state.controller) state.controller.abort();
@@ -2138,7 +2150,7 @@
           if (epoch !== state.epoch || (error && error.name === 'AbortError')) return false;
           state.items = [];
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudieron cargar los tipos de relación.';
+          state.error = (error && error.message) || tr('ui.organization.error.types_load_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -2175,7 +2187,7 @@
           page.items = [];
           page.total = 0;
           page.loaded = false;
-          page.error = (error && error.message) || 'No se pudieron cargar las relaciones del activo.';
+          page.error = (error && error.message) || tr('ui.organization.error.relations_load_failed');
           return false;
         } finally {
           if (epoch === page.epoch) page.loading = false;
@@ -2183,7 +2195,7 @@
       },
       openOrganizationRelationCreate(asset, defaults) {
         if (!this.organizationAvailable('assets.edit')) {
-          this.showToast('No tienes permiso para crear relaciones.', 'error');
+          this.showToast(tr('ui.organization.error.relation_create_forbidden'), 'error');
           return;
         }
         const type = (defaults && defaults.typeKey) || (this.organization.types.items[0] && this.organization.types.items[0].id) || '';
@@ -2223,7 +2235,7 @@
       async saveOrganizationRelation() {
         const dialog = this.organization.dialogs.relation;
         if (!this.organizationAvailable('assets.edit')) {
-          dialog.error = 'No tienes permiso para guardar relaciones.';
+          dialog.error = tr('ui.organization.error.relation_save_forbidden');
           return false;
         }
         if (dialog.busy) return false;
@@ -2237,7 +2249,7 @@
           if (text(dialog.effectiveAt)) {
             const effective = this.organizationEffectiveIso(dialog.effectiveAt);
             if (!effective) {
-              dialog.error = 'Indica una fecha efectiva válida con zona horaria.';
+              dialog.error = tr('ui.organization.error.effective_invalid_zone');
               return false;
             }
             body.effectiveAt = effective;
@@ -2246,11 +2258,11 @@
             body.sourceId = text(dialog.sourceId);
             body.targetId = text(dialog.targetId);
             if (!body.sourceId || !body.targetId) {
-              dialog.error = 'Selecciona el activo de origen y el de destino.';
+              dialog.error = tr('ui.organization.error.relation_targets_required');
               return false;
             }
             if (body.sourceId === body.targetId) {
-              dialog.error = 'Un activo no puede relacionarse consigo mismo.';
+              dialog.error = tr('ui.organization.error.relation_self');
               return false;
             }
           }
@@ -2261,7 +2273,7 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const mapped = mapLink(payload);
-          if (!mapped) throw new Error('El servidor no devolvió la relación guardada.');
+          if (!mapped) throw new Error(tr('ui.organization.error.relation_saved_missing'));
           const page = this.organization.relations;
           if (dialog.mode === 'edit') {
             const index = page.items.findIndex(function (item) { return item.id === mapped.id; });
@@ -2272,11 +2284,11 @@
           if (this.organization.graph.loaded) await this.reloadOrganizationGraph();
           if (!this.organizationWriteOpen(token)) return false;
           dialog.open = false;
-          this.showToast(dialog.mode === 'create' ? 'Relación creada.' : 'Relación actualizada.');
+          this.showToast(tr(dialog.mode === 'create' ? 'ui.organization.toast.relationship_created' : 'ui.organization.toast.relationship_updated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo guardar la relación.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.relation_save_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -2284,7 +2296,7 @@
       },
       async removeOrganizationRelation(edge) {
         if (!edge || !this.organizationAvailable('assets.edit')) {
-          this.showToast('No tienes permiso para eliminar relaciones.', 'error');
+          this.showToast(tr('ui.organization.error.relation_remove_forbidden'), 'error');
           return false;
         }
         const token = this.organizationWriteToken();
@@ -2300,11 +2312,11 @@
           if (!this.organizationWriteOpen(token)) return false;
           if (this.organization.graph.loaded) await this.reloadOrganizationGraph();
           if (!this.organizationWriteOpen(token)) return false;
-          this.showToast('Relación eliminada.');
+          this.showToast(tr('ui.organization.toast.relationship_removed'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.organizationShowError(error, 'No se pudo eliminar la relación.');
+          this.organizationShowError(error, tr('ui.organization.error.relation_remove_failed'));
           return false;
         }
       },
@@ -2362,17 +2374,17 @@
       async confirmOrganizationHostMove() {
         const dialog = this.organization.dialogs.hostMove;
         if (!this.organizationAvailable('assets.edit')) {
-          dialog.error = 'No tienes permiso para mover hosts.';
+          dialog.error = tr('ui.organization.error.host_forbidden');
           return false;
         }
         if (dialog.busy) return false;
         const childId = text(dialog.childId);
         if (!childId) {
-          dialog.error = 'No se identificó el activo que cambia de host.';
+          dialog.error = tr('ui.organization.error.host_child_missing');
           return false;
         }
         if (!text(dialog.newHostId)) {
-          dialog.error = 'Selecciona el host de destino.';
+          dialog.error = tr('ui.organization.error.host_target_required');
           return false;
         }
         // The server requires a reason of at least four characters; the sheet
@@ -2380,7 +2392,7 @@
         // server will reject.
         const reason = text(dialog.reason);
         if (reason.length < 4) {
-          dialog.error = 'Escribe un motivo de al menos 4 caracteres.';
+          dialog.error = tr('ui.organization.error.host_reason_required');
           return false;
         }
         dialog.busy = true;
@@ -2391,14 +2403,14 @@
           if (text(dialog.effectiveAt)) {
             const effective = this.organizationEffectiveIso(dialog.effectiveAt);
             if (!effective) {
-              dialog.error = 'Indica una fecha efectiva válida con zona horaria.';
+              dialog.error = tr('ui.organization.error.effective_invalid_zone');
               return false;
             }
             body.effectiveAt = effective;
           }
           const payload = await window.AssetAccess.request(this, '/relationships/host-move', { method: 'POST', body });
           if (!this.organizationWriteOpen(token)) return false;
-          if (!payload || !payload.newRelationship) throw new Error('El servidor no devolvió el host actualizado.');
+          if (!payload || !payload.newRelationship) throw new Error(tr('ui.organization.error.host_updated_missing'));
           const oldHostId = text(payload.oldRelationship && payload.oldRelationship.targetId);
           const newHostId = text(payload.newRelationship.targetId) || body.newHostId;
           const page = this.organization.relations;
@@ -2411,11 +2423,11 @@
           await this.refreshOrganizationHostHistory([childId, oldHostId, newHostId]);
           if (!this.organizationWriteOpen(token)) return false;
           dialog.open = false;
-          this.showToast('Host actualizado.');
+          this.showToast(tr('ui.organization.toast.host_updated'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo mover el host.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.host_move_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -2433,7 +2445,7 @@
       },
       openOrganizationTypeDialog(type) {
         if (!this.organizationAvailable('config.general')) {
-          this.showToast('No tienes permiso para configurar tipos de relación.', 'error');
+          this.showToast(tr('ui.organization.error.type_config_forbidden'), 'error');
           return;
         }
         this.organization.dialogs.type = type
@@ -2456,7 +2468,7 @@
       async saveOrganizationType() {
         const dialog = this.organization.dialogs.type;
         if (!this.organizationAvailable('config.general')) {
-          dialog.error = 'No tienes permiso para configurar tipos de relación.';
+          dialog.error = tr('ui.organization.error.type_config_forbidden');
           return false;
         }
         if (dialog.busy) return false;
@@ -2473,11 +2485,11 @@
           if (editing) body.active = dialog.active !== false;
           else body.key = text(dialog.key);
           if (!body.forwardLabel || !body.inverseLabel) {
-            dialog.error = 'Indica la etiqueta directa y la inversa.';
+            dialog.error = tr('ui.organization.error.type_labels_required');
             return false;
           }
           if (!editing && !body.key) {
-            dialog.error = 'Indica la clave estable del tipo.';
+            dialog.error = tr('ui.organization.error.type_key_required');
             return false;
           }
           await window.AssetAccess.request(this, editing ? '/relationship-types/' + encodeURIComponent(dialog.key) : '/relationship-types', {
@@ -2488,11 +2500,11 @@
           await this.loadOrganizationRelationTypes({ includeInactive: true });
           if (!this.organizationWriteOpen(token)) return false;
           dialog.open = false;
-          this.showToast('Tipo de relación guardado.');
+          this.showToast(tr('ui.organization.toast.type_saved'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo guardar el tipo de relación.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.type_save_failed');
           return false;
         } finally {
           dialog.busy = false;
@@ -2544,7 +2556,7 @@
           state.nodes = [];
           state.edges = [];
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudo cargar el grafo de infraestructura.';
+          state.error = (error && error.message) || tr('ui.organization.error.graph_load_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -2630,7 +2642,7 @@
           state.assets = [];
           state.assetsTruncated = false;
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudieron cargar los datos del mapa.';
+          state.error = (error && error.message) || tr('ui.organization.error.map_load_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -2642,7 +2654,7 @@
        * coordinate for an unpositioned asset. */
       async saveOrganizationPosition(assetId, floorId, x, y) {
         if (!this.organizationAvailable('assets.edit')) {
-          this.showToast('No tienes permiso para editar activos.', 'error');
+          this.showToast(tr('ui.organization.error.position_edit_forbidden'), 'error');
           return false;
         }
         const id = text(assetId);
@@ -2650,7 +2662,7 @@
         const asset = this.organizationMapSource.assets.find(function (item) { return item.id === id; });
         const locationId = text(asset && asset.locationId) || text(floorId);
         if (!locationId) {
-          this.showToast('El activo necesita una ubicación antes de guardar una posición.', 'error');
+          this.showToast(tr('ui.organization.error.position_location_required'), 'error');
           return false;
         }
         const body = { locationId: locationId, positionX: null, positionY: null };
@@ -2681,11 +2693,11 @@
                 : item;
             });
           }
-          this.showToast('Posición guardada.');
+          this.showToast(tr('ui.organization.toast.position_saved'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          this.showToast((error && error.message) || 'No se pudo guardar la posición.', 'error');
+          this.showToast((error && error.message) || tr('ui.organization.error.position_save_failed'), 'error');
           return false;
         }
       },
@@ -2799,7 +2811,7 @@
           });
       },
       organizationLevelName(level) {
-        return LEVEL_LABELS[text(level)] || text(level);
+        return levelLabel(level);
       },
       // Old/new pairs straight from the structured history payload. Nothing is
       // inferred for a field the server did not report.
@@ -2807,27 +2819,27 @@
         const changes = item && item.changes;
         if (!changes || typeof changes !== 'object') return [];
         const labels = {
-          site_id: 'Sede',
-          location_id: 'Ubicación',
-          responsible: 'Responsable',
-          responsible_person_id: 'Responsable',
-          status: 'Estado',
-          quick_code: 'Código rápido',
-          host: 'Host',
-          name: 'Nombre',
-          description: 'Descripción',
-          parent_id: 'Ubicación superior',
-          plan_ref: 'Plano',
-          plan_page: 'Página del plano',
-          latitude: 'Latitud',
-          longitude: 'Longitud',
-          active: 'Activo'
+          site_id: 'ui.organization.field.site',
+          location_id: 'ui.organization.field.location',
+          responsible: 'ui.organization.field.responsible',
+          responsible_person_id: 'ui.organization.field.responsible',
+          status: 'ui.organization.field.status',
+          quick_code: 'ui.organization.field.quick_code',
+          host: 'ui.organization.field.host',
+          name: 'ui.organization.field.name',
+          description: 'ui.organization.field.description',
+          parent_id: 'ui.organization.field.parent',
+          plan_ref: 'ui.organization.field.plan',
+          plan_page: 'ui.organization.field.plan_page',
+          latitude: 'ui.organization.field.latitude',
+          longitude: 'ui.organization.field.longitude',
+          active: 'ui.organization.field.active'
         };
         return Object.keys(changes).map(function (key) {
           const entry = changes[key] || {};
           return {
             key: key,
-            label: labels[key] || key,
+            label: labels[key] ? tr(labels[key]) : key,
             old: entry.old === null || entry.old === undefined ? '—' : String(entry.old),
             new: entry.new === null || entry.new === undefined ? '—' : String(entry.new)
           };
@@ -2839,10 +2851,7 @@
         const date = new Date(raw);
         if (isNaN(date.getTime())) return raw;
         try {
-          if (window.ItsmI18n) return window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' });
-          return new Intl.DateTimeFormat('es-PY', {
-            dateStyle: 'medium', timeStyle: 'short'
-          }).format(date);
+          return window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' });
         } catch (error) {
           return raw;
         }
@@ -2943,7 +2952,7 @@
       openAssignAsset(asset) {
         if (!this.serverOrganizationMode || !asset) return window.AssetPeopleMethods.openAssignAsset.call(this, asset);
         if (!this.organizationAvailable('assets.assign')) {
-          this.showToast('No tienes permiso para asignar responsables.', 'error');
+          this.showToast(tr('ui.organization.error.assign_forbidden'), 'error');
           return;
         }
         const currentId = text(asset.responsiblePersonId || asset.assigneeId);
@@ -2966,11 +2975,11 @@
       openAssignPerson(person) {
         if (!this.serverOrganizationMode || !person) return window.AssetPeopleMethods.openAssignPerson.call(this, person);
         if (!person.active) {
-          this.showToast('Reactiva la persona antes de asignarle activos.', 'error');
+          this.showToast(tr('ui.organization.error.person_inactive'), 'error');
           return;
         }
         if (!this.organizationAvailable('assets.assign')) {
-          this.showToast('No tienes permiso para asignar activos.', 'error');
+          this.showToast(tr('ui.organization.error.asset_assign_forbidden'), 'error');
           return;
         }
         this.assignDialog = {
@@ -3004,15 +3013,15 @@
       confirmAssignment() {
         if (!this.serverOrganizationMode) return window.AssetPeopleMethods.confirmAssignment.call(this);
         if (!this.organizationAvailable('assets.assign')) {
-          this.assignDialog.error = 'No tienes permiso para cambiar responsables.';
+          this.assignDialog.error = tr('ui.organization.error.responsible_change_forbidden');
           return false;
         }
         const dialog = this.assignDialog;
         const assetId = dialog.mode === 'asset' ? text(dialog.selectedId) : text(dialog.assetId);
         if (!assetId) {
           dialog.error = dialog.mode === 'asset'
-            ? 'Selecciona un activo para asignar.'
-            : 'El activo ya no está disponible.';
+            ? tr('ui.organization.error.asset_select_required')
+            : tr('ui.organization.error.asset_unavailable');
           return false;
         }
         const target = dialog.mode === 'asset' ? text(dialog.personId) : text(dialog.selectedId);
@@ -3044,7 +3053,7 @@
         if (options.effectiveAt) {
           const effective = this.organizationEffectiveIso(options.effectiveAt);
           if (!effective) {
-            dialog.error = 'Indica una fecha efectiva válida con zona horaria.';
+            dialog.error = tr('ui.organization.error.effective_invalid_zone');
             return false;
           }
           body.effectiveAt = effective;
@@ -3057,14 +3066,14 @@
           });
           if (!this.organizationWriteOpen(token)) return false;
           const asset = mapAsset(payload);
-          if (!asset) throw new Error('El servidor no devolvió el activo asignado.');
+          if (!asset) throw new Error(tr('ui.organization.error.assigned_missing'));
           await this.organizationAfterAssetChange(asset, personId);
           if (!this.organizationWriteOpen(token)) return false;
-          this.showToast('Activo asignado.');
+          this.showToast(tr('ui.organization.toast.asset_assigned'));
           return true;
         } catch (error) {
           if (!this.organizationWriteOpen(token)) return false;
-          dialog.error = (error && error.message) || 'No se pudo asignar el activo.';
+          dialog.error = (error && error.message) || tr('ui.organization.error.asset_assign_failed');
           return false;
         }
       }

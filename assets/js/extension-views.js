@@ -4,6 +4,13 @@
 (function () {
   'use strict';
 
+  // Catalog access: every visible string comes from `assets/i18n`; modules keep
+  // working without the runtime and simply render nothing for untranslated copy.
+  const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+  function tr(key, params) {
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
+
   const FIELD_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
   const OPERATION_RE = /^[a-z][a-z0-9_]{0,63}$/;
   const COMPONENT_RE = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
@@ -17,7 +24,7 @@
   const PAGE_SIZE = 10;
   const EMPTY = {
     ok: false,
-    error: 'La extensión no declara una vista válida.'
+    error: tr('ui.extensions.error.invalid_view')
   };
 
   // Tables of one extension reload together after any of its forms saves, even
@@ -411,9 +418,9 @@
         <template v-else>
           <itsm-table :caption="caption" :columns="columns" :rows="rows" :loading="loading" :empty="emptyLabel"></itsm-table>
           <div class="extension-pager" role="group" :aria-label="'Paginación de ' + caption">
-            <button type="button" class="btn btn--secondary btn--small" :disabled="!canPrev" aria-label="Página anterior" @click="prev">Anterior</button>
+            <button type="button" class="btn btn--secondary btn--small" :disabled="!canPrev" :aria-label="$t('ui.extensions.aria.prev')" @click="prev">{{ $t('ui.extensions.pager.prev') }}</button>
             <p class="extension-pager__status" role="status">{{ rangeLabel }}</p>
-            <button type="button" class="btn btn--secondary btn--small" :disabled="!canNext" aria-label="Página siguiente" @click="next">Siguiente</button>
+            <button type="button" class="btn btn--secondary btn--small" :disabled="!canNext" :aria-label="$t('ui.extensions.aria.next')" @click="next">{{ $t('ui.extensions.pager.next') }}</button>
           </div>
         </template>
       </div>
@@ -731,7 +738,7 @@
     template: `
       <div class="extension-isolated">
         <itsm-error v-if="error" :error="error" :title="'No se pudo cargar la vista aislada'"></itsm-error>
-        <p v-else-if="status === 'loading'" class="config-note" role="status">Cargando la vista aislada de la extensión…</p>
+        <p v-else-if="status === 'loading'" class="config-note" role="status">{{ $t('ui.extensions.frame.loading') }}</p>
         <iframe
           ref="frame"
           class="extension-frame"
@@ -793,7 +800,7 @@
           :view="view"
           :asset="asset"
         ></extension-isolated-view>
-        <p v-else class="config-note">La extensión no declara una vista válida.</p>
+        <p v-else class="config-note">{{ $t('ui.extensions.error.invalid_view') }}</p>
       </div>
     `
   };
@@ -818,7 +825,7 @@
           <header class="noc-widget-head">
             <div>
               <h2>{{ entry.widget.label }}</h2>
-              <p class="noc-widget-sub">Extensión {{ entry.extensionName }} · solo lectura declarativa</p>
+              <p class="noc-widget-sub">{{ $t('ui.extensions.widget.readonly', { name: entry.extensionName }) }}</p>
             </div>
           </header>
           <extension-view :app="app" :item="entry.item" :view="entry.widget.view"></extension-view>
@@ -849,7 +856,7 @@
           : [];
       },
       dialogTitle() {
-        return this.dialog.action ? this.dialog.action.action.label : 'Confirmar acción';
+        return this.dialog.action ? this.dialog.action.action.label : tr('ui.extensions.action.confirm');
       },
       dialogMessage() {
         if (!this.dialog.action) return '';
@@ -931,8 +938,8 @@
           <p>{{ dialogMessage }}</p>
           <p v-if="dialog.error" class="form-alert" role="alert">{{ dialog.error }}</p>
           <template #footer>
-            <button type="button" class="btn btn--secondary" :disabled="dialog.busy" @click="closeDialog">Cancelar</button>
-            <button type="button" class="btn btn--primary" :disabled="dialog.busy" :aria-busy="dialog.busy ? 'true' : 'false'" @click="confirm">Confirmar acción</button>
+            <button type="button" class="btn btn--secondary" :disabled="dialog.busy" @click="closeDialog">{{ $t('ui.common.cancel') }}</button>
+            <button type="button" class="btn btn--primary" :disabled="dialog.busy" :aria-busy="dialog.busy ? 'true' : 'false'" @click="confirm">{{ $t('ui.extensions.action.confirm') }}</button>
           </template>
         </modal-shell>
       </div>
