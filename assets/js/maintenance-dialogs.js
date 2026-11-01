@@ -6,6 +6,10 @@
 
   const Dialogs = window.AssetMaintDialogs = window.AssetMaintDialogs || {};
 
+  function T(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+
   function pad(value) {
     return String(value).padStart(2, '0');
   }
@@ -31,25 +35,25 @@
     const helpers = window.AssetMaintViews && window.AssetMaintViews.helpers;
     if (helpers && helpers.fmtDay) return helpers.fmtDay(value);
     const day = Engine.toDay(value);
-    if (!day || !Engine.validDay(day)) return 'Sin fecha';
+    if (!day || !Engine.validDay(day)) return T('ui.maintenance.no_date');
     return day;
   }
 
   const PLAN_STATUS_LABELS = {
-    active: 'Activo',
-    postponed: 'Pospuesto',
-    cancelled: 'Cancelado'
+    get active() { return T('ui.maintenance.plan_status.active'); },
+    get postponed() { return T('ui.maintenance.plan_status.postponed'); },
+    get cancelled() { return T('ui.maintenance.plan_status.cancelled'); }
   };
 
   function planStatusLabel(status) {
-    return PLAN_STATUS_LABELS[status] || status || 'Sin estado';
+    return PLAN_STATUS_LABELS[status] || status || T('ui.maintenance.no_status');
   }
 
   function money(value) {
     if (value === null || value === undefined || value === '') return '—';
     return window.ItsmI18n
       ? window.ItsmI18n.amount(value, { maximumFractionDigits: 2 })
-      : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+      : String(Number(value) || 0);
   }
 
   function addDays(day, amount) {
@@ -238,7 +242,7 @@
           try {
             this.assetResults = await this.app.searchMaintenanceAssets(query);
           } catch (error) {
-            this.error = (error && error.message) || 'No se pudo buscar activos.';
+            this.error = (error && error.message) || T('ui.maintenance.error.search_assets');
           } finally {
             this.assetLoading = false;
           }
@@ -265,7 +269,7 @@
           try {
             this.personResults = await this.app.searchMaintenancePeople(query);
           } catch (error) {
-            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+            this.error = (error && error.message) || T('ui.maintenance.error.search_people');
           } finally {
             this.personLoading = false;
           }
@@ -286,7 +290,7 @@
         this.uploading = false;
         if (event.target) event.target.value = '';
         if (!result.ok) {
-          this.error = result.error || 'No se pudo subir el adjunto.';
+          this.error = result.error || T('ui.maintenance.error.upload');
           return;
         }
         if (result.attachment) this.attachments.push(result.attachment);
@@ -318,15 +322,15 @@
       },
       async save() {
         if (!this.form.assetId) {
-          this.error = 'Selecciona el activo del trabajo.';
+          this.error = T('ui.maintenance.dialog.error_asset');
           return;
         }
         if (!String(this.form.description || '').trim()) {
-          this.error = 'Describe brevemente el trabajo realizado.';
+          this.error = T('ui.maintenance.dialog.error_description');
           return;
         }
         if (!this.form.occurredOn) {
-          this.error = 'Indica la fecha del trabajo.';
+          this.error = T('ui.maintenance.dialog.error_date');
           return;
         }
         this.saving = true;
@@ -337,10 +341,10 @@
           : await this.app.saveMaintenanceIntervention(payload);
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo guardar la intervención.';
+          this.error = result.error || T('ui.maintenance.dialog.error_save');
           return;
         }
-        this.app.showToast(this.isComplete ? 'Intervención completada.' : (this.interventionId ? 'Intervención actualizada.' : 'Intervención registrada.'));
+        this.app.showToast(this.isComplete ? T('ui.maintenance.dialog.saved_complete') : (this.interventionId ? T('ui.maintenance.dialog.saved_update') : T('ui.maintenance.dialog.saved_create')));
         const record = result.intervention || this.loadedRecord;
         this.$emit('saved', { intervention: record, result });
         this.$emit('close');
@@ -350,32 +354,32 @@
       }
     },
     template: `
-      <modal-shell :open="open" :title="isComplete ? 'Completar intervención' : (interventionId ? 'Editar intervención' : 'Registrar intervención')"
-                   :eyebrow="isComplete ? 'Cierre de trabajo' : 'Trabajo técnico'" size="wide" @close="close">
+      <modal-shell :open="open" :title="isComplete ? $t('ui.maintenance.dialog.complete_intervention_title') : (interventionId ? $t('ui.maintenance.dialog.edit_title') : $t('ui.maintenance.dialog.create_title'))"
+                   :eyebrow="isComplete ? $t('ui.maintenance.dialog.close_eyebrow') : $t('ui.maintenance.dialog.work_eyebrow')" size="wide" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
 
         <div v-if="contextIncident || contextPlan" class="maint-modal-context">
           <span class="maint-modal-context__icon"><app-icon name="activity"></app-icon></span>
           <div>
-            <strong>{{ contextIncident ? 'Vinculada al incidente ' + contextIncident : 'Vinculada al plan preventivo' }}</strong>
+            <strong>{{ contextIncident ? $t('ui.maintenance.dialog.linked_incident', { id: contextIncident }) : $t('ui.maintenance.dialog.linked_plan') }}</strong>
             <span class="mono">{{ contextPlan || '' }}</span>
           </div>
         </div>
 
         <div class="form-grid form-grid--two">
           <div class="field field--span">
-            <span class="field__label">Activo <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.asset') }} <em>*</em></span>
             <div v-if="selectedAsset" class="maint-picker">
               <span class="maint-picker__value">{{ assetLabel(selectedAsset) }}</span>
-              <button v-if="!interventionId" type="button" class="icon-button" aria-label="Cambiar activo" @click="clearAsset"><app-icon name="x"></app-icon></button>
+              <button v-if="!interventionId" type="button" class="icon-button" :aria-label="$t('ui.maintenance.dialog.change_asset')" @click="clearAsset"><app-icon name="x"></app-icon></button>
             </div>
             <div v-else class="maint-picker">
               <label class="search-field maint-picker__search">
-                <span class="sr-only">Buscar activo</span>
+                <span class="sr-only">{{ $t('ui.maintenance.dialog.search_asset') }}</span>
                 <app-icon name="search"></app-icon>
-                <input v-model="assetQuery" type="search" placeholder="Buscar por código o nombre" data-maint-picker="asset" @input="searchAssets">
+                <input v-model="assetQuery" type="search" :placeholder="$t('ui.maintenance.field.search_asset')" data-maint-picker="asset" @input="searchAssets">
               </label>
-              <span v-if="assetLoading" class="cell-muted">Buscando…</span>
+              <span v-if="assetLoading" class="cell-muted">{{ $t('ui.maintenance.searching') }}</span>
             </div>
             <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
               <li v-for="asset in assetResults" :key="asset.id">
@@ -387,7 +391,7 @@
           </div>
 
           <label class="field">
-            <span class="field__label">Tipo de trabajo <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.work_type') }} <em>*</em></span>
             <span class="select-field">
               <select v-model="form.type" data-maint-field="type">
                 <option v-for="type in typeOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
@@ -396,35 +400,35 @@
           </label>
 
           <label class="field">
-            <span class="field__label">Estado</span>
+            <span class="field__label">{{ $t('ui.maintenance.field.status') }}</span>
             <span class="select-field">
               <select v-model="form.status" data-maint-field="status">
-                <option value="open">Abierta</option>
-                <option value="in_progress">En curso</option>
-                <option value="completed">Completada</option>
-                <option value="cancelled">Cancelada</option>
+                <option value="open">{{ $t('ui.maintenance.state.open') }}</option>
+                <option value="in_progress">{{ $t('ui.maintenance.state.in_progress') }}</option>
+                <option value="completed">{{ $t('ui.maintenance.state.completed') }}</option>
+                <option value="cancelled">{{ $t('ui.maintenance.state.cancelled') }}</option>
               </select>
             </span>
           </label>
 
           <label class="field">
-            <span class="field__label">Fecha <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.field.date') }} <em>*</em></span>
             <input v-model="form.occurredOn" type="date" max="2100-12-31" class="input-shell input-shell--plain" data-maint-field="occurredOn">
           </label>
 
           <div class="field">
-            <span class="field__label">Técnico</span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.technician') }}</span>
             <div v-if="selectedPerson" class="maint-picker">
               <span class="maint-picker__value">{{ personLabel(selectedPerson) }}</span>
-              <button type="button" class="icon-button" aria-label="Quitar técnico" @click="clearPerson"><app-icon name="x"></app-icon></button>
+              <button type="button" class="icon-button" :aria-label="$t('ui.maintenance.dialog.remove_technician')" @click="clearPerson"><app-icon name="x"></app-icon></button>
             </div>
             <div v-else class="maint-picker">
               <label class="search-field maint-picker__search">
-                <span class="sr-only">Buscar técnico</span>
+                <span class="sr-only">{{ $t('ui.maintenance.dialog.search_technician') }}</span>
                 <app-icon name="search"></app-icon>
-                <input v-model="personQuery" type="search" placeholder="Buscar responsable" data-maint-picker="person" @input="searchPeople">
+                <input v-model="personQuery" type="search" :placeholder="$t('ui.maintenance.field.search_person')" data-maint-picker="person" @input="searchPeople">
               </label>
-              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+              <span v-if="personLoading" class="cell-muted">{{ $t('ui.maintenance.searching') }}</span>
             </div>
             <ul v-if="personResults.length" class="maint-picker__results" role="listbox">
               <li v-for="person in personResults" :key="person.id">
@@ -434,55 +438,55 @@
           </div>
 
           <label class="field field--span">
-            <span class="field__label">Descripción <em>*</em></span>
-            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" placeholder="Qué se hizo y qué se encontró"></textarea>
+            <span class="field__label">{{ $t('ui.maintenance.field.description') }} <em>*</em></span>
+            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" :placeholder="$t('ui.maintenance.dialog.description_placeholder')"></textarea>
           </label>
 
           <label class="field field--span">
-            <span class="field__label">Observaciones <span class="cell-muted">(opcional)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.field.notes') }} <span class="cell-muted">{{ $t('ui.maintenance.optional') }}</span></span>
             <textarea v-model="form.notes" rows="2" maxlength="1200" class="input-shell input-shell--plain"></textarea>
           </label>
         </div>
 
         <section class="maint-subsection" aria-labelledby="maint-parts-title">
           <header class="maint-subsection__head">
-            <h3 id="maint-parts-title">Repuestos</h3>
-            <button type="button" class="text-button" @click="addPart"><app-icon name="plus"></app-icon> Añadir repuesto</button>
+            <h3 id="maint-parts-title">{{ $t('ui.maintenance.dialog.parts') }}</h3>
+            <button type="button" class="text-button" @click="addPart"><app-icon name="plus"></app-icon> {{ $t('ui.maintenance.dialog.add_part') }}</button>
           </header>
           <div v-for="(part, index) in parts" :key="index" class="maint-part-row">
-            <input v-model="part.name" type="text" class="input-shell input-shell--plain" placeholder="Pieza" aria-label="Pieza">
-            <input v-model.number="part.quantity" type="number" min="1" class="input-shell input-shell--plain" placeholder="Cantidad" aria-label="Cantidad">
-            <input v-model="part.unitCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain" placeholder="Coste unitario" aria-label="Coste unitario">
-            <button type="button" class="icon-button" aria-label="Quitar repuesto" @click="removePart(index)"><app-icon name="trash"></app-icon></button>
+            <input v-model="part.name" type="text" class="input-shell input-shell--plain" :placeholder="$t('ui.maintenance.dialog.part_name')" :aria-label="$t('ui.maintenance.dialog.part_name')">
+            <input v-model.number="part.quantity" type="number" min="1" class="input-shell input-shell--plain" :placeholder="$t('ui.maintenance.dialog.quantity')" :aria-label="$t('ui.maintenance.dialog.quantity')">
+            <input v-model="part.unitCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain" :placeholder="$t('ui.maintenance.dialog.unit_cost')" :aria-label="$t('ui.maintenance.dialog.unit_cost')">
+            <button type="button" class="icon-button" :aria-label="$t('ui.maintenance.dialog.remove_part')" @click="removePart(index)"><app-icon name="trash"></app-icon></button>
           </div>
-          <p v-if="!parts.length" class="cell-muted maint-aside-note">Sin repuestos. Puedes registrar el trabajo sin desglose de material.</p>
+          <p v-if="!parts.length" class="cell-muted maint-aside-note">{{ $t('ui.maintenance.dialog.no_parts') }}</p>
           <label class="field">
-            <span class="field__label">Mano de obra (opcional)</span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.labor') }}</span>
             <input v-model="form.laborCost" type="number" min="0" step="0.01" class="input-shell input-shell--plain">
           </label>
         </section>
 
         <section class="maint-subsection" aria-labelledby="maint-files-title">
           <header class="maint-subsection__head">
-            <h3 id="maint-files-title">Documentos adjuntos</h3>
-            <span v-if="uploading" class="cell-muted">Subiendo…</span>
+            <h3 id="maint-files-title">{{ $t('ui.maintenance.dialog.files') }}</h3>
+            <span v-if="uploading" class="cell-muted">{{ $t('ui.maintenance.dialog.uploading') }}</span>
           </header>
           <label class="btn btn--ghost btn--small maint-file">
             <input type="file" class="sr-only" data-maint-field="attachment" :disabled="!form.assetId || uploading" @change="onFile">
-            <app-icon name="file"></app-icon> Adjuntar documento
+            <app-icon name="file"></app-icon> {{ $t('ui.maintenance.dialog.attach') }}
           </label>
           <ul v-if="attachments.length" class="maint-attachment-list">
             <li v-for="(file, index) in attachments" :key="file.id">
               <span class="mono">{{ file.filename || file.name }}</span>
-              <button type="button" class="icon-button" aria-label="Quitar adjunto" @click="removeAttachment(index)"><app-icon name="x"></app-icon></button>
+              <button type="button" class="icon-button" :aria-label="$t('ui.maintenance.dialog.remove_attachment')" @click="removeAttachment(index)"><app-icon name="x"></app-icon></button>
             </li>
           </ul>
-          <p v-else class="cell-muted maint-aside-note">Los adjuntos se suben al activo antes de guardar la intervención.</p>
+          <p v-else class="cell-muted maint-aside-note">{{ $t('ui.maintenance.dialog.files_hint') }}</p>
         </section>
 
         <template #footer>
-          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-intervention-save" :disabled="saving || uploading" @click="save">{{ saving ? 'Guardando…' : 'Guardar intervención' }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.cancel') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-intervention-save" :disabled="saving || uploading" @click="save">{{ saving ? $t('ui.maintenance.saving') : $t('ui.maintenance.dialog.save_intervention') }}</button>
         </template>
       </modal-shell>
     `
@@ -573,7 +577,7 @@
           try {
             this.assetResults = await this.app.searchMaintenanceAssets(query);
           } catch (error) {
-            this.error = (error && error.message) || 'No se pudo buscar activos.';
+            this.error = (error && error.message) || T('ui.maintenance.error.search_assets');
           } finally {
             this.assetLoading = false;
           }
@@ -610,7 +614,7 @@
           try {
             this.personResults = await this.app.searchMaintenancePeople(query);
           } catch (error) {
-            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+            this.error = (error && error.message) || T('ui.maintenance.error.search_people');
           } finally {
             this.personLoading = false;
           }
@@ -618,11 +622,11 @@
       },
       async save() {
         if (!this.form.primaryAssetId) {
-          this.error = 'Selecciona el activo principal.';
+          this.error = T('ui.incidents.dialog.error_primary');
           return;
         }
         if (!String(this.form.description || '').trim()) {
-          this.error = 'Describe brevemente el incidente.';
+          this.error = T('ui.incidents.dialog.error_description');
           return;
         }
         this.saving = true;
@@ -638,10 +642,10 @@
         const result = await this.app.createMaintenanceIncident(payload);
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo crear el incidente.';
+          this.error = result.error || T('ui.incidents.dialog.error_create');
           return;
         }
-        this.app.showToast('Incidente creado.');
+        this.app.showToast(T('ui.incidents.dialog.created'));
         this.$emit('saved', { incident: result.incident, result });
         this.$emit('close');
       },
@@ -650,23 +654,23 @@
       }
     },
     template: `
-      <modal-shell :open="open" title="Nuevo incidente" eyebrow="Problema técnico" size="wide" @close="close">
+      <modal-shell :open="open" :title="$t('ui.incidents.dialog.title')" :eyebrow="$t('ui.incidents.dialog.eyebrow')" size="wide" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <div v-if="!canEdit" class="config-lock"><app-icon name="lock"></app-icon><p>Necesitas permiso de edición de activos para crear incidentes.</p></div>
+        <div v-if="!canEdit" class="config-lock"><app-icon name="lock"></app-icon><p>{{ $t('ui.incidents.dialog.lock') }}</p></div>
         <div v-else class="form-grid form-grid--two">
           <div class="field field--span">
-            <span class="field__label">Activo principal <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.incident.primary_asset') }} <em>*</em></span>
             <div v-if="primaryAsset" class="maint-picker">
               <span class="maint-picker__value">{{ assetLabel(primaryAsset) }}</span>
-              <button type="button" class="icon-button" aria-label="Cambiar activo principal" @click="clearPrimary"><app-icon name="x"></app-icon></button>
+              <button type="button" class="icon-button" :aria-label="$t('ui.incidents.dialog.change_primary')" @click="clearPrimary"><app-icon name="x"></app-icon></button>
             </div>
             <div v-else class="maint-picker">
               <label class="search-field maint-picker__search">
-                <span class="sr-only">Buscar activo principal</span>
+                <span class="sr-only">{{ $t('ui.incidents.dialog.search_primary') }}</span>
                 <app-icon name="search"></app-icon>
-                <input v-model="assetQuery" type="search" placeholder="Buscar por código o nombre" data-maint-picker="primary-asset" @input="searchAssets">
+                <input v-model="assetQuery" type="search" :placeholder="$t('ui.maintenance.field.search_asset')" data-maint-picker="primary-asset" @input="searchAssets">
               </label>
-              <span v-if="assetLoading" class="cell-muted">Buscando…</span>
+              <span v-if="assetLoading" class="cell-muted">{{ $t('ui.maintenance.searching') }}</span>
             </div>
             <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
               <li v-for="asset in assetResults" :key="asset.id">
@@ -676,12 +680,12 @@
           </div>
 
           <label class="field field--span">
-            <span class="field__label">Descripción <em>*</em></span>
-            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" placeholder="Qué falla, desde cuándo y qué se ha observado"></textarea>
+            <span class="field__label">{{ $t('ui.maintenance.field.description') }} <em>*</em></span>
+            <textarea v-model="form.description" rows="3" maxlength="600" class="input-shell input-shell--plain" data-maint-field="description" :placeholder="$t('ui.incidents.dialog.description_placeholder')"></textarea>
           </label>
 
           <label class="field">
-            <span class="field__label">Prioridad</span>
+            <span class="field__label">{{ $t('ui.maintenance.filter.priority') }}</span>
             <span class="select-field">
               <select v-model="form.priority" data-maint-field="priority">
                 <option v-for="priority in priorities" :key="priority.id" :value="priority.id">{{ priority.label }}</option>
@@ -690,23 +694,23 @@
           </label>
 
           <label class="field">
-            <span class="field__label">Fecha de apertura</span>
+            <span class="field__label">{{ $t('ui.incidents.dialog.opened_on') }}</span>
             <input v-model="form.openedOn" type="date" class="input-shell input-shell--plain" data-maint-field="openedOn">
           </label>
 
           <div class="field field--span">
-            <span class="field__label">Responsable <span class="cell-muted">(opcional)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.field.responsible') }} <span class="cell-muted">{{ $t('ui.maintenance.optional') }}</span></span>
             <div v-if="responsible" class="maint-picker">
               <span class="maint-picker__value">{{ personLabel(responsible) }}</span>
-              <button type="button" class="icon-button" aria-label="Quitar responsable" @click="clearPerson"><app-icon name="x"></app-icon></button>
+              <button type="button" class="icon-button" :aria-label="$t('ui.incidents.dialog.remove_responsible')" @click="clearPerson"><app-icon name="x"></app-icon></button>
             </div>
             <div v-else class="maint-picker">
               <label class="search-field maint-picker__search">
-                <span class="sr-only">Buscar responsable</span>
+                <span class="sr-only">{{ $t('ui.maintenance.field.search_person') }}</span>
                 <app-icon name="search"></app-icon>
-                <input v-model="personQuery" type="search" placeholder="Buscar responsable" data-maint-picker="person" @input="searchPeople">
+                <input v-model="personQuery" type="search" :placeholder="$t('ui.maintenance.field.search_person')" data-maint-picker="person" @input="searchPeople">
               </label>
-              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+              <span v-if="personLoading" class="cell-muted">{{ $t('ui.maintenance.searching') }}</span>
             </div>
             <ul v-if="personResults.length" class="maint-picker__results" role="listbox">
               <li v-for="person in personResults" :key="person.id"><button type="button" class="maint-picker__option" @click="choosePerson(person)">{{ person.label || person.name }}</button></li>
@@ -714,17 +718,17 @@
           </div>
 
           <div class="field field--span">
-            <span class="field__label">Otros dispositivos afectados</span>
+            <span class="field__label">{{ $t('ui.incidents.dialog.affected') }}</span>
             <ul v-if="affected.length" class="maint-picker__chips">
               <li v-for="asset in affected" :key="asset.id">
                 <span>{{ asset.quickCode || asset.id }} · {{ asset.name }}</span>
-                <button type="button" class="icon-button" aria-label="Quitar dispositivo afectado" @click="removeAffected(asset.id)"><app-icon name="x"></app-icon></button>
+                <button type="button" class="icon-button" :aria-label="$t('ui.incidents.dialog.remove_affected')" @click="removeAffected(asset.id)"><app-icon name="x"></app-icon></button>
               </li>
             </ul>
             <label class="search-field maint-picker__search">
-              <span class="sr-only">Añadir dispositivo afectado</span>
+              <span class="sr-only">{{ $t('ui.incidents.dialog.add_affected') }}</span>
               <app-icon name="plus"></app-icon>
-              <input v-model="assetQuery" type="search" placeholder="Buscar otro dispositivo" data-maint-picker="affected-asset" @input="searchAssets">
+              <input v-model="assetQuery" type="search" :placeholder="$t('ui.incidents.dialog.search_other')" data-maint-picker="affected-asset" @input="searchAssets">
             </label>
             <ul v-if="assetResults.length" class="maint-picker__results" role="listbox">
               <li v-for="asset in assetResults" :key="asset.id">
@@ -734,8 +738,8 @@
           </div>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-incident-save" :disabled="saving || !canEdit" @click="save">{{ saving ? 'Creando…' : 'Crear incidente' }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.cancel') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-incident-save" :disabled="saving || !canEdit" @click="save">{{ saving ? $t('ui.incidents.dialog.creating') : $t('ui.incidents.dialog.create') }}</button>
         </template>
       </modal-shell>
     `
@@ -767,7 +771,7 @@
       fmtDay,
       async save() {
         if (!this.completedOn) {
-          this.error = 'Indica la fecha de realización.';
+          this.error = T('ui.maintenance.dialog.error_completed_on');
           return;
         }
         this.saving = true;
@@ -775,7 +779,7 @@
         const result = await this.app.completeMaintenancePlan(this.planId, { completedOn: this.completedOn, notes: this.notes || undefined });
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo completar el preventivo.';
+          this.error = result.error || T('ui.maintenance.dialog.error_complete');
           return;
         }
         this.$emit('saved', result);
@@ -786,23 +790,23 @@
       }
     },
     template: `
-      <modal-shell :open="open" title="Completar preventivo" eyebrow="Cierre de mantenimiento" @close="close">
+      <modal-shell :open="open" :title="$t('ui.maintenance.dialog.complete_plan_title')" :eyebrow="$t('ui.maintenance.dialog.complete_eyebrow')" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
         <p class="cell-muted">{{ label }}</p>
-        <p class="cell-muted">Al completar, el siguiente vencimiento se calcula desde la fecha real de realización.</p>
+        <p class="cell-muted">{{ $t('ui.maintenance.dialog.complete_lead') }}</p>
         <div class="form-grid">
           <label class="field">
-            <span class="field__label">Fecha de realización <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.completed_on') }} <em>*</em></span>
             <input v-model="completedOn" type="date" class="input-shell input-shell--plain" data-maint-field="completedOn">
           </label>
           <label class="field">
-            <span class="field__label">Observaciones <span class="cell-muted">(opcional)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.field.notes') }} <span class="cell-muted">{{ $t('ui.maintenance.optional') }}</span></span>
             <textarea v-model="notes" rows="3" class="input-shell input-shell--plain"></textarea>
           </label>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-complete-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Completar preventivo' }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.cancel') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-complete-save" :disabled="saving" @click="save">{{ saving ? $t('ui.maintenance.saving') : $t('ui.maintenance.panel.complete_preventive') }}</button>
         </template>
       </modal-shell>
     `
@@ -821,7 +825,7 @@
     },
     computed: {
       quickOptions() {
-        return [7, 14, 30].map((days) => ({ days, label: days + ' días', dueOn: addDays(Engine.today(), days) }));
+        return [7, 14, 30].map((days) => ({ days, label: T('ui.maintenance.dialog.days', { count: days }), dueOn: addDays(Engine.today(), days) }));
       }
     },
     watch: {
@@ -841,7 +845,7 @@
       },
       async save() {
         if (!this.dueOn) {
-          this.error = 'Indica el nuevo vencimiento.';
+          this.error = T('ui.maintenance.dialog.error_due');
           return;
         }
         this.saving = true;
@@ -849,7 +853,7 @@
         const result = await this.app.postponeMaintenancePlan(this.planId, { dueOn: this.dueOn, notes: this.notes || undefined });
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo posponer el preventivo.';
+          this.error = result.error || T('ui.maintenance.dialog.error_postpone');
           return;
         }
         this.$emit('saved', result);
@@ -860,7 +864,7 @@
       }
     },
     template: `
-      <modal-shell :open="open" title="Posponer preventivo" eyebrow="Reprogramación" @close="close">
+      <modal-shell :open="open" :title="$t('ui.maintenance.dialog.postpone_title')" :eyebrow="$t('ui.maintenance.dialog.postpone_eyebrow')" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
         <p class="cell-muted">{{ label }}</p>
         <div class="maint-quick-dates">
@@ -868,17 +872,17 @@
         </div>
         <div class="form-grid">
           <label class="field">
-            <span class="field__label">Nuevo vencimiento <em>*</em></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.new_due') }} <em>*</em></span>
             <input v-model="dueOn" type="date" class="input-shell input-shell--plain" data-maint-field="dueOn">
           </label>
           <label class="field">
-            <span class="field__label">Motivo <span class="cell-muted">(opcional)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.reason') }} <span class="cell-muted">{{ $t('ui.maintenance.optional') }}</span></span>
             <textarea v-model="notes" rows="3" class="input-shell input-shell--plain"></textarea>
           </label>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cancelar</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-postpone-save" :disabled="saving" @click="save">{{ saving ? 'Guardando…' : 'Posponer' }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.cancel') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="maint-plan-postpone-save" :disabled="saving" @click="save">{{ saving ? $t('ui.maintenance.saving') : $t('ui.maintenance.dialog.postpone') }}</button>
         </template>
       </modal-shell>
     `
@@ -962,7 +966,7 @@
           try {
             this.personResults = await this.app.searchMaintenancePeople(query);
           } catch (error) {
-            this.error = (error && error.message) || 'No se pudo buscar responsables.';
+            this.error = (error && error.message) || T('ui.maintenance.error.search_people');
           } finally {
             this.personLoading = false;
           }
@@ -1017,7 +1021,7 @@
       },
       async save() {
         if (!this.form.intervalMonths || this.form.intervalMonths < 1) {
-          this.error = 'El intervalo debe ser al menos de un mes.';
+          this.error = T('ui.maintenance.settings.error_interval');
           return;
         }
         this.saving = true;
@@ -1034,10 +1038,10 @@
           : await this.app.saveMaintenancePlan(Object.assign({ assetId: this.assetId, maintenanceType: this.form.maintenanceType }, payload));
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo guardar el plan.';
+          this.error = result.error || T('ui.maintenance.dialog.error_save_plan');
           return;
         }
-        this.app.showToast(this.plan ? 'Plan preventivo actualizado.' : 'Plan preventivo creado.');
+        this.app.showToast(this.plan ? T('ui.maintenance.dialog.plan_updated') : T('ui.maintenance.dialog.plan_created'));
         this.$emit('saved', result);
         this.$emit('close');
       },
@@ -1048,10 +1052,10 @@
         const result = await this.app.cancelMaintenancePlan(this.plan.id, { notes: '' });
         this.saving = false;
         if (!result.ok) {
-          this.error = result.error || 'No se pudo cancelar el plan.';
+          this.error = result.error || T('ui.maintenance.dialog.error_cancel_plan');
           return;
         }
-        this.app.showToast('Plan preventivo cancelado.');
+        this.app.showToast(T('ui.maintenance.dialog.plan_cancelled'));
         this.$emit('saved', result);
         this.$emit('close');
       },
@@ -1061,22 +1065,22 @@
       fmtDay
     },
     template: `
-      <modal-shell :open="open" title="Plan preventivo" eyebrow="Excepción del activo" size="wide" @close="close">
+      <modal-shell :open="open" :title="$t('ui.maintenance.dialog.plan_title')" :eyebrow="$t('ui.maintenance.dialog.plan_eyebrow')" size="wide" @close="close">
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
-        <div v-if="loading" class="cell-muted">Cargando plan…</div>
+        <div v-if="loading" class="cell-muted">{{ $t('ui.maintenance.dialog.loading_plan') }}</div>
         <div v-else class="form-grid form-grid--two">
-          <p class="field field--span cell-muted">{{ asset.quickCode ? asset.quickCode + ' · ' : '' }}{{ asset.name }}. Los cambios se aplican solo a este equipo.</p>
+          <p class="field field--span cell-muted">{{ $t('ui.maintenance.dialog.asset_scope', { asset: (asset.quickCode ? asset.quickCode + ' · ' : '') + asset.name }) }}</p>
           <label v-if="!plan" class="field field--span">
-            <span class="field__label">Plantilla de la categoría</span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.category_template') }}</span>
             <span class="select-field">
               <select data-maint-field="template" @change="applyTemplate($event.target.value)">
-                <option value="">Sin plantilla</option>
-                <option v-for="template in availableTemplates" :key="template.id" :value="template.id">{{ template.label }} · {{ template.intervalMonths }} meses</option>
+                <option value="">{{ $t('ui.maintenance.dialog.no_template') }}</option>
+                <option v-for="template in availableTemplates" :key="template.id" :value="template.id">{{ $t('ui.maintenance.dialog.template_option', { name: template.label, count: template.intervalMonths }) }}</option>
               </select>
             </span>
           </label>
           <label class="field">
-            <span class="field__label">Tipo</span>
+            <span class="field__label">{{ $t('ui.maintenance.field.type') }}</span>
             <span class="select-field">
               <select v-model="form.maintenanceType" :disabled="!!plan" data-maint-field="maintenanceType">
                 <option v-for="type in typeOptions" :key="type.id" :value="type.id">{{ type.label }}</option>
@@ -1084,38 +1088,38 @@
             </span>
           </label>
           <label class="field">
-            <span class="field__label">Intervalo (meses)</span>
+            <span class="field__label">{{ $t('ui.maintenance.field.interval') }}</span>
             <input v-model.number="form.intervalMonths" type="number" min="1" max="60" class="input-shell input-shell--plain" data-maint-field="intervalMonths">
           </label>
           <label class="field">
-            <span class="field__label">Próximo vencimiento <span class="cell-muted">(opcional)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.dialog.next_due_optional') }}</span>
             <input v-model="form.dueOn" type="date" class="input-shell input-shell--plain">
           </label>
           <label class="field">
-            <span class="field__label">Responsable</span>
+            <span class="field__label">{{ $t('ui.maintenance.field.responsible') }}</span>
             <div class="maint-picker" data-maint-picker="responsible">
-              <input v-model="personQuery" type="search" class="input-shell input-shell--plain maint-picker__search" placeholder="Buscar en el directorio" data-maint-field="responsible" @input="searchPeople">
+              <input v-model="personQuery" type="search" class="input-shell input-shell--plain maint-picker__search" :placeholder="$t('ui.maintenance.field.search_directory')" data-maint-field="responsible" @input="searchPeople">
               <span v-if="responsible" class="maint-picker__value">{{ responsibleName() }}</span>
-              <span v-else class="maint-picker__value">Sin asignar</span>
-              <button v-if="responsible" type="button" class="text-button text-button--quiet" @click="clearPerson">Quitar</button>
+              <span v-else class="maint-picker__value">{{ $t('ui.maintenance.unassigned') }}</span>
+              <button v-if="responsible" type="button" class="text-button text-button--quiet" @click="clearPerson">{{ $t('ui.maintenance.field.remove') }}</button>
               <ul v-if="personResults.length" class="maint-picker__results">
                 <li v-for="person in personResults" :key="person.id">
                   <button type="button" class="maint-picker__option" @click="choosePerson(person)">{{ person.label || person.name }}</button>
                 </li>
               </ul>
-              <span v-if="personLoading" class="cell-muted">Buscando…</span>
+              <span v-if="personLoading" class="cell-muted">{{ $t('ui.maintenance.searching') }}</span>
             </div>
           </label>
           <label class="field field--span">
-            <span class="field__label">Tareas <span class="cell-muted">(una por línea)</span></span>
+            <span class="field__label">{{ $t('ui.maintenance.field.tasks') }} <span class="cell-muted">{{ $t('ui.maintenance.field.tasks_hint') }}</span></span>
             <textarea v-model="tasksText" rows="5" class="input-shell input-shell--plain" data-maint-field="tasks"></textarea>
           </label>
-          <p v-if="plan" class="field field--span cell-muted">Último preventivo: {{ fmtDay(plan.lastCompletedOn) }} · Estado: {{ planStatusLabel(plan.status) }}</p>
+          <p v-if="plan" class="field field--span cell-muted">{{ $t('ui.maintenance.dialog.last_preventive', { date: fmtDay(plan.lastCompletedOn), status: planStatusLabel(plan.status) }) }}</p>
         </div>
         <template #footer>
-          <button v-if="plan" type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="cancelPlan">Cancelar plan</button>
-          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">Cerrar</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="asset-plan-save" :disabled="saving || loading" @click="save">{{ saving ? 'Guardando…' : (plan ? 'Guardar plan' : 'Crear plan') }}</button>
+          <button v-if="plan" type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="cancelPlan">{{ $t('ui.maintenance.dialog.cancel_plan') }}</button>
+          <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.close') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="asset-plan-save" :disabled="saving || loading" @click="save">{{ saving ? $t('ui.maintenance.saving') : (plan ? $t('ui.maintenance.dialog.save_plan') : $t('ui.maintenance.dialog.create_plan')) }}</button>
         </template>
       </modal-shell>
     `

@@ -19,7 +19,9 @@
   const DEFAULT_LIMIT = 50;
   const MAX_LIMIT = 100;
   const SEARCH_LIMIT = 20;
-  const FALLBACK_ERROR = 'No se pudo completar la solicitud de mantenimiento.';
+  function T(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
 
   let responseEpoch = 0;
   let sessionEpoch = 0;
@@ -266,35 +268,36 @@
     return record;
   }
 
+  const EVENT_LABEL_KEYS = {
+    created: 'ui.incidents.event.created',
+    acknowledged: 'ui.incidents.event.acknowledged',
+    status_changed: 'ui.incidents.event.status_changed',
+    assets_updated: 'ui.incidents.event.assets_updated',
+    intervention_linked: 'ui.incidents.event.intervention_linked',
+    resolution_prepared: 'ui.incidents.event.resolution_prepared',
+    resolution_confirmed: 'ui.incidents.event.resolution_confirmed',
+    resolved: 'ui.incidents.event.resolved',
+    closed: 'ui.incidents.event.closed'
+  };
+
   function eventLabel(action) {
-    const labels = {
-      created: 'Incidente creado',
-      acknowledged: 'Incidente reconocido',
-      status_changed: 'Estado actualizado',
-      assets_updated: 'Activos afectados actualizados',
-      intervention_linked: 'Intervención vinculada',
-      resolution_prepared: 'Resolución preparada',
-      resolution_confirmed: 'Resolución confirmada',
-      resolved: 'Incidente resuelto',
-      closed: 'Incidente cerrado'
-    };
     const key = text(action);
-    return labels[key] || key || 'Actuación registrada';
+    if (EVENT_LABEL_KEYS[key]) return T(EVENT_LABEL_KEYS[key]);
+    return key || T('ui.incidents.event.default');
   }
 
   function mapEvent(dto) {
     const source = dto && typeof dto === 'object' ? dto : {};
     const changes = source.changes && typeof source.changes === 'object' ? copy(source.changes) : null;
     const note = text(source.note);
-    const label = eventLabel(source.action);
     const transition = text(source.fromStatus) && text(source.toStatus) ? ' · ' + text(source.fromStatus) + ' → ' + text(source.toStatus) : '';
     return {
       id: text(source.id),
       action: text(source.action),
       at: text(source.createdAt),
       actor: text(source.actorUsername) || text(source.actorId),
-      text: note || label + transition,
-      label,
+      get text() { return note || eventLabel(source.action) + transition; },
+      get label() { return eventLabel(source.action); },
       changes
     };
   }
@@ -314,7 +317,7 @@
     return {
       id: text(source.id),
       description,
-      title: description || 'Incidente técnico',
+      get title() { return description || T('ui.incidents.technical_title'); },
       status,
       state: status,
       priority: text(source.priority) || 'normal',
@@ -344,24 +347,29 @@
     };
   }
 
-  const TECHNICAL_EVENT_LABELS = {
-    incident_opened: 'Incidencia abierta',
-    incident_acknowledged: 'Incidencia reconocida',
-    incident_resolved: 'Incidencia resuelta',
-    incident_closed: 'Incidencia cerrada',
-    incident_assets_updated: 'Activos afectados actualizados',
-    incident_resolution_prepared: 'Resolución preparada',
-    incident_resolution_confirmed: 'Resolución confirmada',
-    intervention_logged: 'Intervención registrada',
-    intervention_completed: 'Intervención completada',
-    intervention_updated: 'Intervención actualizada',
-    intervention_linked: 'Intervención vinculada',
-    maintenance_plan_created: 'Plan preventivo creado',
-    maintenance_plan_updated: 'Plan preventivo actualizado',
-    maintenance_completed: 'Mantenimiento completado',
-    maintenance_postponed: 'Mantenimiento pospuesto',
-    maintenance_cancelled: 'Mantenimiento cancelado'
+  const TECHNICAL_EVENT_KEYS = {
+    incident_opened: 'ui.maintenance.history.incident_opened',
+    incident_acknowledged: 'ui.maintenance.history.incident_acknowledged',
+    incident_resolved: 'ui.maintenance.history.incident_resolved',
+    incident_closed: 'ui.maintenance.history.incident_closed',
+    incident_assets_updated: 'ui.maintenance.history.incident_assets_updated',
+    incident_resolution_prepared: 'ui.maintenance.history.incident_resolution_prepared',
+    incident_resolution_confirmed: 'ui.maintenance.history.incident_resolution_confirmed',
+    intervention_logged: 'ui.maintenance.history.intervention_logged',
+    intervention_completed: 'ui.maintenance.history.intervention_completed',
+    intervention_updated: 'ui.maintenance.history.intervention_updated',
+    intervention_linked: 'ui.maintenance.history.intervention_linked',
+    maintenance_plan_created: 'ui.maintenance.history.plan_created',
+    maintenance_plan_updated: 'ui.maintenance.history.plan_updated',
+    maintenance_completed: 'ui.maintenance.history.maintenance_completed',
+    maintenance_postponed: 'ui.maintenance.history.maintenance_postponed',
+    maintenance_cancelled: 'ui.maintenance.history.maintenance_cancelled'
   };
+
+  function technicalLabel(action) {
+    const key = TECHNICAL_EVENT_KEYS[text(action)];
+    return key ? T(key) : '';
+  }
 
   function mapTechnicalHistory(dto) {
     const source = dto && typeof dto === 'object' ? dto : {};
@@ -369,7 +377,7 @@
     const action = text(source.action);
     return {
       id: text(source.id),
-      title: text(source.title) || TECHNICAL_EVENT_LABELS[action] || action || text(source.kind) || text(source.type) || 'Trabajo técnico',
+      get title() { return text(source.title) || technicalLabel(action) || action || text(source.kind) || text(source.type) || T('ui.maintenance.type.technical_work'); },
       detail: text(source.description) || text(source.summary) || text(source.notes),
       at,
       kind: text(source.kind) || text(source.type) || action,
@@ -420,7 +428,7 @@
   }
 
   function errorMessage(error) {
-    return (error && (error.message || error.detail)) || FALLBACK_ERROR;
+    return (error && (error.message || error.detail)) || T('ui.maintenance.error.fallback');
   }
 
   window.AssetMaintenanceApi = {
@@ -578,7 +586,7 @@
         return this.maintenanceRead(state, '/maintenance/templates' + queryString(params), {}, (payload) => applyPage(state, payload, mapTemplate, !!opts.append));
       },
       async saveMaintenanceTemplate(id, payload) {
-        if (!this.maintenanceConfigurable) return { ok: false, error: 'No tienes permiso para configurar mantenimiento.' };
+        if (!this.maintenanceConfigurable) return { ok: false, error: T('ui.maintenance.error.permission_configure') };
         const token = this.maintenanceToken();
         const path = id ? '/maintenance/templates/' + encodeURIComponent(id) : '/maintenance/templates';
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, path, { method: id ? 'PATCH' : 'POST', body: payload }));
@@ -589,7 +597,7 @@
         return Object.assign(result, { template: result.ok ? mapTemplate(result.payload) : null });
       },
       async deleteMaintenanceTemplate(id) {
-        if (!this.maintenanceConfigurable) return { ok: false, error: 'No tienes permiso para configurar mantenimiento.' };
+        if (!this.maintenanceConfigurable) return { ok: false, error: T('ui.maintenance.error.permission_configure') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/templates/' + encodeURIComponent(id), { method: 'DELETE' }));
         if (result.ok) {
@@ -675,13 +683,13 @@
         return ok;
       },
       async saveMaintenancePlan(payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar mantenimiento.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/plans', { method: 'POST', body: payload }));
         return this.maintenancePlanWriteResult(result, payload.assetId);
       },
       async updateMaintenancePlan(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar mantenimiento.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/plans/' + encodeURIComponent(id), { method: 'PATCH', body: payload }));
         return this.maintenancePlanWriteResult(result);
@@ -696,19 +704,19 @@
         return this.maintenanceRefreshAfterWrite({ assetId: assetId || plan.assetId, plan: plan, result });
       },
       async completeMaintenancePlan(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar mantenimiento.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/plans/' + encodeURIComponent(id) + '/complete', { method: 'POST', body: payload || {} }));
         return this.maintenancePlanWriteResult(result);
       },
       async postponeMaintenancePlan(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar mantenimiento.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/plans/' + encodeURIComponent(id) + '/postpone', { method: 'POST', body: payload || {} }));
         return this.maintenancePlanWriteResult(result);
       },
       async cancelMaintenancePlan(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar mantenimiento.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/maintenance/plans/' + encodeURIComponent(id) + '/cancel', { method: 'POST', body: payload || {} }));
         return this.maintenancePlanWriteResult(result);
@@ -751,7 +759,7 @@
         return ok;
       },
       async saveMaintenanceIntervention(payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para registrar intervenciones.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_record') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/interventions', { method: 'POST', body: payload }));
         if (!result.ok) return result;
@@ -759,7 +767,7 @@
         return this.maintenanceRefreshAfterWrite({ assetId: payload.assetId, intervention, result });
       },
       async updateMaintenanceIntervention(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para editar intervenciones.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_edit_intervention') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/interventions/' + encodeURIComponent(id), { method: 'PATCH', body: payload }));
         if (!result.ok) return result;
@@ -814,7 +822,7 @@
         });
       },
       async createMaintenanceIncident(payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para crear incidentes.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_create_incident') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/incidents', { method: 'POST', body: payload }));
         if (!result.ok) return result;
@@ -822,7 +830,7 @@
         return this.maintenanceRefreshAfterWrite({ assetId: payload.primaryAssetId, incident, result });
       },
       async incidentCommand(id, action, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para actualizar incidentes.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_update_incident') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/incidents/' + encodeURIComponent(id) + '/' + action, { method: 'POST', body: payload || {} }));
         if (!result.ok) return result;
@@ -839,7 +847,7 @@
         return this.incidentCommand(id, 'close', payload);
       },
       async prepareMaintenanceIncident(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para actualizar incidentes.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_update_incident') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/incidents/' + encodeURIComponent(id) + '/resolution/prepare', { method: 'POST', body: payload || {} }));
         if (!result.ok) return result;
@@ -854,10 +862,10 @@
         return Object.assign(result, { prepared: this.maintenanceApi.incidentDetail.prepare });
       },
       async confirmMaintenanceIncident(id, payload) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para actualizar incidentes.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_update_incident') };
         const target = this.maintenanceApi.incidentDetail;
         const prepared = target.id === text(id) ? target.prepare : null;
-        if (!prepared || !prepared.token) return { ok: false, error: 'Prepara la resolución antes de confirmarla.' };
+        if (!prepared || !prepared.token) return { ok: false, error: T('ui.incidents.error.prepare_first') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/incidents/' + encodeURIComponent(id) + '/resolution/confirm', {
           method: 'POST',
@@ -868,7 +876,7 @@
         return this.maintenanceRefreshAfterWrite({ incidentId: id, result });
       },
       async updateMaintenanceIncidentAssets(id, affectedAssetIds) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para actualizar incidentes.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_update_incident') };
         const token = this.maintenanceToken();
         const result = await this.maintenanceWrite(token, () => window.AssetAccess.request(this, '/incidents/' + encodeURIComponent(id) + '/affected-assets', {
           method: 'PATCH',
@@ -923,7 +931,7 @@
             work[requests[index][0]].error = errorMessage(result.reason);
           });
           work.loaded = true;
-          work.error = errors.length ? 'No se pudo cargar ' + errors.join(', ') + '.' : '';
+          work.error = errors.length ? T('ui.maintenance.error.load_failed', { resources: errors.join(', ') }) : '';
           return true;
         } finally {
           if (epoch === work.epoch && this.maintenanceTokenOpen(token)) {
@@ -975,9 +983,9 @@
         return (Array.isArray(payload && payload.items) ? payload.items : []).map(mapPersonChoice).filter(Boolean);
       },
       async uploadMaintenanceAttachment(assetId, file) {
-        if (!this.maintenanceEditable) return { ok: false, error: 'No tienes permiso para subir archivos.' };
+        if (!this.maintenanceEditable) return { ok: false, error: T('ui.maintenance.error.permission_upload') };
         const id = text(assetId);
-        if (!id || !file || typeof file.arrayBuffer !== 'function') return { ok: false, error: 'Selecciona un archivo para adjuntar.' };
+        if (!id || !file || typeof file.arrayBuffer !== 'function') return { ok: false, error: T('ui.maintenance.error.choose_file') };
         const token = this.maintenanceToken();
         const filename = text(file.name) || 'documento';
         try {
