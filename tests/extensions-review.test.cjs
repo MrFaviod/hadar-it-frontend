@@ -404,8 +404,12 @@ test('status facts read the backend status contract exactly', () => {
 });
 
 test('review page trust copy describes the v2 isolation model, not in-process code', () => {
-  const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'assets/js/extensions.js'), 'utf8');
-  assert.doesNotMatch(source, /dentro del proceso del host con los permisos del servidor/);
-  assert.match(source, /proceso restringido/);
-  assert.match(source, /base SQLite propia/i);
+  const read = (file) => require('node:fs').readFileSync(require('node:path').join(__dirname, '..', file), 'utf8');
+  // The trust notice copy lives in the Spanish source catalog; the module keeps
+  // the key references that select it.
+  const copy = read('assets/js/extensions.js') + '\n' + read('assets/i18n/es.json');
+  assert.doesNotMatch(copy, /dentro del proceso del host con los permisos del servidor/);
+  assert.match(copy, /proceso restringido/);
+  assert.match(copy, /base SQLite propia/i);
+  assert.match(copy, /ui\.extensions\.review\.trust_sandboxed_detail/);
 });

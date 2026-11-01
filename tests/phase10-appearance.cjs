@@ -43,7 +43,24 @@ function load() {
     }
   });
   context.window = context;
-  context.fetch = async () => { throw new Error('unexpected external fetch'); };
+  context.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
+  // The appearance modules route their messages through the shipped i18n runtime,
+  // so the harness boots it with the real catalogs and Spanish remains the source.
+  context.__ITSM_I18N_CATALOGS__ = {
+    catalogs: {
+      es: JSON.parse(fs.readFileSync('assets/i18n/es.json', 'utf8')),
+      en: JSON.parse(fs.readFileSync('assets/i18n/en.json', 'utf8'))
+    },
+    context: JSON.parse(fs.readFileSync('assets/i18n/context.json', 'utf8'))
+  };
+  context.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('/i18n/')) return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ revision: 1, locales: [] }) };
+    throw new Error('unexpected external fetch');
+  };
+  vm.runInContext(fs.readFileSync('assets/vendor/vue.global.prod.js', 'utf8'), context, { filename: 'vue.global.prod.js' });
+  vm.runInContext(fs.readFileSync('assets/vendor/vue-i18n.global.prod.js', 'utf8'), context, { filename: 'vue-i18n.global.prod.js' });
+  vm.runInContext(fs.readFileSync('assets/js/i18n.js', 'utf8'), context, { filename: 'i18n.js' });
   for (const file of FILES) vm.runInContext(fs.readFileSync('assets/js/' + file, 'utf8'), context, { filename: file });
   return { c: context, icon, meta, root, links };
 }

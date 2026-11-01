@@ -2232,7 +2232,7 @@
               <p><strong>{{ $t('ui.agents.wizard_request_generated') }}</strong> {{ $t('ui.agents.wizard_request_pending_install') }}</p>
               <p v-if="result.requestDigest" class="agent-skill__meta mono">SHA-256 {{ result.requestDigest }}</p>
               <p class="field__hint">{{ $t('ui.agents.wizard_run_hint') }}</p>
-              <p class="mono">python -m itsm.agent_integrations --request &lt;ruta del archivo&gt;</p>
+              <p class="mono">{{ $t('ui.agents.integration_request_example') }}</p>
               <div class="agent-wizard__actions">
                 <button type="button" class="btn btn--secondary btn--small" @click="downloadRequest">{{ $t('ui.agents.download_request') }}</button>
                 <button v-if="result.id" type="button" class="btn btn--ghost btn--small" @click="reDownloadRequest">{{ $t('ui.agents.wizard_redownload') }}</button>

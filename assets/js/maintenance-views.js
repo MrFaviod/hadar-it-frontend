@@ -566,7 +566,7 @@
             <label v-if="view === 'interventions'" class="maint-filter">
               <span class="sr-only">{{ $t('ui.maintenance.filter.intervention_state') }}</span>
               <select v-model="filters.state" data-maint-filter="state">
-                <option value="">Todos los estados</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_states') }}</option>
                 <option value="open">{{ $t('ui.maintenance.filter.open_feminine') }}</option>
                 <option value="in_progress">{{ $t('ui.maintenance.filter.in_progress') }}</option>
                 <option value="completed">{{ $t('ui.maintenance.filter.completed_feminine') }}</option>
@@ -576,7 +576,7 @@
             <label v-if="view === 'incidents'" class="maint-filter">
               <span class="sr-only">{{ $t('ui.maintenance.filter.incident_state') }}</span>
               <select v-model="filters.state" data-maint-filter="state">
-                <option value="">Todos los estados</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_states') }}</option>
                 <option value="open">{{ $t('ui.maintenance.filter.open_masculine') }}</option>
                 <option value="in_progress">{{ $t('ui.maintenance.filter.in_progress') }}</option>
                 <option value="resolved">{{ $t('ui.maintenance.filter.resolved_masculine') }}</option>
@@ -750,7 +750,7 @@
           <div v-if="!alerts.length" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="shield"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
+            <button type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.remove_filters') }}</button>
           </div>
         </div>
 

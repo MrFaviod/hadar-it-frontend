@@ -4,6 +4,11 @@
   // original preset schema and rendering; this adapter only moves that state
   // through the authenticated API. No preset is activated as a side effect of
   // saving, importing or previewing.
+  function tr(key, params) {
+    const i18n = window.ItsmI18n;
+    if (!i18n || typeof i18n.t !== 'function') return key;
+    return i18n.t(key, params);
+  }
   const MAX_ZIP = 24 * 1024 * 1024;
   const states = new WeakMap();
   const clone = value => value == null ? value : JSON.parse(JSON.stringify(value));
@@ -27,7 +32,7 @@
   }
   function request(vm, method, path, options) {
     const access = window.AssetAccess;
-    if (!access || typeof access.request !== 'function') return Promise.reject(makeError('El servicio de apariencia no está disponible.', 503));
+    if (!access || typeof access.request !== 'function') return Promise.reject(makeError(tr('ui.appearance.api.unavailable'), 503));
     return access.request(vm, basePath(vm) + path, Object.assign({ method: method }, options || {}));
   }
   function canManage(vm) {
@@ -35,7 +40,7 @@
     return true;
   }
   function requireSession(vm) {
-    if (!vm || !vm.authenticated) throw makeError('Inicia sesión para administrar la apariencia de la instalación.', 401);
+    if (!vm || !vm.authenticated) throw makeError(tr('ui.appearance.api.login_required'), 401);
   }
   function begin(vm, channel) {
     const state = ensure(vm);
@@ -46,7 +51,7 @@
     return states.get(token.vm) === token.state && token.state.epochs.session === token.session && token.state.epochs[token.channel] === token.epoch;
   }
   function normalizePreset(value, context) {
-    if (!value || typeof value !== 'object') throw makeError((context || 'La apariencia') + ' no contiene un preset válido.', 422);
+    if (!value || typeof value !== 'object') throw makeError(tr('ui.appearance.api.invalid_preset', { context: context || tr('ui.appearance.api.default_context') }), 422);
     const preset = clone(value);
     if (preset.version == null) preset.version = 1;
     engine().validate(preset);
@@ -81,7 +86,7 @@
   function applyServer(vm, payload) {
     const state = ensure(vm), appearance = vm.appearance;
     if (!payload || !appearance) return appearance;
-    const list = Array.isArray(payload.presets) ? payload.presets.map(item => normalizePreset(item, 'La galería')) : null;
+    const list = Array.isArray(payload.presets) ? payload.presets.map(item => normalizePreset(item, tr('ui.appearance.api.gallery_context'))) : null;
     if (list) appearance.presets = list;
     const activeId = String(payload.activeId || (payload.active && payload.active.id) || '');
     let active = payload.active ? normalizePreset(payload.active, 'La apariencia activa') : null;
@@ -125,7 +130,7 @@
       return applyServer(vm, payload);
     } catch (error) {
       if (!fresh(token)) return null;
-      state.error = error.message || 'No se pudo cargar la galería de apariencia.';
+      state.error = error.message || tr('ui.appearance.api.gallery_failed');
       return null;
     } finally {
       if (fresh(token)) state.loading.presets = false;
@@ -183,7 +188,7 @@
   }
   async function mutate(vm, method, path, body, options) {
     requireSession(vm);
-    if (!canManage(vm)) throw makeError('No tienes permisos para cambiar la apariencia de la instalación.', 403);
+    if (!canManage(vm)) throw makeError(tr('ui.appearance.api.manage_forbidden'), 403);
     const token = begin(vm, 'presets');
     try {
       const payload = await request(vm, method, path, Object.assign({}, options || {}, { body: body }));
@@ -197,13 +202,13 @@
     return { name: preset.name, description: preset.description || '', branding: clone(preset.branding), colors: clone(preset.colors), preferences: clone(preset.preferences) };
   }
   async function savePreset(vm, preset) {
-    if (!preset) throw makeError('El preset no está disponible.', 422);
+    if (!preset) throw makeError(tr('ui.appearance.api.preset_unavailable'), 422);
     normalizePreset(preset);
     const existing = Array.isArray(vm.appearance.presets) && vm.appearance.presets.some(item => item.id === preset.id);
     const path = existing ? '/appearance/presets/' + encodeURIComponent(preset.id) : '/appearance/presets';
     const payload = await mutate(vm, existing ? 'PUT' : 'POST', path, bodyOf(preset));
     if (payload === undefined) return null;
-    const saved = normalizePreset(payload && payload.preset, 'La galería');
+    const saved = normalizePreset(payload && payload.preset, tr('ui.appearance.api.gallery_context'));
     const index = vm.appearance.presets.findIndex(item => item.id === saved.id);
     if (index >= 0) vm.appearance.presets.splice(index, 1, saved);
     else vm.appearance.presets.push(saved);
@@ -213,7 +218,7 @@
   }
   async function applyPreset(vm, preset) {
     const id = typeof preset === 'string' ? preset : preset && preset.id;
-    if (!id) throw makeError('Selecciona una apariencia de la galería.', 422);
+    if (!id) throw makeError(tr('ui.appearance.api.select_preset'), 422);
     const payload = await mutate(vm, 'POST', '/appearance/apply/' + encodeURIComponent(id));
     if (payload === undefined) return null;
     const appearance = applyServer(vm, payload || {});
@@ -233,7 +238,7 @@
   }
   async function removePreset(vm, preset) {
     const id = typeof preset === 'string' ? preset : preset && preset.id;
-    if (!id) throw makeError('Selecciona una apariencia de la galería.', 422);
+    if (!id) throw makeError(tr('ui.appearance.api.select_preset'), 422);
     const payload = await mutate(vm, 'DELETE', '/appearance/presets/' + encodeURIComponent(id));
     if (payload === undefined) return false;
     vm.appearance.presets = vm.appearance.presets.filter(item => item.id !== id);
@@ -241,7 +246,7 @@
   }
   async function exportPreset(vm, preset) {
     requireSession(vm);
-    if (!canManage(vm)) throw makeError('No tienes permisos para exportar la apariencia de la instalación.', 403);
+    if (!canManage(vm)) throw makeError(tr('ui.appearance.api.export_forbidden'), 403);
     const id = typeof preset === 'string' ? preset : preset && preset.id;
     if (!id) throw makeError('Selecciona una apariencia para exportar.', 422);
     const state = ensure(vm), session = state.epochs.session;
@@ -267,10 +272,10 @@
   }
   async function previewImport(vm, bytes) {
     requireSession(vm);
-    if (!canManage(vm)) throw makeError('No tienes permisos para importar la apariencia de la instalación.', 403);
+    if (!canManage(vm)) throw makeError(tr('ui.appearance.api.import_forbidden'), 403);
     const blob = bytes instanceof Blob && bytes.type === 'application/zip' ? bytes : new Blob([bytes], { type: 'application/zip' });
-    if (!blob.size) throw makeError('El archivo está vacío.', 422);
-    if (blob.size > MAX_ZIP) throw makeError('El paquete supera el límite de 24 MB.', 413);
+    if (!blob.size) throw makeError(tr('ui.appearance.api.file_empty'), 422);
+    if (blob.size > MAX_ZIP) throw makeError(tr('ui.appearance.api.file_too_large'), 413);
     const state = ensure(vm), session = state.epochs.session;
     const payload = await request(vm, 'POST', '/appearance/import/preview', { body: blob });
     if (state.epochs.session !== session) return null;

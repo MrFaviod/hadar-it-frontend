@@ -162,7 +162,7 @@
         return String(value);
       }
     },
-    template: '<div class="kit-table-wrap"><table class="kit-table"><caption class="kit-sr">{{ caption || "Datos de la extensión" }}</caption><thead><tr><th v-for="column in columns" :key="column.field" scope="col">{{ column.label || column.field }}</th></tr></thead><tbody><tr v-if="loading"><td :colspan="columns.length || 1" class="kit-empty" role="status">Cargando datos…</td></tr><tr v-else-if="!rows.length"><td :colspan="columns.length || 1" class="kit-empty">{{ empty }}</td></tr><tr v-for="(row, index) in rows" :key="row.id || index"><td v-for="column in columns" :key="column.field">{{ cell(row, column) }}</td></tr></tbody></table></div>'
+    template: '<div class="kit-table-wrap"><table class="kit-table"><caption class="kit-sr">{{ caption || $t('ui.extensions.frame.caption_fallback') }}</caption><thead><tr><th v-for="column in columns" :key="column.field" scope="col">{{ column.label || column.field }}</th></tr></thead><tbody><tr v-if="loading"><td :colspan="columns.length || 1" class="kit-empty" role="status">{{ $t('ui.shell.loading_data') }}</td></tr><tr v-else-if="!rows.length"><td :colspan="columns.length || 1" class="kit-empty">{{ empty }}</td></tr><tr v-for="(row, index) in rows" :key="row.id || index"><td v-for="column in columns" :key="column.field">{{ cell(row, column) }}</td></tr></tbody></table></div>'
   };
   var KitField = {
     name: 'ItsmField',

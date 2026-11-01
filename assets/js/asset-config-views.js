@@ -439,14 +439,14 @@
             <div v-for="(row, index) in app.inventoryTransitionRows()" :key="index" class="transition-row">
               <span class="input-shell">
                 <select v-model="row.from" :aria-label="$t('ui.catalog.identity.transition_from', { index: index + 1 })">
-                  <option value="">Origen</option>
+                  <option value="">{{ $t('ui.catalog.identity.transition_origin') }}</option>
                   <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.label }}</option>
                 </select>
               </span>
               <app-icon name="arrow-right" />
               <span class="input-shell">
                 <select v-model="row.to" :aria-label="$t('ui.catalog.identity.transition_to', { index: index + 1 })">
-                  <option value="">Destino</option>
+                  <option value="">{{ $t('ui.catalog.identity.transition_destination') }}</option>
                   <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.label }}</option>
                 </select>
               </span>

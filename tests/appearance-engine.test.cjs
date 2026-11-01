@@ -1,6 +1,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-function load(){const c=vm.createContext({console});c.window=c;const file='assets/js/appearance-engine.js';if(fs.existsSync(file))vm.runInContext(fs.readFileSync(file,'utf8'),c);assert.ok(c.AssetAppearanceEngine,'appearance engine available');return c.AssetAppearanceEngine;}
+const { bootAppearanceI18n } = require('./appearance-i18n.cjs');
+function load(){const c=vm.createContext({console});c.window=c;bootAppearanceI18n(c);const file='assets/js/appearance-engine.js';if(fs.existsSync(file))vm.runInContext(fs.readFileSync(file,'utf8'),c);assert.ok(c.AssetAppearanceEngine,'appearance engine available');return c.AssetAppearanceEngine;}
 test('S1/S3 draft selection stays isolated until apply; restore preserves original identity',()=>{
  const E=load(),s=E.createState({appName:'Asset Manager',organizationName:'Operaciones TI',logo:'assets/svg/logo.svg'}),original=JSON.stringify(s.active),p=E.clone(s.presets[1]);p.branding.appName='Inventario corporativo';assert.equal(JSON.stringify(s.active),original);E.applyPreset(s,p);p.branding.appName='Otra';assert.equal(s.active.branding.appName,'Inventario corporativo');assert.equal(JSON.stringify(s.previous),original);E.restore(s);assert.equal(s.active.id,'generic');assert.equal(s.active.branding.appName,'Asset Manager');
 });

@@ -1316,20 +1316,20 @@
                     <section v-else-if="route.section === 'sedes'" class="config-section" aria-labelledby="config-sites-title">
                       <header class="config-section__head">
                         <div>
-                          <p class="eyebrow">Estructura física</p>
-                          <h2 id="config-sites-title">Sedes y ubicaciones</h2>
-                          <p>Organiza el inventario por sede y detalla las ubicaciones internas.</p>
+                          <p class="eyebrow">{{ $t('ui.organization.config.sites_eyebrow') }}</p>
+                          <h2 id="config-sites-title">{{ $t('ui.shell.config_section_sedes') }}</h2>
+                          <p>{{ $t('ui.organization.config.sites_lead') }}</p>
                         </div>
                         <button type="button" class="btn btn--primary btn--small" @click="openSiteDialog()">
-                          <app-icon name="plus"></app-icon> Nueva sede
+                          <app-icon name="plus"></app-icon> {{ $t('ui.asset.site.new_title') }}
                         </button>
                       </header>
 
                       <p v-if="!organizationSitesConfigMode" class="config-note" role="note">
-                        <app-icon name="info"></app-icon> Necesitas el permiso de configuración de sedes para crear o modificar la estructura. La consulta sigue dependiendo del permiso de activos.
+                        <app-icon name="info"></app-icon> {{ $t('ui.organization.config.sites_permission') }}
                       </p>
                       <p v-if="organization.locations.error" class="form-error" role="alert">{{ organization.locations.error }}</p>
-                      <p v-else-if="organization.locations.loading" class="config-note" role="status">Consultando las ubicaciones del servidor…</p>
+                      <p v-else-if="organization.locations.loading" class="config-note" role="status">{{ $t('ui.organization.config.locations_loading') }}</p>
 
                       <div v-if="serverOrganizationMode" class="site-manage site-manage--server">
                         <article v-for="site in organizationConfigSites" :key="site.id" class="site-row">
@@ -1337,18 +1337,18 @@
                             <span class="site-row__icon"><app-icon name="building"></app-icon></span>
                             <div class="site-row__copy">
                               <h3>{{ site.name }} <span class="level-tag">{{ organizationLevelName(site.level) }}</span></h3>
-                              <p>{{ organizationLocationChildren(site.id, 'building').length }} {{ organizationLocationChildren(site.id, 'building').length === 1 ? 'edificio' : 'edificios' }} · {{ site.description || 'Sin descripción' }}</p>
+                              <p>{{ $t('ui.organization.config.building_count', organizationLocationChildren(site.id, 'building').length) }} · {{ site.description || $t('ui.organization.config.no_description') }}</p>
                               <p v-if="site.latitude !== null && site.longitude !== null" class="cell-note mono">{{ site.latitude }}, {{ site.longitude }}</p>
-                              <p v-if="!site.active" class="cell-note">Inactiva</p>
+                              <p v-if="!site.active" class="cell-note">{{ $t('ui.organization.config.inactive') }}</p>
                             </div>
                             <div v-if="organizationSitesConfigMode" class="config-row-actions">
-                              <button type="button" class="config-icon-action" :aria-label="'Añadir edificio en ' + site.name" title="Añadir edificio" @click="openOrganizationLocationDialog({ level: 'building', parentId: site.id })">
+                              <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.add_building_in', { name: site.name })" :title="$t('ui.organization.config.add_building')" @click="openOrganizationLocationDialog({ level: 'building', parentId: site.id })">
                                 <app-icon name="plus"></app-icon>
                               </button>
-                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + site.name" title="Editar sede" @click="openOrganizationLocationDialog({ level: 'site', location: site })">
+                              <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: site.name })" :title="$t('ui.asset.site.edit_title')" @click="openOrganizationLocationDialog({ level: 'site', location: site })">
                                 <app-icon name="pencil"></app-icon>
                               </button>
-                              <button type="button" class="config-icon-action" :aria-label="(site.active ? 'Desactivar ' : 'Reactivar ') + site.name" :title="site.active ? 'Desactivar sede' : 'Reactivar sede'" @click="setOrganizationLocationActive(site, !site.active)">
+                              <button type="button" class="config-icon-action" :aria-label="site.active ? $t('ui.organization.config.deactivate_named', { name: site.name }) : $t('ui.organization.config.reactivate_named', { name: site.name })" :title="site.active ? $t('ui.organization.config.deactivate_site') : $t('ui.organization.config.reactivate_site')" @click="setOrganizationLocationActive(site, !site.active)">
                                 <app-icon :name="site.active ? 'close' : 'restore'"></app-icon>
                               </button>
                             </div>
@@ -1359,15 +1359,15 @@
                               <div class="location-row" :class="{ 'location-row--inactive': !building.active }">
                                 <span class="location-row__pin"><app-icon name="building"></app-icon></span>
                                 <span class="location-row__label">{{ building.name }} <span class="level-tag">{{ organizationLevelName(building.level) }}</span></span>
-                                <span class="location-row__count">{{ organizationLocationChildren(building.id, 'floor').length }} {{ organizationLocationChildren(building.id, 'floor').length === 1 ? 'piso' : 'pisos' }}</span>
+                                <span class="location-row__count">{{ $t('ui.organization.config.floor_count', organizationLocationChildren(building.id, 'floor').length) }}</span>
                                 <div v-if="organizationSitesConfigMode" class="config-row-actions">
-                                  <button type="button" class="config-icon-action" :aria-label="'Añadir piso en ' + building.name" title="Añadir piso" @click="openOrganizationLocationDialog({ level: 'floor', parentId: building.id })">
+                                  <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.add_floor_in', { name: building.name })" :title="$t('ui.organization.config.add_floor')" @click="openOrganizationLocationDialog({ level: 'floor', parentId: building.id })">
                                     <app-icon name="plus"></app-icon>
                                   </button>
-                                  <button type="button" class="config-icon-action" :aria-label="'Editar ' + building.name" title="Editar edificio" @click="openOrganizationLocationDialog({ level: 'building', location: building })">
+                                  <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: building.name })" :title="$t('ui.organization.config.edit_building')" @click="openOrganizationLocationDialog({ level: 'building', location: building })">
                                     <app-icon name="pencil"></app-icon>
                                   </button>
-                                  <button type="button" class="config-icon-action" :aria-label="(building.active ? 'Desactivar ' : 'Reactivar ') + building.name" @click="setOrganizationLocationActive(building, !building.active)">
+                                  <button type="button" class="config-icon-action" :aria-label="building.active ? $t('ui.organization.config.deactivate_named', { name: building.name }) : $t('ui.organization.config.reactivate_named', { name: building.name })" @click="setOrganizationLocationActive(building, !building.active)">
                                     <app-icon :name="building.active ? 'close' : 'restore'"></app-icon>
                                   </button>
                                 </div>
@@ -1378,17 +1378,17 @@
                                   <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
                                   <span class="location-row__label">
                                     {{ floor.name }} <span class="level-tag">{{ organizationLevelName(floor.level) }}</span>
-                                    <span v-if="floor.planRef" class="cell-note"> · Plano: {{ floor.planRef }}<template v-if="floor.planPage"> (pág. {{ floor.planPage }})</template></span>
+                                    <span v-if="floor.planRef" class="cell-note"> {{ $t('ui.organization.config.plan_ref', { ref: floor.planRef }) }}<template v-if="floor.planPage"> {{ $t('ui.organization.config.plan_page', { page: floor.planPage }) }}</template></span>
                                   </span>
-                                  <span class="location-row__count">{{ organizationLocationChildren(floor.id, 'room_zone').length }} {{ organizationLocationChildren(floor.id, 'room_zone').length === 1 ? 'sala o zona' : 'salas o zonas' }}</span>
+                                  <span class="location-row__count">{{ $t('ui.organization.config.room_zone_count', organizationLocationChildren(floor.id, 'room_zone').length) }}</span>
                                   <div v-if="organizationSitesConfigMode" class="config-row-actions">
-                                    <button type="button" class="config-icon-action" :aria-label="'Añadir sala o zona en ' + floor.name" title="Añadir sala o zona" @click="openOrganizationLocationDialog({ level: 'room_zone', parentId: floor.id })">
+                                    <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.add_room_zone_in', { name: floor.name })" :title="$t('ui.organization.config.add_room_zone')" @click="openOrganizationLocationDialog({ level: 'room_zone', parentId: floor.id })">
                                       <app-icon name="plus"></app-icon>
                                     </button>
-                                    <button type="button" class="config-icon-action" :aria-label="'Editar ' + floor.name" title="Editar piso" @click="openOrganizationLocationDialog({ level: 'floor', location: floor })">
+                                    <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: floor.name })" :title="$t('ui.organization.config.edit_floor')" @click="openOrganizationLocationDialog({ level: 'floor', location: floor })">
                                       <app-icon name="pencil"></app-icon>
                                     </button>
-                                    <button type="button" class="config-icon-action" :aria-label="(floor.active ? 'Desactivar ' : 'Reactivar ') + floor.name" @click="setOrganizationLocationActive(floor, !floor.active)">
+                                    <button type="button" class="config-icon-action" :aria-label="floor.active ? $t('ui.organization.config.deactivate_named', { name: floor.name }) : $t('ui.organization.config.reactivate_named', { name: floor.name })" @click="setOrganizationLocationActive(floor, !floor.active)">
                                       <app-icon :name="floor.active ? 'close' : 'restore'"></app-icon>
                                     </button>
                                   </div>
@@ -1397,27 +1397,27 @@
                                 <div v-for="room in organizationLocationChildren(floor.id, 'room_zone')" :key="room.id" class="location-row location-row--room" :class="{ 'location-row--inactive': !room.active }">
                                   <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
                                   <span class="location-row__label">{{ room.name }} <span class="level-tag">{{ organizationLevelName(room.level) }}</span></span>
-                                  <span class="location-row__count">{{ room.description || 'Sin descripción' }}</span>
+                                  <span class="location-row__count">{{ room.description || $t('ui.organization.config.no_description') }}</span>
                                   <div v-if="organizationSitesConfigMode" class="config-row-actions">
-                                    <button type="button" class="config-icon-action" :aria-label="'Editar ' + room.name" title="Editar sala o zona" @click="openOrganizationLocationDialog({ level: 'room_zone', location: room })">
+                                    <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: room.name })" :title="$t('ui.organization.config.edit_room_zone')" @click="openOrganizationLocationDialog({ level: 'room_zone', location: room })">
                                       <app-icon name="pencil"></app-icon>
                                     </button>
-                                    <button type="button" class="config-icon-action" :aria-label="(room.active ? 'Desactivar ' : 'Reactivar ') + room.name" @click="setOrganizationLocationActive(room, !room.active)">
+                                    <button type="button" class="config-icon-action" :aria-label="room.active ? $t('ui.organization.config.deactivate_named', { name: room.name }) : $t('ui.organization.config.reactivate_named', { name: room.name })" @click="setOrganizationLocationActive(room, !room.active)">
                                       <app-icon :name="room.active ? 'close' : 'restore'"></app-icon>
                                     </button>
                                   </div>
                                 </div>
                               </div>
                             </div>
-                            <p v-if="!organizationLocationChildren(site.id, 'building').length" class="location-list__empty">Sin edificios todavía.</p>
+                            <p v-if="!organizationLocationChildren(site.id, 'building').length" class="location-list__empty">{{ $t('ui.organization.config.empty_buildings') }}</p>
                           </div>
                         </article>
 
                         <div v-if="!organizationConfigSites.length && !organization.locations.loading && !organization.locations.error" class="config-empty">
                           <span class="config-empty__icon"><app-icon name="building"></app-icon></span>
-                          <h3>Sin sedes</h3>
-                          <p>El servidor no tiene sedes registradas.</p>
-                          <button v-if="organizationSitesConfigMode" type="button" class="btn btn--primary btn--small" data-od-id="create-server-location" @click="openOrganizationLocationDialog({ level: 'site' })"><app-icon name="plus"></app-icon> Crear sede</button>
+                          <h3>{{ $t('ui.organization.config.empty_sites') }}</h3>
+                          <p>{{ $t('ui.organization.config.empty_sites_server') }}</p>
+                          <button v-if="organizationSitesConfigMode" type="button" class="btn btn--primary btn--small" data-od-id="create-server-location" @click="openOrganizationLocationDialog({ level: 'site' })"><app-icon name="plus"></app-icon> {{ $t('ui.asset.site.create') }}</button>
                         </div>
                       </div>
 
@@ -1427,13 +1427,13 @@
                             <span class="site-row__icon"><app-icon name="building"></app-icon></span>
                             <div class="site-row__copy">
                               <h3>{{ site.label }}</h3>
-                              <p>{{ site.locations.length }} {{ site.locations.length === 1 ? 'ubicación' : 'ubicaciones' }} · {{ siteAssetCount(site.id) }} {{ siteAssetCount(site.id) === 1 ? 'activo' : 'activos' }}</p>
+                              <p>{{ $t('ui.organization.config.location_count', site.locations.length) }} · {{ $t('ui.people.asset_word', siteAssetCount(site.id)) }}</p>
                             </div>
                             <div class="config-row-actions">
-                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + site.label" title="Editar sede" @click="openSiteDialog(site)">
+                              <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: site.label })" :title="$t('ui.asset.site.edit_title')" @click="openSiteDialog(site)">
                                 <app-icon name="pencil"></app-icon>
                               </button>
-                              <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + site.label" title="Eliminar sede" @click="requestDeleteSite(site)">
+                              <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="$t('ui.organization.config.delete_named', { name: site.label })" :title="$t('ui.config.site_delete_title')" @click="requestDeleteSite(site)">
                                 <app-icon name="trash"></app-icon>
                               </button>
                             </div>
@@ -1443,22 +1443,22 @@
                             <div v-for="location in site.locations" :key="location.id" class="location-row">
                               <span class="location-row__pin"><app-icon name="map-pin"></app-icon></span>
                               <span class="location-row__label">{{ location.label }}</span>
-                              <span class="location-row__count">{{ locationAssetCount(site.id, location.id) }} {{ locationAssetCount(site.id, location.id) === 1 ? 'activo' : 'activos' }}</span>
+                              <span class="location-row__count">{{ $t('ui.people.asset_word', locationAssetCount(site.id, location.id)) }}</span>
                               <div class="config-row-actions">
-                                <button type="button" class="config-icon-action" :aria-label="'Editar ' + location.label" title="Editar ubicación" @click="openLocationDialog(site, location)">
+                                <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: location.label })" :title="$t('ui.organization.config.edit_location')" @click="openLocationDialog(site, location)">
                                   <app-icon name="pencil"></app-icon>
                                 </button>
-                                <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + location.label" title="Eliminar ubicación" @click="requestDeleteLocation(site, location)">
+                                <button type="button" class="config-icon-action config-icon-action--danger" :aria-label="$t('ui.organization.config.delete_named', { name: location.label })" :title="$t('ui.organization.config.delete_location')" @click="requestDeleteLocation(site, location)">
                                   <app-icon name="trash"></app-icon>
                                 </button>
                               </div>
                             </div>
-                            <p v-if="!site.locations.length" class="location-list__empty">Sin ubicaciones todavía.</p>
+                            <p v-if="!site.locations.length" class="location-list__empty">{{ $t('ui.organization.config.empty_locations') }}</p>
                           </div>
 
                           <footer class="site-row__foot">
                             <button type="button" class="text-button" @click="openLocationDialog(site)">
-                              <app-icon name="plus"></app-icon> Añadir ubicación
+                              <app-icon name="plus"></app-icon> {{ $t('ui.organization.config.add_location') }}
                             </button>
                           </footer>
                         </article>
@@ -1466,37 +1466,37 @@
 
                       <div v-else-if="!serverOrganizationMode" class="config-empty">
                         <span class="config-empty__icon"><app-icon name="building"></app-icon></span>
-                        <h3>Sin sedes</h3>
-                        <p>Crea una sede para asignar activos y ubicaciones.</p>
-                        <button type="button" class="btn btn--primary btn--small" @click="openSiteDialog()"><app-icon name="plus"></app-icon> Crear sede</button>
+                        <h3>{{ $t('ui.organization.config.empty_sites') }}</h3>
+                        <p>{{ $t('ui.organization.config.empty_sites_demo') }}</p>
+                        <button type="button" class="btn btn--primary btn--small" @click="openSiteDialog()"><app-icon name="plus"></app-icon> {{ $t('ui.asset.site.create') }}</button>
                       </div>
 
-                      <p class="config-note"><app-icon name="info"></app-icon> Una sede o ubicación con activos o personas vinculadas no se puede eliminar. Al borrar una sede sin registros también se eliminan sus ubicaciones.</p>
+                      <p class="config-note"><app-icon name="info"></app-icon> {{ $t('ui.organization.config.sites_delete_note') }}</p>
                     </section>
 
                     <!-- Personas -->
                     <section v-else-if="route.section === 'personas'" class="config-section" aria-labelledby="config-people-title">
                       <header class="config-section__head">
                         <div>
-                          <p class="eyebrow">Equipo</p>
-                          <h2 id="config-people-title">Personas y departamentos</h2>
-                          <p>Organiza el directorio por área. Los datos personales se editan en cada ficha.</p>
+                          <p class="eyebrow">{{ $t('ui.asset.department.eyebrow') }}</p>
+                          <h2 id="config-people-title">{{ $t('ui.organization.config.people_title') }}</h2>
+                          <p>{{ $t('ui.organization.config.people_lead') }}</p>
                         </div>
                         <button type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()">
-                          <app-icon name="plus"></app-icon> Nuevo departamento
+                          <app-icon name="plus"></app-icon> {{ $t('ui.asset.department.new_title') }}
                         </button>
                       </header>
 
                       <div v-if="!serverOrganizationMode" class="config-team-summary">
-                        <span><strong>{{ people.length }}</strong> {{ people.length === 1 ? 'persona' : 'personas' }}</span>
-                        <span><strong>{{ activePeopleCount() }}</strong> {{ activePeopleCount() === 1 ? 'activa' : 'activas' }}</span>
-                        <span><strong>{{ departments.length }}</strong> {{ departments.length === 1 ? 'departamento' : 'departamentos' }}</span>
+                        <span><strong>{{ people.length }}</strong> {{ $t('ui.organization.config.person_count', people.length) }}</span>
+                        <span><strong>{{ activePeopleCount() }}</strong> {{ $t('ui.organization.config.active_people_count', activePeopleCount()) }}</span>
+                        <span><strong>{{ departments.length }}</strong> {{ $t('ui.organization.config.department_count', departments.length) }}</span>
                       </div>
 
                       <p v-if="serverOrganizationMode && organization.departments.error" class="form-error" role="alert">{{ organization.departments.error }}</p>
-                      <p v-else-if="serverOrganizationMode && organization.departments.loading" class="config-note" role="status">Consultando los departamentos del servidor…</p>
+                      <p v-else-if="serverOrganizationMode && organization.departments.loading" class="config-note" role="status">{{ $t('ui.organization.config.departments_loading') }}</p>
                       <p v-if="serverOrganizationMode && !organizationDepartmentsConfigMode" class="config-note" role="note">
-                        <app-icon name="info"></app-icon> Necesitas el permiso de configuración de departamentos para crear, editar o desactivar.
+                        <app-icon name="info"></app-icon> {{ $t('ui.organization.config.departments_permission') }}
                       </p>
 
                       <div v-if="departments.length" class="department-manage">
@@ -1505,19 +1505,19 @@
                           <div class="department-row__copy">
                             <strong>
                               {{ department.label }}
-                              <span v-if="serverOrganizationMode && department.active === false" class="level-tag">Inactivo</span>
+                              <span v-if="serverOrganizationMode && department.active === false" class="level-tag">{{ $t('ui.organization.config.inactive_masculine') }}</span>
                             </strong>
-                            <span class="mono">{{ departmentPeopleCount(department.id) }} {{ departmentPeopleCount(department.id) === 1 ? 'persona' : 'personas' }}</span>
+                            <span class="mono">{{ $t('ui.organization.config.person_count', departmentPeopleCount(department.id)) }}</span>
                           </div>
                           <div class="config-row-actions">
                             <template v-if="!serverOrganizationMode || organizationDepartmentsConfigMode">
-                              <button type="button" class="config-icon-action" :aria-label="'Editar ' + department.label" title="Editar departamento" @click="openDepartmentDialog(department)">
+                              <button type="button" class="config-icon-action" :aria-label="$t('ui.organization.config.edit_named', { name: department.label })" :title="$t('ui.asset.department.edit_title')" @click="openDepartmentDialog(department)">
                                 <app-icon name="pencil"></app-icon>
                               </button>
-                              <button v-if="serverOrganizationMode" type="button" class="config-icon-action" :aria-label="(department.active === false ? 'Reactivar ' : 'Desactivar ') + department.label" :title="department.active === false ? 'Reactivar departamento' : 'Desactivar departamento'" @click="setOrganizationDepartmentActive(department, department.active === false)">
+                              <button v-if="serverOrganizationMode" type="button" class="config-icon-action" :aria-label="department.active === false ? $t('ui.organization.config.reactivate_named', { name: department.label }) : $t('ui.organization.config.deactivate_named', { name: department.label })" :title="department.active === false ? $t('ui.organization.config.reactivate_department') : $t('ui.organization.config.deactivate_department')" @click="setOrganizationDepartmentActive(department, department.active === false)">
                                 <app-icon :name="department.active === false ? 'restore' : 'close'"></app-icon>
                               </button>
-                              <button v-else type="button" class="config-icon-action config-icon-action--danger" :aria-label="'Eliminar ' + department.label" title="Eliminar departamento" @click="requestDeleteDepartment(department)">
+                              <button v-else type="button" class="config-icon-action config-icon-action--danger" :aria-label="$t('ui.organization.config.delete_named', { name: department.label })" :title="$t('ui.organization.config.delete_department')" @click="requestDeleteDepartment(department)">
                                 <app-icon name="trash"></app-icon>
                               </button>
                             </template>
@@ -1527,24 +1527,24 @@
 
                       <div v-else class="config-empty">
                         <span class="config-empty__icon"><app-icon name="user"></app-icon></span>
-                        <h3>Sin departamentos</h3>
-                        <p v-if="serverOrganizationMode">El servidor no tiene departamentos registrados.</p>
-                        <p v-else>Crea el primer departamento para organizar al equipo.</p>
-                        <button v-if="!serverOrganizationMode || organizationDepartmentsConfigMode" type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()"><app-icon name="plus"></app-icon> Crear departamento</button>
+                        <h3>{{ $t('ui.organization.config.empty_departments') }}</h3>
+                        <p v-if="serverOrganizationMode">{{ $t('ui.organization.config.empty_departments_server') }}</p>
+                        <p v-else>{{ $t('ui.organization.config.empty_departments_demo') }}</p>
+                        <button v-if="!serverOrganizationMode || organizationDepartmentsConfigMode" type="button" class="btn btn--primary btn--small" @click="openDepartmentDialog()"><app-icon name="plus"></app-icon> {{ $t('ui.asset.department.create') }}</button>
                       </div>
 
-                      <p class="config-note"><app-icon name="info"></app-icon> Un departamento con personas asociadas no se puede eliminar. Las personas no se borran: se desactivan para conservar sus asignaciones.</p>
+                      <p class="config-note"><app-icon name="info"></app-icon> {{ $t('ui.organization.config.departments_delete_note') }}</p>
                     </section>
 
                     <!-- Integraciones -->
                     <section v-else-if="route.section === 'integraciones'" class="config-section" aria-labelledby="config-integrations-title">
                       <header class="config-section__head">
                         <div>
-                          <p class="eyebrow">Conectividad</p>
-                          <h2 id="config-integrations-title">Integraciones</h2>
-                          <p>Activa solo las herramientas disponibles para el equipo.</p>
+                          <p class="eyebrow">{{ $t('ui.asset.detail.connectivity') }}</p>
+                          <h2 id="config-integrations-title">{{ $t('ui.shell.config_section_integraciones') }}</h2>
+                          <p>{{ $t('ui.organization.config.integrations_lead') }}</p>
                         </div>
-                        <span class="config-badge"><app-icon name="shield"></app-icon> Local</span>
+                        <span class="config-badge"><app-icon name="shield"></app-icon> {{ $t('ui.organization.config.local_badge') }}</span>
                       </header>
 
                       <form id="integrations-form" class="form-stack" @submit.prevent="saveIntegrations" novalidate>
@@ -1559,9 +1559,9 @@
                               </div>
                               <label class="switch">
                                 <input v-model="integrationDraft[definition.id].enabled" type="checkbox"
-                                       :aria-label="(integrationDraft[definition.id].enabled ? 'Desactivar ' : 'Activar ') + definition.name">
+                                       :aria-label="integrationDraft[definition.id].enabled ? $t('ui.organization.config.integration_deactivate', { name: definition.name }) : $t('ui.organization.config.integration_activate', { name: definition.name })">
                                 <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
-                                <span class="switch__text">{{ integrationDraft[definition.id].enabled ? 'Activa' : 'Inactiva' }}</span>
+                                <span class="switch__text">{{ integrationDraft[definition.id].enabled ? $t('ui.organization.config.integration_active') : $t('ui.organization.config.inactive') }}</span>
                               </label>
                             </header>
 
@@ -1576,21 +1576,21 @@
                                 <p class="field__hint">{{ definition.hint }}</p>
                                 <p v-if="integrationErrors[definition.id]" class="field__error">{{ integrationErrors[definition.id] }}</p>
                               </div>
-                              <p class="integration-card__usage"><app-icon name="inventory"></app-icon> {{ integrationUsage(definition.id) }} activos con identificador</p>
+                              <p class="integration-card__usage"><app-icon name="inventory"></app-icon> {{ $t('ui.organization.config.integration_usage', integrationUsage(definition.id)) }}</p>
                             </div>
-                            <p v-else class="integration-card__off">Los valores guardados se conservan, pero los accesos remotos quedan ocultos.</p>
+                            <p v-else class="integration-card__off">{{ $t('ui.organization.config.integration_disabled_note') }}</p>
                           </article>
                         </div>
 
                         <div class="form-note">
                           <app-icon name="shield"></app-icon>
-                          <p>Los identificadores se editan en cada activo. No se establecen conexiones reales.</p>
+                          <p>{{ $t('ui.organization.config.integration_note') }}</p>
                         </div>
                         <p v-if="integrationErrors.general" class="form-error" role="alert">{{ integrationErrors.general }}</p>
 
                         <div class="config-form-foot">
-                          <p class="config-form-foot__note">Guardar no altera los identificadores ya asignados a los activos.</p>
-                          <button type="submit" class="btn btn--primary">Guardar integraciones</button>
+                          <p class="config-form-foot__note">{{ $t('ui.organization.config.integration_save_note') }}</p>
+                          <button type="submit" class="btn btn--primary">{{ $t('ui.asset.config.save') }}</button>
                         </div>
                       </form>
                     </section>
@@ -1619,15 +1619,15 @@
               <section v-else-if="route.name === 'map'" class="page" aria-labelledby="infra-title">
                 <p v-if="serverOrganizationMode" class="server-notice" role="status">
                   <app-icon name="map-pin"></app-icon>
-                  Ubicaciones y posiciones del servidor. Los planos se cargan con tu sesión; los activos sin posición individual siguen asociados a su ubicación.
-                  <span v-if="organization.map.truncated">Hay más posiciones de las mostradas.</span>
+                  {{ $t('ui.organization.config.map_notice') }}
+                  <span v-if="organization.map.truncated">{{ $t('ui.organization.config.map_truncated') }}</span>
                   <span v-if="organization.map.error"> · {{ organization.map.error }}</span>
                 </p>
                 <map-explorer v-if="!serverOrganizationMode || organizationAssetsMode" ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></map-explorer>
                 <div v-else class="config-empty" role="status">
                   <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
-                  <h2>Sin permiso para el mapa</h2>
-                  <p>Tu cuenta no tiene el permiso de lectura de activos, que habilita las ubicaciones del servidor.</p>
+                  <h2>{{ $t('ui.organization.config.map_denied_title') }}</h2>
+                  <p>{{ $t('ui.organization.config.map_denied_body') }}</p>
                 </div>
               </section>
 
@@ -1635,16 +1635,16 @@
               <section v-else-if="route.name === 'graph'" class="page" aria-labelledby="graph-title">
                 <p v-if="serverOrganizationMode" class="server-notice" role="status">
                   <app-icon name="network"></app-icon>
-                  Grafo del servidor con profundidad {{ organization.graph.depth }}.
-                  <span>{{ organization.graph.nodes.length }} nodos y {{ organization.graph.edges.length }} relaciones.</span>
-                  <span v-if="organization.graph.truncated">Resultado limitado: {{ organization.graph.nodesTruncated ? 'faltan nodos' : '' }}{{ organization.graph.truncated && organization.graph.nodesTruncated && organization.graph.edgesTruncated ? ' y ' : '' }}{{ organization.graph.edgesTruncated ? 'faltan relaciones' : '' }}.</span>
+                  {{ $t('ui.organization.config.graph_notice', { depth: organization.graph.depth }) }}
+                  <span>{{ $t('ui.organization.config.graph_counts', { nodes: organization.graph.nodes.length, edges: organization.graph.edges.length }) }}</span>
+                  <span v-if="organization.graph.truncated">{{ $t('ui.organization.config.graph_truncated_prefix') }} {{ organization.graph.nodesTruncated ? $t('ui.organization.config.graph_truncated_nodes') : '' }}{{ organization.graph.edgesTruncated ? (organization.graph.nodesTruncated ? $t('ui.organization.config.graph_truncated_then_edges') : $t('ui.organization.config.graph_truncated_edges')) : '' }}.</span>
                   <span v-if="serverGraphMode && organization.graph.error"> · {{ organization.graph.error }}</span>
                 </p>
                 <graph-explorer v-if="!serverOrganizationMode || organizationAssetsMode" ref="workspaceView" :app="$root" :focus-id="route.focusId || ''"></graph-explorer>
                 <div v-else class="config-empty" role="status">
                   <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
-                  <h2>Sin permiso para el grafo</h2>
-                  <p>Tu cuenta no tiene el permiso de lectura de activos, que habilita el grafo del servidor.</p>
+                  <h2>{{ $t('ui.organization.config.graph_denied_title') }}</h2>
+                  <p>{{ $t('ui.organization.config.graph_denied_body') }}</p>
                 </div>
               </section>
 
@@ -1745,7 +1745,7 @@
                 <div v-if="serverAssetMode && currentAsset.archived" class="retired-banner" role="status">
                   <span class="retired-banner__icon"><app-icon name="archive"></app-icon></span>
                   <div class="retired-banner__copy">
-                    <strong>Archivado{{ currentAsset.archivedAt ? $t('ui.asset.detail.archived_on', { date: assetDate(currentAsset.archivedAt) }) : '' }}</strong>
+                    <strong>{{ $t('ui.asset.detail.archived') }}{{ currentAsset.archivedAt ? $t('ui.asset.detail.archived_on', { date: assetDate(currentAsset.archivedAt) }) : '' }}</strong>
                     <p>{{ currentAsset.archivedBy ? $t('ui.asset.detail.archived_by', { name: currentAsset.archivedBy }) + '. ' : '' }}{{ $t('ui.asset.detail.archived_note') }}</p>
                   </div>
                 </div>
@@ -2392,33 +2392,33 @@
     </modal-shell>
 
     <!-- Estructura física del servidor -->
-    <modal-shell :open="organization.dialogs.location.open" :title="organization.dialogs.location.mode === 'edit' ? 'Editar ubicación' : 'Nueva ubicación'" eyebrow="Estructura" @close="closeOrganizationLocationDialog">
+    <modal-shell :open="organization.dialogs.location.open" :title="organization.dialogs.location.mode === 'edit' ? $t('ui.asset.location.edit_title') : $t('ui.asset.location.new_title')" :eyebrow="$t('ui.asset.location.eyebrow')" @close="closeOrganizationLocationDialog">
       <form id="hierarchy-location-form" class="form-stack" @submit.prevent="saveOrganizationLocationDialog" novalidate>
         <div class="field">
-          <span class="field__label">Nivel</span>
+          <span class="field__label">{{ $t('ui.organization.config.field_level') }}</span>
           <p class="cell-note">{{ organizationLevelName(organization.dialogs.location.level) }}</p>
-          <p class="field__hint">El nivel no cambia después de crear la ubicación.</p>
+          <p class="field__hint">{{ $t('ui.organization.config.level_hint') }}</p>
         </div>
         <div v-if="organization.dialogs.location.level !== 'site'" class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.parentId }">
-          <label for="org-location-parent">Ubicación superior</label>
+          <label for="org-location-parent">{{ $t('ui.organization.field.parent') }}</label>
           <div class="input-shell input-shell--plain">
             <select id="org-location-parent" v-model="organization.dialogs.location.parentId" :aria-invalid="organization.dialogs.location.fieldErrors.parentId ? 'true' : 'false'" :aria-describedby="organization.dialogs.location.fieldErrors.parentId ? 'org-location-parent-error' : 'org-location-parent-hint'">
-              <option value="">Selecciona una ubicación</option>
+              <option value="">{{ $t('ui.organization.config.select_parent') }}</option>
               <option v-for="parent in organizationParentChoices(organization.dialogs.location.level, organization.dialogs.location.id)" :key="parent.id" :value="parent.id">{{ organizationLevelName(parent.level) }} · {{ parent.name }}</option>
             </select>
           </div>
-          <p id="org-location-parent-hint" class="field__hint">Solo se listan ubicaciones activas del nivel inmediatamente superior.</p>
+          <p id="org-location-parent-hint" class="field__hint">{{ $t('ui.organization.config.parent_hint') }}</p>
           <p id="org-location-parent-error" v-if="organization.dialogs.location.fieldErrors.parentId" class="field__error">{{ organization.dialogs.location.fieldErrors.parentId }}</p>
         </div>
         <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.name }">
-          <label for="org-location-name">Nombre</label>
+          <label for="org-location-name">{{ $t('ui.organization.field.name') }}</label>
           <div class="input-shell input-shell--plain">
             <input id="org-location-name" v-model="organization.dialogs.location.name" type="text" maxlength="120" autocomplete="off" :aria-invalid="organization.dialogs.location.fieldErrors.name ? 'true' : 'false'">
           </div>
           <p v-if="organization.dialogs.location.fieldErrors.name" class="field__error">{{ organization.dialogs.location.fieldErrors.name }}</p>
         </div>
         <div class="field">
-          <label for="org-location-description">Descripción</label>
+          <label for="org-location-description">{{ $t('ui.organization.field.description') }}</label>
           <div class="input-shell input-shell--plain">
             <textarea id="org-location-description" v-model="organization.dialogs.location.description" rows="2" maxlength="500"></textarea>
           </div>
@@ -2426,78 +2426,78 @@
         <template v-if="organization.dialogs.location.level === 'site'">
           <div class="field-row">
             <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.latitude }">
-              <label for="org-location-latitude">Latitud</label>
+              <label for="org-location-latitude">{{ $t('ui.organization.field.latitude') }}</label>
               <div class="input-shell input-shell--plain">
                 <input id="org-location-latitude" v-model="organization.dialogs.location.latitude" type="text" inputmode="decimal" autocomplete="off" placeholder="-25.28">
               </div>
             </div>
             <div class="field" :class="{ 'field--invalid': organization.dialogs.location.fieldErrors.longitude }">
-              <label for="org-location-longitude">Longitud</label>
+              <label for="org-location-longitude">{{ $t('ui.organization.field.longitude') }}</label>
               <div class="input-shell input-shell--plain">
                 <input id="org-location-longitude" v-model="organization.dialogs.location.longitude" type="text" inputmode="decimal" autocomplete="off" placeholder="-57.63">
               </div>
             </div>
           </div>
-          <p class="field__hint">Coordenadas opcionales y solo para la sede; se informan juntas.</p>
+          <p class="field__hint">{{ $t('ui.organization.config.coordinates_hint') }}</p>
         </template>
         <template v-if="organization.dialogs.location.level === 'floor'">
           <div class="field">
-            <label for="org-location-plan-ref">Referencia del plano</label>
+            <label for="org-location-plan-ref">{{ $t('ui.organization.config.plan_ref_label') }}</label>
             <div class="input-shell input-shell--plain">
-              <input id="org-location-plan-ref" v-model="organization.dialogs.location.planRef" type="text" maxlength="200" autocomplete="off" placeholder="Ej. plano-p4.pdf">
+              <input id="org-location-plan-ref" v-model="organization.dialogs.location.planRef" type="text" maxlength="200" autocomplete="off" :placeholder="$t('ui.organization.config.plan_ref_placeholder')">
             </div>
-            <p class="field__hint">Texto de referencia para el visor. No sube ningún archivo.</p>
+            <p class="field__hint">{{ $t('ui.organization.config.plan_ref_hint') }}</p>
           </div>
           <div class="field">
-            <label for="org-location-plan-page">Página del plano</label>
+            <label for="org-location-plan-page">{{ $t('ui.organization.field.plan_page') }}</label>
             <div class="input-shell input-shell--plain">
-              <input id="org-location-plan-page" v-model="organization.dialogs.location.planPage" type="text" maxlength="16" autocomplete="off" placeholder="Ej. 2">
+              <input id="org-location-plan-page" v-model="organization.dialogs.location.planPage" type="text" maxlength="16" autocomplete="off" :placeholder="$t('ui.organization.config.plan_page_placeholder')">
             </div>
           </div>
         </template>
         <div v-if="organization.dialogs.location.mode === 'edit'" class="field field--check">
           <label class="check">
             <input type="checkbox" v-model="organization.dialogs.location.active">
-            <span>Ubicación activa</span>
+            <span>{{ $t('ui.organization.config.location_active') }}</span>
           </label>
         </div>
         <p v-if="organization.dialogs.location.error" class="form-error" role="alert">{{ organization.dialogs.location.error }}</p>
       </form>
       <template #footer>
-        <button type="button" class="btn btn--ghost" @click="closeOrganizationLocationDialog">Cancelar</button>
+        <button type="button" class="btn btn--ghost" @click="closeOrganizationLocationDialog">{{ $t('ui.common.cancel') }}</button>
         <button type="submit" form="hierarchy-location-form" class="btn btn--primary" :disabled="organization.dialogs.location.busy">
-          {{ organization.dialogs.location.busy ? 'Guardando…' : 'Guardar ubicación' }}
+          {{ organization.dialogs.location.busy ? $t('ui.common.saving') : $t('ui.organization.config.location_save') }}
         </button>
       </template>
     </modal-shell>
 
     <!-- Asignación -->
-    <modal-shell :open="assignDialog.open" :title="assignDialog.mode === 'person' ? 'Asignar responsable' : 'Asignar activo'" eyebrow="Asignación" size="wide" @close="closeAssignDialog">
+    <modal-shell :open="assignDialog.open" :title="assignDialog.mode === 'person' ? $t('ui.asset.detail.assign') : $t('ui.people.assign_asset')" :eyebrow="$t('ui.organization.config.assign_eyebrow')" size="wide" @close="closeAssignDialog">
       <div class="assign-dialog">
         <div v-if="assignDialog.mode === 'person' && assignContextAsset" class="assign-context">
           <span class="assign-context__icon"><app-icon name="inventory"></app-icon></span>
           <div><strong>{{ assignContextAsset.name }}</strong><span class="mono">{{ assignContextAsset.id }} · {{ assignContextAsset.type }}</span></div>
-          <span class="cell-note">{{ assigneeLabel(assignContextAsset) || 'Sin responsable' }}</span>
+          <span class="cell-note">{{ assigneeLabel(assignContextAsset) || $t('ui.inventory.unassigned') }}</span>
         </div>
         <div v-else-if="assignDialog.mode === 'asset' && assignTargetPerson" class="assign-context">
           <span class="person-avatar" aria-hidden="true">{{ personInitials(assignTargetPerson.name) }}</span>
-          <div><strong>{{ assignTargetPerson.name }}</strong><span>{{ assignTargetPerson.role || 'Sin cargo' }}</span></div>
-          <span class="cell-note">{{ personAssetCount(assignTargetPerson.id) }} activos</span>
+          <div><strong>{{ assignTargetPerson.name }}</strong><span>{{ assignTargetPerson.role || $t('ui.people.no_role') }}</span></div>
+          <span class="cell-note">{{ $t('ui.people.asset_word', personAssetCount(assignTargetPerson.id)) }}</span>
         </div>
 
         <div class="search-field assign-search">
           <app-icon name="search"></app-icon>
-          <label class="sr-only" for="assign-search">{{ assignDialog.mode === 'person' ? 'Buscar personas' : 'Buscar activos' }}</label>
-          <input id="assign-search" v-model="assignDialog.search" type="search" :placeholder="assignDialog.mode === 'person' ? 'Buscar por nombre o cargo' : 'Buscar por nombre, código o tipo'" autocomplete="off">
-          <button v-if="assignDialog.search" class="search-clear" type="button" aria-label="Borrar búsqueda" @click="assignDialog.search = ''">
+          <label class="sr-only" for="assign-search">{{ assignDialog.mode === 'person' ? $t('ui.people.search_label') : $t('ui.organization.config.search_assets') }}</label>
+          <input id="assign-search" v-model="assignDialog.search" type="search" :placeholder="assignDialog.mode === 'person' ? $t('ui.organization.config.search_people_placeholder') : $t('ui.organization.config.search_assets_placeholder')" autocomplete="off">
+          <button v-if="assignDialog.search" class="search-clear" type="button" :aria-label="$t('ui.people.search_clear')" @click="assignDialog.search = ''">
             <app-icon name="close"></app-icon>
           </button>
         </div>
 
-        <div v-if="assignDialog.mode === 'person'" class="assign-options" role="group" aria-label="Personas disponibles">
+        <div v-if="assignDialog.mode === 'person'" class="assign-options" role="group" :aria-label="$t('ui.organization.config.available_people')">
           <button type="button" class="assign-option assign-option--none" :class="{ 'is-selected': !assignDialog.selectedId }" :aria-pressed="!assignDialog.selectedId" @click="selectAssignPerson('')">
             <span class="assign-option__mark"><app-icon name="close"></app-icon></span>
-            <span><strong>Sin responsable</strong><small>Dejar el activo sin asignar</small></span>
+            <span><strong>{{ $t('ui.inventory.unassigned') }}</strong><small>{{ $t('ui.organization.config.unassign_hint') }}</small></span>
             <app-icon v-if="!assignDialog.selectedId" name="check"></app-icon>
           </button>
           <button v-for="person in assignPeople" :key="person.id" type="button" class="assign-option"
@@ -2505,31 +2505,31 @@
                   :aria-pressed="assignDialog.selectedId === person.id" :disabled="!person.active && assignDialog.personId !== person.id"
                   @click="selectAssignPerson(person.id)">
             <span class="person-avatar" aria-hidden="true">{{ personInitials(person.name) }}</span>
-            <span><strong>{{ person.name }}</strong><small>{{ person.role || 'Sin cargo' }} · {{ departmentLabel(person.departmentId) }}</small></span>
-            <span v-if="!person.active" class="status-pill status-pill--retired">Inactiva</span>
+            <span><strong>{{ person.name }}</strong><small>{{ person.role || $t('ui.people.no_role') }} · {{ departmentLabel(person.departmentId) }}</small></span>
+            <span v-if="!person.active" class="status-pill status-pill--retired">{{ $t('ui.people.status_inactive') }}</span>
             <app-icon v-else-if="assignDialog.selectedId === person.id" name="check"></app-icon>
           </button>
-          <p v-if="!assignPeople.length" class="assign-empty">No hay personas que coincidan con la búsqueda.</p>
+          <p v-if="!assignPeople.length" class="assign-empty">{{ $t('ui.organization.config.empty_people_search') }}</p>
         </div>
 
         <div v-if="serverOrganizationMode" class="assign-audit">
           <label class="field">
-            <span class="field__label">Motivo</span>
-            <input v-model="assignDialog.reason" type="text" maxlength="500" placeholder="Motivo del cambio (opcional)">
+            <span class="field__label">{{ $t('ui.operations.field.reason') }}</span>
+            <input v-model="assignDialog.reason" type="text" maxlength="500" :placeholder="$t('ui.organization.config.reason_placeholder')">
           </label>
           <label class="field">
-            <span class="field__label">Notas</span>
-            <input v-model="assignDialog.notes" type="text" maxlength="500" placeholder="Notas adicionales (opcional)">
+            <span class="field__label">{{ $t('ui.transfer.dialog.notes') }}</span>
+            <input v-model="assignDialog.notes" type="text" maxlength="500" :placeholder="$t('ui.organization.config.notes_placeholder')">
           </label>
           <label class="field">
-            <span class="field__label">Fecha efectiva</span>
+            <span class="field__label">{{ $t('ui.operations.field.effective_date') }}</span>
             <input v-model="assignDialog.effectiveAt" type="datetime-local" aria-describedby="assign-effective-hint">
-            <span id="assign-effective-hint" class="field__hint">Se envía con la zona horaria del navegador.</span>
+            <span id="assign-effective-hint" class="field__hint">{{ $t('ui.organization.config.effective_hint') }}</span>
           </label>
-          <p v-if="assignDialog.mode === 'person'" class="cell-note">Elegir «Sin responsable» devuelve el activo al servidor y conserva el motivo.</p>
+          <p v-if="assignDialog.mode === 'person'" class="cell-note">{{ $t('ui.organization.config.unassign_note') }}</p>
         </div>
 
-        <div v-if="assignDialog.mode === 'asset'" class="assign-options" role="group" aria-label="Activos sin responsable">
+        <div v-if="assignDialog.mode === 'asset'" class="assign-options" role="group" :aria-label="$t('ui.organization.config.available_assets')">
           <button v-for="asset in assignAssets" :key="asset.id" type="button" class="assign-option"
                   :class="{ 'is-selected': assignDialog.selectedId === asset.id }" :aria-pressed="assignDialog.selectedId === asset.id"
                   @click="selectAssignAsset(asset.id)">
@@ -2537,13 +2537,13 @@
             <span><strong>{{ asset.name }}</strong><small>{{ asset.id }} · {{ asset.type }} · {{ siteLabel(asset.site) }}</small></span>
             <app-icon v-if="assignDialog.selectedId === asset.id" name="check"></app-icon>
           </button>
-          <p v-if="!assignAssets.length" class="assign-empty">No hay activos sin responsable que coincidan con la búsqueda.</p>
+          <p v-if="!assignAssets.length" class="assign-empty">{{ $t('ui.organization.config.empty_assets_search') }}</p>
         </div>
       </div>
       <template #footer>
         <p v-if="assignDialog.error" class="form-error" role="alert">{{ assignDialog.error }}</p>
-        <button type="button" class="btn btn--ghost" @click="closeAssignDialog">Cancelar</button>
-        <button type="button" class="btn btn--primary" @click="confirmAssignment">{{ assignDialog.mode === 'person' ? 'Guardar responsable' : 'Asignar activo' }}</button>
+        <button type="button" class="btn btn--ghost" @click="closeAssignDialog">{{ $t('ui.common.cancel') }}</button>
+        <button type="button" class="btn btn--primary" @click="confirmAssignment">{{ assignDialog.mode === 'person' ? $t('ui.organization.config.save_responsible') : $t('ui.people.assign_asset') }}</button>
       </template>
     </modal-shell>
 
