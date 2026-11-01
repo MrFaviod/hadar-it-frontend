@@ -7,29 +7,52 @@
 (function () {
   'use strict';
 
+  // Copy resolved outside a mounted template goes through the same runtime, so
+  // toasts, notices and computed labels follow the active locale. Reading the
+  // active locale keeps a computed that resolves copy reactive on a hot switch.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (!runtime) return '';
+    if (runtime.i18n) runtime.i18n.global.locale.value;
+    return runtime.t(key, params);
+  }
+
+  // Product and engine names are stable identifiers, not copy: they read the
+  // same in every language.
   const ENGINE_LABELS = {
     pydantic: 'Pydantic AI',
     opencode: 'OpenCode',
     hermes: 'Hermes'
   };
 
+  // Label maps hold catalog keys and resolve at render time, so a language
+  // switch never keeps copy captured while the module was loading.
   const CAPABILITY_LABELS = {
-    streaming: 'Respuesta progresiva',
-    cancel: 'Interrupción',
-    tools: 'Herramientas',
-    usage: 'Consumo de tokens',
-    sessions: 'Sesiones',
-    models: 'Modelos dinámicos'
+    streaming: 'ui.agents.capability_streaming',
+    cancel: 'ui.agents.capability_cancel',
+    tools: 'ui.agents.capability_tools',
+    usage: 'ui.agents.capability_usage',
+    sessions: 'ui.agents.capability_sessions',
+    models: 'ui.agents.capability_models'
   };
 
   const OPERATIONS = [
-    { id: 'install', label: 'Instalar' },
-    { id: 'verify', label: 'Verificar' },
-    { id: 'update', label: 'Actualizar' },
-    { id: 'repair', label: 'Reparar' },
-    { id: 'disable', label: 'Deshabilitar' },
-    { id: 'uninstall', label: 'Desinstalar' }
+    { id: 'install', label: 'ui.agents.operation_install' },
+    { id: 'verify', label: 'ui.agents.operation_verify' },
+    { id: 'update', label: 'ui.agents.operation_update' },
+    { id: 'repair', label: 'ui.agents.operation_repair' },
+    { id: 'disable', label: 'ui.agents.operation_disable' },
+    { id: 'uninstall', label: 'ui.agents.operation_uninstall' }
   ];
+
+  function capabilityLabel(id) {
+    const key = CAPABILITY_LABELS[id];
+    return key ? tr(key) : text(id);
+  }
+
+  function operationLabel(operation) {
+    return operation ? tr(operation.label) : '';
+  }
 
   // Global IA administration is an installation-owned capability: the server
   // rejects it without system.providers, so the browser gate mirrors that.
@@ -45,7 +68,8 @@
   }
 
   function formatTokens(value) {
-    return number(value).toLocaleString('es-ES');
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.number(number(value)) : String(number(value));
   }
 
   // Daily AI quota contract: /api/v1/agent/usage. A missing field is
@@ -53,24 +77,24 @@
   // denies new admissions. The browser renders those distinctions and never
   // recomputes totals the server already produced.
   const QUOTA_BASE = '/agent/usage';
-  const QUOTA_FUNDING_LABELS = { company: 'Empresa', personal: 'Personal' };
-  const QUOTA_LIMIT_SOURCE_LABELS = { override: 'Excepción del usuario', policy: 'Política del servidor', default: 'Valor predeterminado', legacy_config: 'Configuración heredada', record_only: 'Solo registro', not_applicable: 'No aplica' };
+  const QUOTA_FUNDING_LABELS = { company: 'ui.agents.funding_company', personal: 'ui.agents.funding_personal' };
+  const QUOTA_LIMIT_SOURCE_LABELS = { override: 'ui.agents.limit_source_override', policy: 'ui.agents.limit_source_policy', default: 'ui.agents.limit_source_default', legacy_config: 'ui.agents.limit_source_legacy', record_only: 'ui.agents.limit_source_record_only', not_applicable: 'ui.agents.limit_source_not_applicable' };
   const PROVIDER_CREDENTIAL_LABELS = {
-    missing: 'Sin credencial configurada',
-    primary: 'Credencial configurada',
-    older: 'Credencial guardada con una clave de cifrado anterior; se volverá a cifrar al rotar',
-    unreadable: 'Credencial ilegible con las claves de cifrado actuales; vuelve a introducirla',
-    unavailable: 'Credencial guardada, pero el servidor no tiene claves de cifrado configuradas'
+    missing: 'ui.agents.credential_missing',
+    primary: 'ui.agents.credential_primary',
+    older: 'ui.agents.credential_older',
+    unreadable: 'ui.agents.credential_unreadable',
+    unavailable: 'ui.agents.credential_unavailable'
   };
   const PROVIDER_CHECK_LABELS = {
-    unauthorized: 'El proveedor rechazó la credencial.',
-    unreachable: 'No se pudo conectar con el endpoint.',
-    blocked_address: 'El endpoint apunta a una dirección que este despliegue no autoriza.',
-    redirect: 'El endpoint respondió con una redirección; no se siguen redirecciones.',
-    invalid_response: 'El endpoint no respondió como un servicio compatible con OpenAI.',
-    credential_unavailable: 'No se pudo leer la credencial guardada.',
-    timeout: 'El endpoint no respondió a tiempo.',
-    request_failed: 'No se pudo solicitar la comprobación.'
+    unauthorized: 'ui.agents.check_unauthorized',
+    unreachable: 'ui.agents.check_unreachable',
+    blocked_address: 'ui.agents.check_blocked_address',
+    redirect: 'ui.agents.check_redirect',
+    invalid_response: 'ui.agents.check_invalid_response',
+    credential_unavailable: 'ui.agents.check_credential_unavailable',
+    timeout: 'ui.agents.check_timeout',
+    request_failed: 'ui.agents.check_request_failed'
   };
   const PROVIDER_CAPABILITY_FIELDS = ['image', 'file'];
   function normalizeCapabilities(raw) {
@@ -86,11 +110,11 @@
     });
     return result;
   }
-  const QUOTA_PRECISION_LABELS = { measured: 'Medido', estimated: 'Estimado', unavailable: 'No disponible' };
-  const QUOTA_SOURCE_LABELS = { provider: 'Proveedor', engine: 'Motor', estimate: 'Estimación', none: 'Sin fuente', legacy: 'Legado' };
-  const QUOTA_STATE_LABELS = { settled: 'Liquidado', unresolved: 'Sin resolver', pending: 'Pendiente', released: 'Liberado', legacy: 'Legado sin atribuir' };
-  const QUOTA_ENGINE_MODES = { managed: 'Gestionado por el gateway', direct: 'Directo', builtin: 'Integrado' };
-  const QUOTA_ENGINE_ENFORCEMENTS = { strict: 'Estricta antes de enviar', admission_only: 'Solo admisión', observed: 'Solo observada', unavailable: 'No disponible' };
+  const QUOTA_PRECISION_LABELS = { measured: 'ui.agents.precision_measured', estimated: 'ui.agents.precision_estimated', unavailable: 'ui.agents.not_available' };
+  const QUOTA_SOURCE_LABELS = { provider: 'ui.agents.source_provider', engine: 'ui.agents.engine', estimate: 'ui.agents.source_estimate', none: 'ui.agents.source_none', legacy: 'ui.agents.source_legacy' };
+  const QUOTA_STATE_LABELS = { settled: 'ui.agents.state_settled', unresolved: 'ui.agents.state_unresolved', pending: 'ui.agents.state_pending', released: 'ui.agents.state_released', legacy: 'ui.agents.state_legacy' };
+  const QUOTA_ENGINE_MODES = { managed: 'ui.agents.mode_managed', direct: 'ui.agents.mode_direct', builtin: 'ui.agents.mode_builtin' };
+  const QUOTA_ENGINE_ENFORCEMENTS = { strict: 'ui.agents.enforcement_strict', admission_only: 'ui.agents.enforcement_admission_only', observed: 'ui.agents.enforcement_observed', unavailable: 'ui.agents.not_available' };
   const QUOTA_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function quotaHas(object, key) {
@@ -195,7 +219,7 @@
   }
 
   function engineLabel(value) {
-    return ENGINE_LABELS[value] || text(value, 'Motor');
+    return ENGINE_LABELS[value] || text(value) || tr('ui.agents.engine');
   }
 
   function isAbsolutePath(value) {
@@ -265,7 +289,7 @@
 
   function modelLabel(model) {
     const name = text(model && model.name, text(model && model.id));
-    return model && model.free === true ? name + ' · Gratis' : name;
+    return model && model.free === true ? name + ' · ' + tr('ui.agents.model_free') : name;
   }
 
   // Exact instance-administration seam: quota routing is an explicit operator
@@ -308,13 +332,13 @@
   function quotaInstanceError(draft) {
     if (!draft || draft.quotaMode !== 'managed') return '';
     if (!QUOTA_UUID_RE.test(text(draft.managedProviderId))) {
-      return 'Selecciona un proveedor global habilitado para el modo gestionado.';
+      return tr('ui.agents.error_managed_provider');
     }
     if (!text(draft.defaultModel)) {
-      return 'Indica el modelo predeterminado del proveedor gestionado.';
+      return tr('ui.agents.error_managed_model');
     }
     if (quotaPositiveInteger(draft.managedContextTokens) === null) {
-      return 'El contexto gestionado debe ser un entero positivo de tokens.';
+      return tr('ui.agents.error_managed_context');
     }
     return '';
   }
@@ -327,20 +351,20 @@
   }
 
   function installationStatusLabel(record) {
-    if (!record) return 'Sin datos';
-    if (record.verified === true) return 'Verificado';
+    if (!record) return tr('ui.agents.status_no_data');
+    if (record.verified === true) return tr('ui.agents.status_verified');
     const status = text(record.status);
-    if (status === 'configured') return 'Configurado, sin verificación';
-    if (status === 'exported') return 'Solicitud exportada, sin instalar';
-    if (status === 'conflict') return 'Conflicto';
-    if (status === 'failed') return 'Fallido';
-    return status ? 'Estado: ' + status : 'Sin verificación del servidor';
+    if (status === 'configured') return tr('ui.agents.status_configured');
+    if (status === 'exported') return tr('ui.agents.status_exported');
+    if (status === 'conflict') return tr('ui.agents.status_conflict');
+    if (status === 'failed') return tr('ui.agents.status_failed');
+    return status ? tr('ui.agents.status_with_value', { status: status }) : tr('ui.agents.status_no_server_verification');
   }
 
   function checkText(check) {
     if (typeof check === 'string') return check;
     if (check && typeof check === 'object') {
-      const label = text(check.label, text(check.name, text(check.check, 'Comprobación')));
+      const label = text(check.label, text(check.name, text(check.check, tr('ui.agents.check_fallback'))));
       const detail = text(check.detail, text(check.message, text(check.evidence, '')));
       return detail ? label + ': ' + detail : label;
     }
@@ -554,50 +578,53 @@
       quotaSelectedNotice() {
         if (!this.agentActiveInstance) return '';
         if (this.quotaSelectedFunding === 'personal') {
-          return 'La instancia seleccionada usa tu propia clave: el consumo se registra, pero no se descuenta ni se limita con el presupuesto de la empresa.';
+          return tr('ui.agents.quota_notice_personal');
         }
         if (this.quotaSelectedFunding === 'company') {
-          return 'La instancia seleccionada usa financiación de la empresa.';
+          return tr('ui.agents.quota_notice_company');
         }
-        return 'El servidor no informó la financiación de esta instancia; el saldo no se atribuye ni a la empresa ni a la cuenta personal.';
+        return tr('ui.agents.quota_notice_unknown');
       },
       quotaAccounts() {
         return [
-          { scope: 'company', label: QUOTA_FUNDING_LABELS.company, balance: this.quotaCompany, selected: this.quotaSelectedFunding === 'company' },
-          { scope: 'personal', label: QUOTA_FUNDING_LABELS.personal, balance: this.quotaPersonal, selected: this.quotaSelectedFunding === 'personal' }
+          { scope: 'company', label: tr(QUOTA_FUNDING_LABELS.company), balance: this.quotaCompany, selected: this.quotaSelectedFunding === 'company' },
+          { scope: 'personal', label: tr(QUOTA_FUNDING_LABELS.personal), balance: this.quotaPersonal, selected: this.quotaSelectedFunding === 'personal' }
         ];
       }
     },
     methods: {
       quotaTokenText(value) {
         const parsed = quotaToken(value);
-        return parsed === null ? 'No disponible' : formatTokens(parsed);
+        return parsed === null ? tr('ui.agents.not_available') : formatTokens(parsed);
       },
       quotaAmountText(value) {
         const parsed = quotaToken(value);
-        return parsed === null ? 'No disponible' : formatTokens(parsed) + ' tokens';
+        return parsed === null ? tr('ui.agents.not_available') : tr('ui.agents.tokens_value', { value: formatTokens(parsed) });
       },
-      quotaFundingLabel(scope) { return QUOTA_FUNDING_LABELS[scope] || 'Sin atribuir'; },
-      quotaLimitSourceLabel(source) { return QUOTA_LIMIT_SOURCE_LABELS[source] || 'Origen no informado'; },
+      quotaFundingLabel(scope) { return tr(QUOTA_FUNDING_LABELS[scope] || 'ui.agents.funding_unattributed'); },
+      quotaLimitSourceLabel(source) { return tr(QUOTA_LIMIT_SOURCE_LABELS[source] || 'ui.agents.limit_source_unreported'); },
       quotaLimitText(balance) {
-        if (!balance) return 'No disponible';
-        if (balance.recordOnly) return 'Sin límite diario';
-        if (balance.unlimited) return 'Ilimitado';
-        return formatTokens(balance.limit) + ' tokens' + (balance.limit === 0 ? ' · sin admisión' : '');
+        if (!balance) return tr('ui.agents.not_available');
+        if (balance.recordOnly) return tr('ui.agents.no_daily_limit');
+        if (balance.unlimited) return tr('ui.agents.unlimited');
+        return tr('ui.agents.tokens_value', { value: formatTokens(balance.limit) }) +
+          (balance.limit === 0 ? ' · ' + tr('ui.agents.limit_zero_admission') : '');
       },
       quotaAvailableText(balance) {
-        if (!balance) return 'No disponible';
-        if (balance.recordOnly) return 'No aplica: se usa tu propia clave';
-        if (balance.unlimited) return 'Ilimitado';
-        if (!balance.availableKnown || balance.available === null) return 'No disponible';
-        return formatTokens(balance.available) + ' tokens';
+        if (!balance) return tr('ui.agents.not_available');
+        if (balance.recordOnly) return tr('ui.agents.not_applicable_own_key');
+        if (balance.unlimited) return tr('ui.agents.unlimited');
+        if (!balance.availableKnown || balance.available === null) return tr('ui.agents.not_available');
+        return tr('ui.agents.tokens_value', { value: formatTokens(balance.available) });
       },
       quotaPrecisionText(balance) {
-        if (!balance) return 'No disponible';
+        if (!balance) return tr('ui.agents.not_available');
         const precision = balance.precision || {};
-        return 'medido ' + this.quotaTokenText(precision.measured) +
-          ' · estimado ' + this.quotaTokenText(precision.estimated) +
-          ' · no disponible ' + this.quotaTokenText(precision.unavailable);
+        return tr('ui.agents.precision_summary', {
+          measured: this.quotaTokenText(precision.measured),
+          estimated: this.quotaTokenText(precision.estimated),
+          unavailable: this.quotaTokenText(precision.unavailable)
+        });
       },
       quotaEngineStatus(instance) {
         const quota = instance && instance.quota && typeof instance.quota === 'object' && !Array.isArray(instance.quota) ? instance.quota : null;
@@ -605,10 +632,10 @@
           return {
             known: false,
             mode: '',
-            modeLabel: 'No informado',
+            modeLabel: tr('ui.agents.not_reported'),
             enforcement: 'unavailable',
-            enforcementLabel: QUOTA_ENGINE_ENFORCEMENTS.unavailable,
-            reason: 'El servidor no informó el estado de cuota de este motor; se trata como no estricta.',
+            enforcementLabel: tr(QUOTA_ENGINE_ENFORCEMENTS.unavailable),
+            reason: tr('ui.agents.engine_quota_unknown'),
             directException: false,
             strict: false
           };
@@ -618,17 +645,17 @@
         return {
           known: true,
           mode,
-          modeLabel: mode ? QUOTA_ENGINE_MODES[mode] : 'No informado',
+          modeLabel: mode ? tr(QUOTA_ENGINE_MODES[mode]) : tr('ui.agents.not_reported'),
           enforcement,
-          enforcementLabel: QUOTA_ENGINE_ENFORCEMENTS[enforcement],
+          enforcementLabel: tr(QUOTA_ENGINE_ENFORCEMENTS[enforcement]),
           reason: text(quota.reason),
           directException: quota.directException === true,
           strict: mode === 'managed' && enforcement === 'strict'
         };
       },
-      quotaPrecisionLabel(value) { return QUOTA_PRECISION_LABELS[value] || 'No disponible'; },
-      quotaSourceLabel(value) { return QUOTA_SOURCE_LABELS[value] || 'Sin fuente'; },
-      quotaStateLabel(value) { return QUOTA_STATE_LABELS[value] || 'Sin clasificar'; },
+      quotaPrecisionLabel(value) { return tr(QUOTA_PRECISION_LABELS[value] || 'ui.agents.not_available'); },
+      quotaSourceLabel(value) { return tr(QUOTA_SOURCE_LABELS[value] || 'ui.agents.source_none'); },
+      quotaStateLabel(value) { return tr(QUOTA_STATE_LABELS[value] || 'ui.agents.state_unclassified'); },
       isCurrentQuotaEpoch(epoch) {
         return epoch === this.quotaEpoch && this.disposed !== true && this.app.authenticated !== false &&
           this.quotaOwner === String(this.app.activeUserId || '');
@@ -674,9 +701,9 @@
           if (error && error.status === 401) {
             this.quotaOwner = '';
             this.quotaLoading = false;
-            this.quotaError = 'La sesión expiró; vuelve a iniciar sesión para ver tu cuota.';
+            this.quotaError = tr('ui.agents.error_quota_session');
           } else {
-            this.quotaError = (error && (error.serverMessage || error.message)) || 'No se pudo consultar tu consumo de IA.';
+            this.quotaError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_load');
           }
           return false;
         } finally {
@@ -833,16 +860,16 @@
         const capabilities = instance && instance.capabilities && typeof instance.capabilities === 'object' ? instance.capabilities : {};
         return Object.keys(capabilities)
           .filter(key => capabilities[key] === true)
-          .map(key => ({ key, label: CAPABILITY_LABELS[key] || key }));
+          .map(key => ({ key, label: capabilityLabel(key) }));
       },
       agentBudgetSummary() {
         if (!this.agentBudget) return '';
         const parts = [];
         if (this.agentBudget.dailyLimit !== null && this.agentBudget.dailyLimit !== undefined) {
-          parts.push('Límite diario: ' + formatTokens(this.agentBudget.dailyLimit) + ' tokens');
+          parts.push(tr('ui.agents.budget_limit', { value: formatTokens(this.agentBudget.dailyLimit) }));
         }
-        parts.push('Consumo medido: ' + formatTokens(this.agentBudget.usedMeasured) + ' tokens');
-        parts.push('Consumo informado por motores externos: ' + formatTokens(this.agentBudget.usedReported) + ' tokens');
+        parts.push(tr('ui.agents.budget_used_measured', { value: formatTokens(this.agentBudget.usedMeasured) }));
+        parts.push(tr('ui.agents.budget_used_reported', { value: formatTokens(this.agentBudget.usedReported) }));
         return parts.join(' · ');
       },
       agentCanSelect() {
@@ -916,7 +943,7 @@
           this.agentPreferenceSaved = saved;
           const instance = instances.find(item => item.id === selection.instanceId && item.enabled !== false);
           const available = instance && Array.isArray(instance.models) && instance.models.some(item => item.id === selection.model);
-          this.agentSelectionNotice = available ? '' : 'El motor o el modelo de esta conversación ya no está disponible. Elige otro motor o modelo para continuar.';
+          this.agentSelectionNotice = available ? '' : tr('ui.agents.notice_selection_unavailable');
           return;
         }
 
@@ -925,7 +952,7 @@
         let notice = '';
         if (!instance && selectable.length) {
           instance = selectable[0];
-          if (saved.instanceId) notice = 'La instancia guardada ya no está disponible. Se seleccionó ' + text(instance.name, instance.id) + '.';
+          if (saved.instanceId) notice = tr('ui.agents.notice_instance_fallback', { name: text(instance.name, instance.id) });
         }
         let model = saved.model;
         if (instance) {
@@ -934,8 +961,8 @@
             const fallback = defaultModelFor(instance);
             if (saved.model) {
               const fallbackLabel = models.find(item => item.id === fallback);
-              notice = 'El modelo guardado ya no está disponible en ' + text(instance.name, instance.id) + '.' +
-                (fallback ? ' Se seleccionó ' + modelLabel(fallbackLabel || { id: fallback }) + '.' : '');
+              notice = tr('ui.agents.notice_model_fallback', { name: text(instance.name, instance.id) }) +
+                (fallback ? ' ' + tr('ui.agents.notice_model_selected', { model: modelLabel(fallbackLabel || { id: fallback }) }) : '');
             }
             model = fallback;
           }
@@ -944,7 +971,7 @@
         }
         this.agentPreference = { instanceId: instance ? instance.id : '', model };
         this.agentPreferenceSaved = saved;
-        this.agentSelectionNotice = notice ? notice + ' La preferencia se actualizará en el servidor.' : '';
+        this.agentSelectionNotice = notice ? notice + ' ' + tr('ui.agents.notice_preference_saved') : '';
         if (notice && instance && model) {
           void this.persistAgentPreference(instance.id, model);
         }
@@ -966,7 +993,7 @@
           this.agentEnginesAvailable = !(error && error.status === 404);
           this.agentEnginesError = error && error.status === 404
             ? ''
-            : (error && (error.serverMessage || error.message)) || 'No se pudieron consultar los motores del servidor.';
+            : (error && (error.serverMessage || error.message)) || tr('ui.agents.error_engines_load');
           return false;
         } finally {
           if (this.isCurrentAgentEpoch(epoch)) this.agentEnginesLoading = false;
@@ -988,7 +1015,7 @@
         } catch (error) {
           if (token !== this.agentPreferenceEpoch || userId !== this.app.activeUserId || !this.isCurrentAgentEpoch(epoch)) return false;
           if (error && error.name === 'AbortError') return false;
-          this.agentSelectionNotice = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la preferencia en el servidor.';
+          this.agentSelectionNotice = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_preference_save');
           return false;
         }
       },
@@ -1028,11 +1055,18 @@
     mixins: [window.AssetAgentEngineMixin, window.AssetAgentQuotaMixin],
     props: {
       app: { type: Object, required: true },
-      heading: { type: String, default: 'Motor y modelo' },
+      heading: { type: String, default: '' },
       showBudget: { type: Boolean, default: true }
     },
     data() {
       return { disposed: false };
+    },
+    computed: {
+      // An empty heading prop falls back to localized copy, so the default
+      // never freezes one language at mount time.
+      headingText() {
+        return this.heading || tr('ui.agents.engine_model');
+      }
     },
     watch: {
       'app.activeUserId': {
@@ -1094,43 +1128,43 @@
     template: `
       <section class="agent-engine" aria-labelledby="agent-engine-title">
         <header class="agent-engine__head">
-          <h2 :id="'agent-engine-title'" class="agent-engine__title">{{ heading }}</h2>
-          <span v-if="agentEnginesLoading" class="agent-engine__meta" role="status">Consultando motores…</span>
+          <h2 :id="'agent-engine-title'" class="agent-engine__title">{{ headingText }}</h2>
+          <span v-if="agentEnginesLoading" class="agent-engine__meta" role="status">{{ $t('ui.agents.loading_engines') }}</span>
         </header>
         <p v-if="agentEnginesError" class="agent-note agent-note--error" role="alert">{{ agentEnginesError }}</p>
         <div v-if="agentEnginesLoaded && agentInstanceList.length" class="agent-engine__grid">
           <div class="field">
-            <label class="field__label" for="agent-engine-instance">Motor</label>
+            <label class="field__label" for="agent-engine-instance">{{ $t('ui.agents.engine') }}</label>
             <select id="agent-engine-instance" class="input-shell" :value="agentEngineValue" @change="onEngine">
               <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">
-                {{ choice.label }}{{ choice.disabled ? ' · Deshabilitada' : '' }}
+                {{ choice.label }}{{ choice.disabled ? ' · ' + $t('ui.agents.disabled') : '' }}
               </option>
             </select>
           </div>
           <div v-if="agentProfileSelectorVisible" class="field">
-            <label class="field__label" for="agent-engine-profile">Perfil</label>
+            <label class="field__label" for="agent-engine-profile">{{ $t('ui.agents.profile') }}</label>
             <select id="agent-engine-profile" class="input-shell" :value="agentPreference.instanceId" @change="onProfile">
               <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">
-                {{ agentProfileLabel(instance) }}{{ instance.enabled === false ? ' · Deshabilitada' : '' }}
+                {{ agentProfileLabel(instance) }}{{ instance.enabled === false ? ' · ' + $t('ui.agents.disabled') : '' }}
               </option>
             </select>
-            <p class="field__hint">El perfil elegido se usará en las conversaciones nuevas; una conversación guardada conserva su motor y modelo.</p>
+            <p class="field__hint">{{ $t('ui.agents.profile_hint') }}</p>
           </div>
           <div class="field">
-            <label class="field__label" for="agent-engine-model">Modelo</label>
+            <label class="field__label" for="agent-engine-model">{{ $t('ui.agents.model') }}</label>
             <select id="agent-engine-model" class="input-shell" :value="agentPreference.model" @change="onModel" :disabled="!agentModels.length">
-              <option v-if="!agentModels.length" value="">Sin modelos anunciados</option>
+              <option v-if="!agentModels.length" value="">{{ $t('ui.agents.no_models_announced') }}</option>
               <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>
             </select>
-            <p v-if="agentActiveInstance && !agentModels.length" class="field__hint">Los modelos disponibles los anuncia este motor; si no responde, elige otra instancia.</p>
+            <p v-if="agentActiveInstance && !agentModels.length" class="field__hint">{{ $t('ui.agents.models_hint') }}</p>
           </div>
         </div>
-        <ul v-if="agentDiscoveryErrors.length" class="agent-engine__errors" role="alert" aria-label="Errores de descubrimiento de motores">
+        <ul v-if="agentDiscoveryErrors.length" class="agent-engine__errors" role="alert" :aria-label="$t('ui.agents.discovery_errors_label')">
           <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="agent-note agent-note--error">
             {{ failure.label }}: {{ failure.error }}
           </li>
         </ul>
-        <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="agent-note" role="status">El servidor no anunció motores configurables.</p>
+        <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="agent-note" role="status">{{ $t('ui.agents.no_engines') }}</p>
         <p v-if="agentSelectionNotice" class="agent-note" role="status">{{ agentSelectionNotice }}</p>
         <div v-if="agentActiveInstance && agentCapabilityList.length" class="agent-engine__capabilities">
           <span class="agent-tag" v-for="capability in agentCapabilityList" :key="capability.key">{{ capability.label }}</span>
@@ -1139,25 +1173,25 @@
           <p v-if="agentBudgetSummary" class="agent-budget">{{ agentBudgetSummary }}</p>
           <section class="agent-quota" aria-labelledby="agent-quota-title">
             <div class="agent-quota__head">
-              <h3 id="agent-quota-title" class="agent-quota__title">Tu cuota diaria de IA</h3>
-              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? 'Actualizando…' : 'Actualizar cuota' }}</button>
+              <h3 id="agent-quota-title" class="agent-quota__title">{{ $t('ui.agents.daily_quota_title') }}</h3>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? $t('ui.agents.refreshing') : $t('ui.agents.refresh_quota') }}</button>
             </div>
-            <p v-if="quotaLoading && !quotaLoaded" class="agent-quota__meta" role="status">Consultando tu cuota…</p>
+            <p v-if="quotaLoading && !quotaLoaded" class="agent-quota__meta" role="status">{{ $t('ui.agents.loading_quota') }}</p>
             <p v-if="quotaError" class="agent-note agent-note--error" role="alert">{{ quotaError }}</p>
-            <p v-if="quotaUnavailable" class="agent-budget agent-budget--note">El servidor no devolvió un saldo de cuota; se muestra como no disponible, no como cero.</p>
+            <p v-if="quotaUnavailable" class="agent-budget agent-budget--note">{{ $t('ui.agents.quota_unavailable_note') }}</p>
             <template v-if="quotaHasData">
-              <p class="agent-quota__meta">Día {{ quotaPeriodDay || 'no informado' }} · Zona {{ quotaTimezone || 'no informada' }}<template v-if="quotaPendingTimezone"> · Cambio pendiente a {{ quotaPendingTimezone }}; se aplicará el {{ quotaPendingEffectiveDay || 'próximo día seguro' }}.</template></p>
+              <p class="agent-quota__meta">{{ $t('ui.agents.quota_day', { day: quotaPeriodDay || $t('ui.agents.quota_day_unreported'), timezone: quotaTimezone || $t('ui.agents.quota_timezone_unreported') }) }}<template v-if="quotaPendingTimezone"> · {{ $t('ui.agents.quota_pending_change', { timezone: quotaPendingTimezone, day: quotaPendingEffectiveDay || $t('ui.agents.quota_next_safe_day') }) }}</template></p>
               <dl class="agent-quota__accounts">
                 <div v-for="account in quotaAccounts" :key="account.scope" class="agent-quota__account" :class="{ 'is-selected': account.selected }">
-                  <dt>{{ account.label }}<span v-if="account.selected" class="agent-tag">Contexto actual</span></dt>
+                  <dt>{{ account.label }}<span v-if="account.selected" class="agent-tag">{{ $t('ui.agents.current_context') }}</span></dt>
                   <dd v-if="account.balance">
-                    <span>Límite: {{ quotaLimitText(account.balance) }} · {{ quotaLimitSourceLabel(account.balance.limitSource) }}</span>
-                    <span>Consumido: {{ quotaAmountText(account.balance.consumed) }} · Retenido: {{ quotaAmountText(account.balance.reserved) }}</span>
-                    <span>Disponible: {{ quotaAvailableText(account.balance) }}</span>
-                    <span>Esperas pendientes: {{ quotaTokenText(account.balance.pendingCount) }} · Precisión: {{ quotaPrecisionText(account.balance) }}</span>
-                    <span>Histórico sin atribuir: {{ quotaAmountText(account.balance.legacy) }}</span>
+                    <span>{{ $t('ui.agents.limit', { value: quotaLimitText(account.balance), source: quotaLimitSourceLabel(account.balance.limitSource) }) }}</span>
+                    <span>{{ $t('ui.agents.consumed_reserved', { consumed: quotaAmountText(account.balance.consumed), reserved: quotaAmountText(account.balance.reserved) }) }}</span>
+                    <span>{{ $t('ui.agents.available', { value: quotaAvailableText(account.balance) }) }}</span>
+                    <span>{{ $t('ui.agents.pending_precision', { pending: quotaTokenText(account.balance.pendingCount), precision: quotaPrecisionText(account.balance) }) }}</span>
+                    <span>{{ $t('ui.agents.legacy_unattributed', { value: quotaAmountText(account.balance.legacy) }) }}</span>
                   </dd>
-                  <dd v-else>No disponible</dd>
+                  <dd v-else>{{ $t('ui.agents.not_available') }}</dd>
                 </div>
               </dl>
               <p v-if="quotaSelectedNotice" class="agent-quota__meta">{{ quotaSelectedNotice }}</p>
@@ -1276,7 +1310,7 @@
         try {
           const payload = await window.AssetAgentApi.providers(this.app, { signal: controller.signal });
           if (!this.isCurrentQuotaProvider(epoch)) return false;
-          if (!payload || !Array.isArray(payload.items)) throw new Error('El servidor no devolvió la configuración de proveedores.');
+          if (!payload || !Array.isArray(payload.items)) throw new Error(tr('ui.agents.error_providers_payload'));
           this.quotaProviders = payload.items.map(item => this.normalizeQuotaProvider(item));
           return true;
         } catch (error) {
@@ -1286,7 +1320,7 @@
             return false;
           }
           this.quotaProviders = [];
-          this.quotaProvidersError = (error && (error.serverMessage || error.message)) || 'No se pudieron consultar los proveedores globales.';
+          this.quotaProvidersError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_providers_load');
           return false;
         } finally {
           if (this.isCurrentQuotaProvider(epoch)) {
@@ -1300,11 +1334,11 @@
       <form class="agent-editor" @submit.prevent="$emit('save')">
         <div class="agent-editor__grid">
           <div class="field">
-            <label class="field__label" for="agent-instance-name">Nombre</label>
+            <label class="field__label" for="agent-instance-name">{{ $t('ui.agents.name') }}</label>
             <input id="agent-instance-name" class="input-shell" v-model.trim="draft.name" maxlength="80" required>
           </div>
           <div class="field">
-            <label class="field__label" for="agent-instance-engine">Motor</label>
+            <label class="field__label" for="agent-instance-engine">{{ $t('ui.agents.engine') }}</label>
             <select id="agent-instance-engine" class="input-shell" v-model="draft.engine" :disabled="!!draft.id">
               <option value="opencode">OpenCode</option>
               <option value="hermes">Hermes</option>
@@ -1312,78 +1346,78 @@
             </select>
           </div>
           <div v-if="external" class="field">
-            <label class="field__label" for="agent-instance-url">URL base</label>
+            <label class="field__label" for="agent-instance-url">{{ $t('ui.agents.base_url') }}</label>
             <input id="agent-instance-url" class="input-shell" v-model.trim="draft.baseUrl" inputmode="url" placeholder="http://127.0.0.1:4096">
-            <p class="field__hint">El servidor del ITSM es el único que usa esta dirección; el navegador no contacta al motor.</p>
+            <p class="field__hint">{{ $t('ui.agents.base_url_hint') }}</p>
           </div>
           <div v-if="external" class="field">
-            <label class="field__label" for="agent-instance-secret">Nombre del secreto</label>
+            <label class="field__label" for="agent-instance-secret">{{ $t('ui.agents.secret_name') }}</label>
             <input id="agent-instance-secret" class="input-shell" v-model.trim="draft.secretRef" maxlength="120" placeholder="OPENCODE_SERVER_PASSWORD">
-            <p class="field__hint">Solo se guarda la referencia a la variable de entorno. El valor nunca se envía al navegador.</p>
+            <p class="field__hint">{{ $t('ui.agents.secret_hint') }}</p>
           </div>
           <div v-if="external" class="field">
-            <label class="field__label" for="agent-instance-user">Usuario del servidor</label>
+            <label class="field__label" for="agent-instance-user">{{ $t('ui.agents.server_user') }}</label>
             <input id="agent-instance-user" class="input-shell" v-model.trim="draft.username" maxlength="120" autocomplete="off">
           </div>
           <div class="field">
-            <label class="field__label" for="agent-instance-profile">Perfil o espacio de trabajo</label>
+            <label class="field__label" for="agent-instance-profile">{{ $t('ui.agents.profile_or_workspace') }}</label>
             <input id="agent-instance-profile" class="input-shell" v-model.trim="draft.profile" maxlength="200">
           </div>
           <div class="field">
-            <label class="field__label" for="agent-instance-directory">Directorio</label>
+            <label class="field__label" for="agent-instance-directory">{{ $t('ui.agents.directory') }}</label>
             <input id="agent-instance-directory" class="input-shell" v-model.trim="draft.directory" maxlength="400">
           </div>
           <div class="field">
-            <label class="field__label" for="agent-instance-default">Modelo predeterminado</label>
+            <label class="field__label" for="agent-instance-default">{{ $t('ui.agents.default_model') }}</label>
             <input id="agent-instance-default" class="input-shell" v-model.trim="draft.defaultModel" maxlength="200" :aria-describedby="canManageQuota && draft.quotaMode === 'managed' ? 'agent-instance-default-help' : null">
-            <p v-if="canManageQuota && draft.quotaMode === 'managed'" id="agent-instance-default-help" class="field__hint">El modelo debe pertenecer al proveedor global seleccionado; el servidor lo valida.</p>
+            <p v-if="canManageQuota && draft.quotaMode === 'managed'" id="agent-instance-default-help" class="field__hint">{{ $t('ui.agents.default_model_hint') }}</p>
           </div>
           <div class="field">
-            <label class="field__label" for="agent-instance-identity">Identidad de integración</label>
+            <label class="field__label" for="agent-instance-identity">{{ $t('ui.agents.integration_identity') }}</label>
             <select id="agent-instance-identity" class="input-shell" v-model="draft.integrationIdentityId">
-              <option value="">Sin identidad de integración</option>
+              <option value="">{{ $t('ui.agents.no_integration_identity') }}</option>
               <option v-for="identity in identities" :key="identity.id" :value="identity.id">{{ identity.name || identity.username || identity.id }} · {{ identity.actorKind }}</option>
             </select>
           </div>
         </div>
         <fieldset v-if="canManageQuota" class="agent-quota-fieldset agent-instance-quota">
-          <legend>Cuota y enrutamiento</legend>
+          <legend>{{ $t('ui.agents.quota_routing_legend') }}</legend>
           <div class="field">
-            <label class="field__label" for="agent-instance-quota-mode">Modo de cuota</label>
+            <label class="field__label" for="agent-instance-quota-mode">{{ $t('ui.agents.quota_mode') }}</label>
             <select id="agent-instance-quota-mode" class="input-shell" v-model="draft.quotaMode" :disabled="busy" aria-describedby="agent-instance-quota-mode-help">
-              <option value="direct">Directo observado</option>
-              <option value="managed">Gestionado por el gateway de ITSM</option>
+              <option value="direct">{{ $t('ui.agents.quota_mode_direct') }}</option>
+              <option value="managed">{{ $t('ui.agents.quota_mode_managed') }}</option>
             </select>
-            <p id="agent-instance-quota-mode-help" class="field__hint">Gestionado enruta por el gateway de ITSM; no demuestra por sí solo aislamiento de red ni convierte la cuota en estricta. Directo se observa y no se presenta como estricto.</p>
+            <p id="agent-instance-quota-mode-help" class="field__hint">{{ $t('ui.agents.quota_mode_hint') }}</p>
           </div>
           <template v-if="draft.quotaMode === 'managed'">
             <div class="field">
-              <label class="field__label" for="agent-instance-quota-provider">Proveedor global</label>
+              <label class="field__label" for="agent-instance-quota-provider">{{ $t('ui.agents.global_provider') }}</label>
               <select id="agent-instance-quota-provider" class="input-shell" v-model="draft.managedProviderId" :disabled="busy || quotaProvidersLoading" required aria-describedby="agent-instance-quota-provider-help">
-                <option value="">{{ quotaProvidersLoading ? 'Consultando proveedores…' : 'Selecciona un proveedor global' }}</option>
+                <option value="">{{ quotaProvidersLoading ? $t('ui.agents.loading_providers') : $t('ui.agents.select_global_provider') }}</option>
                 <option v-for="provider in quotaGlobalProviders" :key="provider.id" :value="provider.id">{{ quotaProviderOptions(provider) }}</option>
               </select>
-              <p id="agent-instance-quota-provider-help" class="field__hint">Solo se ofrecen proveedores globales habilitados y permitidos por el servidor. El identificador personal no se acepta aquí.</p>
+              <p id="agent-instance-quota-provider-help" class="field__hint">{{ $t('ui.agents.global_provider_hint') }}</p>
               <p v-if="quotaProvidersError" class="agent-note agent-note--error" role="alert">{{ quotaProvidersError }}</p>
-              <p v-else-if="!quotaProvidersLoading && !quotaGlobalProviders.length" class="agent-note">No hay proveedores globales habilitados. El modo gestionado no se puede guardar hasta que exista uno.</p>
-              <p v-else-if="!quotaProvidersLoading && !quotaSelectedProviderAvailable" class="agent-note agent-note--error" role="alert">El proveedor guardado ya no está disponible como global habilitado; selecciona otro o cambia a modo directo.</p>
+              <p v-else-if="!quotaProvidersLoading && !quotaGlobalProviders.length" class="agent-note">{{ $t('ui.agents.no_global_providers') }}</p>
+              <p v-else-if="!quotaProvidersLoading && !quotaSelectedProviderAvailable" class="agent-note agent-note--error" role="alert">{{ $t('ui.agents.global_provider_gone') }}</p>
             </div>
             <div class="field">
-              <label class="field__label" for="agent-instance-quota-context">Límite de contexto de entrada</label>
+              <label class="field__label" for="agent-instance-quota-context">{{ $t('ui.agents.input_context_limit') }}</label>
               <input id="agent-instance-quota-context" class="input-shell" v-model.trim="draft.managedContextTokens" type="number" min="1" step="1" inputmode="numeric" :disabled="busy" required aria-describedby="agent-instance-quota-context-help">
-              <p id="agent-instance-quota-context-help" class="field__hint">Entero positivo declarado por el operador dentro del contexto de entrada admitido por este modelo y proveedor. El límite de salida lo configura la instalación en el servidor. Este valor no demuestra aislamiento de red ni garantiza una cuota estricta del motor.</p>
+              <p id="agent-instance-quota-context-help" class="field__hint">{{ $t('ui.agents.input_context_hint') }}</p>
             </div>
           </template>
           <template v-else>
-            <label class="agent-check"><input id="agent-instance-quota-exception" type="checkbox" v-model="draft.directCompanyException" :disabled="busy"> Excepción explícita para ejecución directa de empresa</label>
-            <p class="field__hint">Sin esta excepción, el servidor no admite trabajos de empresa por ejecución directa. La cuota directa se observa, no se aplica como límite estricto antes de enviar. El servidor decide y audita la excepción.</p>
+            <label class="agent-check"><input id="agent-instance-quota-exception" type="checkbox" v-model="draft.directCompanyException" :disabled="busy"> {{ $t('ui.agents.direct_exception') }}</label>
+            <p class="field__hint">{{ $t('ui.agents.direct_exception_hint') }}</p>
           </template>
         </fieldset>
-        <label class="agent-check"><input type="checkbox" v-model="draft.enabled"> Instancia habilitada</label>
+        <label class="agent-check"><input type="checkbox" v-model="draft.enabled"> {{ $t('ui.agents.instance_enabled') }}</label>
         <p v-if="error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
         <div class="agent-editor__actions">
-          <button type="submit" class="btn btn--primary btn--small" :disabled="busy">{{ busy ? 'Guardando…' : 'Guardar instancia' }}</button>
-          <button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="$emit('cancel')">Cancelar</button>
+          <button type="submit" class="btn btn--primary btn--small" :disabled="busy">{{ busy ? $t('ui.agents.saving') : $t('ui.agents.save_instance') }}</button>
+          <button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="$emit('cancel')">{{ $t('ui.common.cancel') }}</button>
         </div>
       </form>
     `
@@ -1432,7 +1466,7 @@
         return this.skills.filter(skill => text(skill.module) === text(module.id));
       },
       moduleStateLabel(module) {
-        return module.enabled === false ? 'Deshabilitado' : 'Habilitado';
+        return module.enabled === false ? tr('ui.agents.module_disabled') : tr('ui.agents.module_enabled');
       },
       toggle(module) {
         if (!module || module.official === true) return;
@@ -1441,12 +1475,12 @@
       skillMeta(skill) {
         const parts = [];
         if (text(skill.version)) parts.push('v' + text(skill.version));
-        if (text(skill.module)) parts.push(this.skillIsOfficial(skill) ? 'Oficial' : 'Módulo ' + text(skill.module));
+        if (text(skill.module)) parts.push(this.skillIsOfficial(skill) ? tr('ui.agents.official') : tr('ui.agents.module_named', { id: text(skill.module) }));
         if (Array.isArray(skill.capabilities) && skill.capabilities.length) parts.push(skill.capabilities.join(', '));
         return parts.join(' · ');
       },
       permissionText(skill) {
-        return Array.isArray(skill.permissions) && skill.permissions.length ? skill.permissions.join(', ') : 'Sin permisos declarados';
+        return Array.isArray(skill.permissions) && skill.permissions.length ? skill.permissions.join(', ') : tr('ui.agents.no_declared_permissions');
       },
       digestText(skill) {
         const digest = text(skill.digest);
@@ -1457,41 +1491,41 @@
       <section class="agent-panel" aria-labelledby="agent-catalog-title">
         <header class="agent-panel__head">
           <div>
-            <h3 id="agent-catalog-title" class="agent-panel__title">Catálogo compartido</h3>
-            <p class="agent-panel__sub">Paquete oficial y módulos registrados. Deshabilitar un módulo retira sus herramientas y skills.</p>
+            <h3 id="agent-catalog-title" class="agent-panel__title">{{ $t('ui.agents.catalog_title') }}</h3>
+            <p class="agent-panel__sub">{{ $t('ui.agents.catalog_sub') }}</p>
           </div>
         </header>
         <p v-if="error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
-        <h4 class="agent-panel__subtitle">Paquete oficial</h4>
-        <p v-if="!officialSkills.length" class="agent-note">El servidor no anunció skills oficiales.</p>
+        <h4 class="agent-panel__subtitle">{{ $t('ui.agents.official_package') }}</h4>
+        <p v-if="!officialSkills.length" class="agent-note">{{ $t('ui.agents.no_official_skills') }}</p>
         <ul v-else class="agent-skill-list">
           <li v-for="skill in officialSkills" :key="skill.name" class="agent-skill">
-            <div><strong>{{ skill.name }}</strong><span class="agent-tag">Oficial</span></div>
+            <div><strong>{{ skill.name }}</strong><span class="agent-tag">{{ $t('ui.agents.official') }}</span></div>
             <p v-if="skill.description">{{ skill.description }}</p>
             <p class="agent-skill__meta">{{ skillMeta(skill) }}</p>
-            <p class="agent-skill__meta">Permisos: {{ permissionText(skill) }}</p>
+            <p class="agent-skill__meta">{{ $t('ui.agents.permissions', { list: permissionText(skill) }) }}</p>
             <p v-if="digestText(skill)" class="agent-skill__meta mono">SHA-256 {{ digestText(skill) }}</p>
           </li>
         </ul>
-        <h4 class="agent-panel__subtitle">Módulos</h4>
-        <p v-if="!externalModules.length" class="agent-note">El servidor no anunció módulos externos.</p>
+        <h4 class="agent-panel__subtitle">{{ $t('ui.agents.modules') }}</h4>
+        <p v-if="!externalModules.length" class="agent-note">{{ $t('ui.agents.no_external_modules') }}</p>
         <ul v-else class="agent-module-list">
           <li v-for="module in externalModules" :key="module.id" class="agent-module" :class="{ 'is-disabled': module.enabled === false }">
             <div class="agent-module__head">
               <div>
                 <strong>{{ module.name || module.id }}</strong>
-                <span class="agent-tag" v-if="module.official">Oficial</span>
+                <span class="agent-tag" v-if="module.official">{{ $t('ui.agents.official') }}</span>
                 <span class="agent-tag">{{ moduleStateLabel(module) }}</span>
               </div>
               <button v-if="!module.official && canManage" type="button" class="btn btn--secondary btn--small" :disabled="busyId === module.id" @click="toggle(module)">
-                {{ busyId === module.id ? 'Aplicando…' : (module.enabled === false ? 'Habilitar módulo' : 'Deshabilitar módulo') }}
+                {{ busyId === module.id ? $t('ui.agents.module_applying') : (module.enabled === false ? $t('ui.agents.enable_module') : $t('ui.agents.disable_module')) }}
               </button>
-              <p v-else-if="!module.official" class="field__hint">Cambiar módulos requiere el permiso de módulos del sistema.</p>
+              <p v-else-if="!module.official" class="field__hint">{{ $t('ui.agents.module_permission_required') }}</p>
             </div>
             <p v-if="module.description">{{ module.description }}</p>
-            <p class="agent-skill__meta" v-if="Array.isArray(module.permissions) && module.permissions.length">Permisos: {{ module.permissions.join(', ') }}</p>
-            <p class="agent-skill__meta" v-if="Array.isArray(module.capabilities) && module.capabilities.length">Capacidades: {{ module.capabilities.join(', ') }}</p>
-            <p v-if="module.official" class="field__hint">Un módulo oficial no se puede deshabilitar desde la aplicación.</p>
+            <p class="agent-skill__meta" v-if="Array.isArray(module.permissions) && module.permissions.length">{{ $t('ui.agents.permissions', { list: module.permissions.join(', ') }) }}</p>
+            <p class="agent-skill__meta" v-if="Array.isArray(module.capabilities) && module.capabilities.length">{{ $t('ui.agents.module_capabilities', { list: module.capabilities.join(', ') }) }}</p>
+            <p v-if="module.official" class="field__hint">{{ $t('ui.agents.official_module_locked') }}</p>
             <ul class="agent-skill-list" v-if="moduleSkills(module).length">
               <li v-for="skill in moduleSkills(module)" :key="skill.name" class="agent-skill">
                 <strong>{{ skill.name }}</strong>
@@ -1499,7 +1533,7 @@
                 <p class="agent-skill__meta">{{ skillMeta(skill) }} · {{ permissionText(skill) }}</p>
               </li>
             </ul>
-            <p v-else-if="module.enabled === false" class="field__hint">Sus skills y herramientas están retiradas.</p>
+            <p v-else-if="module.enabled === false" class="field__hint">{{ $t('ui.agents.module_skills_removed') }}</p>
           </li>
         </ul>
       </section>
@@ -1539,6 +1573,7 @@
       resultError: resultErrorText,
       resultLimitations,
       limitationText,
+      operationLabel,
       pathLabel(record) {
         const target = record && record.target ? record.target : {};
         return [text(target.engine) ? engineLabel(target.engine) : '', text(target.path), text(target.profile)].filter(Boolean).join(' · ');
@@ -1562,11 +1597,11 @@
         try {
           receipt = JSON.parse(this.receiptText);
         } catch (_) {
-          this.receiptError = 'El recibo no es JSON válido.';
+          this.receiptError = tr('ui.agents.error_receipt_invalid_json');
           return false;
         }
         if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
-          this.receiptError = 'El recibo debe ser un objeto JSON.';
+          this.receiptError = tr('ui.agents.error_receipt_object');
           return false;
         }
         this.receiptError = '';
@@ -1581,13 +1616,13 @@
           const payload = await window.AssetAgentApi.installationRequest(this.app, record.id);
           const request = payload && payload.request;
           if (!saveJsonFile(request, record.id)) {
-            this.requestError = 'El navegador no permite descargar el archivo de solicitud.';
+            this.requestError = tr('ui.agents.error_download_blocked');
             return false;
           }
           this.$emit('applied', payload);
           return true;
         } catch (error) {
-          this.requestError = (error && error.message) || 'No se pudo recuperar la solicitud remota.';
+          this.requestError = (error && error.message) || tr('ui.agents.error_request_fetch');
           return false;
         } finally {
           this.requestBusy = '';
@@ -1598,12 +1633,12 @@
       <section class="agent-panel" aria-labelledby="agent-installations-title">
         <header class="agent-panel__head">
           <div>
-            <h3 id="agent-installations-title" class="agent-panel__title">Instalaciones</h3>
-            <p class="agent-panel__sub">Resultado real del instalador. Una configuración escrita no equivale a una conexión MCP verificada.</p>
+            <h3 id="agent-installations-title" class="agent-panel__title">{{ $t('ui.agents.installations_title') }}</h3>
+            <p class="agent-panel__sub">{{ $t('ui.agents.installations_sub') }}</p>
           </div>
         </header>
         <p v-if="error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
-        <p v-if="!installations.length" class="agent-note">Todavía no hay instalaciones registradas.</p>
+        <p v-if="!installations.length" class="agent-note">{{ $t('ui.agents.no_installations') }}</p>
         <ul v-else class="agent-installation-list">
           <li v-for="record in installations" :key="record.id" class="agent-installation">
             <div class="agent-installation__head">
@@ -1612,58 +1647,58 @@
                 <span class="status-pill" :class="'status--' + tone(record)">{{ statusLabel(record) }}</span>
                 <span v-if="record.target && record.target.version" class="agent-tag">v{{ record.target.version }}</span>
               </div>
-              <span class="agent-skill__meta">Operación: {{ record.operation || 'install' }}</span>
+              <span class="agent-skill__meta">{{ $t('ui.agents.operation_line', { operation: record.operation || 'install' }) }}</span>
             </div>
             <p v-if="record.binding && record.binding.configFile" class="agent-skill__meta mono">{{ record.binding.configFile }}</p>
-            <p v-if="Array.isArray(record.managedFiles) && record.managedFiles.length" class="agent-skill__meta">{{ record.managedFiles.length }} archivo(s) administrado(s)</p>
+            <p v-if="Array.isArray(record.managedFiles) && record.managedFiles.length" class="agent-skill__meta">{{ $t('ui.agents.managed_files', { count: record.managedFiles.length }, record.managedFiles.length) }}</p>
             <div v-if="Array.isArray(record.conflicts) && record.conflicts.length" class="agent-note agent-note--warn" role="status">
-              <p>Conflictos conservados sin sobrescribir:</p>
+              <p>{{ $t('ui.agents.conflicts_kept') }}</p>
               <ul><li v-for="(conflict, index) in record.conflicts" :key="index">{{ checkText(conflict) || conflict }}</li></ul>
             </div>
-            <p v-if="record.status === 'configured' && record.verified !== true" class="field__hint">Archivos escritos; el servidor no confirmó una conexión MCP real.</p>
-            <p v-if="record.status === 'exported' && record.verified !== true" class="field__hint">Solicitud exportada; el destino remoto todavía no está instalado ni verificado.</p>
-            <p v-if="isRemote(record)" class="field__hint">Solicitud remota ligada a esta instalación. El ITSM no escribió en el host remoto.</p>
+            <p v-if="record.status === 'configured' && record.verified !== true" class="field__hint">{{ $t('ui.agents.files_written_unverified') }}</p>
+            <p v-if="record.status === 'exported' && record.verified !== true" class="field__hint">{{ $t('ui.agents.request_exported_unverified') }}</p>
+            <p v-if="isRemote(record)" class="field__hint">{{ $t('ui.agents.remote_request_bound') }}</p>
             <p v-if="requestError" class="agent-note agent-note--error" role="alert">{{ requestError }}</p>
             <div v-if="isRemote(record)" class="agent-installation__actions">
-              <button type="button" class="btn btn--ghost btn--small" :disabled="requestBusy === record.id" @click="downloadRequest(record)">{{ requestBusy === record.id ? 'Descargando…' : 'Descargar solicitud' }}</button>
-              <button v-if="canImportReceipt(record)" type="button" class="btn btn--ghost btn--small" @click="toggleReceipt(record)">{{ receiptFor === record.id ? 'Ocultar recibo' : 'Importar recibo' }}</button>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="requestBusy === record.id" @click="downloadRequest(record)">{{ requestBusy === record.id ? $t('ui.agents.downloading') : $t('ui.agents.download_request') }}</button>
+              <button v-if="canImportReceipt(record)" type="button" class="btn btn--ghost btn--small" @click="toggleReceipt(record)">{{ receiptFor === record.id ? $t('ui.agents.hide_receipt') : $t('ui.agents.import_receipt') }}</button>
             </div>
             <div v-if="receiptFor === record.id" class="agent-remote">
               <div class="field">
-                <label class="field__label" :for="'agent-receipt-' + record.id">Recibo del host remoto</label>
-                <textarea :id="'agent-receipt-' + record.id" class="conversation__select" rows="3" v-model="receiptText" placeholder="JSON del instalador auxiliar"></textarea>
+                <label class="field__label" :for="'agent-receipt-' + record.id">{{ $t('ui.agents.remote_receipt') }}</label>
+                <textarea :id="'agent-receipt-' + record.id" class="conversation__select" rows="3" v-model="receiptText" :placeholder="$t('ui.agents.receipt_placeholder')"></textarea>
               </div>
               <p v-if="receiptError" class="agent-note agent-note--error" role="alert">{{ receiptError }}</p>
               <div class="agent-installation__actions">
-                <button type="button" class="btn btn--primary btn--small" @click="submitReceipt(record)">Importar recibo y verificar</button>
+                <button type="button" class="btn btn--primary btn--small" @click="submitReceipt(record)">{{ $t('ui.agents.import_receipt_verify') }}</button>
               </div>
             </div>
             <div class="agent-installation__actions">
               <button v-for="operation in operations" :key="operation.id" type="button" class="btn btn--ghost btn--small" :disabled="busy === record.id + ':' + operation.id" @click="operate(operation.id, record)">
-                {{ busy === record.id + ':' + operation.id ? 'Ejecutando…' : operation.label }}
+                {{ busy === record.id + ':' + operation.id ? $t('ui.agents.running') : operationLabel(operation) }}
               </button>
             </div>
           </li>
         </ul>
         <div v-if="result" class="agent-result" role="status">
           <div class="agent-result__head">
-            <strong>Resultado del instalador</strong>
+            <strong>{{ $t('ui.agents.installer_result') }}</strong>
             <span class="status-pill" :class="'status--' + tone(result)">{{ statusLabel(result) }}</span>
           </div>
           <p v-if="resultError(result)" class="agent-note agent-note--error" role="alert">{{ resultError(result) }}</p>
-          <p v-else-if="result.verified === true">El servidor verificó la conexión MCP con este destino.</p>
-          <p v-else>El servidor no confirmó una conexión MCP real.</p>
-          <p v-if="result.target && result.target.version" class="agent-skill__meta">Versión: {{ result.target.version }}</p>
+          <p v-else-if="result.verified === true">{{ $t('ui.agents.server_verified_mcp') }}</p>
+          <p v-else>{{ $t('ui.agents.server_unverified_mcp') }}</p>
+          <p v-if="result.target && result.target.version" class="agent-skill__meta">{{ $t('ui.agents.version', { version: result.target.version }) }}</p>
           <div v-if="Array.isArray(result.checks) && result.checks.length">
-            <p class="agent-skill__meta">Comprobaciones informadas:</p>
+            <p class="agent-skill__meta">{{ $t('ui.agents.reported_checks') }}</p>
             <ul><li v-for="(check, index) in result.checks" :key="index">{{ checkText(check) || check }}</li></ul>
           </div>
           <div v-if="resultLimitations(result).length">
-            <p class="agent-skill__meta">Limitaciones informadas por el servidor:</p>
+            <p class="agent-skill__meta">{{ $t('ui.agents.reported_limitations') }}</p>
             <ul><li v-for="(item, index) in resultLimitations(result)" :key="index">{{ limitationText(item) }}</li></ul>
           </div>
           <div v-if="Array.isArray(result.conflicts) && result.conflicts.length">
-            <p class="agent-skill__meta">Conflictos conservados:</p>
+            <p class="agent-skill__meta">{{ $t('ui.agents.conflicts_kept_short') }}</p>
             <ul><li v-for="(conflict, index) in result.conflicts" :key="index">{{ checkText(conflict) || conflict }}</li></ul>
           </div>
         </div>
@@ -1749,7 +1784,13 @@
         return this.app.userPermissions(identity);
       },
       stepTitle() {
-        return ['Instancia', 'Destino', 'Servidor MCP', 'Skills', 'Revisión'][this.step - 1] || 'Instalación';
+        return [
+        tr('ui.agents.wizard_instance'),
+        tr('ui.agents.wizard_destination'),
+        tr('ui.agents.wizard_mcp'),
+        tr('ui.agents.wizard_skills'),
+        tr('ui.agents.wizard_review')
+      ][this.step - 1] || tr('ui.agents.wizard_step_fallback');
       },
       canNext() {
         if (this.step === 1) {
@@ -1762,7 +1803,12 @@
         return !this.busy;
       },
       reviewTarget() {
-        return [this.targetEngineLabel, text(this.target.path), this.target.profile ? 'perfil ' + this.target.profile : '', this.target.remote ? 'destino remoto' : ''].filter(Boolean).join(' · ');
+        return [
+          this.targetEngineLabel,
+          text(this.target.path),
+          this.target.profile ? tr('ui.agents.wizard_review_profile', { profile: this.target.profile }) : '',
+          this.target.remote ? tr('ui.agents.wizard_review_remote') : ''
+        ].filter(Boolean).join(' · ');
       },
       verified() {
         return !!(this.result && this.result.verified === true);
@@ -1804,7 +1850,7 @@
       skillMeta(skill) {
         const parts = [];
         if (text(skill.version)) parts.push('v' + text(skill.version));
-        if (text(skill.module)) parts.push(this.skillIsOfficial(skill) ? 'Oficial' : 'Módulo ' + text(skill.module));
+        if (text(skill.module)) parts.push(this.skillIsOfficial(skill) ? tr('ui.agents.official') : tr('ui.agents.module_named', { id: text(skill.module) }));
         return parts.join(' · ');
       },
       skillEnabled(skill) {
@@ -1838,7 +1884,7 @@
         this.instanceError = '';
         if (this.mode === 'existing') {
           if (!this.selectedInstance) {
-            this.instanceError = 'Selecciona una instancia OpenCode o Hermes registrada.';
+            this.instanceError = tr('ui.agents.error_instance_selection');
             return false;
           }
           if (this.preparedInstanceId !== this.selectedInstance.id) {
@@ -1862,8 +1908,8 @@
           integrationIdentityId: text(this.instanceDraft.integrationIdentityId),
           enabled: this.instanceDraft.enabled !== false
         };
-        if (!body.name) { this.instanceError = 'Escribe un nombre para la instancia.'; return false; }
-        if (body.engine === 'opencode' && !isHttpUrl(body.baseUrl)) { this.instanceError = 'La URL base de OpenCode debe ser http o https.'; return false; }
+        if (!body.name) { this.instanceError = tr('ui.agents.error_instance_name'); return false; }
+        if (body.engine === 'opencode' && !isHttpUrl(body.baseUrl)) { this.instanceError = tr('ui.agents.error_opencode_url'); return false; }
         if (this.canManageQuota) {
           const quotaError = quotaInstanceError(this.instanceDraft);
           if (quotaError) { this.instanceError = quotaError; return false; }
@@ -1873,7 +1919,7 @@
         try {
           const payload = await window.AssetAgentApi.saveInstance(this.app, '', body);
           const instance = payload && payload.instance ? payload.instance : payload;
-          if (!instance || !text(instance.id)) throw new Error('El servidor no devolvió la instancia creada.');
+          if (!instance || !text(instance.id)) throw new Error(tr('ui.agents.error_instance_created'));
           this.instanceId = instance.id;
           this.mode = 'existing';
           this.preparedInstanceId = instance.id;
@@ -1882,7 +1928,7 @@
           this.$emit('applied', instance);
           return true;
         } catch (error) {
-          this.instanceError = (error && error.message) || 'No se pudo registrar la instancia.';
+          this.instanceError = (error && error.message) || tr('ui.agents.error_instance_register');
           return false;
         } finally {
           this.instanceBusy = false;
@@ -1892,11 +1938,11 @@
         this.detectError = '';
         this.detection = null;
         if (this.target.remote === true) {
-          this.detectError = 'La inspección local no aplica a un destino remoto. Se generará una solicitud para ejecutar allí.';
+          this.detectError = tr('ui.agents.error_inspect_remote');
           return false;
         }
-        if (!this.engine) { this.detectError = 'Selecciona primero una instancia.'; return false; }
-        if (!isAbsolutePath(this.target.path)) { this.detectError = 'Escribe una ruta absoluta al perfil o espacio de trabajo.'; return false; }
+        if (!this.engine) { this.detectError = tr('ui.agents.error_instance_first'); return false; }
+        if (!isAbsolutePath(this.target.path)) { this.detectError = tr('ui.agents.error_absolute_path'); return false; }
         this.detecting = true;
         try {
           const payload = await window.AssetAgentApi.detectTarget(this.app, {
@@ -1907,14 +1953,14 @@
           });
           const detection = normalizeTargetDetection(payload, this.engine);
           if (!detection) {
-            this.detectError = 'El servidor no devolvió una inspección de destino válida.';
+            this.detectError = tr('ui.agents.error_detection_payload');
             return false;
           }
           this.detection = detection;
           if (detection.version) this.target.version = detection.version;
           return true;
         } catch (error) {
-          this.detectError = (error && error.message) || 'No se pudo inspeccionar el destino.';
+          this.detectError = (error && error.message) || tr('ui.agents.error_detection');
           return false;
         } finally {
           this.detecting = false;
@@ -1923,12 +1969,12 @@
       async install() {
         if (this.busy) return false;
         this.error = '';
-        if (!this.instanceId || !this.selectedInstance) { this.error = 'Falta la instancia seleccionada.'; return false; }
+        if (!this.instanceId || !this.selectedInstance) { this.error = tr('ui.agents.error_missing_instance'); return false; }
         if (!this.detection || this.detection.detected !== true) {
-          if (this.target.remote !== true) { this.error = 'Inspecciona y confirma el destino antes de instalar.'; return false; }
+          if (this.target.remote !== true) { this.error = tr('ui.agents.error_confirm_target'); return false; }
         }
-        if (!isHttpUrl(this.mcp.url) || !text(this.mcp.secretRef) || !text(this.mcp.identityId)) { this.error = 'Completa el servidor MCP y la identidad de integración.'; return false; }
-        if (!this.selectedSkills.length) { this.error = 'Selecciona al menos una skill.'; return false; }
+        if (!isHttpUrl(this.mcp.url) || !text(this.mcp.secretRef) || !text(this.mcp.identityId)) { this.error = tr('ui.agents.error_mcp_identity'); return false; }
+        if (!this.selectedSkills.length) { this.error = tr('ui.agents.error_skills_required'); return false; }
         this.busy = true;
         try {
           const body = {
@@ -1958,7 +2004,7 @@
           this.$emit('applied', this.result);
           return true;
         } catch (error) {
-          this.error = (error && error.message) || 'La instalación no se pudo completar.';
+          this.error = (error && error.message) || tr('ui.agents.error_install_failed');
           return false;
         } finally {
           this.busy = false;
@@ -1967,26 +2013,26 @@
       async downloadRequest() {
         if (!this.result) return false;
         const request = this.result.request || (this.result.binding && this.result.binding.request);
-        if (!request) { this.requestError = 'El servidor no devolvió una solicitud remota para descargar.'; return false; }
+        if (!request) { this.requestError = tr('ui.agents.error_no_request'); return false; }
         if (!saveJsonFile(request, this.result.id)) {
-          this.requestError = 'El navegador no permite descargar el archivo de solicitud.';
+          this.requestError = tr('ui.agents.error_download_blocked');
           return false;
         }
         this.requestError = '';
         return true;
       },
       async reDownloadRequest() {
-        if (!this.result || !this.result.id) { this.requestError = 'La instalación aún no tiene identificador.'; return false; }
+        if (!this.result || !this.result.id) { this.requestError = tr('ui.agents.error_installation_id'); return false; }
         this.requestError = '';
         try {
           const payload = await window.AssetAgentApi.installationRequest(this.app, this.result.id);
           if (!saveJsonFile(payload && payload.request, this.result.id)) {
-            this.requestError = 'El navegador no permite descargar el archivo de solicitud.';
+            this.requestError = tr('ui.agents.error_download_blocked');
             return false;
           }
           return true;
         } catch (error) {
-          this.requestError = (error && error.message) || 'No se pudo recuperar la solicitud remota.';
+          this.requestError = (error && error.message) || tr('ui.agents.error_request_fetch');
           return false;
         }
       },
@@ -1996,16 +2042,16 @@
         try {
           receipt = JSON.parse(this.receiptText);
         } catch (_) {
-          this.receiptError = 'El recibo no es JSON válido.';
+          this.receiptError = tr('ui.agents.error_receipt_invalid_json');
           return false;
         }
         if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) {
-          this.receiptError = 'El recibo debe ser un objeto JSON.';
+          this.receiptError = tr('ui.agents.error_receipt_object');
           return false;
         }
         const requestDigest = text(this.result.requestDigest);
         if (!requestDigest) {
-          this.receiptError = 'La solicitud remota no tiene un resumen SHA-256 con el que vincular el recibo.';
+          this.receiptError = tr('ui.agents.error_request_digest');
           return false;
         }
         this.receiptBusy = true;
@@ -2025,7 +2071,7 @@
           this.$emit('applied', updated);
           return true;
         } catch (error) {
-          this.receiptError = (error && error.message) || 'El servidor no aceptó el recibo.';
+          this.receiptError = (error && error.message) || tr('ui.agents.error_receipt_rejected');
           return false;
         } finally {
           this.receiptBusy = false;
@@ -2039,11 +2085,11 @@
       <section class="agent-wizard" aria-labelledby="agent-wizard-title">
         <header class="agent-wizard__head">
           <div>
-            <p class="eyebrow">Integración guiada</p>
-            <h3 id="agent-wizard-title" class="agent-wizard__title">Asistente de integración</h3>
-            <p class="agent-panel__sub">Paso {{ step }} de 5 · {{ stepTitle }}</p>
+            <p class="eyebrow">{{ $t('ui.agents.wizard_eyebrow') }}</p>
+            <h3 id="agent-wizard-title" class="agent-wizard__title">{{ $t('ui.agents.wizard_title') }}</h3>
+            <p class="agent-panel__sub">{{ $t('ui.agents.wizard_step', { step: step, title: stepTitle }) }}</p>
           </div>
-          <button type="button" class="config-icon-action" aria-label="Cerrar el asistente" @click="cancel"><app-icon name="close"></app-icon></button>
+          <button type="button" class="config-icon-action" :aria-label="$t('ui.agents.wizard_close')" @click="cancel"><app-icon name="close"></app-icon></button>
         </header>
         <ol class="agent-wizard__steps">
           <li v-for="index in 5" :key="index" :class="{ 'is-active': step === index, 'is-done': step > index }">{{ index }}</li>
@@ -2051,174 +2097,174 @@
         <p v-if="error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
 
         <section v-if="step === 1" class="agent-wizard__body" aria-labelledby="agent-wizard-instance">
-          <h4 id="agent-wizard-instance">Instancia del motor</h4>
+          <h4 id="agent-wizard-instance">{{ $t('ui.agents.wizard_instance_section') }}</h4>
           <div class="agent-wizard__modes">
-            <label class="agent-check"><input type="radio" value="existing" v-model="mode"> Instancia registrada</label>
-            <label class="agent-check"><input type="radio" value="new" v-model="mode"> Registrar una instancia</label>
+            <label class="agent-check"><input type="radio" value="existing" v-model="mode"> {{ $t('ui.agents.wizard_mode_existing') }}</label>
+            <label class="agent-check"><input type="radio" value="new" v-model="mode"> {{ $t('ui.agents.wizard_mode_new') }}</label>
           </div>
           <div v-if="mode === 'existing'" class="field">
-            <label class="field__label" for="agent-wizard-instance-select">Instancia</label>
+            <label class="field__label" for="agent-wizard-instance-select">{{ $t('ui.agents.wizard_instance') }}</label>
             <select id="agent-wizard-instance-select" class="input-shell" v-model="instanceId">
-              <option value="">Selecciona OpenCode o Hermes</option>
+              <option value="">{{ $t('ui.agents.wizard_instance_placeholder') }}</option>
               <option v-for="instance in engineInstances" :key="instance.id" :value="instance.id">{{ instance.name }} · {{ engineLabel(instance.engine) }}</option>
             </select>
-            <p v-if="!engineInstances.length" class="agent-note">No hay instancias OpenCode o Hermes registradas. Registra una para continuar.</p>
+            <p v-if="!engineInstances.length" class="agent-note">{{ $t('ui.agents.wizard_no_instances') }}</p>
           </div>
           <agent-instance-editor v-else :app="app" :draft="instanceDraft" :identities="identities" :busy="instanceBusy" :error="instanceError" :can-manage-quota="canManageQuota" @save="prepareInstance" @cancel="mode = 'existing'"></agent-instance-editor>
           <p v-if="mode === 'existing' && instanceError" class="agent-note agent-note--error" role="alert">{{ instanceError }}</p>
         </section>
 
         <section v-else-if="step === 2" class="agent-wizard__body" aria-labelledby="agent-wizard-target">
-          <h4 id="agent-wizard-target">Destino real</h4>
-          <p>{{ targetEngineLabel }} · la ruta se inspecciona en el servidor, no se escanea el sistema.</p>
+          <h4 id="agent-wizard-target">{{ $t('ui.agents.wizard_target_section') }}</h4>
+          <p>{{ $t('ui.agents.wizard_target_lead', { engine: targetEngineLabel }) }}</p>
           <div class="field">
-            <label class="field__label" for="agent-wizard-path">Ruta del perfil o espacio de trabajo</label>
-            <input id="agent-wizard-path" class="input-shell" v-model.trim="target.path" placeholder="/ruta/al/perfil" autocomplete="off">
+            <label class="field__label" for="agent-wizard-path">{{ $t('ui.agents.wizard_target_path') }}</label>
+            <input id="agent-wizard-path" class="input-shell" v-model.trim="target.path" :placeholder="$t('ui.agents.wizard_target_path_placeholder')" autocomplete="off">
           </div>
           <div class="agent-wizard__grid">
             <div class="field">
-              <label class="field__label" for="agent-wizard-profile">Perfil</label>
-              <input id="agent-wizard-profile" class="input-shell" v-model.trim="target.profile" maxlength="200" :disabled="engine === 'opencode'" :placeholder="engine === 'opencode' ? 'Usa el espacio de trabajo seleccionado' : 'Nombre del perfil'">
+              <label class="field__label" for="agent-wizard-profile">{{ $t('ui.agents.wizard_profile') }}</label>
+              <input id="agent-wizard-profile" class="input-shell" v-model.trim="target.profile" maxlength="200" :disabled="engine === 'opencode'" :placeholder="engine === 'opencode' ? $t('ui.agents.wizard_profile_workspace_placeholder') : $t('ui.agents.wizard_profile_name_placeholder')">
             </div>
             <div class="field">
-              <label class="field__label" for="agent-wizard-version">Versión esperada</label>
-              <input id="agent-wizard-version" class="input-shell" v-model.trim="target.version" maxlength="80" placeholder="Opcional">
+              <label class="field__label" for="agent-wizard-version">{{ $t('ui.agents.wizard_version_expected') }}</label>
+              <input id="agent-wizard-version" class="input-shell" v-model.trim="target.version" maxlength="80" :placeholder="$t('ui.agents.wizard_optional')">
             </div>
           </div>
-          <label class="agent-check"><input type="checkbox" v-model="target.remote"> El destino no es accesible desde el host del ITSM</label>
-          <p v-if="target.remote" class="agent-note" role="status">Se generará una solicitud JSON para ejecutar el instalador auxiliar en el host remoto. El ITSM no escribirá archivos en ese host.</p>
+          <label class="agent-check"><input type="checkbox" v-model="target.remote"> {{ $t('ui.agents.wizard_remote') }}</label>
+          <p v-if="target.remote" class="agent-note" role="status">{{ $t('ui.agents.wizard_remote_request') }}</p>
           <div v-if="!target.remote" class="agent-wizard__actions">
-            <button type="button" class="btn btn--secondary btn--small" :disabled="detecting" @click="detect">{{ detecting ? 'Inspeccionando…' : 'Inspeccionar destino' }}</button>
+            <button type="button" class="btn btn--secondary btn--small" :disabled="detecting" @click="detect">{{ detecting ? $t('ui.agents.wizard_inspecting') : $t('ui.agents.wizard_inspect_target') }}</button>
           </div>
           <div v-if="detection && !target.remote" class="agent-note" role="status">
-            <p v-if="detection.detected === true">Destino detectado: {{ detection.targetPath || target.path }}<template v-if="detection.version"> · versión {{ detection.version }}</template><template v-if="detection.profile"> · perfil {{ detection.profile }}</template><template v-if="detection.configExists === false"> · configuración nueva</template></p>
-            <p v-if="detection.detected === true" class="agent-skill__meta">Configuración: {{ detection.configFile }} · Skills: {{ detection.skillsDirectory }}</p>
-            <p v-else>El servidor no detectó un destino instalable.</p>
+            <p v-if="detection.detected === true">{{ $t('ui.agents.wizard_detected', { path: detection.targetPath || target.path }) }}<template v-if="detection.version">{{ $t('ui.agents.wizard_detected_version', { version: detection.version }) }}</template><template v-if="detection.profile">{{ $t('ui.agents.wizard_detected_profile', { profile: detection.profile }) }}</template><template v-if="detection.configExists === false">{{ $t('ui.agents.wizard_new_config') }}</template></p>
+            <p v-if="detection.detected === true" class="agent-skill__meta">{{ $t('ui.agents.wizard_detected_paths', { config: detection.configFile, skills: detection.skillsDirectory }) }}</p>
+            <p v-else>{{ $t('ui.agents.wizard_not_detected') }}</p>
             <ul v-if="Array.isArray(detection.limitations) && detection.limitations.length"><li v-for="(item, index) in detection.limitations" :key="index">{{ item }}</li></ul>
           </div>
           <p v-if="detectError" class="agent-note agent-note--error" role="alert">{{ detectError }}</p>
-          <p class="field__hint">El instalador solo puede modificar rutas accesibles desde el host del ITSM. Para un host remoto sin acceso a archivos, ejecuta el instalador auxiliar en ese host y vuelve a esta pantalla para verificar con una operación real.</p>
+          <p class="field__hint">{{ $t('ui.agents.wizard_local_hint') }}</p>
         </section>
 
         <section v-else-if="step === 3" class="agent-wizard__body" aria-labelledby="agent-wizard-mcp">
-          <h4 id="agent-wizard-mcp">Servidor MCP del ITSM</h4>
+          <h4 id="agent-wizard-mcp">{{ $t('ui.agents.wizard_mcp_section') }}</h4>
           <div class="field">
-            <label class="field__label" for="agent-wizard-mcp-url">URL del servidor MCP</label>
+            <label class="field__label" for="agent-wizard-mcp-url">{{ $t('ui.agents.wizard_mcp_url') }}</label>
             <input id="agent-wizard-mcp-url" class="input-shell" v-model.trim="mcp.url" inputmode="url" placeholder="http://127.0.0.1:8000/mcp">
           </div>
           <div class="field">
-            <label class="field__label" for="agent-wizard-mcp-secret">Nombre del secreto</label>
+            <label class="field__label" for="agent-wizard-mcp-secret">{{ $t('ui.agents.wizard_secret_name') }}</label>
             <input id="agent-wizard-mcp-secret" class="input-shell" v-model.trim="mcp.secretRef" maxlength="120" placeholder="ITSM_MCP_TOKEN">
-            <p class="field__hint">Solo se envía el nombre de la variable de entorno. El token lo resuelve el servidor y nunca llega al navegador.</p>
+            <p class="field__hint">{{ $t('ui.agents.wizard_secret_hint') }}</p>
           </div>
           <div class="field">
-            <label class="field__label" for="agent-wizard-identity">Identidad de integración</label>
+            <label class="field__label" for="agent-wizard-identity">{{ $t('ui.agents.wizard_identity') }}</label>
             <select id="agent-wizard-identity" class="input-shell" v-model="mcp.identityId">
-              <option value="">Selecciona una identidad de máquina</option>
+              <option value="">{{ $t('ui.agents.wizard_identity_placeholder') }}</option>
               <option v-for="identity in identities" :key="identity.id" :value="identity.id">{{ machineIdentityLabel(identity) }}</option>
             </select>
-            <p v-if="!identities.length" class="agent-note">El servidor no devolvió identidades de integración. Crea una identidad de máquina antes de instalar.</p>
-            <p v-else-if="selectedIdentity" class="field__hint">Permisos de la identidad: {{ identityPermissions.length ? identityPermissions.join(', ') : 'ninguno declarado' }}.</p>
+            <p v-if="!identities.length" class="agent-note">{{ $t('ui.agents.wizard_no_identities') }}</p>
+            <p v-else-if="selectedIdentity" class="field__hint">{{ $t('ui.agents.wizard_identity_permissions', { list: identityPermissions.length ? identityPermissions.join(', ') : $t('ui.agents.wizard_none_declared') }) }}</p>
           </div>
         </section>
 
         <section v-else-if="step === 4" class="agent-wizard__body" aria-labelledby="agent-wizard-skills">
-          <h4 id="agent-wizard-skills">Skills del catálogo</h4>
-          <p class="agent-panel__sub">Solo se instalan las skills seleccionadas. Los permisos efectivos siguen siendo los de la identidad de integración.</p>
+          <h4 id="agent-wizard-skills">{{ $t('ui.agents.wizard_skills_section') }}</h4>
+          <p class="agent-panel__sub">{{ $t('ui.agents.wizard_skills_lead') }}</p>
           <div class="agent-wizard__actions">
-            <button type="button" class="btn btn--ghost btn--small" @click="selectAllSkills">Seleccionar todas</button>
-            <button type="button" class="btn btn--ghost btn--small" @click="clearSkills">Quitar selección</button>
+            <button type="button" class="btn btn--ghost btn--small" @click="selectAllSkills">{{ $t('ui.agents.wizard_select_all') }}</button>
+            <button type="button" class="btn btn--ghost btn--small" @click="clearSkills">{{ $t('ui.agents.wizard_clear_selection') }}</button>
           </div>
-          <p v-if="!skills.length" class="agent-note">El servidor no anunció skills.</p>
+          <p v-if="!skills.length" class="agent-note">{{ $t('ui.agents.wizard_no_skills') }}</p>
           <ul v-else class="agent-skill-list">
             <li v-for="skill in skills" :key="skill.name" class="agent-skill">
               <label class="agent-check">
                 <input type="checkbox" :checked="selectedSkills.indexOf(skill.name) !== -1" :disabled="!skillEnabled(skill)" @change="toggleSkill(skill)">
-                <span><strong>{{ skill.name }}</strong> <span class="agent-tag">{{ skillIsOfficial(skill) ? 'Oficial' : 'Módulo' }}</span></span>
+                <span><strong>{{ skill.name }}</strong> <span class="agent-tag">{{ skillIsOfficial(skill) ? $t('ui.agents.official') : $t('ui.agents.wizard_module_tag') }}</span></span>
               </label>
               <p v-if="skill.description">{{ skill.description }}</p>
               <p class="agent-skill__meta">{{ skillMeta(skill) }}</p>
-              <p v-if="!skillEnabled(skill)" class="field__hint">El módulo está deshabilitado.</p>
+              <p v-if="!skillEnabled(skill)" class="field__hint">{{ $t('ui.agents.wizard_module_disabled') }}</p>
             </li>
           </ul>
         </section>
 
         <section v-else class="agent-wizard__body" aria-labelledby="agent-wizard-review">
-          <h4 id="agent-wizard-review">Revisión</h4>
+          <h4 id="agent-wizard-review">{{ $t('ui.agents.wizard_review') }}</h4>
           <dl class="agent-review">
-            <dt>Instancia</dt><dd>{{ selectedInstance ? selectedInstance.name : 'Nueva instancia' }}</dd>
-            <dt>Destino</dt><dd>{{ reviewTarget }}</dd>
-            <dt>Servidor MCP</dt><dd class="mono">{{ mcp.url }}</dd>
-            <dt>Secreto</dt><dd class="mono">{{ mcp.secretRef }}</dd>
-            <dt>Identidad</dt><dd>{{ selectedIdentity ? machineIdentityLabel(selectedIdentity) : 'Sin identidad' }}</dd>
-            <dt>Skills</dt><dd>{{ selectedSkills.length }} seleccionadas</dd>
+            <dt>{{ $t('ui.agents.wizard_instance') }}</dt><dd>{{ selectedInstance ? selectedInstance.name : $t('ui.agents.wizard_new_instance') }}</dd>
+            <dt>{{ $t('ui.agents.wizard_destination') }}</dt><dd>{{ reviewTarget }}</dd>
+            <dt>{{ $t('ui.agents.wizard_mcp') }}</dt><dd class="mono">{{ mcp.url }}</dd>
+            <dt>{{ $t('ui.agents.wizard_secret') }}</dt><dd class="mono">{{ mcp.secretRef }}</dd>
+            <dt>{{ $t('ui.agents.wizard_identity_label') }}</dt><dd>{{ selectedIdentity ? machineIdentityLabel(selectedIdentity) : $t('ui.agents.wizard_no_identity') }}</dd>
+            <dt>{{ $t('ui.agents.wizard_skills') }}</dt><dd>{{ $t('ui.agents.wizard_selected_count', { count: selectedSkills.length }, selectedSkills.length) }}</dd>
           </dl>
-          <p class="field__hint">El servidor ejecuta el instalador y devuelve el recibo. No se muestra «instalado» hasta que el recibo confirme la verificación.</p>
+          <p class="field__hint">{{ $t('ui.agents.wizard_receipt_hint') }}</p>
           <div class="agent-wizard__actions">
-            <button type="button" class="btn btn--primary btn--small" :disabled="busy" @click="install">{{ busy ? 'Procesando…' : (target.remote ? 'Generar solicitud remota' : 'Instalar y verificar') }}</button>
+            <button type="button" class="btn btn--primary btn--small" :disabled="busy" @click="install">{{ busy ? $t('ui.agents.wizard_processing') : (target.remote ? $t('ui.agents.wizard_generate_request') : $t('ui.agents.wizard_install_verify')) }}</button>
           </div>
           <div v-if="result" class="agent-result" :class="{ 'agent-result--ok': verified }" role="status">
             <div class="agent-result__head">
-              <strong>Resultado del instalador</strong>
+              <strong>{{ $t('ui.agents.installer_result') }}</strong>
               <span class="status-pill" :class="'status--' + tone(result)">{{ statusLabel(result) }}</span>
             </div>
             <p v-if="resultError(result)" class="agent-note agent-note--error" role="alert">{{ resultError(result) }}</p>
-            <p v-else-if="verified">El servidor verificó la conexión MCP con este destino.</p>
-            <p v-else>El servidor no confirmó una conexión MCP real. La configuración puede haberse escrito, pero no está verificada.</p>
+            <p v-else-if="verified">{{ $t('ui.agents.server_verified_mcp') }}</p>
+            <p v-else>{{ $t('ui.agents.wizard_unverified_detail') }}</p>
             <p v-if="result.mcpVerified === true || result.profileSafetyVerified === true" class="agent-skill__meta">
-              MCP: {{ result.mcpVerified === true ? 'verificado' : 'sin verificar' }} · Perfil: {{ result.profileSafetyVerified === true ? 'verificado' : 'sin verificar' }}
+              {{ $t('ui.agents.wizard_mcp_profile_state', { mcp: result.mcpVerified === true ? $t('ui.agents.wizard_verified') : $t('ui.agents.wizard_unverified'), profile: result.profileSafetyVerified === true ? $t('ui.agents.wizard_verified') : $t('ui.agents.wizard_unverified') }) }}
             </p>
-            <p v-if="result.target && result.target.version" class="agent-skill__meta">Versión: {{ result.target.version }}</p>
-            <p v-if="Array.isArray(result.managedFiles) && result.managedFiles.length" class="agent-skill__meta">{{ result.managedFiles.length }} archivo(s) administrado(s).</p>
+            <p v-if="result.target && result.target.version" class="agent-skill__meta">{{ $t('ui.agents.version', { version: result.target.version }) }}</p>
+            <p v-if="Array.isArray(result.managedFiles) && result.managedFiles.length" class="agent-skill__meta">{{ $t('ui.agents.managed_files', { count: result.managedFiles.length }, result.managedFiles.length) }}.</p>
             <div v-if="Array.isArray(result.conflicts) && result.conflicts.length" class="agent-note agent-note--warn">
-              <p>Conflictos conservados sin sobrescribir:</p>
+              <p>{{ $t('ui.agents.conflicts_kept') }}</p>
               <ul><li v-for="(conflict, index) in result.conflicts" :key="index">{{ checkText(conflict) || conflict }}</li></ul>
             </div>
             <div v-if="Array.isArray(result.checks) && result.checks.length">
-              <p class="agent-skill__meta">Comprobaciones informadas:</p>
+              <p class="agent-skill__meta">{{ $t('ui.agents.reported_checks') }}</p>
               <ul><li v-for="(check, index) in result.checks" :key="index">{{ checkText(check) || check }}</li></ul>
             </div>
             <div v-if="resultLimitations(result).length">
-              <p class="agent-skill__meta">Limitaciones informadas por el servidor:</p>
+              <p class="agent-skill__meta">{{ $t('ui.agents.reported_limitations') }}</p>
               <ul><li v-for="(item, index) in resultLimitations(result)" :key="index">{{ limitationText(item) }}</li></ul>
             </div>
             <div v-if="result.request || (result.binding && result.binding.requestDigest)" class="agent-remote">
-              <p><strong>Solicitud remota generada.</strong> El destino todavía no está instalado ni verificado.</p>
+              <p><strong>{{ $t('ui.agents.wizard_request_generated') }}</strong> {{ $t('ui.agents.wizard_request_pending_install') }}</p>
               <p v-if="result.requestDigest" class="agent-skill__meta mono">SHA-256 {{ result.requestDigest }}</p>
-              <p class="field__hint">Descarga la solicitud y ejecútala en el host remoto con el instalador auxiliar:</p>
+              <p class="field__hint">{{ $t('ui.agents.wizard_run_hint') }}</p>
               <p class="mono">python -m itsm.agent_integrations --request &lt;ruta del archivo&gt;</p>
               <div class="agent-wizard__actions">
-                <button type="button" class="btn btn--secondary btn--small" @click="downloadRequest">Descargar solicitud</button>
-                <button v-if="result.id" type="button" class="btn btn--ghost btn--small" @click="reDownloadRequest">Volver a descargar</button>
+                <button type="button" class="btn btn--secondary btn--small" @click="downloadRequest">{{ $t('ui.agents.download_request') }}</button>
+                <button v-if="result.id" type="button" class="btn btn--ghost btn--small" @click="reDownloadRequest">{{ $t('ui.agents.wizard_redownload') }}</button>
               </div>
               <p v-if="requestError" class="agent-note agent-note--error" role="alert">{{ requestError }}</p>
               <div class="field">
-                <label class="field__label" for="agent-wizard-receipt">Recibo del host remoto</label>
-                <textarea id="agent-wizard-receipt" class="conversation__select" rows="4" v-model="receiptText" placeholder="Pega aquí el JSON que imprimió el instalador auxiliar"></textarea>
+                <label class="field__label" for="agent-wizard-receipt">{{ $t('ui.agents.remote_receipt') }}</label>
+                <textarea id="agent-wizard-receipt" class="conversation__select" rows="4" v-model="receiptText" :placeholder="$t('ui.agents.wizard_receipt_placeholder')"></textarea>
               </div>
               <p v-if="receiptError" class="agent-note agent-note--error" role="alert">{{ receiptError }}</p>
               <div class="agent-wizard__actions">
-                <button type="button" class="btn btn--primary btn--small" :disabled="receiptBusy" @click="importWizardReceipt">{{ receiptBusy ? 'Validando…' : 'Importar recibo y verificar' }}</button>
+                <button type="button" class="btn btn--primary btn--small" :disabled="receiptBusy" @click="importWizardReceipt">{{ receiptBusy ? $t('ui.agents.wizard_validating') : $t('ui.agents.import_receipt_verify') }}</button>
               </div>
               <p v-if="receiptResult" class="agent-note" role="status">
-                Recibo importado. Estado: {{ statusLabel(receiptResult) }}.
-                <template v-if="receiptResult.verified === true">El servidor validó el recibo y alcanzó el servidor MCP.</template>
-                <template v-else>El servidor no confirmó una conexión MCP real.</template>
+                {{ $t('ui.agents.wizard_receipt_imported', { status: statusLabel(receiptResult) }) }}
+                <template v-if="receiptResult.verified === true">{{ $t('ui.agents.wizard_receipt_verified') }}</template>
+                <template v-else>{{ $t('ui.agents.server_unverified_mcp') }}</template>
               </p>
             </div>
             <div class="agent-wizard__actions">
-              <button type="button" class="btn btn--secondary btn--small" @click="cancel">Cerrar</button>
+              <button type="button" class="btn btn--secondary btn--small" @click="cancel">{{ $t('ui.common.close') }}</button>
             </div>
           </div>
         </section>
 
         <footer v-if="step < 5" class="agent-wizard__footer">
-          <button type="button" class="btn btn--secondary btn--small" :disabled="step === 1 || busy" @click="back">Atrás</button>
-          <button type="button" class="btn btn--primary btn--small" :disabled="!canNext || instanceBusy" @click="next">{{ instanceBusy ? 'Guardando…' : 'Continuar' }}</button>
+          <button type="button" class="btn btn--secondary btn--small" :disabled="step === 1 || busy" @click="back">{{ $t('ui.agents.wizard_back') }}</button>
+          <button type="button" class="btn btn--primary btn--small" :disabled="!canNext || instanceBusy" @click="next">{{ instanceBusy ? $t('ui.common.saving') : $t('ui.agents.wizard_continue') }}</button>
         </footer>
         <footer v-else-if="!result" class="agent-wizard__footer">
-          <button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="back">Atrás</button>
-          <span class="agent-panel__sub">La instalación se ejecuta en el servidor; un destino remoto solo genera una solicitud.</span>
+          <button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="back">{{ $t('ui.agents.wizard_back') }}</button>
+          <span class="agent-panel__sub">{{ $t('ui.agents.wizard_footer_hint') }}</span>
         </footer>
       </section>
     `
@@ -2265,19 +2311,24 @@
         this.checks = {};
       },
       credentialText(provider) {
-        return PROVIDER_CREDENTIAL_LABELS[provider.credentialStatus] ||
-          (provider.credentialConfigured ? 'Credencial configurada' : 'Sin credencial configurada');
+        // A missing catalog key must not shadow the configured/unconfigured
+        // fallback, so the mapped key is checked before translating.
+        const key = PROVIDER_CREDENTIAL_LABELS[provider.credentialStatus];
+        if (key) return tr(key);
+        return provider.credentialConfigured ? tr('ui.agents.credential_primary') : tr('ui.agents.credential_missing');
       },
       checkResultText(provider) {
         const result = this.checks[provider.id];
         if (!result) return '';
-        if (result.pending) return 'Comprobando conexión…';
+        if (result.pending) return tr('ui.agents.provider_checking');
         if (result.ok) {
           return typeof result.modelCount === 'number'
-            ? 'Conexión correcta: el proveedor ofrece ' + result.modelCount + ' modelos.'
-            : 'Conexión correcta.';
+            ? tr('ui.agents.provider_check_ok_models', { count: result.modelCount })
+            : tr('ui.agents.provider_check_ok');
         }
-        return PROVIDER_CHECK_LABELS[result.code] || 'No se pudo comprobar el proveedor.';
+        return PROVIDER_CHECK_LABELS[result.code]
+          ? tr(PROVIDER_CHECK_LABELS[result.code])
+          : tr('ui.agents.provider_check_failed');
       },
       async checkProvider(provider) {
         if (this.busy || !this.canEditProvider(provider)) return false;
@@ -2313,7 +2364,7 @@
         try {
           const payload = await api.providers(this.app, { signal: controller.signal });
           if (!this.current(epoch)) return false;
-          if (!payload || !Array.isArray(payload.items)) throw new Error('El servidor no devolvió la configuración de proveedores.');
+          if (!payload || !Array.isArray(payload.items)) throw new Error(tr('ui.agents.error_providers_payload'));
           this.items = payload.items.map(item => ({
             id: text(item.id), name: text(item.name), scope: item.scope, baseUrl: text(item.baseUrl),
             models: Array.isArray(item.models) ? item.models.map(model => text(model)) : [],
@@ -2329,7 +2380,7 @@
           this.credentialStorageAvailable = payload.credentialStorageAvailable === true;
           return true;
         } catch (error) {
-          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || 'No se pudieron consultar los proveedores.';
+          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || tr('ui.agents.provider_load_failed');
           return false;
         } finally {
           if (this.current(epoch)) { this.loading = false; this.controller = null; }
@@ -2356,9 +2407,13 @@
       },
       cancelProviderEdit() { this.draft = null; this.error = ''; },
       discoveryText(provider) {
-        if (!provider.discovery.code) return provider.modelSelection === 'manual' ? 'Modelos elegidos a mano.' : 'Modelos pendientes de descubrir: usa Comprobar.';
-        if (provider.discovery.code !== 'ok') return 'No se pudieron descubrir los modelos: ' + (PROVIDER_CHECK_LABELS[provider.discovery.code] || 'respuesta no válida.');
-        return (provider.modelSelection === 'manual' ? 'Modelos elegidos a mano entre ' : 'Modelos descubiertos automáticamente: ') + provider.discovery.count + (provider.modelSelection === 'manual' ? ' descubiertos.' : '');
+        if (!provider.discovery.code) return provider.modelSelection === 'manual' ? tr('ui.agents.provider_manual_models') : tr('ui.agents.provider_discovery_pending');
+        if (provider.discovery.code !== 'ok') return tr('ui.agents.provider_discovery_failed', { reason: PROVIDER_CHECK_LABELS[provider.discovery.code]
+            ? tr(PROVIDER_CHECK_LABELS[provider.discovery.code])
+            : tr('ui.agents.provider_discovery_invalid') });
+        return provider.modelSelection === 'manual'
+          ? tr('ui.agents.provider_discovery_manual_count', { count: provider.discovery.count })
+          : tr('ui.agents.provider_discovery_auto_count', { count: provider.discovery.count });
       },
       capabilityModels(provider, field, value) {
         return provider.models.filter(id => provider.capabilities[id] && provider.capabilities[id][field] === value);
@@ -2388,11 +2443,11 @@
         const manual = draft.modelSelection === 'manual';
         const models = draft.modelsText.split(/\r?\n/).map(model => model.trim()).filter(Boolean);
         if (!draft.name.trim() || !draft.baseUrl.trim() || (manual && !models.length)) {
-          this.error = manual ? 'Indica el nombre, el endpoint y al menos un modelo.' : 'Indica el nombre y el endpoint.';
+          this.error = manual ? tr('ui.agents.provider_save_missing_all') : tr('ui.agents.provider_save_missing');
           return false;
         }
         if (draft.apiKey && !this.credentialStorageAvailable) {
-          this.error = 'No se puede guardar la credencial: faltan ITSM_AI_CREDENTIAL_KEYS en el servidor.';
+          this.error = tr('ui.agents.provider_no_storage');
           draft.apiKey = '';
           return false;
         }
@@ -2418,13 +2473,13 @@
           if (!this.current(epoch)) return false;
           this.draft = null;
           this.busy = false;
-          this.notice = manual ? 'Proveedor guardado con los modelos indicados.' : 'Proveedor guardado. Sus modelos se descubren desde el endpoint.';
+          this.notice = manual ? tr('ui.agents.provider_saved_models') : tr('ui.agents.provider_saved_discovery');
           await this.loadProviders();
           this.$emit('changed');
           return true;
         } catch (error) {
           if (this.current(epoch) && error.name !== 'AbortError') {
-            this.error = error.serverMessage || error.message || 'No se pudo guardar el proveedor.';
+            this.error = error.serverMessage || error.message || tr('ui.agents.provider_save_failed');
             if (this.draft) this.draft.apiKey = '';
           }
           return false;
@@ -2445,12 +2500,12 @@
           this.pendingDeleteId = '';
           this.draft = null;
           this.busy = false;
-          this.notice = 'Proveedor eliminado.';
+          this.notice = tr('ui.agents.provider_deleted');
           await this.loadProviders();
           this.$emit('changed');
           return true;
         } catch (error) {
-          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || 'No se pudo eliminar el proveedor.';
+          if (this.current(epoch) && error.name !== 'AbortError') this.error = error.serverMessage || error.message || tr('ui.agents.provider_delete_failed');
           return false;
         } finally {
           if (this.current(epoch)) { this.busy = false; this.controller = null; }
@@ -2460,52 +2515,52 @@
     template: `
       <section class="agent-panel agent-providers" aria-labelledby="agent-providers-title" :aria-busy="loading || busy">
         <header class="agent-panel__head">
-          <div><h3 id="agent-providers-title" class="agent-panel__title">Proveedores compatibles con OpenAI</h3><p class="agent-panel__sub">Los globales los administra el Superadmin. Los personales solo están disponibles para su propietario autorizado. Las herramientas conservan tus permisos.</p></div>
+          <div><h3 id="agent-providers-title" class="agent-panel__title">{{ $t('ui.agents.providers_title') }}</h3><p class="agent-panel__sub">{{ $t('ui.agents.providers_sub') }}</p></div>
           <div class="agent-provider-actions">
-            <button v-if="globalAllowed" id="provider-new-global" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('global')">Añadir proveedor global</button>
-            <button v-if="personalAllowed" id="provider-new-personal" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('personal')">Añadir proveedor personal</button>
+            <button v-if="globalAllowed" id="provider-new-global" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('global')">{{ $t('ui.agents.provider_add_global') }}</button>
+            <button v-if="personalAllowed" id="provider-new-personal" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="newProvider('personal')">{{ $t('ui.agents.provider_add_personal') }}</button>
           </div>
         </header>
-        <p v-if="loading" class="agent-note" role="status">Consultando proveedores…</p>
+        <p v-if="loading" class="agent-note" role="status">{{ $t('ui.agents.providers_loading') }}</p>
         <p v-if="error" id="provider-error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
-        <button v-if="error && !draft" type="button" class="btn btn--ghost btn--small" @click="loadProviders">Volver a consultar proveedores</button>
+        <button v-if="error && !draft" type="button" class="btn btn--ghost btn--small" @click="loadProviders">{{ $t('ui.agents.providers_reload') }}</button>
         <p v-if="notice" class="agent-note" role="status">{{ notice }}</p>
-        <p v-if="!loading && !error && !items.length" class="agent-note">No hay proveedores adicionales disponibles. El proveedor predeterminado del servidor no se modifica aquí.</p>
-        <p v-if="!loading && (globalAllowed || personalAllowed) && !credentialStorageAvailable" id="provider-storage-help" class="agent-note">No está disponible la escritura de credenciales: el servidor necesita ITSM_AI_CREDENTIAL_KEYS. No se genera ni se guarda esa clave desde esta pantalla.</p>
+        <p v-if="!loading && !error && !items.length" class="agent-note">{{ $t('ui.agents.providers_empty') }}</p>
+        <p v-if="!loading && (globalAllowed || personalAllowed) && !credentialStorageAvailable" id="provider-storage-help" class="agent-note">{{ $t('ui.agents.provider_storage_help') }}</p>
         <ul v-if="items.length" class="agent-instance-list">
           <li v-for="provider in items" :key="provider.id" class="agent-instance">
-            <div><strong>{{ provider.name }}</strong> <span class="agent-tag">{{ provider.scope === 'global' ? 'Global' : 'Personal' }}</span> <span class="status-pill" :class="provider.enabled ? 'status--ok' : 'status--hold'">{{ provider.enabled ? 'Habilitado' : 'Deshabilitado' }}</span></div>
+            <div><strong>{{ provider.name }}</strong> <span class="agent-tag">{{ provider.scope === 'global' ? $t('ui.agents.provider_scope_global') : $t('ui.agents.provider_scope_personal') }}</span> <span class="status-pill" :class="provider.enabled ? 'status--ok' : 'status--hold'">{{ provider.enabled ? $t('ui.agents.module_enabled') : $t('ui.agents.module_disabled') }}</span></div>
             <p class="agent-skill__meta">{{ provider.baseUrl }}</p>
-            <p class="agent-skill__meta">Modelos: {{ provider.models.join(', ') || 'Sin modelos disponibles' }}</p>
+            <p class="agent-skill__meta">{{ $t('ui.agents.provider_models', { list: provider.models.join(', ') || $t('ui.agents.provider_no_models') }) }}</p>
             <p class="agent-skill__meta">{{ discoveryText(provider) }}</p>
-            <p v-if="capabilityModels(provider, 'image', true).length" class="agent-skill__meta">Acepta imágenes: {{ capabilityModels(provider, 'image', true).join(', ') }}</p>
-            <p v-if="capabilityModels(provider, 'file', true).length" class="agent-skill__meta">Acepta PDF: {{ capabilityModels(provider, 'file', true).join(', ') }}</p>
-            <p v-if="unknownCapabilityModels(provider).length" class="agent-skill__meta">Capacidad multimodal sin informar: {{ unknownCapabilityModels(provider).join(', ') }}</p>
+            <p v-if="capabilityModels(provider, 'image', true).length" class="agent-skill__meta">{{ $t('ui.agents.provider_accepts_images', { list: capabilityModels(provider, 'image', true).join(', ') }) }}</p>
+            <p v-if="capabilityModels(provider, 'file', true).length" class="agent-skill__meta">{{ $t('ui.agents.provider_accepts_pdf', { list: capabilityModels(provider, 'file', true).join(', ') }) }}</p>
+            <p v-if="unknownCapabilityModels(provider).length" class="agent-skill__meta">{{ $t('ui.agents.provider_capability_unknown', { list: unknownCapabilityModels(provider).join(', ') }) }}</p>
             <p class="agent-skill__meta">{{ credentialText(provider) }} · Pydantic AI</p>
             <p v-if="checks[provider.id]" class="agent-skill__meta" role="status">{{ checkResultText(provider) }}</p>
             <div v-if="canEditProvider(provider)" class="agent-provider-actions">
-              <button :id="'provider-edit-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Editar proveedor ' + provider.name" @click="editProvider(provider)">Editar</button>
-              <button :id="'provider-check-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy || (checks[provider.id] && checks[provider.id].pending)" :aria-label="'Comprobar proveedor ' + provider.name" @click="checkProvider(provider)">Comprobar</button>
-              <button :id="'provider-delete-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="'Eliminar proveedor ' + provider.name" @click="pendingDeleteId = provider.id">Eliminar</button>
-              <template v-if="pendingDeleteId === provider.id"><span>¿Eliminar {{ provider.name }}?</span><button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="removeProvider(provider)">Confirmar eliminación</button><button type="button" class="btn btn--ghost btn--small" @click="pendingDeleteId = ''">Conservar proveedor</button></template>
+              <button :id="'provider-edit-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="$t('ui.agents.provider_edit_label', { name: provider.name })" @click="editProvider(provider)">{{ $t('ui.agents.provider_edit') }}</button>
+              <button :id="'provider-check-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy || (checks[provider.id] && checks[provider.id].pending)" :aria-label="$t('ui.agents.provider_check_label', { name: provider.name })" @click="checkProvider(provider)">{{ $t('ui.agents.provider_check') }}</button>
+              <button :id="'provider-delete-' + provider.id" type="button" class="btn btn--ghost btn--small" :disabled="busy" :aria-label="$t('ui.agents.provider_delete_label', { name: provider.name })" @click="pendingDeleteId = provider.id">{{ $t('ui.agents.provider_delete') }}</button>
+              <template v-if="pendingDeleteId === provider.id"><span>{{ $t('ui.agents.provider_delete_question', { name: provider.name }) }}</span><button type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="removeProvider(provider)">{{ $t('ui.agents.provider_delete_confirm') }}</button><button type="button" class="btn btn--ghost btn--small" @click="pendingDeleteId = ''">{{ $t('ui.agents.provider_delete_keep') }}</button></template>
             </div>
           </li>
         </ul>
         <form v-if="draft" id="provider-form" class="agent-editor agent-provider-form" :aria-describedby="error ? 'provider-error' : undefined" @submit.prevent="saveProvider">
-          <h4 class="agent-panel__title">{{ draft.id ? 'Editar proveedor' : 'Nuevo proveedor' }} {{ draft.scope === 'global' ? 'global' : 'personal' }}</h4>
-          <div class="field"><label class="field__label" for="provider-name">Nombre del proveedor</label><input id="provider-name" v-model="draft.name" class="input-shell" required :disabled="busy" maxlength="160"></div>
-          <div class="field"><label class="field__label" for="provider-url">Endpoint compatible con OpenAI</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? 'HTTPS público, sin credenciales en la URL ni redirecciones. Solo se aceptan destinos privados que el despliegue haya autorizado. El servidor valida el destino.' : 'URL administrada por el propietario de la instalación. Puede ser un endpoint de la red local.' }}</p></div>
-          <div class="field"><label class="field__label" for="provider-model-selection">Modelos</label><select id="provider-model-selection" class="input-shell" :value="draft.modelSelection" :disabled="busy" aria-describedby="provider-model-selection-help" @change="draft.modelSelection = $event.target.value"><option value="auto">Descubrir automáticamente</option><option value="manual">Elegir a mano</option></select><p id="provider-model-selection-help" class="field__hint">{{ draft.modelSelection === 'auto' ? 'El servidor consulta la lista de modelos del endpoint al guardar y al comprobar.' : 'Si el endpoint informa sus modelos, solo se aceptan identificadores de esa lista.' }}</p></div>
-          <div v-if="draft.modelSelection === 'manual'" class="field"><label class="field__label" for="provider-models">Modelos ofrecidos (uno por línea)</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">Identificadores exactos del proveedor.</p></div>
-          <fieldset v-if="draft.id && draft.models && draft.models.length" class="field"><legend class="field__label">Entradas multimodales</legend><p class="field__hint">Si el proveedor no informa qué acepta un modelo, márcalo a mano. Sin marca no se le envían imágenes ni PDF.</p>
+          <h4 class="agent-panel__title">{{ draft.id ? $t('ui.agents.provider_edit_title') : $t('ui.agents.provider_new_title') }} {{ draft.scope === 'global' ? $t('ui.agents.provider_scope_global') : $t('ui.agents.provider_scope_personal') }}</h4>
+          <div class="field"><label class="field__label" for="provider-name">{{ $t('ui.agents.provider_name') }}</label><input id="provider-name" v-model="draft.name" class="input-shell" required :disabled="busy" maxlength="160"></div>
+          <div class="field"><label class="field__label" for="provider-url">{{ $t('ui.agents.provider_endpoint') }}</label><input id="provider-url" v-model="draft.baseUrl" type="url" class="input-shell" required :disabled="busy" aria-describedby="provider-url-help"><p id="provider-url-help" class="field__hint">{{ draft.scope === 'personal' ? $t('ui.agents.provider_url_help_personal') : $t('ui.agents.provider_url_help_global') }}</p></div>
+          <div class="field"><label class="field__label" for="provider-model-selection">{{ $t('ui.agents.provider_models_label') }}</label><select id="provider-model-selection" class="input-shell" :value="draft.modelSelection" :disabled="busy" aria-describedby="provider-model-selection-help" @change="draft.modelSelection = $event.target.value"><option value="auto">{{ $t('ui.agents.provider_discovery_auto') }}</option><option value="manual">{{ $t('ui.agents.provider_discovery_manual') }}</option></select><p id="provider-model-selection-help" class="field__hint">{{ draft.modelSelection === 'auto' ? $t('ui.agents.provider_discovery_auto_help') : $t('ui.agents.provider_discovery_manual_help') }}</p></div>
+          <div v-if="draft.modelSelection === 'manual'" class="field"><label class="field__label" for="provider-models">{{ $t('ui.agents.provider_models_offered') }}</label><textarea id="provider-models" v-model="draft.modelsText" class="input-shell" rows="3" required :disabled="busy" aria-describedby="provider-models-help"></textarea><p id="provider-models-help" class="field__hint">{{ $t('ui.agents.provider_models_help') }}</p></div>
+          <fieldset v-if="draft.id && draft.models && draft.models.length" class="field"><legend class="field__label">{{ $t('ui.agents.provider_inputs_legend') }}</legend><p class="field__hint">{{ $t('ui.agents.provider_inputs_hint') }}</p>
             <div v-for="(model, index) in draft.models" :key="model" class="agent-provider-actions"><span>{{ model }}</span>
-              <label :for="'provider-capability-image-' + index">Imágenes</label><select :id="'provider-capability-image-' + index" class="input-shell" :value="capabilityValue(model, 'image')" :disabled="busy" @change="setCapability(model, 'image', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].image !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].image ? 'Sí, según el proveedor' : 'No, según el proveedor') : 'Sin informar' }}</option><option value="true">Sí</option><option value="false">No</option></select>
-              <label :for="'provider-capability-file-' + index">PDF</label><select :id="'provider-capability-file-' + index" class="input-shell" :value="capabilityValue(model, 'file')" :disabled="busy" @change="setCapability(model, 'file', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].file !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].file ? 'Sí, según el proveedor' : 'No, según el proveedor') : 'Sin informar' }}</option><option value="true">Sí</option><option value="false">No</option></select>
+              <label :for="'provider-capability-image-' + index">{{ $t('ui.agents.provider_images') }}</label><select :id="'provider-capability-image-' + index" class="input-shell" :value="capabilityValue(model, 'image')" :disabled="busy" @change="setCapability(model, 'image', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].image !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].image ? $t('ui.agents.provider_yes_provider') : $t('ui.agents.provider_no_provider')) : $t('ui.agents.provider_unknown_option') }}</option><option value="true">{{ $t('ui.agents.provider_yes') }}</option><option value="false">{{ $t('ui.agents.provider_no') }}</option></select>
+              <label :for="'provider-capability-file-' + index">{{ $t('ui.agents.provider_pdf') }}</label><select :id="'provider-capability-file-' + index" class="input-shell" :value="capabilityValue(model, 'file')" :disabled="busy" @change="setCapability(model, 'file', $event.target.value)"><option value="">{{ draft.capabilities[model] && draft.capabilities[model].file !== null && draft.capabilities[model].source === 'provider' ? (draft.capabilities[model].file ? $t('ui.agents.provider_yes_provider') : $t('ui.agents.provider_no_provider')) : $t('ui.agents.provider_unknown_option') }}</option><option value="true">{{ $t('ui.agents.provider_yes') }}</option><option value="false">{{ $t('ui.agents.provider_no') }}</option></select>
             </div>
           </fieldset>
-          <div class="field"><label class="field__label" for="provider-key">{{ draft.id ? 'Sustituir credencial (opcional)' : 'Credencial (opcional)' }}</label><input id="provider-key" v-model="draft.apiKey" type="password" class="input-shell" autocomplete="new-password" :disabled="busy || !credentialStorageAvailable" :aria-describedby="!credentialStorageAvailable ? 'provider-storage-help provider-key-help' : 'provider-key-help'"><p id="provider-key-help" class="field__hint">Solo escritura. No se muestra la credencial guardada. Déjalo vacío para conservarla al editar.</p></div>
-          <label class="agent-checkbox"><input v-model="draft.enabled" type="checkbox" :disabled="busy"> Habilitado</label>
-          <div class="agent-provider-actions"><button type="submit" class="btn btn--primary" :disabled="busy">{{ busy ? 'Guardando…' : 'Guardar proveedor' }}</button><button type="button" class="btn btn--secondary" :disabled="busy" @click="cancelProviderEdit">Cancelar</button></div>
+          <div class="field"><label class="field__label" for="provider-key">{{ draft.id ? $t('ui.agents.provider_key_replace') : $t('ui.agents.provider_key_new') }}</label><input id="provider-key" v-model="draft.apiKey" type="password" class="input-shell" autocomplete="new-password" :disabled="busy || !credentialStorageAvailable" :aria-describedby="!credentialStorageAvailable ? 'provider-storage-help provider-key-help' : 'provider-key-help'"><p id="provider-key-help" class="field__hint">{{ $t('ui.agents.provider_key_help') }}</p></div>
+          <label class="agent-checkbox"><input v-model="draft.enabled" type="checkbox" :disabled="busy"> {{ $t('ui.agents.module_enabled') }}</label>
+          <div class="agent-provider-actions"><button type="submit" class="btn btn--primary" :disabled="busy">{{ busy ? $t('ui.common.saving') : $t('ui.agents.provider_save') }}</button><button type="button" class="btn btn--secondary" :disabled="busy" @click="cancelProviderEdit">{{ $t('ui.common.cancel') }}</button></div>
         </form>
       </section>
     `
@@ -2608,7 +2663,7 @@
       },
       defaultLabel() {
         const defaults = this.integrations.defaults || {};
-        if (!defaults.instanceId) return 'Sin preferencia predeterminada';
+        if (!defaults.instanceId) return tr('ui.agents.default_preference');
         const instance = this.adminInstances.find(item => item.id === defaults.instanceId);
         return (instance ? instance.name : defaults.instanceId) + (defaults.model ? ' · ' + defaults.model : '');
       },
@@ -2731,51 +2786,52 @@
         return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
       },
       quotaLimitText(limit, known) {
-        if (known === false) return 'No disponible';
-        if (limit === null || limit === undefined) return 'Ilimitado';
-        return formatTokens(limit) + ' tokens' + (limit === 0 ? ' · sin admisión' : '');
+        if (known === false) return tr('ui.agents.not_available');
+        if (limit === null || limit === undefined) return tr('ui.agents.unlimited');
+        return tr('ui.agents.tokens_value', { value: formatTokens(limit) }) +
+          (limit === 0 ? ' · ' + tr('ui.agents.limit_zero_admission') : '');
       },
       quotaOverrideLimitText(record) {
-        if (!record) return 'Hereda del valor predeterminado';
+        if (!record) return tr('ui.agents.quota_override_inherit');
         return this.quotaLimitText(record.dailyLimit, true);
       },
       quotaDimensionLabel(key) {
         return {
-          user: 'Usuario',
-          provider: 'Proveedor',
-          model: 'Modelo',
-          engine: 'Motor',
-          funding: 'Financiación',
-          day: 'Día'
+          user: tr('ui.agents.quota_dim_user'),
+          provider: tr('ui.agents.source_provider'),
+          model: tr('ui.agents.quota_dim_model'),
+          engine: tr('ui.agents.engine'),
+          funding: tr('ui.agents.quota_dim_funding'),
+          day: tr('ui.agents.quota_dim_day')
         }[key] || text(key);
       },
       quotaUserName(userId) {
         const id = text(userId);
-        if (!id) return 'Sin usuario';
+        if (!id) return tr('ui.agents.quota_no_user');
         const match = this.quotaUserOptions.find(item => item.id === id);
         return match ? match.label : id;
       },
       quotaRowProvider(row) {
-        if (row.legacy === true) return 'Sin atribuir (legado)';
+        if (row.legacy === true) return tr('ui.agents.quota_legacy_unattributed');
         const name = text(row.providerName) || text(row.providerId);
-        if (!name) return 'No informado';
+        if (!name) return tr('ui.agents.not_reported');
         const scope = text(row.providerScope);
-        const scopeLabel = scope === 'global' ? 'Global' : scope === 'personal' ? 'Personal' : 'Ámbito no informado';
+        const scopeLabel = scope === 'global' ? tr('ui.agents.provider_scope_global') : scope === 'personal' ? tr('ui.agents.provider_scope_personal') : tr('ui.agents.quota_scope_unknown');
         return name + (scope ? ' · ' + scopeLabel : '');
       },
       quotaRowModel(row) {
-        if (row.legacy === true) return 'Sin atribuir (legado)';
-        return text(row.model) || 'No informado';
+        if (row.legacy === true) return tr('ui.agents.quota_legacy_unattributed');
+        return text(row.model) || tr('ui.agents.not_reported');
       },
       quotaRowEngine(row) {
-        if (row.legacy === true) return 'Sin atribuir (legado)';
-        return text(row.engine) || 'No informado';
+        if (row.legacy === true) return tr('ui.agents.quota_legacy_unattributed');
+        return text(row.engine) || tr('ui.agents.not_reported');
       },
       quotaRowPrecision(row) {
         return this.quotaPrecisionLabel(row.precision) + ' · ' + this.quotaSourceLabel(row.source);
       },
       quotaRowState(row) {
-        return this.quotaStateLabel(row.state) + (row.legacy === true ? ' · legado' : '');
+        return this.quotaStateLabel(row.state) + (row.legacy === true ? tr('ui.agents.quota_legacy_suffix') : '');
       },
       applyQuotaPolicy(value) {
         const policy = normalizeQuotaPolicy(value);
@@ -2833,7 +2889,7 @@
           const payload = await api.quotaPolicy(this.app, controller ? { signal: controller.signal } : {});
           if (!this.isCurrentQuotaAdmin(epoch)) return false;
           if (!this.applyQuotaPolicy(payload)) {
-            this.quotaPolicyError = 'El servidor no devolvió la política diaria de cuota.';
+            this.quotaPolicyError = tr('ui.agents.error_quota_policy_payload');
             return false;
           }
           return true;
@@ -2841,8 +2897,8 @@
           if (!this.isCurrentQuotaAdmin(epoch)) return false;
           this.quotaPolicy = null;
           this.quotaPolicyError = error && error.status === 403
-            ? 'La política de cuota requiere el permiso system.providers de una cuenta humana.'
-            : ((error && (error.serverMessage || error.message)) || 'No se pudo consultar la política de cuota.');
+            ? tr('ui.agents.error_quota_policy_forbidden')
+            : ((error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_policy_load'));
           return false;
         } finally {
           if (this.isCurrentQuotaAdmin(epoch)) this.quotaPolicyLoading = false;
@@ -2851,7 +2907,7 @@
       async saveQuotaPolicy() {
         if (!this.canManageQuota || !this.quotaPolicy || !this.quotaPolicy.available || this.quotaAdminMutationBusy) {
           if (this.quotaPolicy && !this.quotaPolicy.available) {
-            this.quotaPolicyError = 'La política no está disponible; no se puede guardar una cuota que el servidor no informó.';
+            this.quotaPolicyError = tr('ui.agents.error_quota_policy_unavailable');
           }
           return false;
         }
@@ -2869,19 +2925,19 @@
             } else if (this.quotaDraft[modeKey] === 'limited') {
               const parsed = this.parseQuotaLimit(this.quotaDraft[limitKey]);
               if (parsed === undefined) {
-                this.quotaPolicyError = 'El límite diario de la empresa debe ser un entero mayor o igual que cero.';
+                this.quotaPolicyError = tr('ui.agents.error_quota_company_limit');
                 return false;
               }
               if (parsed !== this.quotaPolicy[bodyKey]) body[bodyKey] = parsed;
             } else {
-              this.quotaPolicyError = 'Indica si el límite diario de la empresa es ilimitado o tiene un valor.';
+              this.quotaPolicyError = tr('ui.agents.error_quota_company_mode');
               return false;
             }
           }
           const timezone = text(this.quotaDraft.timezone);
           if (timezone && timezone !== this.quotaPolicy.timezone) body.timezone = timezone;
           if (!Object.keys(body).length) {
-            this.quotaPolicyNotice = 'No hay cambios que guardar.';
+            this.quotaPolicyNotice = tr('ui.agents.quota_no_changes');
             return true;
           }
           this.quotaPolicyBusy = true;
@@ -2891,16 +2947,16 @@
           const payload = await api.saveQuotaPolicy(this.app, body);
           if (!this.isCurrentQuotaMutation(epoch)) return false;
           if (!this.applyQuotaPolicy(payload)) {
-            this.quotaPolicyError = 'El servidor no confirmó la política de cuota.';
+            this.quotaPolicyError = tr('ui.agents.error_quota_policy_confirm');
             return false;
           }
           this.quotaAdminEpoch += 1;
           this.quotaPolicyLoading = false;
-          this.quotaPolicyNotice = 'Cuota guardada. Un cambio de zona horaria queda pendiente hasta el siguiente límite diario seguro; el día no se reinicia en el navegador.';
+          this.quotaPolicyNotice = tr('ui.agents.quota_policy_saved');
           return true;
         } catch (error) {
           if (!this.isCurrentQuotaMutation(epoch)) return false;
-          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la política de cuota.';
+          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_policy_save');
           return false;
         } finally {
           if (epoch === this.quotaMutationEpoch) this.quotaPolicyBusy = false;
@@ -2918,16 +2974,16 @@
           const payload = await api.saveQuotaPolicy(this.app, { cancelTimezoneChange: true });
           if (!this.isCurrentQuotaMutation(epoch)) return false;
           if (!this.applyQuotaPolicy(payload)) {
-            this.quotaPolicyError = 'El servidor no confirmó la cancelación del cambio de zona.';
+            this.quotaPolicyError = tr('ui.agents.error_quota_timezone_confirm');
             return false;
           }
           this.quotaAdminEpoch += 1;
           this.quotaPolicyLoading = false;
-          this.quotaPolicyNotice = 'Cambio de zona cancelado. Se mantiene la zona actual.';
+          this.quotaPolicyNotice = tr('ui.agents.quota_timezone_cancelled');
           return true;
         } catch (error) {
           if (!this.isCurrentQuotaMutation(epoch)) return false;
-          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || 'No se pudo cancelar el cambio de zona horaria.';
+          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_timezone_cancel');
           return false;
         } finally {
           if (epoch === this.quotaMutationEpoch) this.quotaPolicyBusy = false;
@@ -2940,14 +2996,14 @@
         const userId = text(this.quotaOverrideUser);
         if (!this.quotaOverrideInputValid) {
           this.quotaOverrideError = this.canBrowseQuotaUsers && this.quotaUserOptions.length
-            ? 'Selecciona un usuario válido de la lista.'
-            : 'Escribe un UUID de usuario válido; el nombre de usuario no es un identificador.';
+            ? tr('ui.agents.error_quota_user_selection')
+            : tr('ui.agents.error_quota_user_uuid');
           return false;
         }
         const scope = 'company';
         if (this.quotaOverrideMode === 'inherit') {
           if (!this.quotaOverrideRecord) {
-            this.quotaOverrideError = 'El usuario ya hereda el valor predeterminado; no hay excepción que eliminar.';
+            this.quotaOverrideError = tr('ui.agents.error_quota_override_inherited');
             return false;
           }
           return this.removeQuotaOverride(userId, scope);
@@ -2957,11 +3013,11 @@
         else if (this.quotaOverrideMode === 'limited') {
           dailyLimit = this.parseQuotaLimit(this.quotaOverrideLimit);
           if (dailyLimit === undefined) {
-            this.quotaOverrideError = 'La excepción diaria debe ser un entero mayor o igual que cero.';
+            this.quotaOverrideError = tr('ui.agents.error_quota_override_limit');
             return false;
           }
         } else {
-          this.quotaOverrideError = 'Elige heredar, ilimitado o un límite diario explícito.';
+          this.quotaOverrideError = tr('ui.agents.error_quota_override_mode');
           return false;
         }
         this.quotaOverrideBusy = true;
@@ -2973,7 +3029,7 @@
           if (!this.isCurrentQuotaMutation(epoch)) return false;
           const overrides = normalizeQuotaOverrides(payload);
           if (!overrides) {
-            this.quotaOverrideError = 'El servidor no confirmó las excepciones de cuota.';
+            this.quotaOverrideError = tr('ui.agents.error_quota_overrides_confirm');
             return false;
           }
           this.quotaOverrides = overrides;
@@ -2982,14 +3038,14 @@
           this.quotaPolicyLoading = false;
           this.syncQuotaOverrideDraft();
           this.quotaOverrideNotice = dailyLimit === null
-            ? 'Excepción guardada: uso ilimitado explícito. Es distinto de heredar el valor predeterminado.'
+            ? tr('ui.agents.quota_override_saved_unlimited')
             : (dailyLimit === 0
-              ? 'Excepción guardada: cero tokens, sin admisión de ejecuciones.'
-              : 'Excepción guardada: límite diario de ' + formatTokens(dailyLimit) + ' tokens.');
+              ? tr('ui.agents.quota_override_saved_zero')
+              : tr('ui.agents.quota_override_saved_limit', { value: formatTokens(dailyLimit) }));
           return true;
         } catch (error) {
           if (!this.isCurrentQuotaMutation(epoch)) return false;
-          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la excepción de cuota.';
+          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_override_save');
           return false;
         } finally {
           if (epoch === this.quotaMutationEpoch) this.quotaOverrideBusy = false;
@@ -3025,7 +3081,7 @@
           if (!this.isCurrentQuotaMutation(epoch)) return false;
           const overrides = normalizeQuotaOverrides(payload);
           if (!overrides) {
-            this.quotaOverrideError = 'El servidor no confirmó las excepciones de cuota.';
+            this.quotaOverrideError = tr('ui.agents.error_quota_overrides_confirm');
             return false;
           }
           this.quotaOverrides = overrides;
@@ -3033,11 +3089,11 @@
           this.quotaAdminEpoch += 1;
           this.quotaPolicyLoading = false;
           this.syncQuotaOverrideDraft();
-          this.quotaOverrideNotice = 'Excepción eliminada: el usuario vuelve a heredar el valor predeterminado de su financiación.';
+          this.quotaOverrideNotice = tr('ui.agents.quota_override_removed');
           return true;
         } catch (error) {
           if (!this.isCurrentQuotaMutation(epoch)) return false;
-          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || 'No se pudo eliminar la excepción de cuota.';
+          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_override_remove');
           return false;
         } finally {
           if (epoch === this.quotaMutationEpoch) this.quotaOverrideBusy = false;
@@ -3048,7 +3104,7 @@
         const filters = this.quotaReportFilters;
         const userId = text(filters.userId);
         if (userId && !QUOTA_UUID_RE.test(userId)) {
-          this.quotaReportError = 'El filtro de usuario debe ser el UUID de la cuenta, no su nombre.';
+          this.quotaReportError = tr('ui.agents.error_quota_report_user');
           return false;
         }
         const parts = [];
@@ -3071,7 +3127,7 @@
           const report = normalizeQuotaReport(payload);
           if (!report) {
             this.quotaReport = null;
-            this.quotaReportError = 'El servidor no devolvió un informe de consumo utilizable.';
+            this.quotaReportError = tr('ui.agents.error_quota_report_payload');
             return false;
           }
           this.quotaReport = report;
@@ -3079,7 +3135,7 @@
         } catch (error) {
           if (!this.isCurrentQuotaAdmin(epoch, 'report')) return false;
           this.quotaReport = null;
-          this.quotaReportError = (error && (error.serverMessage || error.message)) || 'No se pudo consultar el informe de consumo.';
+          this.quotaReportError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_report_load');
           return false;
         } finally {
           if (this.isCurrentQuotaAdmin(epoch, 'report')) this.quotaReportLoading = false;
@@ -3101,7 +3157,7 @@
           const items = normalizeQuotaPending(payload);
           if (!items) {
             this.quotaPending = null;
-            this.quotaPendingError = 'El servidor no devolvió las retenciones pendientes.';
+            this.quotaPendingError = tr('ui.agents.error_quota_pending_payload');
             return false;
           }
           this.quotaPending = items;
@@ -3109,7 +3165,7 @@
         } catch (error) {
           if (!this.isCurrentQuotaAdmin(epoch, 'pending')) return false;
           this.quotaPending = null;
-          this.quotaPendingError = (error && (error.serverMessage || error.message)) || 'No se pudieron consultar las retenciones pendientes.';
+          this.quotaPendingError = (error && (error.serverMessage || error.message)) || tr('ui.agents.error_quota_pending_load');
           return false;
         } finally {
           if (this.isCurrentQuotaAdmin(epoch, 'pending')) this.quotaPendingLoading = false;
@@ -3141,8 +3197,8 @@
             if (this.disposed) return;
             this.adminAvailable = false;
             this.adminError = (error && error.status === 403)
-              ? 'La administración de integraciones requiere el permiso de proveedores de IA del sistema.'
-              : ((error && error.message) || 'No se pudieron consultar las integraciones.');
+              ? tr('ui.agents.error_integrations_permission')
+              : ((error && error.message) || tr('ui.agents.error_integrations_load'));
             this.adminError && (this.loadError = this.loadError || this.adminError);
           }
         }
@@ -3178,8 +3234,8 @@
           this.adminError = '';
         } catch (error) {
           this.adminError = (error && error.status === 403)
-            ? 'La administración de integraciones requiere el permiso de proveedores de IA del sistema.'
-            : ((error && error.message) || 'No se pudieron consultar las integraciones.');
+            ? tr('ui.agents.error_integrations_permission')
+            : ((error && error.message) || tr('ui.agents.error_integrations_load'));
         }
       },
       async refreshCatalog() {
@@ -3187,7 +3243,7 @@
           this.catalog = this.normalizeCatalog(await window.AssetAgentApi.catalog(this.app));
           this.catalogError = '';
         } catch (error) {
-          this.catalogError = (error && error.message) || 'No se pudo consultar el catálogo.';
+          this.catalogError = (error && error.message) || tr('ui.agents.error_catalog_load');
         }
       },
       openWizard() {
@@ -3238,8 +3294,8 @@
         if (this.instanceBusy) return false;
         this.instanceError = '';
         const draft = this.instanceDraft;
-        if (!text(draft.name)) { this.instanceError = 'Escribe un nombre para la instancia.'; return false; }
-        if (draft.engine === 'opencode' && !isHttpUrl(draft.baseUrl)) { this.instanceError = 'La URL base de OpenCode debe ser http o https.'; return false; }
+        if (!text(draft.name)) { this.instanceError = tr('ui.agents.error_instance_name'); return false; }
+        if (draft.engine === 'opencode' && !isHttpUrl(draft.baseUrl)) { this.instanceError = tr('ui.agents.error_opencode_url'); return false; }
         if (this.canManageQuota) {
           const quotaError = quotaInstanceError(draft);
           if (quotaError) { this.instanceError = quotaError; return false; }
@@ -3266,7 +3322,7 @@
           this.enginePickerKey += 1;
           return true;
         } catch (error) {
-          this.instanceError = (error && error.message) || 'No se pudo guardar la instancia.';
+          this.instanceError = (error && error.message) || tr('ui.agents.error_instance_save');
           return false;
         } finally {
           this.instanceBusy = false;
@@ -3274,7 +3330,7 @@
       },
       async toggleModule(module) {
         if (!this.canManageModules) {
-          this.moduleError = 'Cambiar módulos requiere el permiso de módulos del sistema.';
+          this.moduleError = tr('ui.agents.module_permission_required');
           return false;
         }
         if (!module || module.official === true || this.moduleBusyId) return false;
@@ -3286,7 +3342,7 @@
           await this.refreshIntegrations();
           return true;
         } catch (error) {
-          this.moduleError = (error && error.message) || 'No se pudo cambiar el estado del módulo.';
+          this.moduleError = (error && error.message) || tr('ui.agents.error_module_state');
           return false;
         } finally {
           this.moduleBusyId = '';
@@ -3319,7 +3375,7 @@
           await this.refreshIntegrations();
           return true;
         } catch (error) {
-          this.operationError = (error && error.message) || 'No se pudo completar la operación del instalador.';
+          this.operationError = (error && error.message) || tr('ui.agents.error_operation');
           return false;
         } finally {
           this.operationBusy = '';
@@ -3330,7 +3386,7 @@
         const record = payload.record;
         const requestDigest = text(record.requestDigest);
         if (!requestDigest) {
-          this.operationError = 'La instalación no tiene un resumen SHA-256 con el que vincular el recibo.';
+          this.operationError = tr('ui.agents.error_receipt_digest');
           return false;
         }
         this.operationError = '';
@@ -3346,7 +3402,7 @@
           await this.refreshIntegrations();
           return true;
         } catch (error) {
-          this.operationError = (error && error.message) || 'El servidor no aceptó el recibo remoto.';
+          this.operationError = (error && error.message) || tr('ui.agents.error_receipt_rejected');
           return false;
         } finally {
           this.operationBusy = '';
@@ -3357,82 +3413,82 @@
       <section class="config-section agent-ia" aria-labelledby="agent-ia-title">
         <header class="config-section__head">
           <div>
-            <p class="eyebrow">Inteligencia artificial</p>
-            <h2 id="agent-ia-title">Motores y modelos</h2>
-            <p>El chat usa el motor y el modelo que elijas. La preferencia se guarda en el servidor; el navegador nunca recibe credenciales del motor.</p>
+            <p class="eyebrow">{{ $t('ui.agents.settings_eyebrow') }}</p>
+            <h2 id="agent-ia-title">{{ $t('ui.agents.settings_title') }}</h2>
+            <p>{{ $t('ui.agents.settings_lead') }}</p>
           </div>
-          <span class="config-badge"><app-icon name="layers"></app-icon> IA</span>
+          <span class="config-badge"><app-icon name="layers"></app-icon> {{ $t('ui.agents.settings_badge') }}</span>
         </header>
-        <p v-if="loading" class="agent-note" role="status">Consultando motores e integraciones…</p>
+        <p v-if="loading" class="agent-note" role="status">{{ $t('ui.agents.settings_loading') }}</p>
         <p v-if="loadError" class="agent-note agent-note--error" role="alert">{{ loadError }}</p>
-        <agent-engine-picker :key="enginePickerKey" :app="app" heading="Preferencia del chat"></agent-engine-picker>
+        <agent-engine-picker :key="enginePickerKey" :app="app" :heading="$t('ui.agents.engine_picker_heading')"></agent-engine-picker>
         <agent-providers-panel :app="app" @changed="onProvidersChanged"></agent-providers-panel>
 
         <template v-if="canManageQuota">
           <section class="agent-panel agent-quota-admin" aria-labelledby="quota-policy-title">
             <header class="agent-panel__head">
               <div>
-                <h3 id="quota-policy-title" class="agent-panel__title">Cuota diaria de IA</h3>
-                <p class="agent-panel__sub">El límite diario solo controla los proveedores globales de la organización. El consumo con proveedores personales se registra, pero no tiene límite diario: lo paga cada persona con su propia clave. El navegador no reinicia el día ni convierte un límite nulo en cero; el servidor aplica la zona horaria y conserva las retenciones hasta reconciliarlas.</p>
+                <h3 id="quota-policy-title" class="agent-panel__title">{{ $t('ui.agents.quota_admin_title') }}</h3>
+                <p class="agent-panel__sub">{{ $t('ui.agents.quota_admin_lead') }}</p>
               </div>
-              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaPolicyLoading || quotaPolicyBusy" @click="loadQuotaPolicy">{{ quotaPolicyLoading ? 'Consultando…' : 'Actualizar política' }}</button>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaPolicyLoading || quotaPolicyBusy" @click="loadQuotaPolicy">{{ quotaPolicyLoading ? $t('ui.agents.quota_refreshing') : $t('ui.agents.quota_refresh') }}</button>
             </header>
-            <p v-if="quotaPolicyLoading" class="agent-note" role="status">Consultando la política de cuota…</p>
+            <p v-if="quotaPolicyLoading" class="agent-note" role="status">{{ $t('ui.agents.quota_policy_loading') }}</p>
             <p v-if="quotaPolicyError" class="agent-note agent-note--error" role="alert">{{ quotaPolicyError }}</p>
             <p v-if="quotaPolicyNotice" class="agent-note" role="status">{{ quotaPolicyNotice }}</p>
-            <p v-if="quotaPolicy && !quotaPolicy.available" class="agent-note agent-note--warn">El servidor no devolvió el límite de la empresa. La política se muestra como no disponible y no se puede guardar.</p>
+            <p v-if="quotaPolicy && !quotaPolicy.available" class="agent-note agent-note--warn">{{ $t('ui.agents.quota_policy_unavailable') }}</p>
             <form v-if="quotaPolicy && quotaPolicy.available" class="agent-quota-form" @submit.prevent="saveQuotaPolicy">
               <fieldset class="agent-quota-fieldset">
-                <legend>Límite diario de la empresa</legend>
-                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="limited" :disabled="quotaPolicyBusy"> Límite diario</label>
-                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="unlimited" :disabled="quotaPolicyBusy"> Ilimitado (sin límite)</label>
+                <legend>{{ $t('ui.agents.quota_company_legend') }}</legend>
+                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="limited" :disabled="quotaPolicyBusy"> {{ $t('ui.agents.quota_mode_limited') }}</label>
+                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="unlimited" :disabled="quotaPolicyBusy"> {{ $t('ui.agents.quota_mode_unlimited') }}</label>
                 <div class="field">
-                  <label class="field__label" for="quota-company-limit">Tokens por día</label>
+                  <label class="field__label" for="quota-company-limit">{{ $t('ui.agents.quota_tokens_per_day') }}</label>
                   <input id="quota-company-limit" v-model="quotaDraft.companyLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaPolicyBusy || quotaDraft.companyMode !== 'limited'" aria-describedby="quota-company-help">
-                  <p id="quota-company-help" class="field__hint">0 bloquea nuevas ejecuciones; no es lo mismo que ilimitado. Valor actual: {{ quotaLimitText(quotaPolicy.companyDailyLimit, quotaPolicy.companyKnown) }} ({{ quotaLimitSourceLabel(quotaPolicy.companyLimitSource) }}).</p>
+                  <p id="quota-company-help" class="field__hint">{{ $t('ui.agents.quota_company_help', { value: quotaLimitText(quotaPolicy.companyDailyLimit, quotaPolicy.companyKnown), source: quotaLimitSourceLabel(quotaPolicy.companyLimitSource) }) }}</p>
                 </div>
               </fieldset>
               <div class="field">
-                <label class="field__label" for="quota-timezone">Zona horaria del día</label>
+                <label class="field__label" for="quota-timezone">{{ $t('ui.agents.quota_timezone') }}</label>
                 <input id="quota-timezone" v-model="quotaDraft.timezone" type="text" class="input-shell" :disabled="quotaPolicyBusy" aria-describedby="quota-timezone-help" placeholder="America/Mexico_City" autocomplete="off" spellcheck="false">
-                <p id="quota-timezone-help" class="field__hint">Nombre IANA. Zona actual: {{ quotaPolicy.timezone || 'no informada' }}. <template v-if="quotaPolicy.pendingTimezone">Cambio pendiente a {{ quotaPolicy.pendingTimezone }} para el día {{ quotaPolicy.pendingEffectiveDay || 'siguiente seguro' }}; no se aplica de inmediato.</template><template v-else>El cambio se aplica en el siguiente límite diario seguro, no en el navegador.</template></p>
+                <p id="quota-timezone-help" class="field__hint">{{ $t('ui.agents.quota_timezone_help', { timezone: quotaPolicy.timezone || $t('ui.agents.quota_unreported_f') }) }}<template v-if="quotaPolicy.pendingTimezone">{{ $t('ui.agents.quota_timezone_pending', { timezone: quotaPolicy.pendingTimezone, day: quotaPolicy.pendingEffectiveDay || $t('ui.agents.quota_next_safe_day') }) }}</template><template v-else>{{ $t('ui.agents.quota_timezone_applies') }}</template></p>
               </div>
               <div class="agent-provider-actions">
-                <button type="submit" class="btn btn--primary" :disabled="quotaAdminMutationBusy">{{ quotaPolicyBusy ? 'Guardando…' : 'Guardar política' }}</button>
-                <button v-if="quotaPolicy.pendingTimezone" type="button" class="btn btn--secondary" :disabled="quotaAdminMutationBusy" @click="cancelQuotaTimezoneChange">Cancelar cambio de zona</button>
+                <button type="submit" class="btn btn--primary" :disabled="quotaAdminMutationBusy">{{ quotaPolicyBusy ? $t('ui.common.saving') : $t('ui.agents.quota_save_policy') }}</button>
+                <button v-if="quotaPolicy.pendingTimezone" type="button" class="btn btn--secondary" :disabled="quotaAdminMutationBusy" @click="cancelQuotaTimezoneChange">{{ $t('ui.agents.quota_cancel_timezone') }}</button>
               </div>
             </form>
 
             <section class="agent-quota-block" aria-labelledby="quota-overrides-title">
-              <h4 id="quota-overrides-title">Excepciones por usuario</h4>
-              <p class="agent-panel__sub">Una excepción reemplaza el límite diario de la empresa para una persona; no afecta su consumo con claves propias. Quitarla devuelve la cuenta al valor heredado; ilimitado explícito es una excepción distinta.</p>
+              <h4 id="quota-overrides-title">{{ $t('ui.agents.quota_overrides_title') }}</h4>
+              <p class="agent-panel__sub">{{ $t('ui.agents.quota_overrides_lead') }}</p>
               <div class="agent-quota-form">
                 <div class="field">
-                  <label class="field__label" for="quota-override-user">Usuario real</label>
+                  <label class="field__label" for="quota-override-user">{{ $t('ui.agents.quota_user_real') }}</label>
                   <select v-if="canBrowseQuotaUsers && quotaUserOptions.length" id="quota-override-user" v-model="quotaOverrideUser" class="input-shell" :disabled="quotaOverrideBusy" @change="onQuotaOverrideTargetChanged">
                     <option v-for="user in quotaUserOptions" :key="user.id" :value="user.id">{{ user.label }}</option>
                   </select>
                   <template v-else>
                     <input id="quota-override-user" v-model="quotaOverrideUser" type="text" class="input-shell" :disabled="quotaOverrideBusy" aria-describedby="quota-override-user-help" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" spellcheck="false">
-                    <p id="quota-override-user-help" class="field__hint">UUID de la cuenta. El nombre de usuario no identifica una cuenta. La lista de cuentas requiere el permiso users.view.</p>
+                    <p id="quota-override-user-help" class="field__hint">{{ $t('ui.agents.quota_user_uuid_hint') }}</p>
                   </template>
                 </div>
                 <fieldset class="agent-quota-fieldset">
-                  <legend>Valor de la excepción</legend>
-                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="inherit" :disabled="quotaOverrideBusy"> Heredar el valor predeterminado</label>
-                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="unlimited" :disabled="quotaOverrideBusy"> Ilimitado explícito</label>
-                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="limited" :disabled="quotaOverrideBusy"> Límite diario</label>
+                  <legend>{{ $t('ui.agents.quota_override_legend') }}</legend>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="inherit" :disabled="quotaOverrideBusy"> {{ $t('ui.agents.quota_override_inherit_option') }}</label>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="unlimited" :disabled="quotaOverrideBusy"> {{ $t('ui.agents.quota_override_unlimited_option') }}</label>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="limited" :disabled="quotaOverrideBusy"> {{ $t('ui.agents.quota_mode_limited') }}</label>
                   <div class="field">
-                    <label class="field__label" for="quota-override-limit">Tokens por día</label>
+                    <label class="field__label" for="quota-override-limit">{{ $t('ui.agents.quota_tokens_per_day') }}</label>
                     <input id="quota-override-limit" v-model="quotaOverrideLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaOverrideBusy || quotaOverrideMode !== 'limited'" aria-describedby="quota-override-limit-help">
-                    <p id="quota-override-limit-help" class="field__hint">0 bloquea nuevas ejecuciones; ilimitado se elige arriba, no con 0.</p>
+                    <p id="quota-override-limit-help" class="field__hint">{{ $t('ui.agents.quota_override_limit_help') }}</p>
                   </div>
                 </fieldset>
-                <p class="agent-skill__meta">Excepción actual: {{ quotaOverrideLimitText(quotaOverrideRecord) }}.</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.quota_override_current', { value: quotaOverrideLimitText(quotaOverrideRecord) }) }}</p>
                 <p v-if="quotaOverrideError" class="agent-note agent-note--error" role="alert">{{ quotaOverrideError }}</p>
                 <p v-if="quotaOverrideNotice" class="agent-note" role="status">{{ quotaOverrideNotice }}</p>
                 <div class="agent-provider-actions">
-                  <button type="button" class="btn btn--primary" :disabled="quotaAdminMutationBusy" @click="saveQuotaOverride">{{ quotaOverrideMode === 'inherit' ? 'Quitar excepción y heredar' : 'Guardar excepción' }}</button>
+                  <button type="button" class="btn btn--primary" :disabled="quotaAdminMutationBusy" @click="saveQuotaOverride">{{ quotaOverrideMode === 'inherit' ? $t('ui.agents.quota_remove_and_inherit') : $t('ui.agents.quota_save_override') }}</button>
                 </div>
               </div>
               <ul v-if="quotaOverrides.length" class="agent-quota-overrides">
@@ -3440,88 +3496,88 @@
                   <div>
                     <strong>{{ quotaUserName(record.userId) }}</strong>
                     <span class="agent-tag">{{ quotaFundingLabel(record.scope) }}</span>
-                    <p class="agent-skill__meta">Valor: {{ quotaOverrideLimitText(record) }}<template v-if="record.updatedAt"> · Actualizado: {{ record.updatedAt }}</template></p>
+                    <p class="agent-skill__meta">{{ $t('ui.agents.quota_value', { value: quotaOverrideLimitText(record) }) }}<template v-if="record.updatedAt">{{ $t('ui.agents.quota_updated', { date: record.updatedAt }) }}</template></p>
                   </div>
                   <div class="agent-installation__actions">
                     <template v-if="quotaPendingRemove === record.userId + '|' + record.scope">
-                      <button type="button" class="btn btn--danger btn--small" :disabled="quotaAdminMutationBusy" @click="confirmRemoveQuotaOverride(record)">Confirmar herencia</button>
-                      <button type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="cancelRemoveQuotaOverride">Cancelar</button>
+                      <button type="button" class="btn btn--danger btn--small" :disabled="quotaAdminMutationBusy" @click="confirmRemoveQuotaOverride(record)">{{ $t('ui.agents.quota_confirm_inherit') }}</button>
+                      <button type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="cancelRemoveQuotaOverride">{{ $t('ui.common.cancel') }}</button>
                     </template>
-                    <button v-else type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="requestRemoveQuotaOverride(record)">Quitar excepción</button>
+                    <button v-else type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="requestRemoveQuotaOverride(record)">{{ $t('ui.agents.quota_remove_override') }}</button>
                   </div>
                 </li>
               </ul>
-              <p v-else class="agent-note">No hay excepciones; todas las cuentas heredan sus valores predeterminados.</p>
+              <p v-else class="agent-note">{{ $t('ui.agents.quota_no_overrides') }}</p>
             </section>
 
             <section class="agent-quota-block" aria-labelledby="quota-report-title">
-              <h4 id="quota-report-title">Consumo medido y estimado</h4>
-              <p class="agent-panel__sub">Solo el servidor agrupa y totaliza. Las columnas de caché son descriptivas y no se suman al total. Un campo nulo se muestra como no disponible, nunca como cero.</p>
+              <h4 id="quota-report-title">{{ $t('ui.agents.report_title') }}</h4>
+              <p class="agent-panel__sub">{{ $t('ui.agents.report_lead') }}</p>
               <form class="agent-quota-filters" @submit.prevent="loadQuotaReport">
                 <div class="field">
-                  <label class="field__label" for="quota-report-user">Usuario</label>
+                  <label class="field__label" for="quota-report-user">{{ $t('ui.agents.quota_dim_user') }}</label>
                   <select v-if="canBrowseQuotaUsers && quotaUserOptions.length" id="quota-report-user" v-model="quotaReportFilters.userId" class="input-shell">
-                    <option value="">Todos</option>
+                    <option value="">{{ $t('ui.agents.report_all') }}</option>
                     <option v-for="user in quotaUserOptions" :key="user.id" :value="user.id">{{ user.label }}</option>
                   </select>
-                  <input v-else id="quota-report-user" v-model="quotaReportFilters.userId" type="text" class="input-shell" placeholder="UUID de usuario" autocomplete="off" spellcheck="false">
+                  <input v-else id="quota-report-user" v-model="quotaReportFilters.userId" type="text" class="input-shell" :placeholder="$t('ui.agents.report_user_placeholder')" autocomplete="off" spellcheck="false">
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-provider">Proveedor</label>
+                  <label class="field__label" for="quota-report-provider">{{ $t('ui.agents.source_provider') }}</label>
                   <input id="quota-report-provider" v-model="quotaReportFilters.providerId" type="text" class="input-shell" autocomplete="off">
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-model">Modelo</label>
+                  <label class="field__label" for="quota-report-model">{{ $t('ui.agents.quota_dim_model') }}</label>
                   <input id="quota-report-model" v-model="quotaReportFilters.model" type="text" class="input-shell" autocomplete="off">
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-engine">Motor</label>
+                  <label class="field__label" for="quota-report-engine">{{ $t('ui.agents.engine') }}</label>
                   <input id="quota-report-engine" v-model="quotaReportFilters.engine" type="text" class="input-shell" autocomplete="off">
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-funding">Financiación</label>
+                  <label class="field__label" for="quota-report-funding">{{ $t('ui.agents.quota_dim_funding') }}</label>
                   <select id="quota-report-funding" v-model="quotaReportFilters.funding" class="input-shell">
-                    <option value="">Todas</option>
-                    <option value="company">Empresa</option>
-                    <option value="personal">Personal</option>
+                    <option value="">{{ $t('ui.agents.report_all') }}</option>
+                    <option value="company">{{ $t('ui.agents.funding_company') }}</option>
+                    <option value="personal">{{ $t('ui.agents.funding_personal') }}</option>
                   </select>
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-from">Desde</label>
+                  <label class="field__label" for="quota-report-from">{{ $t('ui.agents.report_from') }}</label>
                   <input id="quota-report-from" v-model="quotaReportFilters.dayFrom" type="date" class="input-shell">
                 </div>
                 <div class="field">
-                  <label class="field__label" for="quota-report-to">Hasta</label>
+                  <label class="field__label" for="quota-report-to">{{ $t('ui.agents.report_to') }}</label>
                   <input id="quota-report-to" v-model="quotaReportFilters.dayTo" type="date" class="input-shell">
                 </div>
-                <label class="agent-check"><input v-model="quotaReportIncludeLegacy" type="checkbox"> Incluir filas de legado sin atribuir</label>
+                <label class="agent-check"><input v-model="quotaReportIncludeLegacy" type="checkbox"> {{ $t('ui.agents.report_include_legacy') }}</label>
                 <div class="agent-provider-actions">
-                  <button type="submit" class="btn btn--primary" :disabled="quotaReportLoading">{{ quotaReportLoading ? 'Consultando…' : 'Consultar consumo' }}</button>
+                  <button type="submit" class="btn btn--primary" :disabled="quotaReportLoading">{{ quotaReportLoading ? $t('ui.agents.quota_refreshing') : $t('ui.agents.report_consult') }}</button>
                 </div>
               </form>
               <p v-if="quotaReportError" class="agent-note agent-note--error" role="alert">{{ quotaReportError }}</p>
               <template v-if="quotaReport">
-                <p class="agent-skill__meta">Zona: {{ quotaReport.timezone || 'no informada' }} · Generado: {{ quotaReport.generatedAt || 'no informado' }} · Agrupación confirmada: {{ quotaReportGroupByLabel || 'no informada' }}</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.report_meta', { timezone: quotaReport.timezone || $t('ui.agents.quota_unreported_f'), generated: quotaReport.generatedAt || $t('ui.agents.not_reported'), grouping: quotaReportGroupByLabel || $t('ui.agents.quota_unreported_f') }) }}</p>
                 <dl class="agent-quota-totals">
-                  <div><dt>Liquidado</dt><dd>{{ quotaTokenText(quotaReport.totals.settledTokens) }}</dd></div>
-                  <div><dt>Reservado</dt><dd>{{ quotaTokenText(quotaReport.totals.reservedTokens) }}</dd></div>
-                  <div><dt>Retenciones pendientes</dt><dd>{{ quotaTokenText(quotaReport.totals.pendingCount) }} · sin resolver {{ quotaTokenText(quotaReport.totals.unresolvedCount) }}</dd></div>
-                  <div><dt>Liberado</dt><dd>{{ quotaTokenText(quotaReport.totals.releasedCount) }} · recibos {{ quotaTokenText(quotaReport.totals.receiptCount) }}</dd></div>
-                  <div><dt>Legado sin atribuir</dt><dd>{{ quotaTokenText(quotaReport.totals.legacyTokens) }}</dd></div>
-                  <div><dt>Precisión</dt><dd>medido {{ quotaTokenText(quotaReport.precision.measured) }} · estimado {{ quotaTokenText(quotaReport.precision.estimated) }} · no disponible {{ quotaTokenText(quotaReport.precision.unavailable) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.state_settled') }}</dt><dd>{{ quotaTokenText(quotaReport.totals.settledTokens) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.report_totals_reserved') }}</dt><dd>{{ quotaTokenText(quotaReport.totals.reservedTokens) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.quota_pending_title') }}</dt><dd>{{ $t('ui.agents.report_pending_detail', { pending: quotaTokenText(quotaReport.totals.pendingCount), unresolved: quotaTokenText(quotaReport.totals.unresolvedCount) }) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.state_released') }}</dt><dd>{{ $t('ui.agents.report_released_detail', { released: quotaTokenText(quotaReport.totals.releasedCount), receipts: quotaTokenText(quotaReport.totals.receiptCount) }) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.state_legacy') }}</dt><dd>{{ quotaTokenText(quotaReport.totals.legacyTokens) }}</dd></div>
+                  <div><dt>{{ $t('ui.agents.report_totals_precision') }}</dt><dd>{{ $t('ui.agents.precision_summary', { measured: quotaTokenText(quotaReport.precision.measured), estimated: quotaTokenText(quotaReport.precision.estimated), unavailable: quotaTokenText(quotaReport.precision.unavailable) }) }}</dd></div>
                 </dl>
-                <p class="agent-skill__meta">Reservado y pendiente no son consumo liquidado. El navegador no recalcula totales, no reparte el legado y no pagina filas que el servidor no paginó.</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.report_reserved_note') }}</p>
                 <div v-if="quotaReport.items.length" class="agent-quota-table-wrap">
                   <table class="agent-quota-table">
-                    <caption class="agent-skill__meta">Consumo de IA con la agrupación confirmada por el servidor</caption>
+                    <caption class="agent-skill__meta">{{ $t('ui.agents.report_caption') }}</caption>
                     <thead>
                       <tr>
-                        <th scope="col">Día</th><th scope="col">Usuario</th><th scope="col">Proveedor</th><th scope="col">Modelo</th><th scope="col">Motor</th><th scope="col">Financiación</th><th scope="col">Precisión y fuente</th><th scope="col">Estado</th><th scope="col">Liquidado</th><th scope="col">Reservado</th><th scope="col">Pendientes</th><th scope="col">Entrada</th><th scope="col">Salida</th><th scope="col">Caché lectura</th><th scope="col">Caché escritura</th><th scope="col">Razonamiento</th>
+                        <th scope="col">{{ $t('ui.agents.quota_dim_day') }}</th><th scope="col">{{ $t('ui.agents.quota_dim_user') }}</th><th scope="col">{{ $t('ui.agents.source_provider') }}</th><th scope="col">{{ $t('ui.agents.quota_dim_model') }}</th><th scope="col">{{ $t('ui.agents.engine') }}</th><th scope="col">{{ $t('ui.agents.quota_dim_funding') }}</th><th scope="col">{{ $t('ui.agents.report_col_precision_source') }}</th><th scope="col">{{ $t('ui.agents.report_col_state') }}</th><th scope="col">{{ $t('ui.agents.state_settled') }}</th><th scope="col">{{ $t('ui.agents.report_totals_reserved') }}</th><th scope="col">{{ $t('ui.agents.report_col_pending') }}</th><th scope="col">{{ $t('ui.agents.report_col_input') }}</th><th scope="col">{{ $t('ui.agents.report_col_output') }}</th><th scope="col">{{ $t('ui.agents.report_col_cache_read') }}</th><th scope="col">{{ $t('ui.agents.report_col_cache_write') }}</th><th scope="col">{{ $t('ui.agents.report_col_reasoning') }}</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr v-for="(row, index) in quotaReport.items" :key="index">
-                        <td>{{ row.day || 'No disponible' }}</td>
+                        <td>{{ row.day || $t('ui.agents.not_available') }}</td>
                         <td>{{ quotaUserName(row.userId) }}</td>
                         <td>{{ quotaRowProvider(row) }}</td>
                         <td>{{ quotaRowModel(row) }}</td>
@@ -3541,15 +3597,15 @@
                     </tbody>
                   </table>
                 </div>
-                <p v-else class="agent-note">El servidor no devolvió filas para estos filtros.</p>
+                <p v-else class="agent-note">{{ $t('ui.agents.report_no_rows') }}</p>
               </template>
             </section>
 
             <section class="agent-quota-block" aria-labelledby="quota-pending-title">
-              <h4 id="quota-pending-title">Retenciones pendientes</h4>
-              <p class="agent-panel__sub">Una retención reserva cuota antes de la ejecución. No es consumo liquidado y esta vista no libera ni reembolsa nada; la reconciliación pertenece al servidor.</p>
+              <h4 id="quota-pending-title">{{ $t('ui.agents.quota_pending_title') }}</h4>
+              <p class="agent-panel__sub">{{ $t('ui.agents.quota_pending_lead') }}</p>
               <div class="agent-provider-actions">
-                <button type="button" class="btn btn--secondary btn--small" :disabled="quotaPendingLoading" @click="loadQuotaPending">{{ quotaPendingLoading ? 'Consultando…' : 'Consultar retenciones' }}</button>
+                <button type="button" class="btn btn--secondary btn--small" :disabled="quotaPendingLoading" @click="loadQuotaPending">{{ quotaPendingLoading ? $t('ui.agents.quota_refreshing') : $t('ui.agents.quota_pending_consult') }}</button>
               </div>
               <p v-if="quotaPendingError" class="agent-note agent-note--error" role="alert">{{ quotaPendingError }}</p>
               <ul v-if="quotaPending && quotaPending.length" class="agent-quota-overrides">
@@ -3557,46 +3613,46 @@
                   <div>
                     <strong class="mono">{{ hold.reservationId }}</strong>
                     <span class="agent-tag">{{ quotaStateLabel(hold.state) }}</span>
-                    <p class="agent-skill__meta">Ejecución: {{ hold.runId || 'no informada' }} · Usuario: {{ quotaUserName(hold.userId) }} · {{ quotaFundingLabel(hold.funding) }} · {{ quotaRowProvider(hold) }}</p>
-                    <p class="agent-skill__meta">Reservado: {{ quotaTokenText(hold.reservedTokens) }} · Día {{ hold.periodDay || 'no informado' }} · Zona {{ hold.timezone || 'no informada' }} · Creado {{ hold.createdAt || 'sin fecha' }}</p>
+                    <p class="agent-skill__meta">{{ $t('ui.agents.quota_pending_run', { run: hold.runId || $t('ui.agents.quota_unreported_f'), user: quotaUserName(hold.userId), funding: quotaFundingLabel(hold.funding), provider: quotaRowProvider(hold) }) }}</p>
+                    <p class="agent-skill__meta">{{ $t('ui.agents.quota_pending_reserved', { value: quotaTokenText(hold.reservedTokens), day: hold.periodDay || $t('ui.agents.not_reported'), timezone: hold.timezone || $t('ui.agents.quota_unreported_f'), created: hold.createdAt || $t('ui.agents.quota_pending_created_unknown') }) }}</p>
                   </div>
                 </li>
               </ul>
-              <p v-else-if="quotaPending" class="agent-note">El servidor no devolvió retenciones.</p>
+              <p v-else-if="quotaPending" class="agent-note">{{ $t('ui.agents.quota_pending_none') }}</p>
             </section>
           </section>
         </template>
 
-        <p v-if="!isAdmin" class="agent-note">La administración de instancias, instalaciones y catálogo requiere el permiso de proveedores de IA del sistema.</p>
+        <p v-if="!isAdmin" class="agent-note">{{ $t('ui.agents.admin_permission_note') }}</p>
         <p v-else-if="adminError" class="agent-note agent-note--error" role="alert">{{ adminError }}</p>
 
         <template v-if="isAdmin && adminAvailable">
           <section class="agent-panel" aria-labelledby="agent-instances-title">
             <header class="agent-panel__head">
               <div>
-                <h3 id="agent-instances-title" class="agent-panel__title">Instancias</h3>
-                <p class="agent-panel__sub">Cada instancia declara su motor, su URL y la referencia al secreto. La integración interna de Pydantic AI no se edita aquí.</p>
-                <p class="agent-skill__meta">Valor predeterminado del servidor: {{ defaultLabel }}</p>
+                <h3 id="agent-instances-title" class="agent-panel__title">{{ $t('ui.agents.instances_title') }}</h3>
+                <p class="agent-panel__sub">{{ $t('ui.agents.instances_lead') }}</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.instances_default', { value: defaultLabel }) }}</p>
               </div>
-              <button type="button" class="btn btn--primary btn--small" @click="newInstance"><app-icon name="plus"></app-icon> Nueva instancia</button>
+              <button type="button" class="btn btn--primary btn--small" @click="newInstance"><app-icon name="plus"></app-icon> {{ $t('ui.agents.wizard_new_instance') }}</button>
             </header>
-            <p v-if="!adminInstances.length" class="agent-note">El servidor no devolvió instancias.</p>
+            <p v-if="!adminInstances.length" class="agent-note">{{ $t('ui.agents.no_instances') }}</p>
             <ul v-else class="agent-instance-list">
               <li v-for="instance in adminInstances" :key="instance.id" class="agent-instance">
                 <div>
                   <strong>{{ instance.name }}</strong>
                   <span class="agent-tag">{{ engineLabel(instance.engine) }}</span>
-                  <span class="status-pill" :class="instance.enabled === false ? 'status--hold' : 'status--ok'">{{ instance.enabled === false ? 'Deshabilitada' : 'Habilitada' }}</span>
+                  <span class="status-pill" :class="instance.enabled === false ? 'status--hold' : 'status--ok'">{{ instance.enabled === false ? $t('ui.agents.instance_disabled_state') : $t('ui.agents.instance_enabled_state') }}</span>
                 </div>
-                <p class="agent-skill__meta">{{ instance.baseUrl || 'Integración interna del servidor' }}</p>
-                <p class="agent-skill__meta">Perfil: {{ instance.profile || 'Sin perfil' }} · Secreto: {{ instance.secretConfigured ? 'configurado' : (instance.secretRef || 'sin referencia') }}</p>
-                <p v-if="instance.integrationIdentityId" class="agent-skill__meta mono">Identidad: {{ instance.integrationIdentityId }}</p>
-                <p class="agent-skill__meta">Cuota del motor: {{ quotaEngineStatus(instance).modeLabel }} · {{ quotaEngineStatus(instance).enforcementLabel }}<template v-if="quotaEngineStatus(instance).directException"> · excepción directa de empresa</template></p>
-                <p class="agent-skill__meta">Motivo: {{ quotaEngineStatus(instance).reason || 'sin motivo informado' }}</p>
-                <p v-if="quotaEngineStatus(instance).strict" class="agent-skill__meta">El servidor declara cuota estricta. Gestionado describe el enrutamiento por el gateway de ITSM, no demuestra por sí solo aislamiento de red.</p>
-                <p v-if="quotaEngineStatus(instance).mode === 'direct'" class="agent-skill__meta">Ejecución directa: {{ quotaEngineStatus(instance).directException ? 'excepción de empresa declarada por el servidor' : 'sin excepción de empresa declarada' }}; no se presenta como cuota estricta.</p>
+                <p class="agent-skill__meta">{{ instance.baseUrl || $t('ui.agents.instance_internal') }}</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.instance_profile_secret', { profile: instance.profile || $t('ui.agents.instance_no_profile'), secret: instance.secretConfigured ? $t('ui.agents.instance_secret_configured') : (instance.secretRef || $t('ui.agents.instance_secret_no_reference')) }) }}</p>
+                <p v-if="instance.integrationIdentityId" class="agent-skill__meta mono">{{ $t('ui.agents.instance_identity', { id: instance.integrationIdentityId }) }}</p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.instance_engine_quota', { mode: quotaEngineStatus(instance).modeLabel, enforcement: quotaEngineStatus(instance).enforcementLabel }) }}<template v-if="quotaEngineStatus(instance).directException">{{ $t('ui.agents.instance_direct_exception') }}</template></p>
+                <p class="agent-skill__meta">{{ $t('ui.agents.instance_reason', { reason: quotaEngineStatus(instance).reason || $t('ui.agents.instance_reason_unknown') }) }}</p>
+                <p v-if="quotaEngineStatus(instance).strict" class="agent-skill__meta">{{ $t('ui.agents.instance_strict_note') }}</p>
+                <p v-if="quotaEngineStatus(instance).mode === 'direct'" class="agent-skill__meta">{{ $t('ui.agents.instance_direct_note', { exception: quotaEngineStatus(instance).directException ? $t('ui.agents.instance_direct_exception_declared') : $t('ui.agents.instance_direct_exception_none') }) }}</p>
                 <div v-if="instance.engine !== 'pydantic'" class="agent-installation__actions">
-                  <button type="button" class="btn btn--ghost btn--small" @click="editInstance(instance)">Editar</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="editInstance(instance)">{{ $t('ui.agents.provider_edit') }}</button>
                 </div>
               </li>
             </ul>
@@ -3604,7 +3660,7 @@
           </section>
 
           <div class="agent-panel__actions">
-            <button type="button" class="btn btn--secondary btn--small" @click="openWizard"><app-icon name="layers"></app-icon> Abrir asistente de integración</button>
+            <button type="button" class="btn btn--secondary btn--small" @click="openWizard"><app-icon name="layers"></app-icon> {{ $t('ui.agents.open_wizard') }}</button>
           </div>
           <agent-integration-wizard v-if="wizardOpen" :app="app" :instances="adminInstances" :catalog="catalog" :identities="identities" :can-manage-quota="canManageQuota" @close="closeWizard" @applied="onWizardApplied"></agent-integration-wizard>
 
