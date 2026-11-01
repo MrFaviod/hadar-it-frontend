@@ -71,3 +71,11 @@ test('unmount ignores a late server response and does not restart polling', asyn
   assert.equal(state.remainingSeconds, null);
   assert.equal(timers.size, 0);
 });
+
+test('D11 the countdown sample announces the active locale', async () => {
+  let init = null;
+  const { component, state } = load(async (url, options) => { init = options; return { ok: true, json: async () => ({ enabled: true, serverTime: '2000-01-01T00:00:00Z', nextResetAt: '2000-01-01T00:01:00Z' }) }; });
+  await state.refresh();
+  assert.equal(init.headers['Accept-Language'], 'es');
+  component.beforeUnmount.call(state);
+});

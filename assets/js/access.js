@@ -733,7 +733,12 @@
       },
       async refresh() {
         try {
-          const response = await window.fetch('/api/v1/demo/status', { credentials: 'same-origin', cache: 'no-store', signal: this.controller.signal });
+          const response = await window.fetch('/api/v1/demo/status', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept-Language': acceptLanguage() },
+            signal: this.controller.signal
+          });
           if (!response.ok) throw new Error('demo status unavailable');
           const status = await response.json();
           if (this.stopped) return;
