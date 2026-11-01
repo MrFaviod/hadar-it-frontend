@@ -31,14 +31,21 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  /* Display text comes from the ui.maintenance.* catalog. The ids stay stable
+   * server vocabulary; the getters resolve the active locale on read so a
+   * locale switch re-renders the labels. */
+  function label(key) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key) : '';
+  }
+
   /* Canonical server vocabulary: preventive, corrective, inspection,
    * installation and other. The labels are display-only. */
   const INTERVENTION_TYPES = [
-    { id: 'preventive', label: 'Preventivo', icon: 'refresh', tone: 'ok', resetsPreventive: true, hint: 'Revisión planificada. Si completa un plan vinculado, reinicia su ciclo.' },
-    { id: 'corrective', label: 'Correctivo', icon: 'alert', tone: 'warn', resetsPreventive: false, hint: 'Reparación de una avería o incidencia real.' },
-    { id: 'inspection', label: 'Inspección', icon: 'search', tone: 'neutral', resetsPreventive: false, hint: 'Comprobación técnica sin recambio.' },
-    { id: 'installation', label: 'Instalación', icon: 'download', tone: 'neutral', resetsPreventive: false, hint: 'Alta, despliegue o puesta en marcha.' },
-    { id: 'other', label: 'Otro', icon: 'box', tone: 'neutral', resetsPreventive: false, hint: 'Trabajo técnico que no encaja en el resto.' }
+    { id: 'preventive', get label() { return label('ui.maintenance.type.preventive'); }, icon: 'refresh', tone: 'ok', resetsPreventive: true, get hint() { return label('ui.maintenance.type.preventive_hint'); } },
+    { id: 'corrective', get label() { return label('ui.maintenance.type.corrective'); }, icon: 'alert', tone: 'warn', resetsPreventive: false, get hint() { return label('ui.maintenance.type.corrective_hint'); } },
+    { id: 'inspection', get label() { return label('ui.maintenance.type.inspection'); }, icon: 'search', tone: 'neutral', resetsPreventive: false, get hint() { return label('ui.maintenance.type.inspection_hint'); } },
+    { id: 'installation', get label() { return label('ui.maintenance.type.installation'); }, icon: 'download', tone: 'neutral', resetsPreventive: false, get hint() { return label('ui.maintenance.type.installation_hint'); } },
+    { id: 'other', get label() { return label('ui.maintenance.type.other'); }, icon: 'box', tone: 'neutral', resetsPreventive: false, get hint() { return label('ui.maintenance.type.other_hint'); } }
   ];
 
   const ALERTS = [
@@ -276,43 +283,43 @@
   const PREFS = { rangeDays: 30, showCompleted: false, defaultAssigneeId: '', defaultView: 'agenda' };
 
   const PRIORITIES = [
-    { id: 'critical', label: 'Crítica', tone: 'down', weight: 4 },
-    { id: 'high', label: 'Alta', tone: 'warn', weight: 3 },
-    { id: 'normal', label: 'Normal', tone: 'hold', weight: 2 },
-    { id: 'low', label: 'Baja', tone: 'neutral', weight: 1 }
+    { id: 'critical', get label() { return label('ui.maintenance.priority.critical'); }, tone: 'down', weight: 4 },
+    { id: 'high', get label() { return label('ui.maintenance.priority.high'); }, tone: 'warn', weight: 3 },
+    { id: 'normal', get label() { return label('ui.maintenance.priority.normal'); }, tone: 'hold', weight: 2 },
+    { id: 'low', get label() { return label('ui.maintenance.priority.low'); }, tone: 'neutral', weight: 1 }
   ];
 
   const INCIDENT_STATES = [
-    { id: 'open', label: 'Abierto', tone: 'warn' },
-    { id: 'in_progress', label: 'En curso', tone: 'hold' },
-    { id: 'resolved', label: 'Resuelto', tone: 'ok' },
-    { id: 'closed', label: 'Cerrado', tone: 'neutral' }
+    { id: 'open', get label() { return label('ui.incidents.state.open'); }, tone: 'warn' },
+    { id: 'in_progress', get label() { return label('ui.incidents.state.in_progress'); }, tone: 'hold' },
+    { id: 'resolved', get label() { return label('ui.incidents.state.resolved'); }, tone: 'ok' },
+    { id: 'closed', get label() { return label('ui.incidents.state.closed'); }, tone: 'neutral' }
   ];
 
   const INTERVENTION_STATES = [
-    { id: 'open', label: 'Abierta', tone: 'hold' },
-    { id: 'in_progress', label: 'En curso', tone: 'warn' },
-    { id: 'completed', label: 'Completada', tone: 'ok' },
-    { id: 'cancelled', label: 'Cancelada', tone: 'neutral' }
+    { id: 'open', get label() { return label('ui.maintenance.state.open'); }, tone: 'hold' },
+    { id: 'in_progress', get label() { return label('ui.maintenance.state.in_progress'); }, tone: 'warn' },
+    { id: 'completed', get label() { return label('ui.maintenance.state.completed'); }, tone: 'ok' },
+    { id: 'cancelled', get label() { return label('ui.maintenance.state.cancelled'); }, tone: 'neutral' }
   ];
 
   const ALERT_STATES = [
-    { id: 'open', label: 'Activa' },
-    { id: 'recovered', label: 'Recuperada' },
-    { id: 'converted', label: 'Convertida' },
-    { id: 'linked', label: 'Vinculada' },
-    { id: 'resolved', label: 'Resuelta' }
+    { id: 'open', get label() { return label('ui.maintenance.alert_state.open'); } },
+    { id: 'recovered', get label() { return label('ui.maintenance.alert_state.recovered'); } },
+    { id: 'converted', get label() { return label('ui.maintenance.alert_state.converted'); } },
+    { id: 'linked', get label() { return label('ui.maintenance.alert_state.linked'); } },
+    { id: 'resolved', get label() { return label('ui.maintenance.alert_state.resolved'); } }
   ];
 
   const ALERT_KINDS = [
-    { id: 'offline', label: 'Sin conexión', icon: 'wifi-off' },
-    { id: 'heartbeat', label: 'Heartbeat', icon: 'activity' },
-    { id: 'cpu', label: 'CPU', icon: 'cpu' },
-    { id: 'disk', label: 'Disco', icon: 'hard-drive' },
-    { id: 'battery', label: 'Batería', icon: 'battery' },
-    { id: 'temperature', label: 'Temperatura', icon: 'thermometer' },
-    { id: 'latency', label: 'Latencia', icon: 'timer' },
-    { id: 'services', label: 'Servicios', icon: 'server' }
+    { id: 'offline', get label() { return label('ui.maintenance.alert_kind.offline'); }, icon: 'wifi-off' },
+    { id: 'heartbeat', get label() { return label('ui.maintenance.alert_kind.heartbeat'); }, icon: 'activity' },
+    { id: 'cpu', get label() { return label('ui.maintenance.alert_kind.cpu'); }, icon: 'cpu' },
+    { id: 'disk', get label() { return label('ui.maintenance.alert_kind.disk'); }, icon: 'hard-drive' },
+    { id: 'battery', get label() { return label('ui.maintenance.alert_kind.battery'); }, icon: 'battery' },
+    { id: 'temperature', get label() { return label('ui.maintenance.alert_kind.temperature'); }, icon: 'thermometer' },
+    { id: 'latency', get label() { return label('ui.maintenance.alert_kind.latency'); }, icon: 'timer' },
+    { id: 'services', get label() { return label('ui.maintenance.alert_kind.services'); }, icon: 'server' }
   ];
 
   function seedAlerts() {

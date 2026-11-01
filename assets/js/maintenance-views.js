@@ -5,41 +5,43 @@
   const Data = window.ASSET_MAINT;
   const Views = window.AssetMaintViews = window.AssetMaintViews || {};
 
-  const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  function T(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
 
   function fmtDay(value) {
     const day = Engine.toDay(value);
-    if (!day || !Engine.validDay(day)) return 'Sin fecha';
-    const date = new Date(day + 'T12:00:00');
-    return date.getDate() + ' ' + MONTHS[date.getMonth()] + ' ' + date.getFullYear();
+    if (!day || !Engine.validDay(day)) return T('ui.maintenance.no_date');
+    const date = new Date(day + 'T12:00:00Z');
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(date, { day: 'numeric', month: 'short', year: 'numeric' })
+      : day;
   }
 
   function fmtDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return fmtDay(value);
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return fmtDay(value) + ' · ' + hours + ':' + minutes;
+    return T('ui.maintenance.date_time', { date: fmtDay(value), time: window.ItsmI18n ? window.ItsmI18n.time(date) : '' });
   }
 
   function relLabel(days) {
-    if (days === null || days === undefined) return 'Sin programar';
-    if (days === 0) return 'Hoy';
-    if (days === 1) return 'Mañana';
-    if (days === -1) return 'Ayer';
-    if (days < 0) return 'Hace ' + Math.abs(days) + ' días';
-    return 'En ' + days + ' días';
+    if (days === null || days === undefined) return T('ui.maintenance.no_schedule');
+    if (days === 0) return T('ui.maintenance.rel.today');
+    if (days === 1) return T('ui.maintenance.rel.tomorrow');
+    if (days === -1) return T('ui.maintenance.rel.yesterday');
+    if (days < 0) return T('ui.maintenance.rel.past', { count: Math.abs(days) });
+    return T('ui.maintenance.rel.future', { count: days });
   }
 
   function money(value) {
     if (value === null || value === undefined || value === '') return '—';
     return window.ItsmI18n
       ? window.ItsmI18n.amount(value, { maximumFractionDigits: 2 })
-      : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(Number(value) || 0);
+      : String(Number(value) || 0);
   }
 
-  function plural(count, one, many) {
-    return count + ' ' + (count === 1 ? one : many);
+  function plural(options) {
+    return T(options.key, { count: options.count });
   }
 
   function findMeta(list, id, fallback) {
@@ -81,10 +83,10 @@
   };
 
   const GROUPS = [
-    { id: 'overdue', label: 'Vencidos', hint: 'Requieren atención inmediata' },
-    { id: 'today', label: 'Vence hoy', hint: 'Dentro de la jornada' },
-    { id: 'soon', label: 'Próximas dos semanas', hint: 'Planifica la ventana' },
-    { id: 'scheduled', label: 'Programado', hint: 'Sin urgencia' }
+    { id: 'overdue', get label() { return T('ui.maintenance.group.overdue'); }, get hint() { return T('ui.maintenance.group.overdue_hint'); } },
+    { id: 'today', get label() { return T('ui.maintenance.group.today'); }, get hint() { return T('ui.maintenance.group.today_hint'); } },
+    { id: 'soon', get label() { return T('ui.maintenance.group.soon'); }, get hint() { return T('ui.maintenance.group.soon_hint'); } },
+    { id: 'scheduled', get label() { return T('ui.maintenance.group.scheduled'); }, get hint() { return T('ui.maintenance.group.scheduled_hint'); } }
   ];
 
   function today() {
@@ -160,10 +162,10 @@
       kpis() {
         const stats = this.stats;
         return [
-          { id: 'overdue', label: 'Preventivos vencidos', value: stats.overdue, hint: 'Planes fuera de fecha', tone: stats.overdue ? 'down' : 'ok' },
-          { id: 'soon', label: 'Próximos 14 días', value: stats.soon, hint: 'Ventanas por reservar', tone: stats.soon ? 'warn' : 'ok' },
-          { id: 'progress', label: 'Trabajos en curso', value: stats.inProgress, hint: plural(stats.planned, 'abierto', 'abiertos') + ' sin iniciar', tone: 'neutral' },
-          { id: 'incidents', label: 'Incidentes abiertos', value: stats.openIncidents, hint: stats.criticalIncidents ? plural(stats.criticalIncidents, 'crítico', 'críticos') : 'Sin criticidad alta', tone: stats.criticalIncidents ? 'down' : 'neutral' }
+          { id: 'overdue', label: T('ui.maintenance.kpi.overdue'), value: stats.overdue, hint: T('ui.maintenance.kpi.overdue_hint'), tone: stats.overdue ? 'down' : 'ok' },
+          { id: 'soon', label: T('ui.maintenance.kpi.soon'), value: stats.soon, hint: T('ui.maintenance.kpi.soon_hint'), tone: stats.soon ? 'warn' : 'ok' },
+          { id: 'progress', label: T('ui.maintenance.kpi.progress'), value: stats.inProgress, hint: T('ui.maintenance.kpi.progress_hint', { count: stats.planned }), tone: 'neutral' },
+          { id: 'incidents', label: T('ui.maintenance.kpi.incidents'), value: stats.openIncidents, hint: stats.criticalIncidents ? T('ui.maintenance.kpi.incidents_hint', { count: stats.criticalIncidents }) : T('ui.maintenance.kpi.incidents_none'), tone: stats.criticalIncidents ? 'down' : 'neutral' }
         ];
       },
       agendaRows() {
@@ -239,10 +241,10 @@
       },
       emptyMessage() {
         const filtered = this.filterCount > 0;
-        if (this.view === 'incidents') return filtered ? 'Ningún incidente coincide con los filtros activos.' : 'Todavía no hay incidentes registrados.';
-        if (this.view === 'interventions') return filtered ? 'Ninguna intervención coincide con los filtros activos.' : 'Todavía no hay intervenciones registradas.';
-        if (this.view === 'alerts') return 'No hay alertas de supervisión con estos filtros.';
-        return filtered ? 'No hay trabajos preventivos con estos filtros.' : 'Todavía no hay trabajos preventivos programados.';
+        if (this.view === 'incidents') return filtered ? T('ui.maintenance.empty.incidents_filtered') : T('ui.maintenance.empty.incidents_none');
+        if (this.view === 'interventions') return filtered ? T('ui.maintenance.empty.interventions_filtered') : T('ui.maintenance.empty.interventions_none');
+        if (this.view === 'alerts') return T('ui.maintenance.empty.alerts_filtered');
+        return filtered ? T('ui.maintenance.empty.plans_filtered') : T('ui.maintenance.empty.plans_none');
       },
       openPlan() {
         const detail = this.app.maintenanceApi && this.app.maintenanceApi.planDetail;
@@ -304,10 +306,10 @@
         return Engine.assetOf(this.assets, id);
       },
       technicianLabel(id) {
-        return Engine.personName(this.people, id) || 'Sin asignar';
+        return Engine.personName(this.people, id) || T('ui.maintenance.unassigned');
       },
       personLabel(id, fallback) {
-        return Engine.personName(this.people, id) || fallback || 'Sin asignar';
+        return Engine.personName(this.people, id) || fallback || T('ui.maintenance.unassigned');
       },
       planFilterParams() {
         const params = {};
@@ -457,7 +459,7 @@
         const plan = row.plan;
         if (!plan || !this.app.maintenanceEditable) return;
         this.app.cancelMaintenancePlan(plan.id, { notes: '' }).then((result) => {
-          if (result.ok) this.app.showToast('Plan preventivo cancelado.');
+          if (result.ok) this.app.showToast(T('ui.maintenance.notice.plan_cancelled'));
           else if (result.error) this.app.showToast(result.error, 'error');
         });
       },
@@ -474,12 +476,12 @@
       },
       async completed() {
         this.dialogs.complete = false;
-        this.app.showToast('Preventivo completado.');
+        this.app.showToast(T('ui.maintenance.notice.preventive_completed'));
         await Promise.all([this.loadView(), this.loadOverview()]);
       },
       async postponed() {
         this.dialogs.postpone = false;
-        this.app.showToast('Preventivo pospuesto.');
+        this.app.showToast(T('ui.maintenance.notice.preventive_postponed'));
         await Promise.all([this.loadView(), this.loadOverview()]);
       },
       openAlert(id) {
@@ -492,9 +494,9 @@
         return item.totalCost !== null && item.totalCost !== undefined ? item.totalCost : '—';
       },
       planStatusLabel(status) {
-        if (status === 'postponed') return 'Pospuesto';
-        if (status === 'cancelled') return 'Cancelado';
-        return 'Activo';
+        if (status === 'postponed') return T('ui.maintenance.plan_status.postponed');
+        if (status === 'cancelled') return T('ui.maintenance.plan_status.cancelled');
+        return T('ui.maintenance.plan_status.active');
       },
       planStatusTone(status) {
         if (status === 'postponed') return 'warn';
@@ -506,16 +508,16 @@
       <section class="page maint-page" aria-labelledby="maint-title">
         <header class="maint-head">
           <div class="maint-head__copy">
-            <p class="eyebrow"><span class="eyebrow__line"></span> Operación técnica</p>
-            <h1 id="maint-title">Mantenimiento e incidentes</h1>
-            <p class="page-sub">Planes preventivos, intervenciones e incidentes del parque, calculados desde el último preventivo completado.</p>
+            <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.maintenance.eyebrow') }}</p>
+            <h1 id="maint-title">{{ $t('ui.maintenance.center.title') }}</h1>
+            <p class="page-sub">{{ $t('ui.maintenance.center.lead') }}</p>
           </div>
           <div class="maint-head__actions">
             <button v-if="app.can('assets.edit')" type="button" class="btn btn--primary" data-od-id="maint-new-intervention" @click="newIntervention('')">
-              <app-icon name="plus"></app-icon> Registrar intervención
+              <app-icon name="plus"></app-icon> {{ $t('ui.maintenance.action.new_intervention') }}
             </button>
             <button v-if="app.can('assets.edit')" type="button" class="btn btn--secondary" data-od-id="maint-new-incident" @click="newIncident('')">
-              <app-icon name="alert"></app-icon> Nuevo incidente
+              <app-icon name="alert"></app-icon> {{ $t('ui.maintenance.action.new_incident') }}
             </button>
           </div>
         </header>
@@ -528,11 +530,11 @@
           </button>
         </div>
 
-        <div class="maint-tabs" role="tablist" aria-label="Vistas de mantenimiento">
-          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'agenda' }" data-maint-tab="agenda" role="tab" :aria-selected="view === 'agenda'" @click="setView('agenda')">Agenda <span class="maint-tab__count mono">{{ totals.plans }}</span></button>
-          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'interventions' }" data-maint-tab="interventions" role="tab" :aria-selected="view === 'interventions'" @click="setView('interventions')">Intervenciones <span class="maint-tab__count mono">{{ totals.interventions }}</span></button>
-          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'incidents' }" data-maint-tab="incidents" role="tab" :aria-selected="view === 'incidents'" @click="setView('incidents')">Incidentes <span class="maint-tab__count mono">{{ totals.incidents }}</span></button>
-          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'alerts' }" data-maint-tab="alerts" role="tab" :aria-selected="view === 'alerts'" @click="setView('alerts')">Vista previa de alertas <span class="maint-tab__count mono">{{ alerts.length }}</span></button>
+        <div class="maint-tabs" role="tablist" :aria-label="$t('ui.maintenance.tabs.aria')">
+          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'agenda' }" data-maint-tab="agenda" role="tab" :aria-selected="view === 'agenda'" @click="setView('agenda')">{{ $t('ui.maintenance.tab.agenda') }} <span class="maint-tab__count mono">{{ totals.plans }}</span></button>
+          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'interventions' }" data-maint-tab="interventions" role="tab" :aria-selected="view === 'interventions'" @click="setView('interventions')">{{ $t('ui.maintenance.tab.interventions') }} <span class="maint-tab__count mono">{{ totals.interventions }}</span></button>
+          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'incidents' }" data-maint-tab="incidents" role="tab" :aria-selected="view === 'incidents'" @click="setView('incidents')">{{ $t('ui.maintenance.tab.incidents') }} <span class="maint-tab__count mono">{{ totals.incidents }}</span></button>
+          <button type="button" class="maint-tab" :class="{ 'is-active': view === 'alerts' }" data-maint-tab="alerts" role="tab" :aria-selected="view === 'alerts'" @click="setView('alerts')">{{ $t('ui.maintenance.tab.alerts') }} <span class="maint-tab__count mono">{{ alerts.length }}</span></button>
         </div>
 
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
@@ -540,84 +542,84 @@
         <div class="maint-toolbar" data-od-id="maint-filters">
           <div class="maint-toolbar__row">
             <label class="search-field maint-search">
-              <span class="sr-only">Buscar en mantenimiento</span>
+              <span class="sr-only">{{ $t('ui.maintenance.search.label') }}</span>
               <app-icon name="search"></app-icon>
-              <input v-model="filters.query" type="search" placeholder="Buscar por activo, descripción o responsable" data-maint-filter="query">
+              <input v-model="filters.query" type="search" :placeholder="$t('ui.maintenance.search.placeholder')" data-maint-filter="query">
             </label>
             <label v-if="view === 'agenda'" class="maint-filter">
-              <span class="sr-only">Estado del plan</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.plan_status') }}</span>
               <select v-model="filters.planStatus" data-maint-filter="planStatus">
-                <option value="">Todos los planes</option>
-                <option value="active">Activos</option>
-                <option value="postponed">Pospuestos</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_plans') }}</option>
+                <option value="active">{{ $t('ui.maintenance.filter.active_plans') }}</option>
+                <option value="postponed">{{ $t('ui.maintenance.filter.postponed_plans') }}</option>
               </select>
             </label>
             <label v-if="view === 'agenda'" class="maint-filter">
-              <span class="sr-only">Vencimiento</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.due') }}</span>
               <select v-model="filters.state" data-maint-filter="state">
-                <option value="">Cualquier vencimiento</option>
-                <option value="pending">Pendientes</option>
-                <option value="upcoming">Próximos</option>
-                <option value="overdue">Vencidos</option>
+                <option value="">{{ $t('ui.maintenance.filter.any_due') }}</option>
+                <option value="pending">{{ $t('ui.maintenance.filter.pending') }}</option>
+                <option value="upcoming">{{ $t('ui.maintenance.filter.upcoming') }}</option>
+                <option value="overdue">{{ $t('ui.maintenance.filter.overdue') }}</option>
               </select>
             </label>
             <label v-if="view === 'interventions'" class="maint-filter">
-              <span class="sr-only">Estado de la intervención</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.intervention_state') }}</span>
               <select v-model="filters.state" data-maint-filter="state">
                 <option value="">Todos los estados</option>
-                <option value="open">Abiertas</option>
-                <option value="in_progress">En curso</option>
-                <option value="completed">Completadas</option>
-                <option value="cancelled">Canceladas</option>
+                <option value="open">{{ $t('ui.maintenance.filter.open_feminine') }}</option>
+                <option value="in_progress">{{ $t('ui.maintenance.filter.in_progress') }}</option>
+                <option value="completed">{{ $t('ui.maintenance.filter.completed_feminine') }}</option>
+                <option value="cancelled">{{ $t('ui.maintenance.filter.cancelled_feminine') }}</option>
               </select>
             </label>
             <label v-if="view === 'incidents'" class="maint-filter">
-              <span class="sr-only">Estado del incidente</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.incident_state') }}</span>
               <select v-model="filters.state" data-maint-filter="state">
                 <option value="">Todos los estados</option>
-                <option value="open">Abiertos</option>
-                <option value="in_progress">En curso</option>
-                <option value="resolved">Resueltos</option>
-                <option value="closed">Cerrados</option>
+                <option value="open">{{ $t('ui.maintenance.filter.open_masculine') }}</option>
+                <option value="in_progress">{{ $t('ui.maintenance.filter.in_progress') }}</option>
+                <option value="resolved">{{ $t('ui.maintenance.filter.resolved_masculine') }}</option>
+                <option value="closed">{{ $t('ui.maintenance.filter.closed_masculine') }}</option>
               </select>
             </label>
             <label v-if="view === 'interventions'" class="maint-filter">
-              <span class="sr-only">Tipo</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.type') }}</span>
               <select v-model="filters.type" data-maint-filter="type">
-                <option value="">Todos los tipos</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_types') }}</option>
                 <option v-for="type in types" :key="type.id" :value="type.id">{{ type.label }}</option>
               </select>
             </label>
             <label v-if="view === 'incidents'" class="maint-filter">
-              <span class="sr-only">Prioridad</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.priority') }}</span>
               <select v-model="filters.priority" data-maint-filter="priority">
-                <option value="">Toda prioridad</option>
+                <option value="">{{ $t('ui.maintenance.filter.any_priority') }}</option>
                 <option v-for="priority in priorities" :key="priority.id" :value="priority.id">{{ priority.label }}</option>
               </select>
             </label>
             <label v-if="view !== 'alerts'" class="maint-filter">
-              <span class="sr-only">Categoría</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.category') }}</span>
               <select v-model="filters.category" data-maint-filter="category">
-                <option value="">Todas las categorías</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_categories') }}</option>
                 <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.label }}</option>
               </select>
             </label>
             <label v-if="view !== 'alerts'" class="maint-filter">
-              <span class="sr-only">Sede</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.site') }}</span>
               <select v-model="filters.siteId" data-maint-filter="site">
-                <option value="">Todas las sedes</option>
+                <option value="">{{ $t('ui.maintenance.filter.all_sites') }}</option>
                 <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
               </select>
             </label>
             <label v-if="view === 'agenda' || view === 'interventions'" class="maint-filter">
-              <span class="sr-only">Desde</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.from') }}</span>
               <input v-model="filters.from" type="date" data-maint-filter="from">
             </label>
             <label v-if="view === 'agenda' || view === 'interventions'" class="maint-filter">
-              <span class="sr-only">Hasta</span>
+              <span class="sr-only">{{ $t('ui.maintenance.filter.to') }}</span>
               <input v-model="filters.to" type="date" data-maint-filter="to">
             </label>
-            <button v-if="filterCount" type="button" class="text-button text-button--quiet" @click="clearFilters">Limpiar filtros <span class="mono">{{ filterCount }}</span></button>
+            <button v-if="filterCount" type="button" class="text-button text-button--quiet" @click="clearFilters">{{ $t('ui.maintenance.filter.clear') }} <span class="mono">{{ filterCount }}</span></button>
           </div>
         </div>
 
@@ -634,18 +636,18 @@
                   <span class="maint-row__meta">
                     <span class="maint-badge" :class="'is-' + planStatusTone(row.plan.status)">{{ planStatusLabel(row.plan.status) }}</span>
                     <span>{{ row.template.label }}</span>
-                    <span>cada {{ row.plan.intervalMonths }} {{ row.plan.intervalMonths === 1 ? 'mes' : 'meses' }}</span>
+                    <span>{{ $t('ui.maintenance.row.every_months', { count: row.plan.intervalMonths }) }}</span>
                     <span v-if="row.technicianId">{{ technicianLabel(row.technicianId) }}</span>
                   </span>
                 </div>
                 <div class="maint-row__due">
-                  <strong class="mono">{{ row.dueAt ? fmtDay(row.dueAt) : 'Sin programar' }}</strong>
+                  <strong class="mono">{{ row.dueAt ? fmtDay(row.dueAt) : $t('ui.maintenance.no_schedule') }}</strong>
                   <span>{{ relLabel(row.daysUntil) }}</span>
                 </div>
                 <div v-if="app.can('assets.edit')" class="maint-row__actions">
-                  <button type="button" class="btn btn--secondary btn--small" data-maint-action="complete" @click="openComplete(row)"><app-icon name="check"></app-icon> Completar</button>
-                  <button type="button" class="btn btn--ghost btn--small" data-maint-action="postpone" @click="openPostpone(row)">Posponer</button>
-                  <button v-if="row.plan.status !== 'cancelled'" type="button" class="btn btn--ghost btn--small" data-maint-action="cancel" @click="cancelPlan(row)">Cancelar</button>
+                  <button type="button" class="btn btn--secondary btn--small" data-maint-action="complete" @click="openComplete(row)"><app-icon name="check"></app-icon> {{ $t('ui.maintenance.row.complete') }}</button>
+                  <button type="button" class="btn btn--ghost btn--small" data-maint-action="postpone" @click="openPostpone(row)">{{ $t('ui.maintenance.row.postpone') }}</button>
+                  <button v-if="row.plan.status !== 'cancelled'" type="button" class="btn btn--ghost btn--small" data-maint-action="cancel" @click="cancelPlan(row)">{{ $t('ui.common.cancel') }}</button>
                 </div>
               </article>
             </div>
@@ -653,15 +655,15 @@
           <div v-if="!groups.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="refresh"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Ver toda la agenda</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.show_agenda') }}</button>
           </div>
         </div>
 
         <div v-if="view === 'interventions'" class="maint-body" data-od-id="maint-interventions" role="tabpanel">
           <div class="maint-cost-strip" v-if="costs">
-            <span>Coste acumulado <strong class="mono">{{ money(costs.total) }}</strong></span>
-            <span class="cell-muted">{{ plural(costs.count || 0, 'intervención', 'intervenciones') }} con coste</span>
-            <button type="button" class="text-button text-button--quiet" @click="app.loadMaintenanceCosts({ filters: interventionFilterParams() })">Actualizar costes</button>
+            <span>{{ $t('ui.maintenance.costs.total') }} <strong class="mono">{{ money(costs.total) }}</strong></span>
+            <span class="cell-muted">{{ $t('ui.maintenance.costs.count', { count: costs.count || 0 }) }}</span>
+            <button type="button" class="text-button text-button--quiet" @click="app.loadMaintenanceCosts({ filters: interventionFilterParams() })">{{ $t('ui.maintenance.costs.refresh') }}</button>
           </div>
           <div class="maint-list maint-list--flush">
             <article v-for="item in interventions" :key="item.id" class="maint-row maint-row--intervention" :data-maint-intervention="item.id">
@@ -672,7 +674,7 @@
                   <button type="button" class="maint-link" @click="openAsset(item.assetId)">{{ item.assetQuickCode || item.assetId }}</button>
                   <span>{{ technicianLabel(item.technicianPersonId) }}</span>
                   <span class="mono">{{ fmtDay(item.occurredOn) }}</span>
-                  <span v-if="item.attachments && item.attachments.length">{{ item.attachments.length }} adjuntos</span>
+                  <span v-if="item.attachments && item.attachments.length">{{ $t('ui.maintenance.attachments.count', { count: item.attachments.length }) }}</span>
                 </span>
               </div>
               <div class="maint-row__due">
@@ -680,14 +682,14 @@
                 <strong class="mono">{{ money(interventionCost(item)) }}</strong>
               </div>
               <div v-if="app.can('assets.edit')" class="maint-row__actions">
-                <button type="button" class="btn btn--ghost btn--small" data-maint-action="edit" @click="editIntervention(item)">Abrir</button>
+                <button type="button" class="btn btn--ghost btn--small" data-maint-action="edit" @click="editIntervention(item)">{{ $t('ui.maintenance.row.open') }}</button>
               </div>
             </article>
           </div>
           <div v-if="!interventions.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="activity"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.remove_filters') }}</button>
           </div>
         </div>
 
@@ -702,28 +704,28 @@
               <button type="button" class="maint-incident__title text-button" data-maint-action="open" @click="openIncident(item.id)">{{ item.title }}</button>
               <p class="maint-incident__description">{{ item.description }}</p>
               <dl class="maint-incident__meta">
-                <dt>Activo principal</dt><dd>{{ item.primaryAssetQuickCode || item.primaryAssetId }} · {{ item.primaryAssetName }}</dd>
-                <dt>Responsable</dt><dd>{{ personLabel(item.responsiblePersonId, item.responsibleName) }}</dd>
-                <dt>Apertura</dt><dd class="mono">{{ fmtDay(item.openedOn) }}</dd>
-                <dt v-if="item.interventionsTotal">Intervenciones</dt><dd v-if="item.interventionsTotal" class="mono">{{ item.interventionsTotal }}</dd>
-                <dt v-if="item.costs">Coste</dt><dd v-if="item.costs" class="mono">{{ money(item.costs.total) }}</dd>
+                <dt>{{ $t('ui.maintenance.incident.primary_asset') }}</dt><dd>{{ item.primaryAssetQuickCode || item.primaryAssetId }} · {{ item.primaryAssetName }}</dd>
+                <dt>{{ $t('ui.maintenance.field.responsible') }}</dt><dd>{{ personLabel(item.responsiblePersonId, item.responsibleName) }}</dd>
+                <dt>{{ $t('ui.maintenance.incident.opened') }}</dt><dd class="mono">{{ fmtDay(item.openedOn) }}</dd>
+                <dt v-if="item.interventionsTotal">{{ $t('ui.maintenance.incident.interventions') }}</dt><dd v-if="item.interventionsTotal" class="mono">{{ item.interventionsTotal }}</dd>
+                <dt v-if="item.costs">{{ $t('ui.maintenance.incident.cost') }}</dt><dd v-if="item.costs" class="mono">{{ money(item.costs.total) }}</dd>
               </dl>
               <footer class="maint-incident__foot">
-                <button type="button" class="btn btn--ghost btn--small" @click="openIncident(item.id)">Abrir incidente</button>
+                <button type="button" class="btn btn--ghost btn--small" @click="openIncident(item.id)">{{ $t('ui.maintenance.incident.open_action') }}</button>
               </footer>
             </article>
           </div>
           <div v-if="!incidents.length && !loading && !error" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="alert"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
-            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">Quitar filtros</button>
+            <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.remove_filters') }}</button>
           </div>
         </div>
 
         <div v-if="view === 'alerts'" class="maint-body" data-od-id="maint-alerts" data-maint-alerts-demo role="tabpanel">
           <div class="maint-note maint-note--preview">
             <app-icon name="info"></app-icon>
-            <p><strong>Vista previa de la próxima fase.</strong> Estas alertas son datos de demostración de supervisión y no crean ni resuelven incidentes. La conversión con un clic llegará con el motor de monitoreo real.</p>
+            <p><strong>{{ $t('ui.maintenance.alerts.preview_title') }}</strong> {{ $t('ui.maintenance.alerts.preview_body') }}</p>
           </div>
           <div class="maint-list maint-list--flush">
             <article v-for="alert in alerts" :key="alert.id" class="maint-row maint-row--alert" :data-maint-alert="alert.id">
@@ -733,7 +735,7 @@
                 <span class="maint-row__meta">
                   <span class="mono">{{ alert.id }}</span>
                   <span>{{ alert.assetId }} · {{ assetName(alert.assetId) }}</span>
-                  <span v-if="alert.recoveredAt">Recuperada el {{ fmtDateTime(alert.recoveredAt) }}</span>
+                  <span v-if="alert.recoveredAt">{{ $t('ui.maintenance.alert.recovered_on', { date: fmtDateTime(alert.recoveredAt) }) }}</span>
                 </span>
               </div>
               <div class="maint-row__due">
@@ -741,7 +743,7 @@
                 <span class="mono">{{ fmtDateTime(alert.detectedAt) }}</span>
               </div>
               <div class="maint-row__actions">
-                <button type="button" class="btn btn--ghost btn--small" @click="openAlert(alert.id)">Revisar en Supervisión</button>
+                <button type="button" class="btn btn--ghost btn--small" @click="openAlert(alert.id)">{{ $t('ui.maintenance.alert.review') }}</button>
               </div>
             </article>
           </div>
@@ -753,15 +755,15 @@
         </div>
 
         <div v-if="view !== 'alerts'" class="maint-pager">
-          <span class="cell-muted">{{ currentPage() ? currentPage().items.length : 0 }} de {{ currentPage() ? currentPage().total : 0 }}</span>
+          <span class="cell-muted">{{ $t('ui.maintenance.pager.range', { loaded: currentPage() ? currentPage().items.length : 0, total: currentPage() ? currentPage().total : 0 }) }}</span>
           <button v-if="view === 'agenda' && hasMore()" type="button" class="btn btn--ghost btn--small" data-maint-more="plans" :disabled="loading" @click="loadMore">
-            <app-icon name="chevron-right"></app-icon> Cargar más
+            <app-icon name="chevron-right"></app-icon> {{ $t('ui.maintenance.load_more') }}
           </button>
           <button v-if="view === 'interventions' && hasMore()" type="button" class="btn btn--ghost btn--small" data-maint-more="interventions" :disabled="loading" @click="loadMore">
-            <app-icon name="chevron-right"></app-icon> Cargar más
+            <app-icon name="chevron-right"></app-icon> {{ $t('ui.maintenance.load_more') }}
           </button>
           <button v-if="view === 'incidents' && hasMore()" type="button" class="btn btn--ghost btn--small" data-maint-more="incidents" :disabled="loading" @click="loadMore">
-            <app-icon name="chevron-right"></app-icon> Cargar más
+            <app-icon name="chevron-right"></app-icon> {{ $t('ui.maintenance.load_more') }}
           </button>
         </div>
 
@@ -852,7 +854,7 @@
         this.app.setHash('#/activo/' + encodeURIComponent(id));
       },
       technicianLabel(id, fallback) {
-        return Engine.personName(this.app.people, id) || fallback || 'Sin asignar';
+        return Engine.personName(this.app.people, id) || fallback || T('ui.maintenance.unassigned');
       },
       command(action, payload) {
         if (!this.incident || this.busy) return;
@@ -874,7 +876,7 @@
         this.actionError = '';
         this.app.prepareMaintenanceIncident(this.incident.id, { note: this.note }).then((result) => {
           if (!result.ok) {
-            this.actionError = result.error || 'No se pudo preparar la resolución.';
+            this.actionError = result.error || T('ui.incidents.detail.prepare_failed');
             return;
           }
           this.prepared = result.prepared;
@@ -888,12 +890,12 @@
         this.actionError = '';
         this.app.confirmMaintenanceIncident(this.incident.id, { note: this.note }).then((result) => {
           if (!result.ok) {
-            this.actionError = result.error || 'No se pudo confirmar la resolución.';
+            this.actionError = result.error || T('ui.incidents.detail.confirm_failed');
             return;
           }
           this.prepared = null;
           this.note = '';
-          this.app.showToast('Resolución confirmada.');
+          this.app.showToast(T('ui.incidents.detail.confirmed'));
           return this.app.loadMaintenanceIncident(this.incident.id);
         }).finally(() => {
           this.busy = false;
@@ -906,8 +908,8 @@
     },
     template: `
       <section v-if="incident" class="page maint-page maint-incident-page" aria-labelledby="incident-title">
-        <nav class="breadcrumbs" aria-label="Migas de pan">
-          <a href="#/mantenimiento" @click.prevent="back">Mantenimiento</a>
+        <nav class="breadcrumbs" :aria-label="$t('ui.incidents.breadcrumb_aria')">
+          <a href="#/mantenimiento" @click.prevent="back">{{ $t('ui.incidents.breadcrumb_maintenance') }}</a>
           <app-icon name="chevron-right"></app-icon>
           <span aria-current="page">{{ incident.id }}</span>
         </nav>
@@ -917,18 +919,18 @@
             <h1 id="incident-title">{{ incident.title }}</h1>
             <p class="page-sub">{{ incident.description }}</p>
             <dl class="maint-incident__head_meta">
-              <div><dt>Activo principal</dt><dd><button type="button" class="maint-link" @click="openAsset(primary.id)">{{ primary.quickCode || primary.id }} · {{ primary.name }}</button></dd></div>
-              <div><dt>Responsable</dt><dd>{{ technicianLabel(incident.responsiblePersonId, incident.responsibleName) }}</dd></div>
-              <div><dt>Apertura</dt><dd class="mono">{{ fmtDay(incident.openedOn) }}</dd></div>
-              <div v-if="incident.resolvedAt"><dt>Resolución</dt><dd class="mono">{{ fmtDateTime(incident.resolvedAt) }}</dd></div>
-              <div v-if="incident.costs"><dt>Coste</dt><dd class="mono">{{ money(incident.costs.total) }}</dd></div>
+              <div><dt>{{ $t('ui.maintenance.incident.primary_asset') }}</dt><dd><button type="button" class="maint-link" @click="openAsset(primary.id)">{{ primary.quickCode || primary.id }} · {{ primary.name }}</button></dd></div>
+              <div><dt>{{ $t('ui.maintenance.field.responsible') }}</dt><dd>{{ technicianLabel(incident.responsiblePersonId, incident.responsibleName) }}</dd></div>
+              <div><dt>{{ $t('ui.maintenance.incident.opened') }}</dt><dd class="mono">{{ fmtDay(incident.openedOn) }}</dd></div>
+              <div v-if="incident.resolvedAt"><dt>{{ $t('ui.incidents.detail.resolution') }}</dt><dd class="mono">{{ fmtDateTime(incident.resolvedAt) }}</dd></div>
+              <div v-if="incident.costs"><dt>{{ $t('ui.maintenance.incident.cost') }}</dt><dd class="mono">{{ money(incident.costs.total) }}</dd></div>
             </dl>
           </div>
           <div class="maint-head__actions">
-            <button v-if="canEdit && open" type="button" class="btn btn--primary" data-od-id="incident-new-intervention" @click="dialog = true"><app-icon name="plus"></app-icon> Registrar intervención</button>
-            <button v-if="canEdit && open && incident.status === 'open'" type="button" class="btn btn--secondary" data-maint-action="acknowledge" :disabled="busy" @click="command('acknowledge')">Reconocer</button>
-            <button v-if="canEdit && canClose" type="button" class="btn btn--secondary" data-maint-action="close" :disabled="busy" @click="command('close')">Cerrar incidente</button>
-            <button type="button" class="btn btn--ghost" @click="back"><app-icon name="arrow-left"></app-icon> Volver</button>
+            <button v-if="canEdit && open" type="button" class="btn btn--primary" data-od-id="incident-new-intervention" @click="dialog = true"><app-icon name="plus"></app-icon> {{ $t('ui.maintenance.action.new_intervention') }}</button>
+            <button v-if="canEdit && open && incident.status === 'open'" type="button" class="btn btn--secondary" data-maint-action="acknowledge" :disabled="busy" @click="command('acknowledge')">{{ $t('ui.incidents.detail.acknowledge') }}</button>
+            <button v-if="canEdit && canClose" type="button" class="btn btn--secondary" data-maint-action="close" :disabled="busy" @click="command('close')">{{ $t('ui.incidents.detail.close') }}</button>
+            <button type="button" class="btn btn--ghost" @click="back"><app-icon name="arrow-left"></app-icon> {{ $t('ui.incidents.detail.back') }}</button>
           </div>
         </header>
 
@@ -937,28 +939,28 @@
         <section v-if="canEdit && open" class="maint-panel" aria-labelledby="incident-resolution-title">
           <header class="maint-panel__head">
             <div>
-              <p class="eyebrow">Cierre asistido</p>
-              <h2 id="incident-resolution-title">Preparar y confirmar la resolución</h2>
+              <p class="eyebrow">{{ $t('ui.incidents.detail.resolution_eyebrow') }}</p>
+              <h2 id="incident-resolution-title">{{ $t('ui.incidents.detail.resolution_title') }}</h2>
             </div>
-            <span class="maint-status" :class="preparedState ? 'is-warn' : 'is-neutral'">{{ preparedState ? 'Preparada' : 'Sin preparar' }}</span>
+            <span class="maint-status" :class="preparedState ? 'is-warn' : 'is-neutral'">{{ preparedState ? $t('ui.incidents.detail.resolution_prepared') : $t('ui.incidents.detail.resolution_none') }}</span>
           </header>
-          <p class="cell-muted">La recuperación de una señal no resuelve el incidente por sí sola. Prepara la resolución, revisa la nota y confírmala.</p>
+          <p class="cell-muted">{{ $t('ui.incidents.detail.resolution_lead') }}</p>
           <label class="field">
-            <span class="field__label">Nota de resolución</span>
-            <textarea v-model="note" rows="3" class="input-shell input-shell--plain" placeholder="Qué se comprobó, qué se reparó y qué queda pendiente"></textarea>
+            <span class="field__label">{{ $t('ui.incidents.detail.note_label') }}</span>
+            <textarea v-model="note" rows="3" class="input-shell input-shell--plain" :placeholder="$t('ui.incidents.detail.note_placeholder')"></textarea>
           </label>
           <footer class="maint-panel__actions">
-            <button type="button" class="btn btn--secondary btn--small" data-maint-action="prepare" :disabled="busy" @click="prepare">{{ preparedState ? 'Volver a preparar' : 'Preparar resolución' }}</button>
-            <button v-if="preparedState" type="button" class="btn btn--primary btn--small" data-maint-action="confirm" :disabled="busy" @click="confirm">Confirmar resolución</button>
-            <button v-if="!preparedState && incident.status === 'in_progress'" type="button" class="btn btn--ghost btn--small" data-maint-action="resolve" :disabled="busy" @click="command('resolve', { note: note })">Resolver sin preparación</button>
+            <button type="button" class="btn btn--secondary btn--small" data-maint-action="prepare" :disabled="busy" @click="prepare">{{ preparedState ? $t('ui.incidents.detail.reprepare') : $t('ui.incidents.detail.prepare') }}</button>
+            <button v-if="preparedState" type="button" class="btn btn--primary btn--small" data-maint-action="confirm" :disabled="busy" @click="confirm">{{ $t('ui.incidents.detail.confirm') }}</button>
+            <button v-if="!preparedState && incident.status === 'in_progress'" type="button" class="btn btn--ghost btn--small" data-maint-action="resolve" :disabled="busy" @click="command('resolve', { note: note })">{{ $t('ui.incidents.detail.resolve') }}</button>
           </footer>
         </section>
 
         <div class="maint-detail-grid">
           <section class="maint-panel" aria-labelledby="incident-events-title">
             <header class="maint-panel__head">
-              <div><p class="eyebrow">Seguimiento</p><h2 id="incident-events-title">Actuaciones</h2></div>
-              <span class="mono cell-muted">{{ plural(events.length, 'registro', 'registros') }}</span>
+              <div><p class="eyebrow">{{ $t('ui.incidents.detail.followup') }}</p><h2 id="incident-events-title">{{ $t('ui.incidents.detail.actions_title') }}</h2></div>
+              <span class="mono cell-muted">{{ $t('ui.incidents.detail.actions_count', { count: events.length }) }}</span>
             </header>
             <ol v-if="events.length" class="maint-timeline">
               <li v-for="event in events" :key="event.id" class="maint-timeline__item">
@@ -970,33 +972,33 @@
                 </div>
               </li>
             </ol>
-            <p v-else class="cell-muted maint-aside-note">Todavía no hay actuaciones registradas.</p>
+            <p v-else class="cell-muted maint-aside-note">{{ $t('ui.incidents.detail.no_actions') }}</p>
           </section>
 
           <section class="maint-panel" aria-labelledby="incident-assets-title">
-            <header class="maint-panel__head"><div><p class="eyebrow">Alcance</p><h2 id="incident-assets-title">Dispositivos</h2></div></header>
+            <header class="maint-panel__head"><div><p class="eyebrow">{{ $t('ui.incidents.detail.scope') }}</p><h2 id="incident-assets-title">{{ $t('ui.incidents.detail.devices') }}</h2></div></header>
             <ul class="maint-mini-list">
               <li class="maint-mini-list__item">
                 <span class="maint-mini-list__icon"><app-icon name="alert"></app-icon></span>
                 <div>
                   <strong>{{ primary.quickCode || primary.id }} · {{ primary.name }}</strong>
-                  <span class="maint-mini-list__meta">Activo principal</span>
+                  <span class="maint-mini-list__meta">{{ $t('ui.maintenance.incident.primary_asset') }}</span>
                 </div>
               </li>
               <li v-for="asset in affected" :key="asset.id" class="maint-mini-list__item">
                 <span class="maint-mini-list__icon"><app-icon name="activity"></app-icon></span>
                 <div>
                   <button type="button" class="maint-link maint-mini-list__title" @click="openAsset(asset.id)">{{ asset.quickCode || asset.id }} · {{ asset.name }}</button>
-                  <span class="maint-mini-list__meta">Afectado</span>
+                  <span class="maint-mini-list__meta">{{ $t('ui.incidents.detail.affected') }}</span>
                 </div>
               </li>
             </ul>
-            <p v-if="!affected.length" class="cell-muted maint-aside-note">Sin otros dispositivos afectados.</p>
+            <p v-if="!affected.length" class="cell-muted maint-aside-note">{{ $t('ui.incidents.detail.no_affected') }}</p>
           </section>
 
           <section class="maint-panel maint-panel--wide" aria-labelledby="incident-interventions-title">
             <header class="maint-panel__head">
-              <div><p class="eyebrow">Reparaciones</p><h2 id="incident-interventions-title">Intervenciones vinculadas</h2></div>
+              <div><p class="eyebrow">{{ $t('ui.incidents.detail.repairs') }}</p><h2 id="incident-interventions-title">{{ $t('ui.incidents.detail.interventions_title') }}</h2></div>
               <span class="mono cell-muted">{{ interventions.length }}</span>
             </header>
             <div v-if="interventions.length" class="maint-list maint-list--flush">
@@ -1008,19 +1010,19 @@
                 <div class="maint-row__due"><strong class="mono">{{ money(item.totalCost) }}</strong></div>
               </article>
             </div>
-            <p v-else class="cell-muted maint-aside-note">Todavía no hay intervenciones vinculadas.</p>
-            <p class="cell-muted maint-aside-note">La vista previa de alertas de supervisión no modifica este incidente.</p>
+            <p v-else class="cell-muted maint-aside-note">{{ $t('ui.incidents.detail.no_interventions') }}</p>
+            <p class="cell-muted maint-aside-note">{{ $t('ui.incidents.detail.alert_note') }}</p>
           </section>
         </div>
 
         <intervention-dialog :open="dialog" :app="app" :asset-id="incident.primaryAssetId" :preset="{ incidentId: incident.id, assetId: incident.primaryAssetId, assetName: primary ? primary.name : '', assetQuickCode: primary ? primary.quickCode : '' }" @close="dialog = false" @saved="interventionSaved"></intervention-dialog>
       </section>
       <section v-else class="page maint-page">
-        <div v-if="loading" class="loading-state" role="status">Cargando incidente…</div>
+        <div v-if="loading" class="loading-state" role="status">{{ $t('ui.incidents.detail.loading') }}</div>
         <div v-else class="empty-state">
-          <h3>{{ missing ? 'Incidente no disponible' : 'Incidente' }}</h3>
-          <p>{{ error || 'El incidente solicitado no existe en este prototipo.' }}</p>
-          <button type="button" class="btn btn--secondary" @click="back">Volver a mantenimiento</button>
+          <h3>{{ missing ? $t('ui.incidents.detail.missing_title') : $t('ui.incidents.detail.title') }}</h3>
+          <p>{{ error || $t('ui.incidents.detail.missing_body') }}</p>
+          <button type="button" class="btn btn--secondary" @click="back">{{ $t('ui.incidents.detail.back_to_maintenance') }}</button>
         </div>
       </section>
     `

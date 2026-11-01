@@ -14,6 +14,10 @@
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  function T(key) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key) : '';
+  }
+
   function clone(value) {
     return value === undefined ? value : JSON.parse(JSON.stringify(value));
   }
@@ -112,10 +116,10 @@
   }
 
   const STATUS_META = {
-    overdue: { id: 'overdue', label: 'Vencido', tone: 'down', order: 0 },
-    today: { id: 'today', label: 'Vence hoy', tone: 'warn', order: 1 },
-    soon: { id: 'soon', label: 'Próximo', tone: 'warn', order: 2 },
-    scheduled: { id: 'scheduled', label: 'Programado', tone: 'neutral', order: 3 }
+    overdue: { id: 'overdue', get label() { return T('ui.maintenance.status.overdue'); }, tone: 'down', order: 0 },
+    today: { id: 'today', get label() { return T('ui.maintenance.status.today'); }, tone: 'warn', order: 1 },
+    soon: { id: 'soon', get label() { return T('ui.maintenance.status.soon'); }, tone: 'warn', order: 2 },
+    scheduled: { id: 'scheduled', get label() { return T('ui.maintenance.status.scheduled'); }, tone: 'neutral', order: 3 }
   };
 
   function statusOf(days) {
@@ -245,13 +249,13 @@
 
   function alertKindLabel(id) {
     const kind = Data.ALERT_KINDS.find((item) => item.id === id);
-    return kind ? kind.label : 'Supervisión';
+    return kind ? kind.label : T('ui.maintenance.type.fallback_kind');
   }
 
   /* Monitoring conversion belongs to the monitoring phase. Returning an honest
    * error keeps demo alerts out of the canonical incident collection. */
   function createFromAlert() {
-    return { ok: false, errors: ['La conversión de alertas llegará con la supervisión real en la siguiente fase.'], incident: null };
+    return { ok: false, errors: [T('ui.maintenance.alert_conversion_unavailable')], incident: null };
   }
 
   window.AssetMaintEngine = {
