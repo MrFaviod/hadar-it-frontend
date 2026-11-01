@@ -214,7 +214,7 @@
         building: validFloors[plan.floor].building,
         floor: plan.floor,
         name: typeof plan.name === 'string' && plan.name ? plan.name : 'Plano',
-        kind: typeof plan.kind === 'string' && plan.kind ? plan.kind : 'Plano personalizado',
+        kind: typeof plan.kind === 'string' && plan.kind ? plan.kind : 'custom',
         src: plan.src,
         width: PLAN_WIDTH,
         height: PLAN_HEIGHT,

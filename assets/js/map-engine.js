@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // Human-visible copy comes from the shared catalog; the runtime is optional so
+  // the module still loads in a harness without i18n.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const Data = window.AssetMapData;
   const PLAN_W = Data.PLAN_WIDTH;
   const PLAN_H = Data.PLAN_HEIGHT;
@@ -217,7 +224,7 @@
           const roomIds = floorRooms.map(function (room) { return room.id; });
           const loose = floorDevices.filter(function (asset) { return roomIds.indexOf(asset.locationId) === -1; });
           if (loose.length) {
-            floorRooms.push({ id: floor.id + '-sin-sala', name: 'Sin sala asignada', floor: floor.id, area: 0, count: loose.length, loose: true });
+            floorRooms.push({ id: floor.id + '-sin-sala', name: tr('ui.map.no_room_short'), floor: floor.id, area: 0, count: loose.length, loose: true });
           }
           return {
             id: floor.id,
@@ -311,7 +318,7 @@
         range: view.range || '',
         angle: Number(view.angle) || 0,
         bearing: Number(view.bearing) || 0,
-        alt: view.alt || ('Campo de visión de ' + asset.name),
+        alt: view.alt || tr('ui.map.camera.alt', { name: asset.name }),
         floor: view.floor || floorOfAsset(app, asset)
       };
     }
@@ -319,12 +326,12 @@
       const technical = asset.technical && typeof asset.technical === 'object' ? asset.technical : {};
       return {
         src: asset.fovImage,
-        caption: 'Campo de visión registrado',
+        caption: tr('ui.map.camera.caption'),
         heading: '',
         range: '',
         angle: Number(technical.fovAngle) || 0,
         bearing: 0,
-        alt: 'Campo de visión de ' + asset.name,
+        alt: tr('ui.map.camera.alt', { name: asset.name }),
         floor: floorOfAsset(app, asset)
       };
     }
@@ -370,8 +377,8 @@
       site: floor.site,
       building: floor.building,
       floor: floor.id,
-      name: text(payload && payload.name, 'Plano personalizado'),
-      kind: text(payload && payload.kind, 'Plano personalizado'),
+      name: text(payload && payload.name, tr('ui.map.plan.fallback_name')),
+      kind: text(payload && payload.kind, 'custom'),
       src: src,
       width: PLAN_W,
       height: PLAN_H,

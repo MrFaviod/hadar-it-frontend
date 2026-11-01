@@ -4,11 +4,18 @@
   const Engine = window.AssetRelations;
   const Layout = window.AssetGraphLayout;
   const RelationsData = window.AssetRelationsData;
+
+  // Human-visible copy comes from the shared catalog; the runtime is resolved at
+  // call time so the component still loads in a harness without i18n.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
   const TONES = ['network', 'virtual', 'physical', 'power', 'dependency', 'link'];
   const GROUPS = [
-    { id: 'category', label: 'Categoría' },
-    { id: 'site', label: 'Sede' },
-    { id: 'none', label: 'Sin agrupar' }
+    { id: 'category', key: 'ui.graph.group.category' },
+    { id: 'site', key: 'ui.graph.group.site' },
+    { id: 'none', key: 'ui.graph.group.none' }
   ];
 
   function unique(list) {
@@ -100,7 +107,7 @@
         return this.focusAsset ? 'focus' : 'global';
       },
       groupOptions() {
-        return GROUPS;
+        return GROUPS.map(function (option) { return { id: option.id, label: tr(option.key) }; });
       },
       depth() {
         return this.prefs.depth || 2;
@@ -520,7 +527,7 @@
         this.hiddenIds = [];
         this.rebuild(false);
         this.fit();
-        this.announce = 'Disposición del grafo recalculada.';
+        this.announce = tr('ui.graph.announce.relayout');
       },
       // Zoom level that keeps every plate and label inside the canvas frame.
       fitScale() {
@@ -613,19 +620,19 @@
         const asset = Engine.assetById(this.source, id);
         const options2 = options || {};
         this.announce = asset
-          ? asset.name + ', ' + RelationsData.categoryLabel(asset.category) + ', ' + Engine.rowsFor(this.source, id).length + ' relaciones.'
+          ? tr('ui.graph.announce.node', { name: asset.name, category: RelationsData.categoryLabel(asset.category), count: Engine.rowsFor(this.source, id).length })
           : '';
         if (options2.center) this.centerOn(id);
       },
       focusOn(id) {
         this.hiddenIds = [];
         this.app.setHash(this.app.hashFor({ name: 'graph', focusId: id }));
-        this.announce = 'Modo enfocado activado.';
+        this.announce = tr('ui.graph.announce.focus');
       },
       leaveFocus() {
         this.app.setHash('#/infra/grafo');
         this.selectedId = '';
-        this.announce = 'Vista global del grafo.';
+        this.announce = tr('ui.graph.announce.global');
       },
       openAsset(id) {
         const asset = Engine.assetById(this.source, id);
@@ -634,11 +641,11 @@
       expandNode(id) {
         const hiddenNeighbours = this.hiddenIds.filter((item) => this.neighbourIds(id).indexOf(item) !== -1);
         if (!hiddenNeighbours.length) {
-          this.announce = 'No hay relaciones contraídas en ' + (this.shortName(Engine.assetById(this.source, id) || { name: 'este activo' })) + '.';
+          this.announce = tr('ui.graph.announce.no_hidden', { name: this.shortName(Engine.assetById(this.source, id) || { name: tr('ui.graph.this_asset') }) });
           return;
         }
         this.hiddenIds = this.hiddenIds.filter((item) => hiddenNeighbours.indexOf(item) === -1);
-        this.announce = 'Relaciones expandidas.';
+        this.announce = tr('ui.graph.announce.expanded');
         this.rebuild(false);
       },
       collapseNode(id) {
@@ -651,22 +658,22 @@
           return !others.length;
         });
         if (!leaves.length) {
-          this.app.showToast('“' + asset.name + '” no tiene relaciones hoja para contraer.');
-          this.announce = 'Sin relaciones hoja.';
+          this.app.showToast(tr('ui.graph.announce.no_leaves_toast', { name: asset.name }));
+          this.announce = tr('ui.graph.announce.no_leaves');
           return;
         }
         this.hiddenIds = unique(this.hiddenIds.concat(leaves));
-        this.announce = leaves.length + ' relaciones contraídas.';
+        this.announce = tr('ui.graph.announce.collapsed', { count: leaves.length });
         this.rebuild(false);
       },
       expandAll() {
         if (!this.hiddenIds.length) {
-          this.app.showToast('Todas las relaciones ya están visibles.');
+          this.app.showToast(tr('ui.graph.announce.all_visible_toast'));
           return;
         }
         this.hiddenIds = [];
         this.rebuild(false);
-        this.announce = 'Todas las relaciones visibles.';
+        this.announce = tr('ui.graph.announce.all_visible');
       },
       // ----------------------------------------------------------- pointer
       startPan(event) {
@@ -797,7 +804,7 @@
       },
       siteLabel(id) {
         const site = this.sites.find((item) => item.id === id);
-        return site ? site.label : 'Sin sede';
+        return site ? site.label : tr('ui.graph.no_site');
       },
       clearFilters() {
         this.filters = { categories: [], sites: [], states: [], locations: [], types: [], includeIsolated: true, search: '' };
@@ -822,39 +829,39 @@
       <div class="graph-page" data-od-id="graph-explorer">
         <header class="page-head graph-page__head">
           <div class="page-head__copy">
-            <p class="eyebrow"><span class="eyebrow__line"></span> Infraestructura</p>
-            <h1 id="graph-title">Grafo de relaciones</h1>
-            <p class="page-sub">Arrastra para mover, rueda para acercar, clic en un nodo para ver su detalle.</p>
+            <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.graph.explorer.eyebrow') }}</p>
+            <h1 id="graph-title">{{ $t('ui.graph.explorer.title') }}</h1>
+            <p class="page-sub">{{ $t('ui.graph.explorer.lead') }}</p>
           </div>
           <div class="page-head__meta">
             <span class="mono">{{ totalRelations.links }}</span>
-            <span>{{ totalRelations.links === 1 ? 'vínculo' : 'vínculos' }}</span>
+            <span>{{ $t('ui.graph.status.edges', { count: totalRelations.links }) }}</span>
             <span class="mono">{{ totalRelations.isolatedAssets }}</span>
-            <span>{{ totalRelations.isolatedAssets === 1 ? 'activo aislado' : 'activos aislados' }}</span>
+            <span>{{ $t('ui.graph.status.isolated', { count: totalRelations.isolatedAssets }) }}</span>
           </div>
         </header>
 
-        <nav class="infra-tabs" aria-label="Modos del explorador" data-od-id="graph-infra-tabs">
+        <nav class="infra-tabs" :aria-label="$t('ui.graph.aria.tabs')" data-od-id="graph-infra-tabs">
           <a class="infra-tab" :href="mapHref">
-            <app-icon name="map-pin"></app-icon> Mapa
+            <app-icon name="map-pin"></app-icon> {{ $t('ui.map.tab.map') }}
           </a>
           <span class="infra-tab is-active" aria-current="page">
-            <app-icon name="network"></app-icon> Grafo
+            <app-icon name="network"></app-icon> {{ $t('ui.map.tab.graph') }}
           </span>
         </nav>
 
         <div class="graph-toolbar">
-          <div class="graph-mode" role="group" aria-label="Modo del grafo">
+          <div class="graph-mode" role="group" :aria-label="$t('ui.graph.aria.mode')">
             <button type="button" class="graph-mode__button" :class="{ 'is-active': mode === 'global' }"
-                    :aria-pressed="mode === 'global'" @click="leaveFocus">Vista global</button>
+                    :aria-pressed="mode === 'global'" @click="leaveFocus">{{ $t('ui.graph.mode.global') }}</button>
             <button type="button" class="graph-mode__button" :class="{ 'is-active': mode === 'focus' }"
                     :aria-pressed="mode === 'focus'" :disabled="!focusAsset" @click="focusAsset && focusOn(focusAsset.id)">
-              Enfocado{{ focusAsset ? ' · ' + focusAsset.code : '' }}
+              {{ $t('ui.graph.mode.focus') }}{{ focusAsset ? ' · ' + focusAsset.code : '' }}
             </button>
           </div>
 
-          <div class="graph-toolbar__group" role="group" aria-label="Agrupación">
-            <span class="graph-toolbar__label">Agrupar</span>
+          <div class="graph-toolbar__group" role="group" :aria-label="$t('ui.graph.aria.grouping')">
+            <span class="graph-toolbar__label">{{ $t('ui.graph.group.label') }}</span>
             <div class="graph-segmented">
               <button v-for="option in groupOptions" :key="option.id" type="button"
                       class="graph-segmented__button" :class="{ 'is-active': prefs.group === option.id }"
@@ -862,12 +869,12 @@
             </div>
           </div>
 
-          <div v-if="mode === 'focus'" class="graph-toolbar__group" role="group" aria-label="Profundidad">
-            <span class="graph-toolbar__label">Profundidad</span>
+          <div v-if="mode === 'focus'" class="graph-toolbar__group" role="group" :aria-label="$t('ui.graph.aria.depth')">
+            <span class="graph-toolbar__label">{{ $t('ui.graph.depth') }}</span>
             <div class="graph-segmented">
               <button v-for="level in [1, 2, 3]" :key="level" type="button" class="graph-segmented__button"
                       :class="{ 'is-active': depth === level }" :aria-pressed="depth === level"
-                      :aria-label="'Profundidad ' + level" @click="updatePrefs({ depth: level })">{{ level }}</button>
+                      :aria-label="$t('ui.graph.depth_aria', { level: level })" @click="updatePrefs({ depth: level })">{{ level }}</button>
             </div>
           </div>
 
@@ -875,40 +882,40 @@
 
           <button type="button" class="btn btn--secondary btn--small graph-filters-toggle" :aria-expanded="filtersOpen"
                   @click="filtersOpen = !filtersOpen">
-            <app-icon name="sliders"></app-icon> Filtros
+            <app-icon name="sliders"></app-icon> {{ $t('ui.graph.toolbar.filters') }}
           </button>
           <button type="button" class="btn btn--ghost btn--small" @click="expandAll">
-            <app-icon name="layers"></app-icon> Expandir todo
+            <app-icon name="layers"></app-icon> {{ $t('ui.graph.toolbar.expand_all') }}
           </button>
           <button type="button" class="btn btn--ghost btn--small" @click="resetLayout">
-            <app-icon name="refresh"></app-icon> Reacomodar
+            <app-icon name="refresh"></app-icon> {{ $t('ui.graph.toolbar.relayout') }}
           </button>
           <button v-if="app.serverGraphMode" type="button" class="btn btn--ghost btn--small"
                   :aria-pressed="redundancyOpen" @click="redundancyOpen = !redundancyOpen">
-            <app-icon name="layers"></app-icon> Redundancia
+            <app-icon name="layers"></app-icon> {{ $t('ui.graph.toolbar.redundancy') }}
           </button>
           <button v-if="canEdit" type="button" class="btn btn--primary btn--small" @click="app.goToConfig('relaciones')">
-            <app-icon name="sliders"></app-icon> Tipos
+            <app-icon name="sliders"></app-icon> {{ $t('ui.graph.toolbar.types') }}
           </button>
         </div>
 
         <div class="graph-layout" :class="{ 'graph-layout--panel': !!selectedAsset }">
-          <aside class="graph-filters" :class="{ 'is-open': filtersOpen }" data-od-id="graph-filters" aria-label="Filtros del grafo">
+          <aside class="graph-filters" :class="{ 'is-open': filtersOpen }" data-od-id="graph-filters" :aria-label="$t('ui.graph.aria.filters')">
             <div class="graph-filters__head">
-              <h2>Filtros</h2>
-              <button type="button" class="text-button" @click="clearFilters">Limpiar</button>
+              <h2>{{ $t('ui.graph.toolbar.filters') }}</h2>
+              <button type="button" class="text-button" @click="clearFilters">{{ $t('ui.graph.filter.clear') }}</button>
             </div>
 
             <div class="field graph-filters__search">
-              <label for="graph-search">Buscar activo</label>
+              <label for="graph-search">{{ $t('ui.graph.filter.search') }}</label>
               <div class="input-shell">
                 <app-icon name="search"></app-icon>
-                <input id="graph-search" v-model="filters.search" type="search" placeholder="Nombre, código o IP">
+                <input id="graph-search" v-model="filters.search" type="search" :placeholder="$t('ui.graph.filter.search_placeholder')">
               </div>
             </div>
 
             <fieldset class="graph-filter-group">
-              <legend>Categoría</legend>
+              <legend>{{ $t('ui.graph.filter.category') }}</legend>
               <label v-for="category in categories" :key="category.id" class="graph-check">
                 <input type="checkbox" :checked="filters.categories.includes(category.id)"
                        @change="toggleList(filters.categories, category.id)">
@@ -917,7 +924,7 @@
             </fieldset>
 
             <fieldset class="graph-filter-group">
-              <legend>Sede</legend>
+              <legend>{{ $t('ui.graph.filter.site') }}</legend>
               <label v-for="site in sites" :key="site.id" class="graph-check">
                 <input type="checkbox" :checked="filters.sites.includes(site.id)"
                        @change="toggleList(filters.sites, site.id)">
@@ -926,7 +933,7 @@
             </fieldset>
 
             <fieldset class="graph-filter-group">
-              <legend>Tipo de relación</legend>
+              <legend>{{ $t('ui.graph.filter.type') }}</legend>
               <label v-for="type in types" :key="type.id" class="graph-check graph-check--tone">
                 <input type="checkbox" :checked="filters.types.includes(type.id)"
                        @change="toggleList(filters.types, type.id)">
@@ -937,15 +944,15 @@
 
             <label class="graph-toggle">
               <input type="checkbox" v-model="filters.includeIsolated">
-              <span>Mostrar activos sin vínculos</span>
+              <span>{{ $t('ui.graph.filter.include_isolated') }}</span>
             </label>
 
-            <p class="graph-filters__hint"><app-icon name="info"></app-icon> Los filtros se aplican al modo activo. Las relaciones contraídas se olvidan al cambiar de filtro.</p>
+            <p class="graph-filters__hint"><app-icon name="info"></app-icon> {{ $t('ui.graph.filter.hint') }}</p>
           </aside>
 
           <div class="graph-canvas-wrap">
             <div ref="canvas" class="graph-canvas" tabindex="0" role="group"
-                 :aria-label="'Grafo con ' + stats.nodes + ' activos y ' + stats.edges + ' vínculos'"
+                 :aria-label="$t('ui.graph.aria.canvas', { nodes: stats.nodes, edges: stats.edges })"
                  @keydown="onKeydown">
               <svg class="graph-canvas__svg" :width="size.w" :height="size.h" aria-hidden="true">
                 <defs>
@@ -970,20 +977,20 @@
                        :class="['gnode--' + node.family, { 'is-selected': node.selected, 'is-focus': node.isFocus, 'is-level': mode === 'focus' && node.level === 0 }]"
                        :transform="'translate(' + node.x + ' ' + node.y + ')'"
                        role="button" tabindex="0" :aria-pressed="node.selected"
-                       :aria-label="node.asset.name + ', ' + categoryLabel(node.asset.category) + ', ' + siteLabel(node.asset.site)"
+                       :aria-label="$t('ui.graph.aria.node', { name: node.asset.name, category: categoryLabel(node.asset.category), site: siteLabel(node.asset.site) })"
                        @pointerdown="startDrag(node, $event)" @click.stop="selectNode(node.id)"
                        @keydown.enter.prevent="selectNode(node.id)" @keydown.space.prevent="selectNode(node.id)">
                       <circle class="gnode__halo" r="32"></circle>
                       <circle class="gnode__plate" r="23"></circle>
                       <g v-if="node.redundancy" class="gnode__redundancy"
-                         :aria-label="'En ' + node.redundancy.count + ' grupos de redundancia'">
+                         :aria-label="$t('ui.graph.aria.node_redundancy', { count: node.redundancy.count })">
                         <circle r="6" cx="-19" cy="-19"></circle>
                       </g>
                       <svg class="gnode__glyph" x="-11" y="-11" width="22" height="22" viewBox="0 0 24 24"
                            fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
                            stroke-linejoin="round" v-html="glyph(node.icon)"></svg>
                       <g v-if="node.hiddenCount" class="gnode__more" role="button" tabindex="0"
-                         :aria-label="'Expandir ' + node.hiddenCount + ' relaciones'"
+                         :aria-label="$t('ui.graph.aria.expand_hidden', { count: node.hiddenCount })"
                          @pointerdown.stop @click.stop="expandNode(node.id)" @keydown.enter.prevent.stop="expandNode(node.id)">
                         <circle r="11" cx="20" cy="-20"></circle>
                         <text x="20" y="-20" text-anchor="middle" dominant-baseline="central">+{{ node.hiddenCount }}</text>
@@ -995,14 +1002,14 @@
                 </g>
               </svg>
 
-              <div class="graph-zoom" role="group" aria-label="Zoom">
-                <button type="button" class="icon-button" aria-label="Alejar" @click="zoomBy(0.87)"><app-icon name="minus"></app-icon></button>
+              <div class="graph-zoom" role="group" :aria-label="$t('ui.graph.aria.zoom')">
+                <button type="button" class="icon-button" :aria-label="$t('ui.graph.aria.zoom_out')" @click="zoomBy(0.87)"><app-icon name="minus"></app-icon></button>
                 <span class="graph-zoom__value mono">{{ zoomLabel }}</span>
-                <button type="button" class="icon-button" aria-label="Acercar" @click="zoomBy(1.15)"><app-icon name="plus"></app-icon></button>
-                <button type="button" class="icon-button" aria-label="Centrar el grafo" @click="fit(true)"><app-icon name="grid"></app-icon></button>
+                <button type="button" class="icon-button" :aria-label="$t('ui.graph.aria.zoom_in')" @click="zoomBy(1.15)"><app-icon name="plus"></app-icon></button>
+                <button type="button" class="icon-button" :aria-label="$t('ui.graph.aria.center')" @click="fit(true)"><app-icon name="grid"></app-icon></button>
               </div>
 
-              <p class="graph-legend" aria-label="Familias de categorías">
+              <p class="graph-legend" :aria-label="$t('ui.graph.aria.legend')">
                 <span v-for="item in legend" :key="item.id" class="graph-legend__item">
                   <span class="graph-swatch" :class="'graph-swatch--' + item.id" aria-hidden="true"></span>{{ item.label }}
                 </span>
@@ -1010,44 +1017,44 @@
 
               <p v-if="!nodeViews.length" class="graph-empty">
                 <app-icon name="search"></app-icon>
-                <span>Ningún activo coincide con los filtros activos.</span>
-                <button type="button" class="text-button" @click="clearFilters">Limpiar filtros</button>
+                <span>{{ $t('ui.graph.empty.no_match') }}</span>
+                <button type="button" class="text-button" @click="clearFilters">{{ $t('ui.graph.empty.clear') }}</button>
               </p>
 
               <p v-if="stats.hidden" class="graph-hidden-note">
                 <app-icon name="layers"></app-icon>
-                {{ stats.hidden }} {{ stats.hidden === 1 ? 'activ hid' : 'activos ocultos' }} por relaciones contraídas.
-                <button type="button" class="text-button" @click="expandAll">Expandir todo</button>
+                {{ $t('ui.graph.hidden.note', { count: stats.hidden }) }}
+                <button type="button" class="text-button" @click="expandAll">{{ $t('ui.graph.toolbar.expand_all') }}</button>
               </p>
             </div>
 
             <div class="graph-status">
               <span class="mono">{{ stats.nodes }} / {{ stats.total }}</span>
-              <span>{{ stats.nodes === 1 ? 'nodo visible' : 'nodos visibles' }}</span>
+              <span>{{ $t('ui.graph.status.nodes', { count: stats.nodes }) }}</span>
               <span class="graph-status__sep" aria-hidden="true">·</span>
               <span class="mono">{{ stats.edges }}</span>
-              <span>{{ stats.edges === 1 ? 'vínculo' : 'vínculos' }}</span>
-              <span class="graph-status__hint">Tab y flechas para navegar · Enter abre la ficha · E expande · C contrae</span>
+              <span>{{ $t('ui.graph.status.edges', { count: stats.edges }) }}</span>
+              <span class="graph-status__hint">{{ $t('ui.graph.keys_hint') }}</span>
             </div>
             <p class="sr-only" aria-live="polite">{{ announce }}</p>
 
             <section v-if="showRedundancy" class="panel graph-redundancy" aria-labelledby="graph-redundancy-title">
               <header class="graph-redundancy__head">
                 <div>
-                  <h2 id="graph-redundancy-title">Redundancia</h2>
-                  <span class="cell-note">Configuración del inventario; no reparte tráfico ni conmuta réplicas</span>
+                  <h2 id="graph-redundancy-title">{{ $t('ui.graph.redundancy.title') }}</h2>
+                  <span class="cell-note">{{ $t('ui.graph.redundancy.note') }}</span>
                 </div>
-                <button type="button" class="icon-button" aria-label="Ocultar la redundancia del grafo" @click="redundancyOpen = false">
+                <button type="button" class="icon-button" :aria-label="$t('ui.graph.redundancy.close_aria')" @click="redundancyOpen = false">
                   <app-icon name="close"></app-icon>
                 </button>
               </header>
               <p v-if="app.redundancy && app.redundancy.groups.error" class="form-error" role="alert">{{ app.redundancy.groups.error }}</p>
-              <p v-else-if="!redundancyOptions.length" class="cell-note">No hay grupos de redundancia en la página consultada.</p>
+              <p v-else-if="!redundancyOptions.length" class="cell-note">{{ $t('ui.graph.redundancy.empty') }}</p>
               <ul v-else class="redundancy-list redundancy-list--graph">
                 <li v-for="group in redundancyOptions" :key="group.id" class="redundancy-item">
                   <div class="redundancy-item__head">
                     <strong>{{ group.name }}</strong>
-                    <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ group.active ? 'Activo' : 'Inactivo' }}</span>
+                    <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ group.active ? $t('ui.redundancy.status_active') : $t('ui.redundancy.status_inactive') }}</span>
                   </div>
                   <ul class="redundancy-members">
                     <li v-for="member in group.members" :key="member.assetId">
@@ -1060,20 +1067,20 @@
                 </li>
               </ul>
               <p v-if="redundancyTruncated" class="cell-note">
-                Se cargaron {{ redundancyGroups.length }} de {{ redundancyTotal }} grupos; el resto no se consultó en esta página.
+                {{ $t('ui.graph.redundancy.truncated', { loaded: redundancyGroups.length, total: redundancyTotal }) }}
               </p>
             </section>
           </div>
 
 
-          <aside v-if="selectedAsset" class="graph-inspector" data-od-id="graph-inspector" aria-label="Activo seleccionado">
+          <aside v-if="selectedAsset" class="graph-inspector" data-od-id="graph-inspector" :aria-label="$t('ui.graph.inspector.aria')">
             <header class="graph-inspector__head">
               <div>
                 <p class="eyebrow">{{ categoryLabel(selectedAsset.category) }}</p>
                 <h2>{{ selectedAsset.name }}</h2>
                 <p class="mono graph-inspector__code">{{ selectedAsset.code }} · {{ siteLabel(selectedAsset.site) }}</p>
               </div>
-              <button type="button" class="icon-button" aria-label="Cerrar selección" @click="selectedId = ''">
+              <button type="button" class="icon-button" :aria-label="$t('ui.graph.inspector.close_aria')" @click="selectedId = ''">
                 <app-icon name="close"></app-icon>
               </button>
             </header>
@@ -1085,16 +1092,16 @@
 
             <div class="graph-inspector__actions">
               <button type="button" class="btn btn--primary btn--small" @click="openAsset(selectedAsset.id)">
-                <app-icon name="file-text"></app-icon> Abrir ficha
+                <app-icon name="file-text"></app-icon> {{ $t('ui.graph.action.open_asset') }}
               </button>
               <button v-if="!selectedAsset.retired" type="button" class="btn btn--secondary btn--small"
                       @click="focusOn(selectedAsset.id)">
-                <app-icon name="network"></app-icon> Enfocar aquí
+                <app-icon name="network"></app-icon> {{ $t('ui.graph.action.focus_here') }}
               </button>
             </div>
 
             <div class="graph-inspector__subhead">
-              <h3>Relaciones</h3>
+              <h3>{{ $t('ui.graph.inspector.relations') }}</h3>
               <span class="mono">{{ selectedRows.length }}</span>
             </div>
 
@@ -1107,17 +1114,17 @@
                   <span class="graph-relations__name">{{ row.other.name }}</span>
                   <span class="mono graph-relations__code">{{ row.other.code }}</span>
                 </button>
-                <button type="button" class="icon-button icon-button--small" :aria-label="'Abrir ficha de ' + row.other.name"
+                <button type="button" class="icon-button icon-button--small" :aria-label="$t('ui.graph.action.open_asset_aria', { name: row.other.name })"
                         @click="openAsset(row.other.id)">
                   <app-icon name="arrow-up-right"></app-icon>
                 </button>
               </li>
             </ul>
-            <p v-else class="graph-inspector__empty">Este activo todavía no tiene vínculos registrados.</p>
+            <p v-else class="graph-inspector__empty">{{ $t('ui.graph.inspector.relations_empty') }}</p>
 
             <div v-if="selectedRedundancy.length" class="graph-inspector__redundancy">
               <div class="graph-inspector__subhead">
-                <h3>Redundancia</h3>
+                <h3>{{ $t('ui.graph.redundancy.title') }}</h3>
                 <span class="mono">{{ selectedRedundancy.length }}</span>
               </div>
               <ul class="redundancy-members">
@@ -1126,16 +1133,16 @@
                   <span class="cell-note">{{ app.redundancyModeLabel(group.mode) }} · {{ selectedMemberFacts(group) }}</span>
                 </li>
               </ul>
-              <p class="cell-note">El alojamiento sigue siendo la relación dirigida «Alojado en»; el grupo sólo describe la réplica.</p>
+              <p class="cell-note">{{ $t('ui.graph.inspector.hosting_note') }}</p>
             </div>
 
             <div class="graph-inspector__foot">
               <button type="button" class="btn btn--ghost btn--small" :disabled="!selectedHidden.length"
                       @click="expandNode(selectedAsset.id)">
-                <app-icon name="plus"></app-icon> Expandir
+                <app-icon name="plus"></app-icon> {{ $t('ui.graph.action.expand') }}
               </button>
               <button type="button" class="btn btn--ghost btn--small" @click="collapseNode(selectedAsset.id)">
-                <app-icon name="minus"></app-icon> Contraer hojas
+                <app-icon name="minus"></app-icon> {{ $t('ui.graph.action.collapse_leaves') }}
               </button>
             </div>
           </aside>

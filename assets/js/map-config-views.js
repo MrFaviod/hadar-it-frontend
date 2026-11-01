@@ -4,6 +4,13 @@
   const Engine = window.AssetMapEngine;
   const Data = window.AssetMapData;
 
+  // Human-visible copy comes from the shared catalog. The runtime is resolved at
+  // call time so the component still loads in a harness without i18n.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const MapSettings = {
     name: 'MapSettings',
     props: {
@@ -14,7 +21,7 @@
         geoDraft: {},
         geoErrors: {},
         geoSaved: {},
-        planDialog: { open: false, name: '', floor: '', kind: 'Plano personalizado', src: '', error: '', busy: false },
+        planDialog: { open: false, name: '', floor: '', kind: 'custom', src: '', error: '', busy: false },
         confirmPlanId: '',
         confirmPositions: false,
         notice: ''
@@ -88,18 +95,18 @@
         const lat = Number(draft.lat);
         const lng = Number(draft.lng);
         if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-          this.geoErrors = Object.assign({}, this.geoErrors, { [siteId]: 'La latitud debe estar entre -90 y 90.' });
+          this.geoErrors = Object.assign({}, this.geoErrors, { [siteId]: tr('ui.map.error.latitude_range') });
           return;
         }
         if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-          this.geoErrors = Object.assign({}, this.geoErrors, { [siteId]: 'La longitud debe estar entre -180 y 180.' });
+          this.geoErrors = Object.assign({}, this.geoErrors, { [siteId]: tr('ui.map.error.longitude_range') });
           return;
         }
         this.geoErrors = Object.assign({}, this.geoErrors, { [siteId]: '' });
         Engine.setGeo(this.app, siteId, { lat: lat, lng: lng, address: draft.address });
         this.geoSaved = Object.assign({}, this.geoSaved, { [siteId]: true });
-        this.notice = 'Coordenadas de ' + this.siteLabel(siteId) + ' guardadas.';
-        this.app.showToast('Sede ' + this.siteLabel(siteId) + ' actualizada.', 'success');
+        this.notice = tr('ui.map.toast.coords_saved', { site: this.siteLabel(siteId) });
+        this.app.showToast(tr('ui.map.toast.site_updated', { site: this.siteLabel(siteId) }), 'success');
         window.setTimeout(() => {
           this.geoSaved = Object.assign({}, this.geoSaved, { [siteId]: false });
         }, 2600);
@@ -109,7 +116,7 @@
         if (!base) return;
         Engine.setGeo(this.app, siteId, { lat: base.lat, lng: base.lng, address: base.address });
         this.hydrateGeo();
-        this.notice = 'Coordenadas de demostración restauradas para ' + this.siteLabel(siteId) + '.';
+        this.notice = tr('ui.map.notice.coords_reset', { site: this.siteLabel(siteId) });
       },
       siteLabel(siteId) {
         const site = this.sites.find((item) => item.id === siteId);
@@ -136,7 +143,7 @@
           open: true,
           name: '',
           floor: this.floors.length ? this.floors[0].id : '',
-          kind: 'Plano personalizado',
+          kind: 'custom',
           src: '',
           error: '',
           busy: false
@@ -158,15 +165,15 @@
       createPlan() {
         const dialog = this.planDialog;
         if (!dialog.name.trim()) {
-          dialog.error = 'Ponle un nombre al plano.';
+          dialog.error = tr('ui.map.error.plan_name');
           return;
         }
         if (!dialog.floor) {
-          dialog.error = 'Selecciona la planta del plano.';
+          dialog.error = tr('ui.map.error.plan_floor');
           return;
         }
         if (!dialog.src) {
-          dialog.error = 'Carga un archivo SVG o elige un plano de ejemplo.';
+          dialog.error = tr('ui.map.error.plan_file');
           return;
         }
         const plan = Engine.addPlan(this.app, {
@@ -176,20 +183,20 @@
           src: dialog.src
         });
         if (!plan) {
-          dialog.error = 'No se pudo agregar el plano.';
+          dialog.error = tr('ui.map.error.plan_add');
           return;
         }
         dialog.open = false;
-        this.notice = 'Plano «' + plan.name + '» agregado a ' + this.floorLabel(plan.floor) + '.';
-        this.app.showToast('Plano agregado a la planta.', 'success');
+        this.notice = tr('ui.map.notice.plan_added', { name: plan.name, floor: this.floorLabel(plan.floor) });
+        this.app.showToast(tr('ui.map.toast.plan_added'), 'success');
       },
       askRemovePlan(planId) {
         this.confirmPlanId = planId;
       },
       removePlan(planId) {
         if (Engine.removePlan(this.app, planId)) {
-          this.notice = 'Plano eliminado del catálogo.';
-          this.app.showToast('Plano eliminado.', 'success');
+          this.notice = tr('ui.map.notice.plan_removed');
+          this.app.showToast(tr('ui.map.toast.plan_removed'), 'success');
         }
         this.confirmPlanId = '';
       },
@@ -200,8 +207,8 @@
         }
         Object.keys(this.maps.positions).forEach((assetId) => Engine.removePosition(this.app, assetId));
         this.confirmPositions = false;
-        this.notice = 'Todas las posiciones individuales se quitaron. Los activos siguen agrupados por sala.';
-        this.app.showToast('Posiciones individuales eliminadas.', 'success');
+        this.notice = tr('ui.map.notice.positions_cleared');
+        this.app.showToast(tr('ui.map.toast.positions_cleared'), 'success');
       },
       openExplorer() {
         this.app.setHash('#/infra/mapa');
@@ -211,15 +218,14 @@
       <div class="map-config" data-od-id="map-settings">
         <header class="map-config__head">
           <div>
-            <p class="eyebrow">Configuración</p>
-            <h1>Mapas y planos</h1>
+            <p class="eyebrow">{{ $t('ui.map.settings.eyebrow') }}</p>
+            <h1>{{ $t('ui.map.settings.title') }}</h1>
             <p class="map-config__lead">
-              Sedes geográficas, planos por edificio o piso, capas disponibles y preferencias del explorador.
-              Los activos no necesitan posicionamiento manual para aparecer en la estructura de ubicaciones.
+              {{ $t('ui.map.settings.lead') }}
             </p>
           </div>
           <button type="button" class="btn btn--secondary btn--small" data-od-id="map-settings-open" @click="openExplorer">
-            <app-icon name="map-pin"></app-icon> Abrir explorador
+            <app-icon name="map-pin"></app-icon> {{ $t('ui.map.settings.open_explorer') }}
           </button>
         </header>
 
@@ -227,30 +233,30 @@
 
         <section class="map-config__card" data-od-id="map-settings-sites">
           <header class="map-config__card-head">
-            <h2>Sedes geográficas</h2>
-            <p>Las coordenadas ubican cada sede en el mapa. {{ stats.sites }} sedes y {{ stats.buildings }} edificios registrados.</p>
+            <h2>{{ $t('ui.map.settings.sites_title') }}</h2>
+            <p>{{ $t('ui.map.settings.sites_lead', { sites: stats.sites, buildings: stats.buildings }) }}</p>
           </header>
           <div class="map-config__sites">
             <form v-for="site in sites" :key="site.id" class="map-site-form" @submit.prevent="saveSite(site.id)">
               <h3>{{ site.label }}</h3>
               <p class="map-site-form__hint mono">{{ site.geo ? site.geo.city + ' · ' + site.geo.region : '' }}</p>
               <label class="map-field">
-                <span>Latitud</span>
+                <span>{{ $t('ui.map.field.latitude') }}</span>
                 <input v-model="geoDraft[site.id].lat" type="text" inputmode="decimal" autocomplete="off">
               </label>
               <label class="map-field">
-                <span>Longitud</span>
+                <span>{{ $t('ui.map.field.longitude') }}</span>
                 <input v-model="geoDraft[site.id].lng" type="text" inputmode="decimal" autocomplete="off">
               </label>
               <label class="map-field map-field--wide">
-                <span>Dirección</span>
+                <span>{{ $t('ui.map.field.address') }}</span>
                 <input v-model="geoDraft[site.id].address" type="text" autocomplete="off">
               </label>
               <p v-if="geoErrors[site.id]" class="map-config__error" role="alert">{{ geoErrors[site.id] }}</p>
               <div class="map-site-form__actions">
-                <button type="submit" class="btn btn--primary btn--small">Guardar</button>
-                <button type="button" class="btn btn--ghost btn--small" @click="resetSite(site.id)">Restablecer</button>
-                <span v-if="geoSaved[site.id]" class="map-config__saved mono">Guardado</span>
+                <button type="submit" class="btn btn--primary btn--small">{{ $t('ui.map.action.save') }}</button>
+                <button type="button" class="btn btn--ghost btn--small" @click="resetSite(site.id)">{{ $t('ui.map.action.reset') }}</button>
+                <span v-if="geoSaved[site.id]" class="map-config__saved mono">{{ $t('ui.map.state.saved') }}</span>
               </div>
             </form>
           </div>
@@ -259,22 +265,22 @@
         <section class="map-config__card" data-od-id="map-settings-plans">
           <header class="map-config__card-head map-config__card-head--row">
             <div>
-              <h2>Planos y capas</h2>
-              <p>Los planos se asocian a una planta y se muestran como capa del interior. Formatos admitidos: SVG o imagen.</p>
+              <h2>{{ $t('ui.map.settings.plans_title') }}</h2>
+              <p>{{ $t('ui.map.settings.plans_lead') }}</p>
             </div>
             <button type="button" class="btn btn--primary btn--small" data-od-id="map-settings-add-plan" @click="openPlanDialog">
-              <app-icon name="plus"></app-icon> Agregar plano
+              <app-icon name="plus"></app-icon> {{ $t('ui.map.action.add_plan') }}
             </button>
           </header>
           <div class="map-plan-table-wrap">
             <table class="map-plan-table">
               <thead>
                 <tr>
-                  <th scope="col">Plano</th>
-                  <th scope="col">Planta</th>
-                  <th scope="col">Visibilidad</th>
-                  <th scope="col">Opacidad</th>
-                  <th scope="col"><span class="sr-only">Acciones</span></th>
+                  <th scope="col">{{ $t('ui.map.col.plan') }}</th>
+                  <th scope="col">{{ $t('ui.map.col.floor') }}</th>
+                  <th scope="col">{{ $t('ui.map.col.visibility') }}</th>
+                  <th scope="col">{{ $t('ui.map.col.opacity') }}</th>
+                  <th scope="col"><span class="sr-only">{{ $t('ui.map.col.actions') }}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -287,22 +293,22 @@
                   <td>
                     <label class="map-check map-check--inline">
                       <input type="checkbox" :checked="plan.visible" @change="togglePlan(plan)"
-                             :aria-label="'Mostrar el plano ' + plan.name">
-                      <span>{{ plan.visible ? 'Visible' : 'Oculto' }}</span>
+                             :aria-label="$t('ui.map.plan.show_aria', { name: plan.name })">
+                      <span>{{ plan.visible ? $t('ui.map.plan.visible') : $t('ui.map.plan.hidden') }}</span>
                     </label>
                   </td>
                   <td>
                     <input type="range" min="0.2" max="1" step="0.05" :value="plan.opacity"
-                           class="map-plan-table__range" :aria-label="'Opacidad de ' + plan.name"
+                           class="map-plan-table__range" :aria-label="$t('ui.map.plan.opacity_aria', { name: plan.name })"
                            @input="setPlanOpacity(plan, $event.target.value)">
                   </td>
                   <td class="map-plan-table__actions">
                     <template v-if="confirmPlanId === plan.id">
-                      <button type="button" class="text-button text-button--danger" @click="removePlan(plan.id)">Confirmar</button>
-                      <button type="button" class="text-button" @click="confirmPlanId = ''">Cancelar</button>
+                      <button type="button" class="text-button text-button--danger" @click="removePlan(plan.id)">{{ $t('ui.map.action.confirm') }}</button>
+                      <button type="button" class="text-button" @click="confirmPlanId = ''">{{ $t('ui.common.cancel') }}</button>
                     </template>
                     <button v-else type="button" class="icon-button icon-button--small"
-                            :aria-label="'Eliminar el plano ' + plan.name" @click="askRemovePlan(plan.id)">
+                            :aria-label="$t('ui.map.plan.remove_aria', { name: plan.name })" @click="askRemovePlan(plan.id)">
                       <app-icon name="trash"></app-icon>
                     </button>
                   </td>
@@ -312,116 +318,115 @@
           </div>
           <p class="map-config__hint">
             <app-icon name="info"></app-icon>
-            Ocultar un plano no elimina su archivo ni el posicionamiento de los activos.
+            {{ $t('ui.map.settings.plans_note') }}
           </p>
         </section>
 
         <section class="map-config__card" data-od-id="map-settings-prefs">
           <header class="map-config__card-head">
-            <h2>Preferencias de visualización</h2>
-            <p>Se aplican al abrir el explorador y se guardan en este navegador.</p>
+            <h2>{{ $t('ui.map.settings.prefs_title') }}</h2>
+            <p>{{ $t('ui.map.settings.prefs_lead') }}</p>
           </header>
           <div class="map-config__prefs">
             <fieldset class="map-layers__group">
-              <legend>Base cartográfica</legend>
+              <legend>{{ $t('ui.map.pref.base') }}</legend>
               <label class="map-radio">
                 <input type="radio" name="settings-base" value="esquema" :checked="prefs.base === 'esquema'"
                        @change="setPref('base', 'esquema')">
-                <span>Esquema general</span>
+                <span>{{ $t('ui.map.pref.base_schema') }}</span>
               </label>
               <label class="map-radio">
                 <input type="radio" name="settings-base" value="detalle" :checked="prefs.base === 'detalle'"
                        @change="setPref('base', 'detalle')">
-                <span>Detalle departamental</span>
+                <span>{{ $t('ui.map.pref.base_detail') }}</span>
               </label>
             </fieldset>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.labels !== false" @change="setPref('labels', $event.target.checked)">
-              <span>Etiquetas de ciudades y departamentos</span>
+              <span>{{ $t('ui.map.pref.labels') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.clusters !== false" @change="setPref('clusters', $event.target.checked)">
-              <span>Agrupar marcadores próximos</span>
+              <span>{{ $t('ui.map.pref.clusters') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.showPlans !== false" @change="setPref('showPlans', $event.target.checked)">
-              <span>Mostrar planos al abrir una planta</span>
+              <span>{{ $t('ui.map.pref.show_plans') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.animations !== false" @change="setPref('animations', $event.target.checked)">
-              <span>Transiciones animadas del mapa</span>
+              <span>{{ $t('ui.map.pref.animations') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.showRetired" @change="setPref('showRetired', $event.target.checked)">
-              <span>Incluir activos dados de baja en el explorador</span>
+              <span>{{ $t('ui.map.pref.show_retired') }}</span>
             </label>
           </div>
           <p class="map-config__hint">
             <app-icon name="eye"></app-icon>
-            El explorador respeta la preferencia de movimiento reducido del sistema operativo.
+            {{ $t('ui.map.pref.reduced_note') }}
           </p>
         </section>
 
         <section class="map-config__card" data-od-id="map-settings-positions">
           <header class="map-config__card-head">
-            <h2>Posicionamiento de activos</h2>
+            <h2>{{ $t('ui.map.settings.positions_title') }}</h2>
             <p>
-              {{ positionedCount }} de {{ assets.length }} activos tienen una posición individual sobre un plano.
-              El resto se agrupa por sala o zona y sigue visible en la estructura.
+              {{ $t('ui.map.settings.positions_lead', { placed: positionedCount, total: assets.length }) }}
             </p>
           </header>
           <div class="map-config__actions">
             <button type="button" class="btn btn--ghost btn--small" @click="clearPositions">
               <app-icon name="restore"></app-icon>
-              {{ confirmPositions ? 'Confirmar: quitar todas las posiciones' : 'Quitar todas las posiciones' }}
+              {{ confirmPositions ? $t('ui.map.settings.clear_positions_confirm') : $t('ui.map.settings.clear_positions') }}
             </button>
-            <button v-if="confirmPositions" type="button" class="text-button" @click="confirmPositions = false">Cancelar</button>
-            <span class="map-config__hint-inline">Las posiciones se editan arrastrando los marcadores en el plano.</span>
+            <button v-if="confirmPositions" type="button" class="text-button" @click="confirmPositions = false">{{ $t('ui.common.cancel') }}</button>
+            <span class="map-config__hint-inline">{{ $t('ui.map.settings.positions_hint') }}</span>
           </div>
         </section>
 
         <div v-if="planDialog.open" class="map-dialog" role="dialog" aria-modal="true" aria-labelledby="map-plan-dialog-title">
           <form class="map-dialog__panel" @submit.prevent="createPlan">
             <header class="map-dialog__head">
-              <h2 id="map-plan-dialog-title">Agregar plano</h2>
-              <button type="button" class="icon-button" aria-label="Cerrar" @click="closePlanDialog">
+              <h2 id="map-plan-dialog-title">{{ $t('ui.map.action.add_plan') }}</h2>
+              <button type="button" class="icon-button" :aria-label="$t('ui.map.action.close')" @click="closePlanDialog">
                 <app-icon name="close"></app-icon>
               </button>
             </header>
             <label class="map-field">
-              <span>Nombre del plano</span>
-              <input v-model="planDialog.name" type="text" placeholder="Planta de oficinas" autocomplete="off">
+              <span>{{ $t('ui.map.dialog.name') }}</span>
+              <input v-model="planDialog.name" type="text" :placeholder="$t('ui.map.dialog.name_placeholder')" autocomplete="off">
             </label>
             <label class="map-field">
-              <span>Planta</span>
+              <span>{{ $t('ui.map.dialog.floor') }}</span>
               <select v-model="planDialog.floor">
                 <option v-for="floor in floors" :key="floor.id" :value="floor.id">{{ floorLabel(floor.id) }}</option>
               </select>
             </label>
             <label class="map-field">
-              <span>Tipo de plano</span>
+              <span>{{ $t('ui.map.dialog.kind') }}</span>
               <select v-model="planDialog.kind">
-                <option value="Plano personalizado">Plano personalizado</option>
-                <option value="Planta de oficinas">Planta de oficinas</option>
-                <option value="Planta técnica">Planta técnica</option>
-                <option value="Planta industrial">Planta industrial</option>
+                <option value="custom">{{ $t('ui.map.kind.custom') }}</option>
+                <option value="office">{{ $t('ui.map.kind.office') }}</option>
+                <option value="technical">{{ $t('ui.map.kind.technical') }}</option>
+                <option value="industrial">{{ $t('ui.map.kind.industrial') }}</option>
               </select>
             </label>
             <label class="map-field">
-              <span>Archivo SVG o imagen</span>
+              <span>{{ $t('ui.map.dialog.file') }}</span>
               <input type="file" accept=".svg,image/*" @change="pickPlanFile">
             </label>
             <label class="map-field">
-              <span>O elige un plano de ejemplo</span>
+              <span>{{ $t('ui.map.dialog.preset') }}</span>
               <select v-model="planDialog.src">
-                <option value="">Sin archivo seleccionado</option>
+                <option value="">{{ $t('ui.map.dialog.no_file') }}</option>
                 <option v-for="preset in planPresets" :key="preset" :value="preset">{{ preset }}</option>
               </select>
             </label>
             <p v-if="planDialog.error" class="map-config__error" role="alert">{{ planDialog.error }}</p>
             <footer class="map-dialog__foot">
-              <button type="button" class="btn btn--ghost btn--small" @click="closePlanDialog">Cancelar</button>
-              <button type="submit" class="btn btn--primary btn--small">Agregar plano</button>
+              <button type="button" class="btn btn--ghost btn--small" @click="closePlanDialog">{{ $t('ui.common.cancel') }}</button>
+              <button type="submit" class="btn btn--primary btn--small">{{ $t('ui.map.action.add_plan') }}</button>
             </footer>
           </form>
         </div>

@@ -1,6 +1,13 @@
 (function () {
   'use strict';
 
+  // Human-visible copy comes from the shared catalog; the runtime is optional so
+  // the module still loads in a harness without i18n.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const Engine = window.AssetMapEngine;
   const Data = window.AssetMapData;
 
@@ -104,7 +111,7 @@
         this.floorZoom = 1;
         if (!options || options.keepSelection !== true) this.selectedId = '';
         if (!options || options.silent !== true) {
-          this.announce = 'Plano abierto: ' + floor.name + ', ' + Engine.buildingById(this.source, floor.building).name + '.';
+          this.announce = tr('ui.map.announce.floor_opened', { floor: floor.name, building: Engine.buildingById(this.source, floor.building).name });
         }
       },
       openPlan(planId) {
@@ -116,14 +123,14 @@
         this.selectedRoom = '';
         this.floorZoom = 1;
         if (this.activeSiteId) this.focusActiveSite(true);
-        this.announce = 'Vista de mapa restaurada.';
+        this.announce = tr('ui.map.announce.map_restored');
       },
       selectRoom(roomId, floorId) {
         if (floorId && floorId !== this.activeFloorId) this.openFloor(floorId, { silent: true });
         this.selectedRoom = roomId;
         this.selectedId = '';
         const room = Engine.roomById(this.source, roomId);
-        this.announce = 'Sala ' + (room ? room.name : '') + ' seleccionada.';
+        this.announce = tr('ui.map.announce.room_selected', { room: room ? room.name : '' });
       },
       showAssetFloor() {
         const asset = this.selectedAsset;
@@ -166,7 +173,7 @@
       onMarkerUp() {
         if (this.drag) {
           const asset = (this.source.assets || []).find((item) => item.id === this.drag.id);
-          this.announce = 'Posición de ' + (asset ? asset.name : 'activo') + ' actualizada en el plano.';
+          this.announce = tr('ui.map.announce.position_updated', { name: asset ? asset.name : '' });
           this.persistServerPosition(this.drag.id, this.activeFloorId);
         }
         this.drag = null;
@@ -175,7 +182,7 @@
       },
       clearPosition(assetId) {
         Engine.removePosition(this.source, assetId);
-        this.announce = 'Posición individual eliminada; el activo vuelve a su sala.';
+        this.announce = tr('ui.map.announce.position_removed');
         if (this.app.serverMapMode) {
           this.app.saveOrganizationPosition(assetId, '', null, null);
         }
@@ -199,13 +206,13 @@
         if (event.key === 'ArrowDown') next.y += step;
         Engine.setPosition(this.source, marker.asset.id, this.activeFloorId, next.x, next.y);
         this.persistServerPosition(marker.asset.id, this.activeFloorId);
-        this.announce = 'Posición de ' + marker.asset.name + ' ajustada.';
+        this.announce = tr('ui.map.announce.position_adjusted', { name: marker.asset.name });
         event.preventDefault();
       },
       // ------------------------------------------------------------ map layers,
       togglePlan(plan) {
         Engine.setPlan(this.app, plan.id, { visible: !plan.visible });
-        this.announce = 'Plano ' + plan.name + (plan.visible ? ' oculto' : ' visible') + '.';
+        this.announce = plan.visible ? tr('ui.map.announce.plan_hidden', { name: plan.name }) : tr('ui.map.announce.plan_visible', { name: plan.name });
       },
       setPlanOpacity(value) {
         Engine.setPrefs(this.app, { planOpacity: Math.max(0.2, Math.min(1, Number(value))) });

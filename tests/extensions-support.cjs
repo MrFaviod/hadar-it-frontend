@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
+const testI18n = require('./i18n-test-runtime.cjs');
 
 function makeLocation(origin) {
   return {
@@ -83,6 +84,9 @@ function createSandbox(options) {
   window.self = window;
   window.document = makeDocument();
   window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  // Modules resolve their copy through `window.ItsmI18n`; the sandbox has no Vue
+  // renderer, so the catalog-backed test double supplies the same contract.
+  testI18n.install(window);
   const sandbox = {
     window,
     document: window.document,

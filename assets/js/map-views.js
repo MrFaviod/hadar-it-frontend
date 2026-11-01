@@ -2,6 +2,13 @@
   'use strict';
 
   const Engine = window.AssetMapEngine;
+
+  // Human-visible copy comes from the shared catalog. The runtime is resolved at
+  // call time so the component still loads in a harness without i18n.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
   const Data = window.AssetMapData;
   const FloorLogic = window.AssetMapFloorLogic || { computed: {}, methods: {} };
 
@@ -125,7 +132,7 @@
         return {
           id: 'plan-' + this.activeFloorId,
           floor: this.activeFloorId,
-          name: meta.planRef || meta.planPage || (this.floorContext && this.floorContext.floorName) || 'Plano de planta',
+          name: meta.planRef || meta.planPage || (this.floorContext && this.floorContext.floorName) || tr('ui.map.plan.fallback_name'),
           src: this.floorPlanSrc,
           width: Number(meta.width) || Engine.PLAN_W,
           height: Number(meta.height) || Engine.PLAN_H,
@@ -163,7 +170,7 @@
         if (this.floorView.orphans.length) {
           groups.push({
             id: 'floor-orphans',
-            name: 'Sin sala asignada en esta planta',
+            name: tr('ui.map.no_room'),
             assets: this.floorView.orphans
           });
         }
@@ -368,7 +375,7 @@
       initMap() {
         if (this.map || !this.$refs.mapCanvas) return;
         if (!window.maplibregl) {
-          this.mapError = 'El motor del mapa no está disponible en este navegador.';
+          this.mapError = tr('ui.map.error.engine');
           return;
         }
         try {
@@ -385,7 +392,7 @@
             fadeDuration: 0
           });
         } catch (error) {
-          this.mapError = 'No se pudo iniciar el mapa. La estructura de ubicaciones sigue disponible.';
+          this.mapError = tr('ui.map.error.init');
           return;
         }
         this.map.on('load', () => {
@@ -396,7 +403,7 @@
         });
         this.map.on('error', (event) => {
           if (event && event.error && !this.mapReady) {
-            this.mapError = 'No se pudo dibujar la base cartográfica.';
+            this.mapError = tr('ui.map.error.base');
           }
         });
         this.map.on('move', this.syncScreen);
@@ -453,7 +460,7 @@
             y: cluster.y,
             count: points.reduce((sum, point) => sum + point.count, 0),
             sites: points,
-            title: points.length === 1 ? points[0].site.label : points.length + ' sedes',
+            title: points.length === 1 ? points[0].site.label : tr('ui.map.cluster.sites', { count: points.length }),
             empty: points.every((point) => !point.count)
           };
         });
@@ -468,7 +475,7 @@
           const bounds = new window.maplibregl.LngLatBounds();
           cluster.sites.forEach((point) => bounds.extend([point.lng, point.lat]));
           this.map.fitBounds(bounds, { padding: 90, maxZoom: 11, duration: this.mapCameraDuration() });
-          this.announce = 'Agrupación de ' + cluster.sites.length + ' sedes ampliada.';
+          this.announce = tr('ui.map.announce.cluster', { count: cluster.sites.length });
           return;
         }
         this.selectSite(cluster.sites[0].id);
@@ -493,7 +500,7 @@
       },
       toggleBase() {
         Engine.setPrefs(this.app, { base: this.prefs.base === 'detalle' ? 'esquema' : 'detalle' });
-        this.announce = 'Base cartográfica: ' + (this.prefs.base === 'detalle' ? 'detalle departamental' : 'esquema general') + '.';
+        this.announce = tr('ui.map.announce.base', { base: this.prefs.base === 'detalle' ? tr('ui.map.announce.base_detail') : tr('ui.map.announce.base_schema') });
       },
       // ------------------------------------------------------------ navigation,
       selectSite(siteId, options) {
@@ -513,7 +520,7 @@
             duration: this.mapCameraDuration()
           });
         }
-        this.announce = site.label + ' seleccionada, ' + Engine.siteCount(this.app, this.filters, siteId) + ' activos.';
+        this.announce = tr('ui.map.announce.site_selected', { site: site.label, count: Engine.siteCount(this.app, this.filters, siteId) });
       },
       selectSiteBuildings(siteId) {
         const site = Engine.siteById(this.app, siteId);
@@ -566,7 +573,7 @@
       },
       clearFilters() {
         this.filters = { categories: [], sites: [], states: [], locations: [], search: '' };
-        this.announce = 'Filtros del explorador restablecidos.';
+        this.announce = tr('ui.map.announce.filters_reset');
       },
       siteCount(siteId) {
         return Engine.siteCount(this.app, this.filters, siteId);
@@ -604,7 +611,7 @@
             signal
           });
           if (serial !== this._planSerial) return;
-          if (!blob || typeof blob.size !== 'number' || !blob.size) throw new Error('El plano no contiene una imagen.');
+          if (!blob || typeof blob.size !== 'number' || !blob.size) throw new Error(tr('ui.map.error.plan_empty'));
           this.floorPlanMeta = meta;
           this.floorPlanSrc = URL.createObjectURL(blob);
           this.floorPlanState = 'ready';
@@ -615,7 +622,7 @@
           if (serial !== this._planSerial) return;
           if (error && error.name === 'AbortError') return;
           this.floorPlanState = error && error.status === 404 ? 'empty' : 'error';
-          this.floorPlanError = (error && error.message) || 'No se pudo cargar el plano de la planta.';
+          this.floorPlanError = (error && error.message) || tr('ui.map.error.plan_load');
         }
       },
       releaseFloorPlan() {
@@ -646,7 +653,7 @@
         if (!canvas || !this.floorPlanSrc) return;
         if (!window.maplibregl) {
           this.floorPlanState = 'error';
-          this.floorPlanError = 'MapLibre no está disponible para dibujar el plano.';
+          this.floorPlanError = tr('ui.map.error.maplibre');
           return;
         }
         this.destroyFloorMap();
@@ -695,7 +702,7 @@
             this.syncFloorViewport();
           } catch (error) {
             this.floorPlanState = 'error';
-            this.floorPlanError = 'No se pudo dibujar la imagen del plano.';
+            this.floorPlanError = tr('ui.map.error.plan_draw');
           }
         });
         map.on('move', this.syncFloorViewport);
@@ -708,7 +715,7 @@
         });
         map.on('error', () => {
           if (this._floorMap === map && !this._floorMapReady && this.floorPlanState === 'ready') {
-            this.floorPlanError = 'No se pudo cargar la imagen del plano.';
+            this.floorPlanError = tr('ui.map.error.plan_load');
           }
         });
       },
@@ -761,7 +768,7 @@
         }
         this.floorPlanVisible = !this.floorPlanVisible;
         this.applyFloorPlanStyle();
-        this.announce = 'Plano ' + (plan.name || '') + (this.floorPlanVisible ? ' visible.' : ' oculto.');
+        this.announce = this.floorPlanVisible ? tr('ui.map.announce.plan_visible', { name: plan.name || '' }) : tr('ui.map.announce.plan_hidden', { name: plan.name || '' });
       },
       setPlanOpacity(value) {
         if (!this.serverMapMode) {
@@ -848,18 +855,18 @@
       <div class="map-page" data-od-id="infra-explorer">
         <header class="map-page__head">
           <div class="map-page__titles">
-            <p class="eyebrow">Infraestructura</p>
-            <h1 id="infra-title">Explorador de infraestructura</h1>
+            <p class="eyebrow">{{ $t('ui.map.explorer.eyebrow') }}</p>
+            <h1 id="infra-title">{{ $t('ui.map.explorer.title') }}</h1>
             <p class="map-page__meta mono">
-              {{ counts.assets }} activos · {{ counts.sites }} sedes · {{ counts.floors }} plantas · {{ counts.plans }} planos
+              {{ $t('ui.map.explorer.meta', { assets: counts.assets, sites: counts.sites, floors: counts.floors, plans: counts.plans }) }}
             </p>
           </div>
-          <nav class="infra-tabs" aria-label="Modo de visualización">
+          <nav class="infra-tabs" :aria-label="$t('ui.map.aria.view_mode')">
             <a class="infra-tab is-active" href="#/infra/mapa" aria-current="page">
-              <app-icon name="map-pin"></app-icon> Mapa
+              <app-icon name="map-pin"></app-icon> {{ $t('ui.map.tab.map') }}
             </a>
             <a class="infra-tab" :href="graphHref">
-              <app-icon name="network"></app-icon> Grafo
+              <app-icon name="network"></app-icon> {{ $t('ui.map.tab.graph') }}
             </a>
           </nav>
         </header>
@@ -868,29 +875,29 @@
         <div class="map-toolbar" data-od-id="map-toolbar">
           <label class="map-search">
             <app-icon name="search"></app-icon>
-            <input type="search" v-model="filters.search" placeholder="Buscar activo, código, IP o responsable"
-                   aria-label="Buscar activos en el explorador">
+            <input type="search" v-model="filters.search" :placeholder="$t('ui.map.aria.search_placeholder')"
+                   :aria-label="$t('ui.map.aria.search')">
           </label>
           <div class="map-toolbar__actions">
             <button type="button" class="btn btn--ghost btn--small" :aria-expanded="filtersOpen ? 'true' : 'false'"
                     data-od-id="map-filters-toggle" @click="filtersOpen = !filtersOpen">
-              <app-icon name="sliders"></app-icon> Filtros
+              <app-icon name="sliders"></app-icon> {{ $t('ui.map.toolbar.filters') }}
               <span v-if="activeFilterCount" class="map-badge mono">{{ activeFilterCount }}</span>
             </button>
             <button type="button" class="btn btn--ghost btn--small" :aria-expanded="layersOpen ? 'true' : 'false'"
                     data-od-id="map-layers-toggle" @click="layersOpen = !layersOpen">
-              <app-icon name="layers"></app-icon> Capas
+              <app-icon name="layers"></app-icon> {{ $t('ui.map.toolbar.layers') }}
             </button>
             <button v-if="level === 'floor'" type="button" class="btn btn--secondary btn--small"
                     data-od-id="map-back-geo" @click="backToGeo">
-              <app-icon name="map-pin"></app-icon> Volver al mapa
+              <app-icon name="map-pin"></app-icon> {{ $t('ui.map.filter.back') }}
             </button>
           </div>
         </div>
 
-        <section v-if="filtersOpen" class="map-filters" data-od-id="map-filters" aria-label="Filtros del explorador">
+        <section v-if="filtersOpen" class="map-filters" data-od-id="map-filters" :aria-label="$t('ui.map.aria.filters')">
           <fieldset class="graph-filter-group">
-            <legend>Categoría</legend>
+            <legend>{{ $t('ui.map.filter.category') }}</legend>
             <label v-for="category in categories" :key="category.id" class="graph-check">
               <input type="checkbox" :checked="filters.categories.includes(category.id)"
                      @change="toggleList(filters.categories, category.id)">
@@ -898,7 +905,7 @@
             </label>
           </fieldset>
           <fieldset class="graph-filter-group">
-            <legend>Sede</legend>
+            <legend>{{ $t('ui.map.filter.site') }}</legend>
             <label v-for="site in sites" :key="site.id" class="graph-check">
               <input type="checkbox" :checked="filters.sites.includes(site.id)"
                      @change="toggleList(filters.sites, site.id)">
@@ -906,7 +913,7 @@
             </label>
           </fieldset>
           <fieldset class="graph-filter-group">
-            <legend>Estado</legend>
+            <legend>{{ $t('ui.map.filter.state') }}</legend>
             <label v-for="status in statuses" :key="status" class="graph-check">
               <input type="checkbox" :checked="filters.states.includes(status) || filters.states.includes((app.assetAdmin.statuses.find(s=>s.label===status)||{}).id)"
                      @change="toggleList(filters.states, (app.assetAdmin.statuses.find(s=>s.label===status)||{}).id || status)">
@@ -916,54 +923,54 @@
           <div class="map-filters__foot">
             <label class="map-check">
               <input type="checkbox" :checked="prefs.showRetired" @change="setPref('showRetired', $event.target.checked)">
-              <span>Incluir activos dados de baja</span>
+              <span>{{ $t('ui.map.filter.show_retired') }}</span>
             </label>
-            <button type="button" class="text-button" @click="clearFilters">Limpiar filtros</button>
+            <button type="button" class="text-button" @click="clearFilters">{{ $t('ui.map.filter.clear') }}</button>
           </div>
         </section>
 
-        <section v-if="layersOpen" class="map-popover" data-od-id="map-layers" aria-label="Capas y planos">
+        <section v-if="layersOpen" class="map-popover" data-od-id="map-layers" :aria-label="$t('ui.map.aria.layers')">
           <header class="map-popover__head">
-            <h2>Capas y planos</h2>
-            <button type="button" class="icon-button" aria-label="Cerrar capas" @click="layersOpen = false">
+            <h2>{{ $t('ui.map.layers.title') }}</h2>
+            <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.close_layers')" @click="layersOpen = false">
               <app-icon name="close"></app-icon>
             </button>
           </header>
           <div class="map-popover__body">
             <fieldset class="map-layers__group">
-              <legend>Base cartográfica</legend>
+              <legend>{{ $t('ui.map.layers.base') }}</legend>
               <label class="map-radio">
                 <input type="radio" name="map-base" value="esquema" :checked="prefs.base === 'esquema'"
                        @change="setPref('base', 'esquema')">
-                <span>Esquema general</span>
+                <span>{{ $t('ui.map.layers.schema') }}</span>
               </label>
               <label class="map-radio">
                 <input type="radio" name="map-base" value="detalle" :checked="prefs.base === 'detalle'"
                        @change="setPref('base', 'detalle')">
-                <span>Detalle departamental</span>
+                <span>{{ $t('ui.map.layers.detail') }}</span>
               </label>
             </fieldset>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.labels !== false" @change="setPref('labels', $event.target.checked)">
-              <span>Etiquetas de ciudades</span>
+              <span>{{ $t('ui.map.layers.city_labels') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.clusters !== false" @change="setPref('clusters', $event.target.checked)">
-              <span>Agrupar marcadores próximos</span>
+              <span>{{ $t('ui.map.layers.clusters') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.showPlans !== false" @change="setPref('showPlans', $event.target.checked)">
-              <span>Mostrar planos de planta</span>
+              <span>{{ $t('ui.map.layers.floor_plans') }}</span>
             </label>
             <label class="map-check">
               <input type="checkbox" :checked="prefs.animations !== false" @change="setPref('animations', $event.target.checked)">
-              <span>Transiciones animadas</span>
+              <span>{{ $t('ui.map.layers.animations') }}</span>
             </label>
             <label class="map-range">
-              <span>Opacidad del plano <span class="mono">{{ Math.round(prefs.planOpacity * 100) }}%</span></span>
+              <span>{{ $t('ui.map.layers.opacity') }} <span class="mono">{{ Math.round(prefs.planOpacity * 100) }}%</span></span>
               <input type="range" min="0.2" max="1" step="0.05" :value="prefs.planOpacity" @input="setPlanOpacity($event.target.value)">
             </label>
-            <h3 class="map-popover__subhead">Planos disponibles</h3>
+            <h3 class="map-popover__subhead">{{ $t('ui.map.layers.available') }}</h3>
             <ul class="map-plan-list">
               <li v-for="plan in availablePlans" :key="plan.id" class="map-plan-list__row">
                 <label class="map-check">
@@ -971,11 +978,11 @@
                   <span>{{ plan.name }}</span>
                 </label>
                 <span class="mono map-plan-list__floor">{{ floorLabel(plan.floor) }}</span>
-                <button type="button" class="text-button" @click="openPlan(plan.id)">Abrir</button>
+                <button type="button" class="text-button" @click="openPlan(plan.id)">{{ $t('ui.map.action.open') }}</button>
               </li>
             </ul>
             <button type="button" class="btn btn--secondary btn--small map-popover__cta" @click="goToConfig">
-              <app-icon name="sliders"></app-icon> Administrar en Configuración
+              <app-icon name="sliders"></app-icon> {{ $t('ui.map.layers.manage') }}
             </button>
           </div>
         </section>
@@ -983,16 +990,16 @@
         </div>
 
         <div class="map-layout" :class="'map-layout--' + level">
-          <aside class="map-tree" data-od-id="map-locations" aria-label="Ubicaciones">
+          <aside class="map-tree" data-od-id="map-locations" :aria-label="$t('ui.map.aria.locations')">
             <header class="map-tree__head">
-              <h2>Ubicaciones</h2>
-              <span class="mono">{{ counts.rooms }} salas</span>
+              <h2>{{ $t('ui.map.tree.locations') }}</h2>
+              <span class="mono">{{ $t('ui.map.tree.rooms_count', { count: counts.rooms }) }}</span>
             </header>
             <ul class="loc-tree">
               <li v-for="site in tree" :key="site.id" class="loc-tree__site">
                 <div class="loc-tree__row" :class="{ 'is-active': activeSiteId === site.id }">
                   <button type="button" class="loc-tree__toggle" :aria-expanded="isSiteOpen(site.id) ? 'true' : 'false'"
-                          :aria-label="'Expandir ' + site.name" @click="toggleSite(site.id)">
+                          :aria-label="$t('ui.map.aria.expand_site', { site: site.name })" @click="toggleSite(site.id)">
                     <app-icon :name="isSiteOpen(site.id) ? 'chevron-down' : 'chevron-right'"></app-icon>
                   </button>
                   <button type="button" class="loc-tree__label" @click="selectSite(site.id)">
@@ -1015,7 +1022,7 @@
                         <button type="button" class="loc-tree__floor" :class="{ 'is-active': activeFloorId === floor.id }"
                                 :aria-current="activeFloorId === floor.id ? 'true' : null" @click="openFloor(floor.id)">
                           <span class="loc-tree__floor-name">{{ floor.name }}</span>
-                          <span v-if="floor.plan" class="loc-tree__plan" title="Plano disponible">
+                          <span v-if="floor.plan" class="loc-tree__plan" :title="$t('ui.map.aria.plan_available')">
                             <app-icon name="layers"></app-icon>
                           </span>
                           <span class="mono loc-tree__count">{{ floor.count }}</span>
@@ -1035,13 +1042,13 @@
                 </ul>
               </li>
             </ul>
-            <p class="map-tree__foot">Los activos sin posición individual se agrupan por sala o zona.</p>
+            <p class="map-tree__foot">{{ $t('ui.map.tree.rooms_note') }}</p>
           </aside>
 
           <div ref="stage" class="map-stage-wrap">
             <div v-show="level === 'geo'" class="map-stage" data-od-id="map-geo">
               <div ref="mapCanvas" class="map-canvas" role="application"
-                   aria-label="Mapa de sedes con marcadores agrupados"></div>
+                   :aria-label="$t('ui.map.aria.map_canvas')"></div>
               <div class="map-overlay" aria-hidden="true">
                 <span v-for="label in screenLabels" :key="'label-' + label.name + label.kind"
                       class="map-label" :class="'map-label--' + label.kind"
@@ -1049,7 +1056,7 @@
                 <button v-for="cluster in screenClusters" :key="cluster.id" type="button"
                         class="map-marker" :class="{ 'is-empty': cluster.empty, 'is-cluster': cluster.sites.length > 1, 'is-selected': activeSiteId && cluster.sites.length === 1 && cluster.sites[0].id === activeSiteId }"
                         :style="{ left: cluster.x + 'px', top: cluster.y + 'px' }"
-                        :aria-label="cluster.title + ', ' + cluster.count + ' activos'"
+                        :aria-label="$t('ui.map.aria.cluster', { title: cluster.title, count: cluster.count })"
                         @click="activateCluster(cluster)">
                   <span class="map-marker__dot" aria-hidden="true"></span>
                   <span class="map-marker__body">
@@ -1058,32 +1065,32 @@
                   </span>
                 </button>
               </div>
-              <div class="map-controls" role="group" aria-label="Controles del mapa">
-                <button type="button" class="icon-button" aria-label="Acercar el mapa" @click="zoomMap(1.4)">
+              <div class="map-controls" role="group" :aria-label="$t('ui.map.aria.map_controls')">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.zoom_in')" @click="zoomMap(1.4)">
                   <app-icon name="plus"></app-icon>
                 </button>
-                <button type="button" class="icon-button" aria-label="Alejar el mapa" @click="zoomMap(0.7)">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.zoom_out')" @click="zoomMap(0.7)">
                   <app-icon name="minus"></app-icon>
                 </button>
                 <span class="map-controls__value mono">{{ mapZoomLabel }}</span>
-                <button type="button" class="icon-button" aria-label="Ver todas las sedes" @click="fitSites">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.fit_sites')" @click="fitSites">
                   <app-icon name="grid"></app-icon>
                 </button>
                 <button type="button" class="icon-button" :aria-pressed="prefs.base === 'detalle' ? 'true' : 'false'"
-                        aria-label="Alternar detalle cartográfico" @click="toggleBase">
+                        :aria-label="$t('ui.map.aria.toggle_base')" @click="toggleBase">
                   <app-icon name="layers"></app-icon>
                 </button>
               </div>
-              <p class="map-legend" aria-label="Familias de categorías visibles">
+              <p class="map-legend" :aria-label="$t('ui.map.aria.legend')">
                 <span v-for="item in legend" :key="item.id" class="map-legend__item">
                   <span class="graph-swatch" :class="'graph-swatch--' + item.id" aria-hidden="true"></span>{{ item.label }}
                 </span>
               </p>
-              <p class="map-attribution">Base cartográfica: Natural Earth · geoBoundaries (CC BY 4.0)</p>
+              <p class="map-attribution">{{ $t('ui.map.attribution') }}</p>
               <p v-if="mapError" class="map-error" role="alert">
                 <app-icon name="alert"></app-icon> {{ mapError }}
               </p>
-              <p v-if="!sitePoints.length" class="map-empty">No hay sedes registradas.</p>
+              <p v-if="!sitePoints.length" class="map-empty">{{ $t('ui.map.empty.no_sites') }}</p>
             </div>
 
             <div v-show="level === 'floor'" class="map-stage map-stage--floor" data-od-id="map-floor">
@@ -1093,7 +1100,7 @@
                   <h2>{{ floorContext.floorName }}</h2>
                 </div>
                 <p class="mono floor-head__meta">
-                  {{ floorView ? floorView.count : 0 }} activos · {{ floorView ? floorView.placedCount : 0 }} posicionados
+                  {{ $t('ui.map.floor.meta', { assets: floorView ? floorView.count : 0, placed: floorView ? floorView.placedCount : 0 }) }}
                 </p>
               </header>
               <div class="floor-scroll">
@@ -1102,30 +1109,30 @@
                     <div ref="floorCanvas" class="floor-map" aria-hidden="true"></div>
                     <div v-if="floorPlanState === 'loading'" class="floor-noplan" role="status">
                       <app-icon name="layers"></app-icon>
-                      <p>Cargando el plano de la planta…</p>
+                      <p>{{ $t('ui.map.floor.loading') }}</p>
                     </div>
                     <div v-else-if="floorPlanState === 'empty'" class="floor-noplan">
                       <app-icon name="layers"></app-icon>
-                      <p>Esta planta no tiene un plano asociado. Los activos se agrupan por sala.</p>
+                      <p>{{ $t('ui.map.floor.no_plan') }}</p>
                     </div>
                     <div v-else-if="floorPlanState === 'error'" class="floor-noplan floor-noplan--error" role="alert">
                       <app-icon name="alert"></app-icon>
                       <p>{{ floorPlanError }}</p>
-                      <button type="button" class="text-button" @click="loadFloorPlan(activeFloorId)">Reintentar</button>
+                      <button type="button" class="text-button" @click="loadFloorPlan(activeFloorId)">{{ $t('ui.map.action.retry') }}</button>
                     </div>
                   </template>
                   <img v-else-if="plan && prefs.showPlans !== false" :src="plan.src" class="floor-plan"
-                       :alt="'Plano de ' + floorContext.buildingName + ', ' + floorContext.floorName"
+                       :alt="$t('ui.map.aria.plan_alt', { building: floorContext.buildingName, floor: floorContext.floorName })"
                        :style="{ opacity: plan.opacity }">
                   <div v-else-if="!serverMapMode" class="floor-noplan">
                     <app-icon name="layers"></app-icon>
-                    <p>Esta planta no tiene un plano asociado. Los activos se agrupan por sala.</p>
+                    <p>{{ $t('ui.map.floor.no_plan') }}</p>
                   </div>
                   <div class="floor-overlay" :class="{ 'floor-overlay--map': serverMapMode }" :style="floorOverlayStyle">
                     <button v-for="room in roomChips" :key="room.id" type="button" class="floor-room"
                             :class="{ 'is-active': selectedRoom === room.id }"
                             :style="{ left: percentX(room.x) + '%', top: floorTop(room.y) + '%' }"
-                            :aria-label="room.name + ': ' + room.count + ' activos agrupados'"
+                            :aria-label="$t('ui.map.aria.room_grouped', { room: room.name, count: room.count })"
                             @click="selectRoom(room.id, activeFloorId)">
                       <span class="floor-room__name">{{ room.name }}</span>
                       <span class="floor-room__count mono">+{{ room.count }}</span>
@@ -1133,7 +1140,7 @@
                     <button v-for="marker in floorMarkers" :key="marker.id" type="button"
                             class="floor-marker" :class="['floor-marker--' + marker.family, { 'is-selected': marker.selected, 'is-cluster': marker.count > 1 }]"
                             :style="{ left: percentX(marker.x) + '%', top: floorTop(marker.y) + '%' }"
-                            :aria-label="marker.count > 1 ? marker.count + ' activos agrupados' : marker.asset.name + ', ' + categoryLabel(marker.asset.category)"
+                            :aria-label="marker.count > 1 ? $t('ui.map.aria.asset_grouped', { count: marker.count }) : $t('ui.map.aria.asset_label', { name: marker.asset.name, category: categoryLabel(marker.asset.category) })"
                             @pointerdown="startMarkerDrag(marker, $event)"
                             @keydown="startMarkerKey($event, marker)"
                             @click="marker.count > 1 ? zoomFloor(1.35) : selectAsset(marker.asset.id)">
@@ -1142,15 +1149,15 @@
                       <span v-else class="floor-marker__code mono">{{ marker.asset.code }}</span>
                     </button>
                     <p v-if="floorView && !floorView.count" class="floor-empty">
-                      Ningún activo coincide con los filtros en esta planta.
+                      {{ $t('ui.map.floor.no_match') }}
                     </p>
                   </div>
                 </div>
               </div>
-              <section v-if="floorLooseGroups.length" class="floor-groups" aria-label="Activos sin posición individual">
+              <section v-if="floorLooseGroups.length" class="floor-groups" :aria-label="$t('ui.map.aria.loose')">
                 <header class="floor-groups__head">
-                  <h3>Sin posición individual</h3>
-                  <p>Estos equipos siguen asociados a su sala o planta.</p>
+                  <h3>{{ $t('ui.map.floor.loose_title') }}</h3>
+                  <p>{{ $t('ui.map.floor.loose_note') }}</p>
                 </header>
                 <details v-for="group in floorLooseGroups" :key="group.id" class="floor-group">
                   <summary class="floor-group__summary">
@@ -1167,32 +1174,32 @@
                   </ul>
                 </details>
               </section>
-              <div class="floor-controls" role="group" aria-label="Controles del plano">
-                <button type="button" class="icon-button" aria-label="Acercar el plano" @click="zoomFloor(1.25)">
+              <div class="floor-controls" role="group" :aria-label="$t('ui.map.aria.floor_controls')">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.zoom_floor_in')" @click="zoomFloor(1.25)">
                   <app-icon name="plus"></app-icon>
                 </button>
                 <span class="floor-controls__value mono">{{ Math.round(floorZoom * 100) }}%</span>
-                <button type="button" class="icon-button" aria-label="Alejar el plano" @click="zoomFloor(0.8)">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.zoom_floor_out')" @click="zoomFloor(0.8)">
                   <app-icon name="minus"></app-icon>
                 </button>
-                <button type="button" class="icon-button" aria-label="Ajustar el plano" @click="resetFloorZoom">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.fit_floor')" @click="resetFloorZoom">
                   <app-icon name="grid"></app-icon>
                 </button>
                 <button v-if="plan" type="button" class="icon-button" :aria-pressed="plan.visible ? 'true' : 'false'"
-                        aria-label="Mostrar u ocultar el plano" @click="togglePlan(plan)">
+                        :aria-label="$t('ui.map.aria.toggle_plan')" @click="togglePlan(plan)">
                   <app-icon name="eye"></app-icon>
                 </button>
               </div>
-              <p class="map-legend" aria-label="Familias de categorías visibles">
+              <p class="map-legend" :aria-label="$t('ui.map.aria.legend')">
                 <span v-for="item in legend" :key="item.id" class="map-legend__item">
                   <span class="graph-swatch" :class="'graph-swatch--' + item.id" aria-hidden="true"></span>{{ item.label }}
                 </span>
-                <span class="map-legend__hint">Arrastra un marcador para ubicarlo; las salas conservan sus activos agrupados.</span>
+                <span class="map-legend__hint">{{ $t('ui.map.floor.drag_hint') }}</span>
               </p>
             </div>
           </div>
 
-          <aside class="map-inspector" data-od-id="map-inspector" aria-label="Detalle de la selección">
+          <aside class="map-inspector" data-od-id="map-inspector" :aria-label="$t('ui.map.aria.selection')">
             <template v-if="selectedAsset">
               <header class="map-inspector__head">
                 <div>
@@ -1200,7 +1207,7 @@
                   <h2>{{ selectedAsset.name }}</h2>
                   <p class="mono map-inspector__code">{{ selectedAsset.code }}</p>
                 </div>
-                <button type="button" class="icon-button" aria-label="Cerrar selección" @click="selectedId = ''">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.close_selection')" @click="selectedId = ''">
                   <app-icon name="close"></app-icon>
                 </button>
               </header>
@@ -1215,52 +1222,52 @@
 
               <section v-if="camera" class="map-camera" data-od-id="map-camera-fov">
                 <header class="map-camera__head">
-                  <h3><app-icon name="camera"></app-icon> Campo de visión</h3>
+                  <h3><app-icon name="camera"></app-icon> {{ $t('ui.map.camera.title') }}</h3>
                   <span class="mono">{{ camera.range }}</span>
                 </header>
                 <img :src="camera.src" :alt="camera.alt" class="map-camera__image" width="640" height="400">
                 <p class="map-camera__caption">{{ camera.caption }}</p>
-                <p class="map-camera__meta mono">{{ camera.heading }}<span v-if="camera.angle"> · {{ camera.angle }}° horizontales</span></p>
+                <p class="map-camera__meta mono">{{ camera.heading }}<span v-if="camera.angle"> · {{ $t('ui.map.camera.angle', { angle: camera.angle }) }}</span></p>
               </section>
 
               <div class="map-inspector__actions">
                 <button type="button" class="btn btn--primary btn--small" data-od-id="map-open-asset" @click="openAsset(selectedAsset.id)">
-                  <app-icon name="file-text"></app-icon> Abrir ficha
+                  <app-icon name="file-text"></app-icon> {{ $t('ui.map.action.open_asset') }}
                 </button>
                 <button type="button" class="btn btn--secondary btn--small" data-od-id="map-open-graph" @click="openGraph">
-                  <app-icon name="network"></app-icon> Ver en grafo
+                  <app-icon name="network"></app-icon> {{ $t('ui.map.action.view_graph') }}
                 </button>
               </div>
               <div class="map-inspector__actions map-inspector__actions--ghost">
                 <button type="button" class="btn btn--ghost btn--small" @click="showAssetFloor">
-                  <app-icon name="layers"></app-icon> Ver en planta
+                  <app-icon name="layers"></app-icon> {{ $t('ui.map.action.view_floor') }}
                 </button>
                 <button v-if="canEdit && maps.positions[selectedAsset.id]" type="button" class="btn btn--ghost btn--small"
                         @click="clearPosition(selectedAsset.id)">
-                  <app-icon name="restore"></app-icon> Quitar posición
+                  <app-icon name="restore"></app-icon> {{ $t('ui.map.action.clear_position') }}
                 </button>
               </div>
               <dl class="map-facts">
-                <div><dt>Sede</dt><dd>{{ siteLabel(selectedAsset.site) }}</dd></div>
-                <div><dt>Ubicación</dt><dd>{{ selectedAsset.location }}</dd></div>
-                <div><dt>Planta</dt><dd>{{ floorLabel(activeFloorId) || 'Sin planta' }}</dd></div>
-                <div><dt>Posición</dt><dd>{{ maps.positions[selectedAsset.id] ? 'Individual en el plano' : 'Agrupada por sala' }}</dd></div>
+                <div><dt>{{ $t('ui.map.filter.site') }}</dt><dd>{{ siteLabel(selectedAsset.site) }}</dd></div>
+                <div><dt>{{ $t('ui.map.field.location') }}</dt><dd>{{ selectedAsset.location }}</dd></div>
+                <div><dt>{{ $t('ui.map.field.floor') }}</dt><dd>{{ floorLabel(activeFloorId) || $t('ui.map.no_floor') }}</dd></div>
+                <div><dt>{{ $t('ui.map.field.position') }}</dt><dd>{{ maps.positions[selectedAsset.id] ? $t('ui.map.position.individual') : $t('ui.map.position.grouped') }}</dd></div>
               </dl>
             </template>
 
             <template v-else-if="selectedRoomData">
               <header class="map-inspector__head">
                 <div>
-                  <p class="eyebrow">Sala</p>
+                  <p class="eyebrow">{{ $t('ui.map.room') }}</p>
                   <h2>{{ selectedRoomData.room.name }}</h2>
                   <p class="mono map-inspector__code">{{ floorContext.floorName }}</p>
                 </div>
-                <button type="button" class="icon-button" aria-label="Cerrar sala" @click="selectedRoom = ''">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.close_room')" @click="selectedRoom = ''">
                   <app-icon name="close"></app-icon>
                 </button>
               </header>
               <p class="map-inspector__note">
-                {{ selectedRoomData.assets.length }} activos sin posición individual. Aparecen agrupados en esta sala.
+                {{ $t('ui.map.room.loose_note', { count: selectedRoomData.assets.length }) }}
               </p>
               <ul class="map-asset-list">
                 <li v-for="asset in selectedRoomData.assets" :key="asset.id">
@@ -1270,17 +1277,17 @@
                   </button>
                 </li>
               </ul>
-              <p v-if="!selectedRoomData.assets.length" class="map-inspector__note">Esta sala no tiene activos con los filtros activos.</p>
+              <p v-if="!selectedRoomData.assets.length" class="map-inspector__note">{{ $t('ui.map.room.no_assets') }}</p>
             </template>
 
             <template v-else-if="activeSite">
               <header class="map-inspector__head">
                 <div>
-                  <p class="eyebrow">Sede</p>
+                  <p class="eyebrow">{{ $t('ui.map.filter.site') }}</p>
                   <h2>{{ activeSite.label }}</h2>
                   <p class="mono map-inspector__code">{{ activeSiteGeo ? activeSiteGeo.lat.toFixed(4) + ', ' + activeSiteGeo.lng.toFixed(4) : '' }}</p>
                 </div>
-                <button type="button" class="icon-button" aria-label="Quitar selección" @click="activeSiteId = ''">
+                <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.clear_selection')" @click="activeSiteId = ''">
                   <app-icon name="close"></app-icon>
                 </button>
               </header>
@@ -1288,33 +1295,33 @@
               <div class="map-metrics">
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.count : 0 }}</span>
-                  <span>activos con filtros</span>
+                  <span>{{ $t('ui.map.metric.filtered') }}</span>
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.total : 0 }}</span>
-                  <span>en el inventario</span>
+                  <span>{{ $t('ui.map.metric.inventory') }}</span>
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.floors : 0 }}</span>
-                  <span>plantas</span>
+                  <span>{{ $t('ui.map.metric.floors') }}</span>
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.cameras : 0 }}</span>
-                  <span>cámaras</span>
+                  <span>{{ $t('ui.map.metric.cameras') }}</span>
                 </div>
               </div>
-              <h3 class="map-inspector__subhead">Plantas y planos</h3>
+              <h3 class="map-inspector__subhead">{{ $t('ui.map.site.plans_title') }}</h3>
               <ul class="map-plan-list">
                 <li v-for="floor in activeSiteFloors"
                     :key="floor.id" class="map-plan-list__row">
                   <span class="map-plan-list__name">{{ floor.name }}</span>
-                  <span class="mono map-plan-list__floor">{{ floor.count }} activos</span>
-                  <button type="button" class="text-button" @click="openFloor(floor.id)">Abrir</button>
+                  <span class="mono map-plan-list__floor">{{ $t('ui.map.floor.asset_count', { count: floor.count }) }}</span>
+                  <button type="button" class="text-button" @click="openFloor(floor.id)">{{ $t('ui.map.action.open') }}</button>
                 </li>
               </ul>
               <div class="map-inspector__actions">
                 <button type="button" class="btn btn--secondary btn--small" @click="focusActiveSite(true)">
-                  <app-icon name="map-pin"></app-icon> Centrar en el mapa
+                  <app-icon name="map-pin"></app-icon> {{ $t('ui.map.action.center') }}
                 </button>
               </div>
             </template>
@@ -1322,12 +1329,12 @@
             <template v-else>
               <header class="map-inspector__head">
                 <div>
-                  <p class="eyebrow">Explorador</p>
-                  <h2>Infraestructura</h2>
+                  <p class="eyebrow">{{ $t('ui.map.inspector.explorer') }}</p>
+                  <h2>{{ $t('ui.map.explorer.eyebrow') }}</h2>
                 </div>
               </header>
               <p class="map-inspector__note">
-                Selecciona una sede en el mapa o una planta en el árbol de ubicaciones para recorrer el interior del edificio.
+                {{ $t('ui.map.inspector.empty_note') }}
               </p>
               <ul class="map-per-site">
                 <li v-for="site in sitePoints" :key="site.id">
@@ -1341,10 +1348,10 @@
                 </li>
               </ul>
               <dl class="map-facts">
-                <div><dt>Plantas</dt><dd>{{ counts.floors }}</dd></div>
-                <div><dt>Planos</dt><dd>{{ counts.plans }}</dd></div>
-                <div><dt>Salas</dt><dd>{{ counts.rooms }}</dd></div>
-                <div><dt>Cámaras</dt><dd>{{ counts.cameras }}</dd></div>
+                <div><dt>{{ $t('ui.map.fact.plants') }}</dt><dd>{{ counts.floors }}</dd></div>
+                <div><dt>{{ $t('ui.map.fact.plans') }}</dt><dd>{{ counts.plans }}</dd></div>
+                <div><dt>{{ $t('ui.map.fact.rooms') }}</dt><dd>{{ counts.rooms }}</dd></div>
+                <div><dt>{{ $t('ui.map.fact.cameras') }}</dt><dd>{{ counts.cameras }}</dd></div>
               </dl>
             </template>
           </aside>
