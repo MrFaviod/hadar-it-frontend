@@ -8,6 +8,13 @@
     return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
   }
 
+  // Module copy resolves through the shared runtime: templates use `$t`, the
+  // toasts, status words and validation messages use this helper.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   /* Phase 6 workspace surfaces.
    *
    * These components replace the prototype import wizard, warranty center and
@@ -18,76 +25,81 @@
    */
   const Views = (window.AssetPhase6Views = window.AssetPhase6Views || {});
 
-  const CATEGORY_LABELS = {
-    photo: 'Fotografía',
-    receipt: 'Comprobante',
-    manual: 'Manual',
-    document: 'Documento'
+  const CATEGORY_KEYS = {
+    photo: 'ui.phase6.category.photo',
+    receipt: 'ui.phase6.category.receipt',
+    manual: 'ui.phase6.category.manual',
+    document: 'ui.phase6.category.document'
   };
   const WARRANTY_STATUSES = ['active', 'cancelled', 'claimed', 'unknown'];
-  const WARRANTY_STATUS_LABELS = {
-    active: 'Vigente',
-    cancelled: 'Cancelada',
-    claimed: 'Reclamada',
-    unknown: 'Sin estado'
+  const WARRANTY_STATUS_KEYS = {
+    active: 'ui.phase6.warranty.status.active',
+    cancelled: 'ui.phase6.warranty.status.cancelled',
+    claimed: 'ui.phase6.warranty.status.claimed',
+    unknown: 'ui.phase6.warranty.status.unknown'
   };
-  const COVERAGE_LABELS = {
-    '': 'Todas',
-    current: 'Vigentes',
-    expiring: 'Próximas a vencer',
-    expired: 'Vencidas',
-    unknown: 'Sin datos'
+  const COVERAGE_KEYS = {
+    '': 'ui.phase6.coverage.all',
+    current: 'ui.phase6.coverage.current',
+    expiring: 'ui.phase6.coverage.expiring',
+    expired: 'ui.phase6.coverage.expired',
+    unknown: 'ui.phase6.coverage.unknown'
   };
   const COVERAGE_TONES = { current: 'ok', expiring: 'warn', expired: 'down', unknown: 'hold' };
-  const CLASS_LABELS = {
-    new: 'Nuevo',
-    safe: 'Coincidencia segura',
-    possible_duplicate: 'Posible duplicado',
-    error: 'Con errores',
-    omitted: 'Omitido'
+  const CLASS_KEYS = {
+    new: 'ui.phase6.classification.new',
+    safe: 'ui.phase6.classification.safe',
+    possible_duplicate: 'ui.phase6.classification.possible_duplicate',
+    error: 'ui.phase6.classification.error',
+    omitted: 'ui.phase6.classification.omitted'
   };
   const CLASS_TONES = { new: 'ok', safe: 'ok', possible_duplicate: 'warn', error: 'down', omitted: 'hold' };
-  const STATE_LABELS = {
-    preview: 'Previsualización',
-    approved: 'Aprobada',
-    queued: 'En cola',
-    running: 'Ejecutando',
-    complete: 'Completada',
-    queue_error: 'Error de cola',
-    error: 'Con errores'
+  const STATE_KEYS = {
+    preview: 'ui.phase6.state.preview',
+    approved: 'ui.phase6.state.approved',
+    queued: 'ui.phase6.state.queued',
+    running: 'ui.phase6.state.running',
+    complete: 'ui.phase6.state.complete',
+    queue_error: 'ui.phase6.state.queue_error',
+    error: 'ui.phase6.state.error'
   };
   const BULK_ACTIONS = [
-    { id: 'update', label: 'Editar campos' },
-    { id: 'assign', label: 'Modificar responsable' },
-    { id: 'transfer', label: 'Trasladar entre ubicaciones' },
-    { id: 'archive', label: 'Archivar activos' }
+    { id: 'update', labelKey: 'ui.phase6.bulk.action.update' },
+    { id: 'assign', labelKey: 'ui.phase6.bulk.action.assign' },
+    { id: 'transfer', labelKey: 'ui.phase6.bulk.action.transfer' },
+    { id: 'archive', labelKey: 'ui.phase6.bulk.action.archive' }
   ];
   const IMPORT_FIELDS = [
-    { id: 'name', label: 'Nombre' },
-    { id: 'quick_code', label: 'Código rápido' },
-    { id: 'category', label: 'Categoría' },
-    { id: 'type', label: 'Tipo' },
-    { id: 'brand', label: 'Marca' },
-    { id: 'model', label: 'Modelo' },
-    { id: 'serial', label: 'Número de serie' },
-    { id: 'ip', label: 'Dirección IP' },
-    { id: 'site', label: 'Sede' },
-    { id: 'location', label: 'Ubicación' },
-    { id: 'responsible', label: 'Responsable' },
-    { id: 'status', label: 'Estado' },
-    { id: 'cost', label: 'Coste' },
-    { id: 'description', label: 'Descripción' }
+    { id: 'name', labelKey: 'ui.labels.field.name' },
+    { id: 'quick_code', labelKey: 'ui.labels.field.quick_code' },
+    { id: 'category', labelKey: 'ui.labels.field.category' },
+    { id: 'type', labelKey: 'ui.phase6.import.field.type' },
+    { id: 'brand', labelKey: 'ui.phase6.import.field.brand' },
+    { id: 'model', labelKey: 'ui.phase6.import.field.model' },
+    { id: 'serial', labelKey: 'ui.phase6.import.field.serial' },
+    { id: 'ip', labelKey: 'ui.phase6.import.field.ip' },
+    { id: 'site', labelKey: 'ui.labels.field.site' },
+    { id: 'location', labelKey: 'ui.labels.field.location' },
+    { id: 'responsible', labelKey: 'ui.phase6.import.field.responsible' },
+    { id: 'status', labelKey: 'ui.labels.field.status' },
+    { id: 'cost', labelKey: 'ui.phase6.import.field.cost' },
+    { id: 'description', labelKey: 'ui.phase6.import.field.description' }
   ];
-  const EXPORT_FIELD_LABELS = {
-    id: 'ID permanente',
-    quick_code: 'Código rápido',
-    name: 'Nombre',
-    category: 'Categoría',
-    status: 'Estado',
-    serial: 'Número de serie',
-    site: 'Sede',
-    location: 'Ubicación',
-    responsible: 'Responsable'
+  const MATCH_FIELD_KEYS = {
+    quick_code: 'ui.phase6.match.quick_code',
+    serial: 'ui.phase6.match.serial',
+    ip: 'ui.phase6.match.ip'
+  };
+  const EXPORT_FIELD_KEYS = {
+    id: 'ui.labels.field.id',
+    quick_code: 'ui.labels.field.quick_code',
+    name: 'ui.labels.field.name',
+    category: 'ui.labels.field.category',
+    status: 'ui.labels.field.status',
+    serial: 'ui.phase6.import.field.serial',
+    site: 'ui.labels.field.site',
+    location: 'ui.labels.field.location',
+    responsible: 'ui.phase6.import.field.responsible'
   };
 
   function text(value) {
@@ -108,7 +120,7 @@
   }
 
   function coverageLabel(value) {
-    return COVERAGE_LABELS[text(value)] || COVERAGE_LABELS.unknown;
+    return tr(COVERAGE_KEYS[text(value)] || COVERAGE_KEYS.unknown);
   }
 
   function coverageTone(value) {
@@ -116,15 +128,15 @@
   }
 
   function statusLabel(value) {
-    return WARRANTY_STATUS_LABELS[text(value)] || WARRANTY_STATUS_LABELS.unknown;
+    return tr(WARRANTY_STATUS_KEYS[text(value)] || WARRANTY_STATUS_KEYS.unknown);
   }
 
   function categoryLabel(value) {
-    return CATEGORY_LABELS[text(value)] || CATEGORY_LABELS.document;
+    return tr(CATEGORY_KEYS[text(value)] || CATEGORY_KEYS.document);
   }
 
   function classLabel(value) {
-    return CLASS_LABELS[text(value)] || 'Sin clasificar';
+    return tr(CLASS_KEYS[text(value)] || 'ui.phase6.classification.none');
   }
 
   function classTone(value) {
@@ -132,7 +144,11 @@
   }
 
   function stateLabel(value) {
-    return STATE_LABELS[text(value)] || 'Sin estado';
+    return tr(STATE_KEYS[text(value)] || 'ui.phase6.state.none');
+  }
+
+  function importFieldLabel(field) {
+    return tr(field.labelKey);
   }
 
   function saveBlob(blob, filename) {
@@ -241,13 +257,13 @@
         return Object.keys(seen).sort((a, b) => compareText(a, b, { sensitivity: 'base' }));
       },
       fieldChoices() {
-        const choices = IMPORT_FIELDS.slice();
+        const choices = IMPORT_FIELDS.map((field) => ({ id: field.id, label: importFieldLabel(field), labelKey: field.labelKey }));
         const catalog = this.app.inventoryCatalog;
         const fields = catalog && Array.isArray(catalog.fields) ? catalog.fields : [];
         fields
           .filter((field) => field.active !== false)
           .forEach((field) => {
-            choices.push({ id: 'technical.' + field.key, label: field.label + ' (campo propio)' });
+            choices.push({ id: 'technical.' + field.key, label: field.label + ' (' + tr('ui.phase6.import.own_field') + ')' });
           });
         return choices;
       },
@@ -282,6 +298,12 @@
       formatSize,
       formatDate,
       coverageLabel,
+      stepLabel(index) {
+        return tr(['ui.phase6.step.file', 'ui.phase6.step.mapping', 'ui.phase6.step.preview', 'ui.phase6.step.result'][index - 1]);
+      },
+      matchFieldLabel(field) {
+        return tr(MATCH_FIELD_KEYS[field]);
+      },
       explain(error) {
         return text(error) || '';
       },
@@ -319,11 +341,11 @@
       },
       async runAnalysis() {
         if (!this.canEdit) {
-          this.message = 'Necesitas permiso para editar activos.';
+          this.message = tr('ui.phase6.error.edit_permission');
           return false;
         }
         if (!this.file) {
-          this.message = 'Selecciona un archivo CSV o XLSX.';
+          this.message = tr('ui.phase6.error.file_required');
           return false;
         }
         this.busy = true;
@@ -331,11 +353,11 @@
         const result = await this.app.analyzeImport(this.file, this.analysisOptions());
         this.busy = false;
         if (!result || !result.ok) {
-          this.message = (result && result.error) || 'No se pudo analizar el archivo.';
+          this.message = (result && result.error) || tr('ui.phase6.error.analyze');
           return false;
         }
         this.step = 2;
-        this.message = 'Análisis completado. Revisa la correspondencia y los conflictos antes de aprobar.';
+        this.message = tr('ui.phase6.notice.analyzed');
         return true;
       },
       async reanalyzeWithMapping() {
@@ -349,11 +371,11 @@
         if (action === 'update') {
           const assetId = text(entry.assetId) || text(row.assetId);
           if (!assetId) {
-            this.errors = Object.assign({}, this.errors, { [row.index]: 'Escribe el ID permanente del activo que se actualiza.' });
+            this.errors = Object.assign({}, this.errors, { [row.index]: tr('ui.phase6.error.asset_id_required') });
             return false;
           }
           if (!/^[0-9a-fA-F-]{36}$/.test(assetId)) {
-            this.errors = Object.assign({}, this.errors, { [row.index]: 'El ID permanente debe ser un UUID.' });
+            this.errors = Object.assign({}, this.errors, { [row.index]: tr('ui.phase6.error.asset_id_uuid') });
             return false;
           }
           extra.assetId = assetId;
@@ -361,7 +383,7 @@
         this.errors = Object.assign({}, this.errors, { [row.index]: '' });
         const result = await this.app.resolvePhase6Row(row.index, action, extra);
         if (!result || !result.ok) {
-          this.errors = Object.assign({}, this.errors, { [row.index]: (result && result.error) || 'No se pudo guardar la decisión.' });
+          this.errors = Object.assign({}, this.errors, { [row.index]: (result && result.error) || tr('ui.phase6.error.resolve') });
           return false;
         }
         return true;
@@ -372,7 +394,7 @@
       async approve() {
         const result = await this.app.approvePhase6Operation();
         this.message = result && result.ok
-          ? 'Previsualización aprobada. La ejecución revalidará tus permisos y la versión de cada activo.'
+          ? tr('ui.phase6.notice.approved')
           : (result && result.error) || '';
         return !!(result && result.ok);
       },
@@ -381,7 +403,7 @@
         const result = await this.app.executePhase6Operation();
         this.busy = false;
         this.step = 4;
-        this.message = result && result.ok ? '' : (result && result.error) || 'No se pudo aplicar la operación.';
+        this.message = result && result.ok ? '' : (result && result.error) || tr('ui.phase6.error.execute');
         return !!(result && result.ok);
       },
       async enqueue() {
@@ -391,15 +413,15 @@
         if (result && result.ok) {
           this.step = 4;
           this.app.startPhase6Polling();
-          this.message = 'importación enviada al trabajador en segundo plano.';
+          this.message = tr('ui.phase6.notice.enqueued');
         } else {
-          this.message = (result && result.error) || 'No se pudo enviar el trabajo.';
+          this.message = (result && result.error) || tr('ui.phase6.error.enqueue');
         }
         return !!(result && result.ok);
       },
       async refresh() {
         const ok = await this.app.refreshPhase6Operation();
-        if (!ok) this.message = 'No se pudo consultar la operación.';
+        if (!ok) this.message = tr('ui.phase6.error.refresh');
         return ok;
       },
       startNew() {
@@ -416,17 +438,17 @@
       async saveProfile() {
         const name = text(this.profileName);
         if (!name) {
-          this.message = 'Escribe un nombre para el perfil.';
+          this.message = tr('ui.phase6.error.profile_name');
           return false;
         }
         const result = await this.app.saveImportProfile(name, this.analysisOptions());
-        this.message = result && result.ok ? 'Perfil guardado.' : (result && result.error) || '';
+        this.message = result && result.ok ? tr('ui.phase6.notice.profile_saved') : (result && result.error) || '';
         if (result && result.ok) this.profileName = '';
         return !!(result && result.ok);
       },
       async removeProfile(profile) {
         const result = await this.app.deleteImportProfile(profile.id);
-        this.message = result && result.ok ? 'Perfil eliminado.' : (result && result.error) || '';
+        this.message = result && result.ok ? tr('ui.phase6.notice.profile_deleted') : (result && result.error) || '';
         return !!(result && result.ok);
       },
       useProfile() {
@@ -455,7 +477,7 @@
         return this.exportFields.indexOf(field) !== -1;
       },
       exportFieldLabel(field) {
-        return EXPORT_FIELD_LABELS[field] || field;
+        return tr(EXPORT_FIELD_KEYS[field] || '') || field;
       },
       exportFiltersBody() {
         const filters = {};
@@ -470,14 +492,14 @@
         const input = { fields: this.exportFields.slice() };
         if (this.exportSelection === 'selection') {
           if (!this.selectionIds.length) {
-            this.message = 'No hay activos seleccionados en el inventario.';
+            this.message = tr('ui.phase6.error.no_selection');
             return false;
           }
           input.assetIds = this.selectionIds;
         } else {
           input.filters = this.exportFiltersBody();
           if (!Object.keys(input.filters).length) {
-            this.message = 'Elige al menos un filtro o exporta la selección del inventario.';
+            this.message = tr('ui.phase6.error.export_filter');
             return false;
           }
         }
@@ -485,14 +507,14 @@
         const result = await this.app.exportPhase6Assets(input);
         this.busy = false;
         if (!result || !result.ok) {
-          this.message = (result && result.error) || 'No se pudo exportar.';
+          this.message = (result && result.error) || tr('ui.phase6.error.export');
           return false;
         }
         if (!saveBlob(result.blob, result.filename)) {
-          this.message = 'No se pudo descargar el archivo.';
+          this.message = tr('ui.phase6.error.download');
           return false;
         }
-        this.message = 'La exportación se ha descargado.';
+        this.message = tr('ui.phase6.notice.exported');
         return true;
       }
     },
@@ -500,14 +522,14 @@
       <section class="phase6-page">
         <header class="page-head">
           <div>
-            <p class="eyebrow">Datos</p>
-            <h1>Importación y exportación</h1>
-            <p>El servidor analiza los archivos, conserva la previsualización y exige una aprobación humana antes de aplicar cambios.</p>
+            <p class="eyebrow">{{ $t('ui.phase6.transfer.eyebrow') }}</p>
+            <h1>{{ $t('ui.phase6.transfer.title') }}</h1>
+            <p>{{ $t('ui.phase6.transfer.lead') }}</p>
           </div>
           <div class="page-head__actions">
-            <div class="chip-filter" role="tablist" aria-label="Sección de datos">
-              <button type="button" role="tab" class="chip" :class="{ 'is-active': tab === 'import' }" :aria-selected="tab === 'import'" @click="selectTab('import')">Importar</button>
-              <button type="button" role="tab" class="chip" :class="{ 'is-active': tab === 'export' }" :aria-selected="tab === 'export'" @click="selectTab('export')">Exportar</button>
+            <div class="chip-filter" role="tablist" :aria-label="$t('ui.phase6.transfer.tabs_aria')">
+              <button type="button" role="tab" class="chip" :class="{ 'is-active': tab === 'import' }" :aria-selected="tab === 'import'" @click="selectTab('import')">{{ $t('ui.phase6.transfer.tab_import') }}</button>
+              <button type="button" role="tab" class="chip" :class="{ 'is-active': tab === 'export' }" :aria-selected="tab === 'export'" @click="selectTab('export')">{{ $t('ui.phase6.transfer.tab_export') }}</button>
             </div>
           </div>
         </header>
@@ -518,75 +540,75 @@
           <ol class="flow-steps flow-steps--four">
             <li v-for="index in stepCount" :key="index" class="flow-step" :class="{ 'is-active': step === index }">
               <span class="flow-step__num">{{ index }}</span>
-              <span class="flow-step__copy">{{ ['Archivo y opciones', 'Correspondencia', 'Previsualización y conflictos', 'Resultado'][index - 1] }}</span>
+              <span class="flow-step__copy">{{ stepLabel(index) }}</span>
             </li>
           </ol>
 
           <section v-if="step === 1" class="tx-block" aria-labelledby="phase6-file-title">
             <header class="tx-block__head">
-              <h2 id="phase6-file-title">Archivo y opciones de análisis</h2>
-              <span class="chip chip--muted">CSV o XLSX · 10 MiB</span>
+              <h2 id="phase6-file-title">{{ $t('ui.phase6.file.title') }}</h2>
+              <span class="chip chip--muted">{{ $t('ui.phase6.file.limits') }}</span>
             </header>
             <div class="field">
-              <label class="field__label" for="phase6-file">Archivo</label>
+              <label class="field__label" for="phase6-file">{{ $t('ui.phase6.file.label') }}</label>
               <input id="phase6-file" class="input-shell" type="file" accept=".csv,.xlsx" @change="onFile">
             </div>
             <div class="phase6-grid">
               <div class="field">
-                <label class="field__label" for="phase6-profile">Perfil de importación</label>
+                <label class="field__label" for="phase6-profile">{{ $t('ui.phase6.profile.label') }}</label>
                 <select id="phase6-profile" class="input-shell" v-model="profileId">
-                  <option value="">Sin perfil</option>
+                  <option value="">{{ $t('ui.phase6.profile.none') }}</option>
                   <option v-for="profile in profiles" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
                 </select>
-                <button type="button" class="btn btn--ghost btn--small" @click="useProfile">Aplicar perfil</button>
+                <button type="button" class="btn btn--ghost btn--small" @click="useProfile">{{ $t('ui.phase6.profile.apply') }}</button>
               </div>
               <div class="field">
-                <label class="field__label" for="phase6-delimiter">Separador CSV</label>
+                <label class="field__label" for="phase6-delimiter">{{ $t('ui.phase6.csv.delimiter') }}</label>
                 <select id="phase6-delimiter" class="input-shell" :value="options.delimiter" @change="setOption('delimiter', $event.target.value)">
-                  <option value="">Detectar</option>
-                  <option value=",">Coma (,)</option>
-                  <option value=";">Punto y coma (;)</option>
-                  <option value="\t">Tabulador</option>
-                  <option value="|">Barra vertical (|)</option>
+                  <option value="">{{ $t('ui.phase6.csv.detect') }}</option>
+                  <option value=",">{{ $t('ui.phase6.csv.comma') }}</option>
+                  <option value=";">{{ $t('ui.phase6.csv.semicolon') }}</option>
+                  <option value="\t">{{ $t('ui.phase6.csv.tab') }}</option>
+                  <option value="|">{{ $t('ui.phase6.csv.pipe') }}</option>
                 </select>
               </div>
               <div class="field">
-                <label class="field__label" for="phase6-encoding">Codificación</label>
+                <label class="field__label" for="phase6-encoding">{{ $t('ui.phase6.csv.encoding') }}</label>
                 <select id="phase6-encoding" class="input-shell" :value="options.encoding" @change="setOption('encoding', $event.target.value)">
-                  <option value="">Detectar</option>
-                  <option value="utf-8">UTF-8</option>
-                  <option value="utf-8-sig">UTF-8 con BOM</option>
-                  <option value="cp1252">Windows-1252</option>
-                  <option value="latin-1">Latin-1</option>
+                  <option value="">{{ $t('ui.phase6.csv.detect') }}</option>
+                  <option value="utf-8">{{ $t('ui.phase6.csv.utf8') }}</option>
+                  <option value="utf-8-sig">{{ $t('ui.phase6.csv.utf8_bom') }}</option>
+                  <option value="cp1252">{{ $t('ui.phase6.csv.cp1252') }}</option>
+                  <option value="latin-1">{{ $t('ui.phase6.csv.latin1') }}</option>
                 </select>
               </div>
               <div class="field">
-                <label class="field__label" for="phase6-header">Fila de encabezados</label>
+                <label class="field__label" for="phase6-header">{{ $t('ui.phase6.csv.header_row') }}</label>
                 <input id="phase6-header" class="input-shell" type="number" min="1" max="100" :value="options.headerRow" @input="setOption('headerRow', Number($event.target.value) || 1)">
               </div>
               <div class="field">
-                <label class="field__label" for="phase6-category">Categoría por defecto</label>
+                <label class="field__label" for="phase6-category">{{ $t('ui.phase6.file.category') }}</label>
                 <input id="phase6-category" class="input-shell" :value="options.category" @input="setOption('category', $event.target.value)">
               </div>
             </div>
             <label class="bulk-field__toggle">
               <input type="checkbox" :checked="options.siteFromSheet" @change="setOption('siteFromSheet', $event.target.checked)">
-              <span>Identificar la sede por el nombre de la hoja</span>
+              <span>{{ $t('ui.phase6.option.site_from_sheet') }}</span>
             </label>
             <label class="bulk-field__toggle">
               <input type="checkbox" :checked="options.overwriteEmpty" @change="setOption('overwriteEmpty', $event.target.checked)">
-              <span>Sobrescribir con valores vacíos los campos del archivo</span>
+              <span>{{ $t('ui.phase6.option.overwrite_empty') }}</span>
             </label>
-            <div class="tx-chips" role="group" aria-label="Criterios de coincidencia">
+            <div class="tx-chips" role="group" :aria-label="$t('ui.phase6.match.aria')">
               <button v-for="field in ['quick_code','serial','ip']" :key="field" type="button" class="tx-chip" :class="{ 'is-active': matchFieldOn(field) }" :aria-pressed="matchFieldOn(field)" @click="toggleMatchField(field)">
-                {{ field === 'quick_code' ? 'Código rápido' : field === 'serial' ? 'Número de serie' : 'IP' }}
+                {{ matchFieldLabel(field) }}
               </button>
             </div>
             <div class="tx-foot">
-              <p class="tx-foot__note">Ningún registro cambia en esta fase. Los campos vacíos conservan el valor existente salvo que lo marques arriba.</p>
+              <p class="tx-foot__note">{{ $t('ui.phase6.file.note') }}</p>
               <div class="tx-foot__actions">
                 <button type="button" class="btn btn--primary" :disabled="busy || !file || !canEdit" @click="runAnalysis">
-                  <app-icon name="upload"></app-icon> Analizar archivo
+                  <app-icon name="upload"></app-icon> {{ $t('ui.phase6.action.analyze') }}
                 </button>
               </div>
             </div>
@@ -594,67 +616,67 @@
 
           <section v-if="step === 2" class="tx-block" aria-labelledby="phase6-mapping-title">
             <header class="tx-block__head">
-              <h2 id="phase6-mapping-title">Correspondencia de columnas</h2>
-              <span class="chip chip--muted">{{ columns.length }} columnas detectadas</span>
+              <h2 id="phase6-mapping-title">{{ $t('ui.phase6.mapping.title') }}</h2>
+              <span class="chip chip--muted">{{ $t('ui.phase6.mapping.count', { count: columns.length }, columns.length) }}</span>
             </header>
-            <p v-if="!columns.length" class="config-note">El servidor no devolvió columnas. Revisa el archivo y vuelve a analizarlo.</p>
+            <p v-if="!columns.length" class="config-note">{{ $t('ui.phase6.mapping.empty') }}</p>
             <div v-for="column in columns" :key="column" class="tx-map__row">
               <span class="tx-label mono">{{ column }}</span>
               <select class="input-shell" :value="mapping[column] || ''" @change="setMapping(column, $event.target.value)">
-                <option value="">No importar</option>
+                <option value="">{{ $t('ui.phase6.mapping.skip') }}</option>
                 <option v-for="field in fieldChoices" :key="field.id" :value="field.id">{{ field.label }}</option>
               </select>
             </div>
             <div class="tx-foot">
               <div class="tx-foot__actions">
-                <button type="button" class="btn btn--ghost" @click="step = 1">Volver</button>
-                <button type="button" class="btn btn--primary" :disabled="busy" @click="reanalyzeWithMapping">Analizar con esta correspondencia</button>
+                <button type="button" class="btn btn--ghost" @click="step = 1">{{ $t('ui.phase6.action.back') }}</button>
+                <button type="button" class="btn btn--primary" :disabled="busy" @click="reanalyzeWithMapping">{{ $t('ui.phase6.action.reanalyze') }}</button>
               </div>
             </div>
           </section>
 
           <section v-if="step >= 3" class="tx-block" aria-labelledby="phase6-preview-title">
             <header class="tx-block__head">
-              <h2 id="phase6-preview-title">Previsualización</h2>
+              <h2 id="phase6-preview-title">{{ $t('ui.phase6.preview.title') }}</h2>
               <span class="chip" :class="'status status--' + (state === 'complete' ? 'ok' : state === 'error' ? 'down' : 'hold')">{{ stateLabel(state) }}</span>
             </header>
             <div class="tx-kpis">
-              <div class="tx-kpi"><span class="tx-kpi__label">Nuevos</span><span class="tx-kpi__value">{{ counts.new }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Coincidencias seguras</span><span class="tx-kpi__value">{{ counts.safe }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Posibles duplicados</span><span class="tx-kpi__value">{{ counts.possible_duplicate }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Con errores</span><span class="tx-kpi__value">{{ counts.error }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Procesados</span><span class="tx-kpi__value">{{ operation.processed }} / {{ operation.total }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.new') }}</span><span class="tx-kpi__value">{{ counts.new }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.safe') }}</span><span class="tx-kpi__value">{{ counts.safe }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.possible_duplicate') }}</span><span class="tx-kpi__value">{{ counts.possible_duplicate }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.classification.error') }}</span><span class="tx-kpi__value">{{ counts.error }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.processed') }}</span><span class="tx-kpi__value">{{ operation.processed }} / {{ operation.total }}</span></div>
             </div>
-            <p v-if="operation.jobId" class="config-note mono">Trabajo {{ operation.jobId }}</p>
+            <p v-if="operation.jobId" class="config-note mono">{{ $t('ui.phase6.preview.job', { id: operation.jobId }) }}</p>
             <p v-if="operation.error" class="field__error" role="alert">{{ operation.error }}</p>
 
             <div v-if="conflicts.length" class="tx-conflicts" aria-labelledby="phase6-conflicts-title">
-              <h3 id="phase6-conflicts-title">Conflictos que requieren revisión</h3>
+              <h3 id="phase6-conflicts-title">{{ $t('ui.phase6.conflicts.title') }}</h3>
               <article v-for="row in conflicts" :key="row.index" class="tx-conflict">
                 <header class="tx-conflict__head">
                   <span class="status" :class="'status--' + classTone(row.classification)">{{ classLabel(row.classification) }}</span>
-                  <span class="mono">{{ row.sheet }} · línea {{ row.line }}</span>
+                  <span class="mono">{{ $t('ui.phase6.conflicts.line', { sheet: row.sheet, line: row.line }) }}</span>
                 </header>
-                <p class="tx-conflict__reason">{{ row.errors.length ? row.errors.join(' · ') : 'Coincidencia ambigua con un activo existente.' }}</p>
+                <p class="tx-conflict__reason">{{ row.errors.length ? row.errors.join(' · ') : $t('ui.phase6.conflicts.ambiguous') }}</p>
                 <div class="tx-conflict__actions">
-                  <button type="button" class="btn btn--ghost btn--small" @click="resolve(row, 'skip')">Omitir</button>
-                  <button type="button" class="btn btn--ghost btn--small" @click="resolve(row, 'create')">Crear como nuevo</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="resolve(row, 'skip')">{{ $t('ui.phase6.action.skip') }}</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="resolve(row, 'create')">{{ $t('ui.phase6.action.create') }}</button>
                   <label class="tx-label">
-                    ID permanente existente
+                    {{ $t('ui.phase6.conflicts.asset_id') }}
                     <input class="input-shell" :value="(resolving[row.index] || {}).assetId || row.assetId || ''" @input="setResolution(row.index, $event.target.value)">
                   </label>
-                  <button type="button" class="btn btn--secondary btn--small" @click="resolve(row, 'update')">Actualizar este activo</button>
+                  <button type="button" class="btn btn--secondary btn--small" @click="resolve(row, 'update')">{{ $t('ui.phase6.action.update') }}</button>
                 </div>
                 <p v-if="errors[row.index]" class="field__error" role="alert">{{ errors[row.index] }}</p>
               </article>
             </div>
 
-            <div class="phase6-table" role="table" aria-label="Filas analizadas">
+            <div class="phase6-table" role="table" :aria-label="$t('ui.phase6.table.aria')">
               <div class="phase6-row phase6-row--head" role="row">
-                <span role="columnheader">Clasificación</span>
-                <span role="columnheader">Hoja y línea</span>
-                <span role="columnheader">Valores</span>
-                <span role="columnheader">Resultado</span>
+                <span role="columnheader">{{ $t('ui.phase6.col.classification') }}</span>
+                <span role="columnheader">{{ $t('ui.phase6.col.sheet_line') }}</span>
+                <span role="columnheader">{{ $t('ui.phase6.col.values') }}</span>
+                <span role="columnheader">{{ $t('ui.phase6.col.result') }}</span>
               </div>
               <div v-for="row in rows" :key="row.index" class="phase6-row" role="row">
                 <span role="cell"><span class="status" :class="'status--' + classTone(row.classification)">{{ classLabel(row.classification) }}</span></span>
@@ -666,54 +688,54 @@
 
             <div class="tx-foot">
               <div class="tx-foot__actions">
-                <button type="button" class="btn btn--ghost" @click="step = 2">Correspondencia</button>
-                <button type="button" class="btn btn--ghost" @click="refresh">Actualizar</button>
-                <button type="button" class="btn btn--primary" :disabled="!canApprove || busy" @click="approve">Aprobar previsualización</button>
-                <button type="button" class="btn btn--primary" :disabled="!canExecute || busy" @click="execute">Ejecutar ahora</button>
-                <button type="button" class="btn btn--secondary" :disabled="!canExecute || busy" @click="enqueue">Enviar a segundo plano</button>
+                <button type="button" class="btn btn--ghost" @click="step = 2">{{ $t('ui.phase6.action.mapping') }}</button>
+                <button type="button" class="btn btn--ghost" @click="refresh">{{ $t('ui.phase6.action.refresh') }}</button>
+                <button type="button" class="btn btn--primary" :disabled="!canApprove || busy" @click="approve">{{ $t('ui.phase6.action.approve') }}</button>
+                <button type="button" class="btn btn--primary" :disabled="!canExecute || busy" @click="execute">{{ $t('ui.phase6.action.execute') }}</button>
+                <button type="button" class="btn btn--secondary" :disabled="!canExecute || busy" @click="enqueue">{{ $t('ui.phase6.action.enqueue') }}</button>
               </div>
             </div>
           </section>
 
           <section v-if="step === 4" class="tx-block tx-block--result" aria-labelledby="phase6-result-title">
             <header class="tx-block__head">
-              <h2 id="phase6-result-title">Resultado</h2>
+              <h2 id="phase6-result-title">{{ $t('ui.phase6.result.title') }}</h2>
               <span class="chip" :class="'status status--' + (operation.state === 'complete' ? 'ok' : 'down')">{{ stateLabel(operation.state) }}</span>
             </header>
             <div class="tx-kpis tx-kpis--result">
-              <div class="tx-kpi"><span class="tx-kpi__label">Creados</span><span class="tx-kpi__value">{{ summary.created }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Modificados</span><span class="tx-kpi__value">{{ summary.modified }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Omitidos</span><span class="tx-kpi__value">{{ summary.omitted }}</span></div>
-              <div class="tx-kpi"><span class="tx-kpi__label">Fallidos</span><span class="tx-kpi__value">{{ summary.failed }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.created') }}</span><span class="tx-kpi__value">{{ summary.created }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.modified') }}</span><span class="tx-kpi__value">{{ summary.modified }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.omitted') }}</span><span class="tx-kpi__value">{{ summary.omitted }}</span></div>
+              <div class="tx-kpi"><span class="tx-kpi__label">{{ $t('ui.phase6.kpi.failed') }}</span><span class="tx-kpi__value">{{ summary.failed }}</span></div>
             </div>
-            <p class="tx-foot__note">Los registros ya procesados no se repiten: reintentar la operación continúa desde el estado guardado.</p>
+            <p class="tx-foot__note">{{ $t('ui.phase6.result.note') }}</p>
             <div class="tx-foot__actions">
-              <button type="button" class="btn btn--ghost" @click="refresh">Consultar estado</button>
-              <button type="button" class="btn btn--primary" @click="startNew">Nueva importación</button>
+              <button type="button" class="btn btn--ghost" @click="refresh">{{ $t('ui.phase6.action.refresh_state') }}</button>
+              <button type="button" class="btn btn--primary" @click="startNew">{{ $t('ui.phase6.action.new_import') }}</button>
             </div>
           </section>
 
           <section class="tx-block" aria-labelledby="phase6-profiles-title">
             <header class="tx-block__head">
-              <h2 id="phase6-profiles-title">Perfiles de importación</h2>
-              <span class="chip chip--muted">{{ profiles.length }} perfiles</span>
+              <h2 id="phase6-profiles-title">{{ $t('ui.phase6.profiles.title') }}</h2>
+              <span class="chip chip--muted">{{ $t('ui.phase6.profiles.count', { count: profiles.length }, profiles.length) }}</span>
             </header>
             <ul class="phase6-list">
               <li v-for="profile in profiles" :key="profile.id" class="phase6-list__item">
                 <span>{{ profile.name }}</span>
-                <span class="mono cell-note">{{ Object.keys(profile.options || {}).join(', ') || 'Sin opciones' }}</span>
+                <span class="mono cell-note">{{ Object.keys(profile.options || {}).join(', ') || $t('ui.phase6.profiles.no_options') }}</span>
                 <span class="phase6-list__actions">
-                  <button type="button" class="btn btn--ghost btn--small" @click="profileId = profile.id; useProfile()">Usar</button>
-                  <button type="button" class="btn btn--ghost btn--small" :disabled="!canEdit" @click="removeProfile(profile)">Eliminar</button>
+                  <button type="button" class="btn btn--ghost btn--small" @click="profileId = profile.id; useProfile()">{{ $t('ui.phase6.profiles.use') }}</button>
+                  <button type="button" class="btn btn--ghost btn--small" :disabled="!canEdit" @click="removeProfile(profile)">{{ $t('ui.common.delete') }}</button>
                 </span>
               </li>
             </ul>
             <div class="phase6-grid">
               <label class="field">
-                <span class="field__label">Guardar opciones actuales como perfil</span>
-                <input class="input-shell" v-model="profileName" placeholder="Nombre del perfil">
+                <span class="field__label">{{ $t('ui.phase6.profiles.save_lead') }}</span>
+                <input class="input-shell" v-model="profileName" :placeholder="$t('ui.phase6.profiles.name_placeholder')">
               </label>
-              <button type="button" class="btn btn--secondary" :disabled="!canEdit || !profileName.trim()" @click="saveProfile">Guardar perfil</button>
+              <button type="button" class="btn btn--secondary" :disabled="!canEdit || !profileName.trim()" @click="saveProfile">{{ $t('ui.phase6.profiles.save') }}</button>
             </div>
           </section>
         </div>
@@ -721,47 +743,47 @@
         <div v-if="tab === 'export'" class="tx-main">
           <section class="tx-block" aria-labelledby="phase6-export-title">
             <header class="tx-block__head">
-              <h2 id="phase6-export-title">Exportación de activos</h2>
-              <span class="chip chip--muted">CSV del servidor</span>
+              <h2 id="phase6-export-title">{{ $t('ui.phase6.export.title') }}</h2>
+              <span class="chip chip--muted">{{ $t('ui.phase6.export.chip') }}</span>
             </header>
             <div class="tx-filterbar">
               <label class="tx-label">
-                Origen
+                {{ $t('ui.phase6.export.source') }}
                 <select class="input-shell" v-model="exportSelection">
-                  <option value="filters">Filtros</option>
-                  <option value="selection">Selección del inventario ({{ selectionIds.length }})</option>
+                  <option value="filters">{{ $t('ui.phase6.export.filters') }}</option>
+                  <option value="selection">{{ $t('ui.phase6.export.selection', { count: selectionIds.length }) }}</option>
                 </select>
               </label>
             </div>
             <div v-if="exportSelection === 'filters'" class="phase6-grid">
-              <label class="field"><span class="field__label">Categoría</span><input class="input-shell" v-model="exportFilters.category"></label>
-              <label class="field"><span class="field__label">Estado</span>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.field.category') }}</span><input class="input-shell" v-model="exportFilters.category"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.field.status') }}</span>
                 <select class="input-shell" v-model="exportFilters.status">
-                  <option value="">Todos</option>
+                  <option value="">{{ $t('ui.phase6.export.all_statuses') }}</option>
                   <option v-for="status in statusChoices" :key="status.value" :value="status.value">{{ status.label }}</option>
                 </select>
               </label>
-              <label class="field"><span class="field__label">ID de sede</span><input class="input-shell" v-model="exportFilters.site_id"></label>
-              <label class="field"><span class="field__label">ID de ubicación</span><input class="input-shell" v-model="exportFilters.location_id"></label>
-              <label class="field"><span class="field__label">Archivados</span>
+              <label class="field"><span class="field__label">{{ $t('ui.phase6.export.site_id') }}</span><input class="input-shell" v-model="exportFilters.site_id"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.phase6.export.location_id') }}</span><input class="input-shell" v-model="exportFilters.location_id"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.filter.archived') }}</span>
                 <select class="input-shell" v-model="exportFilters.archived">
-                  <option value="">Cualquiera</option>
-                  <option value="false">Solo activos</option>
-                  <option value="true">Solo archivados</option>
+                  <option value="">{{ $t('ui.phase6.export.archived_any') }}</option>
+                  <option value="false">{{ $t('ui.phase6.export.archived_active') }}</option>
+                  <option value="true">{{ $t('ui.phase6.export.archived_only') }}</option>
                 </select>
               </label>
             </div>
             <fieldset class="phase6-fieldset">
-              <legend>Campos</legend>
+              <legend>{{ $t('ui.phase6.export.fields_legend') }}</legend>
               <label v-for="field in app.phase6ExportFields" :key="field" class="bulk-field__toggle">
                 <input type="checkbox" :checked="exportFieldOn(field)" @change="toggleExportField(field)">
                 <span>{{ exportFieldLabel(field) }}</span>
               </label>
             </fieldset>
             <div class="tx-foot">
-              <p class="tx-foot__note">El servidor aplica los permisos de lectura y no incluye columnas que no solicites.</p>
+              <p class="tx-foot__note">{{ $t('ui.phase6.export.note') }}</p>
               <div class="tx-foot__actions">
-                <button type="button" class="btn btn--primary" :disabled="busy || !app.phase6CanView" @click="runExport">Descargar CSV</button>
+                <button type="button" class="btn btn--primary" :disabled="busy || !app.phase6CanView" @click="runExport">{{ $t('ui.phase6.export.download') }}</button>
               </div>
             </div>
           </section>
@@ -769,7 +791,6 @@
       </section>
     `
   };
-
   /* Bulk editor over the fixed preview: the server selects the assets, checks
    * category rules and Casbin permissions, and stores one approval that the
    * browser cannot invent. */
@@ -876,18 +897,18 @@
       },
       async preview() {
         if (!this.canEdit) {
-          this.message = 'Necesitas permiso para editar activos.';
+          this.message = tr('ui.phase6.error.edit_permission');
           return false;
         }
         const input = { action: this.action, changes: this.changesBody(), filters: this.filtersBody() };
         if (this.useSelection) input.assetIds = this.ids.slice();
         if (this.reason) input.reason = this.reason;
         if (!this.useSelection && !Object.keys(input.filters).length) {
-          this.message = 'Elige al menos un filtro o selecciona activos en el inventario.';
+          this.message = tr('ui.phase6.error.bulk_filter');
           return false;
         }
         if (this.action === 'archive' && text(this.reason).length < 4) {
-          this.message = 'Escribe el motivo del archivado (4 caracteres o más).';
+          this.message = tr('ui.phase6.error.archive_reason');
           return false;
         }
         this.busy = true;
@@ -895,7 +916,7 @@
         const result = await this.app.bulkPreviewPhase6(input);
         this.busy = false;
         if (!result || !result.ok) {
-          this.message = (result && result.error) || 'No se pudo preparar la previsualización.';
+          this.message = (result && result.error) || tr('ui.phase6.error.preview');
           return false;
         }
         this.step = 2;
@@ -904,14 +925,14 @@
       async resolve(row) {
         const result = await this.app.resolvePhase6Row(row.index, 'skip', {});
         if (!result || !result.ok) {
-          this.message = (result && result.error) || 'No se pudo omitir la fila.';
+          this.message = (result && result.error) || tr('ui.phase6.error.skip_row');
           return false;
         }
         return true;
       },
       async approve() {
         const result = await this.app.approvePhase6Operation();
-        this.message = result && result.ok ? 'Previsualización aprobada.' : (result && result.error) || '';
+        this.message = result && result.ok ? tr('ui.phase6.notice.preview_approved') : (result && result.error) || '';
         if (result && result.ok) this.step = 3;
         return !!(result && result.ok);
       },
@@ -924,7 +945,7 @@
           this.message = '';
           this.$emit('applied');
         } else {
-          this.message = (result && result.error) || 'No se pudo aplicar la operación.';
+          this.message = (result && result.error) || tr('ui.phase6.error.execute');
         }
         return !!(result && result.ok);
       },
@@ -933,96 +954,96 @@
       }
     },
     template: `
-      <modal-shell :open="open" title="Editor masivo" eyebrow="Operación por lote" @close="close">
+      <modal-shell :open="open" :title="$t('ui.phase6.bulk.title')" :eyebrow="$t('ui.phase6.bulk.eyebrow')" @close="close">
         <div class="bulk-body">
           <p v-if="message" class="config-note" role="status">{{ message }}</p>
           <ol class="flow-steps flow-steps--four">
-            <li class="flow-step" :class="{ 'is-active': step === 1 }"><span class="flow-step__num">1</span><span class="flow-step__copy">Activos</span></li>
-            <li class="flow-step" :class="{ 'is-active': step === 2 }"><span class="flow-step__num">2</span><span class="flow-step__copy">Vista previa</span></li>
-            <li class="flow-step" :class="{ 'is-active': step === 3 }"><span class="flow-step__num">3</span><span class="flow-step__copy">Aprobación</span></li>
-            <li class="flow-step" :class="{ 'is-active': step === 4 }"><span class="flow-step__num">4</span><span class="flow-step__copy">Resultado</span></li>
+            <li class="flow-step" :class="{ 'is-active': step === 1 }"><span class="flow-step__num">1</span><span class="flow-step__copy">{{ $t('ui.phase6.bulk.step.assets') }}</span></li>
+            <li class="flow-step" :class="{ 'is-active': step === 2 }"><span class="flow-step__num">2</span><span class="flow-step__copy">{{ $t('ui.phase6.bulk.step.preview') }}</span></li>
+            <li class="flow-step" :class="{ 'is-active': step === 3 }"><span class="flow-step__num">3</span><span class="flow-step__copy">{{ $t('ui.phase6.bulk.step.approval') }}</span></li>
+            <li class="flow-step" :class="{ 'is-active': step === 4 }"><span class="flow-step__num">4</span><span class="flow-step__copy">{{ $t('ui.phase6.bulk.step.result') }}</span></li>
           </ol>
 
           <template v-if="step === 1">
-            <p class="bulk-lead">{{ useSelection ? 'Se modifican los ' + ids.length + ' activos seleccionados.' : 'Se modifican los activos que cumplen los filtros.' }}</p>
+            <p class="bulk-lead">{{ useSelection ? $t('ui.phase6.bulk.lead_selection', { count: ids.length }) : $t('ui.phase6.bulk.lead_filters') }}</p>
             <div v-if="!useSelection" class="bulk-fields">
-              <label class="field"><span class="field__label">Categoría</span><input class="input-shell" :value="filters.category" @input="setFilter('category', $event.target.value)"></label>
-              <label class="field"><span class="field__label">Estado</span>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.field.category') }}</span><input class="input-shell" :value="filters.category" @input="setFilter('category', $event.target.value)"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.field.status') }}</span>
                 <select class="input-shell" :value="filters.status" @change="setFilter('status', $event.target.value)">
-                  <option value="">Todos</option>
+                  <option value="">{{ $t('ui.labels.filter.all_masculine') }}</option>
                   <option v-for="status in statusChoices" :key="status.value" :value="status.value">{{ status.label }}</option>
                 </select>
               </label>
-              <label class="field"><span class="field__label">ID de sede</span><input class="input-shell" :value="filters.site_id" @input="setFilter('site_id', $event.target.value)"></label>
-              <label class="field"><span class="field__label">ID de ubicación</span><input class="input-shell" :value="filters.location_id" @input="setFilter('location_id', $event.target.value)"></label>
-              <label class="field"><span class="field__label">ID de responsable</span><input class="input-shell" :value="filters.responsible_person_id" @input="setFilter('responsible_person_id', $event.target.value)"></label>
-              <label class="field"><span class="field__label">Archivados</span>
+              <label class="field"><span class="field__label">{{ $t('ui.phase6.export.site_id') }}</span><input class="input-shell" :value="filters.site_id" @input="setFilter('site_id', $event.target.value)"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.phase6.export.location_id') }}</span><input class="input-shell" :value="filters.location_id" @input="setFilter('location_id', $event.target.value)"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.phase6.bulk.responsible_id') }}</span><input class="input-shell" :value="filters.responsible_person_id" @input="setFilter('responsible_person_id', $event.target.value)"></label>
+              <label class="field"><span class="field__label">{{ $t('ui.labels.filter.archived') }}</span>
                 <select class="input-shell" :value="filters.archived" @change="setFilter('archived', $event.target.value)">
-                  <option value="">Cualquiera</option>
-                  <option value="false">Solo activos</option>
-                  <option value="true">Solo archivados</option>
+                  <option value="">{{ $t('ui.phase6.export.archived_any') }}</option>
+                  <option value="false">{{ $t('ui.phase6.export.archived_active') }}</option>
+                  <option value="true">{{ $t('ui.phase6.export.archived_only') }}</option>
                 </select>
               </label>
             </div>
             <div class="field">
-              <label class="field__label" for="bulk-action">Operación</label>
+              <label class="field__label" for="bulk-action">{{ $t('ui.phase6.bulk.action') }}</label>
               <select id="bulk-action" class="input-shell" v-model="action">
                 <option v-for="item in actions" :key="item.id" :value="item.id">{{ item.label }}</option>
               </select>
             </div>
             <div class="bulk-fields">
-              <label v-if="action === 'update'" class="field"><span class="field__label">Estado</span>
+              <label v-if="action === 'update'" class="field"><span class="field__label">{{ $t('ui.labels.field.status') }}</span>
                 <select class="input-shell" :value="changes.status" @change="setChange('status', $event.target.value)">
-                  <option value="">Sin cambio</option>
+                  <option value="">{{ $t('ui.phase6.bulk.no_change') }}</option>
                   <option v-for="status in statusChoices" :key="status.value" :value="status.value">{{ status.label }}</option>
                 </select>
               </label>
-              <label v-if="action === 'update'" class="field"><span class="field__label">Categoría</span><input class="input-shell" :value="changes.category" @input="setChange('category', $event.target.value)"></label>
-              <label v-if="action === 'assign' || action === 'update'" class="field"><span class="field__label">ID de responsable</span><input class="input-shell" :value="changes.responsible_person_id" @input="setChange('responsible_person_id', $event.target.value)"></label>
-              <label v-if="action === 'transfer' || action === 'update'" class="field"><span class="field__label">ID de ubicación</span><input class="input-shell" :value="changes.location_id" @input="setChange('location_id', $event.target.value)"></label>
+              <label v-if="action === 'update'" class="field"><span class="field__label">{{ $t('ui.labels.field.category') }}</span><input class="input-shell" :value="changes.category" @input="setChange('category', $event.target.value)"></label>
+              <label v-if="action === 'assign' || action === 'update'" class="field"><span class="field__label">{{ $t('ui.phase6.bulk.responsible_id') }}</span><input class="input-shell" :value="changes.responsible_person_id" @input="setChange('responsible_person_id', $event.target.value)"></label>
+              <label v-if="action === 'transfer' || action === 'update'" class="field"><span class="field__label">{{ $t('ui.phase6.export.location_id') }}</span><input class="input-shell" :value="changes.location_id" @input="setChange('location_id', $event.target.value)"></label>
             </div>
             <label v-if="action === 'archive'" class="field">
-              <span class="field__label">Motivo</span>
+              <span class="field__label">{{ $t('ui.phase6.bulk.reason') }}</span>
               <textarea class="input-shell" :value="reason" @input="reason = $event.target.value"></textarea>
             </label>
-            <p class="bulk-warning">Los campos no seleccionados conservan su valor y cada activo recibe su propio historial.</p>
+            <p class="bulk-warning">{{ $t('ui.phase6.bulk.warning_fields') }}</p>
           </template>
 
           <template v-if="step === 2">
-            <p class="bulk-lead">{{ rows.length }} activos en la previsualización · {{ conflicts.length }} con errores</p>
+            <p class="bulk-lead">{{ $t('ui.phase6.bulk.preview_count', { rows: rows.length, conflicts: conflicts.length }) }}</p>
             <div class="bulk-preview">
               <div v-for="row in rows" :key="row.index" class="bulk-preview__row">
                 <span class="bulk-preview__asset mono">{{ row.assetId || '—' }}</span>
                 <span class="status" :class="'status--' + (classTone(row.classification))">{{ classLabel(row.classification) }}</span>
                 <span class="mono truncate">{{ Object.keys(row.values || {}).map(key => key + ': ' + row.values[key]).join(' · ') }}</span>
                 <span v-if="row.error" class="cell-note">{{ row.error }}</span>
-                <button v-if="row.classification === 'error'" type="button" class="btn btn--ghost btn--small" @click="resolve(row)">Omitir</button>
+                <button v-if="row.classification === 'error'" type="button" class="btn btn--ghost btn--small" @click="resolve(row)">{{ $t('ui.phase6.action.skip') }}</button>
               </div>
             </div>
-            <p class="bulk-warning">Una aprobación autoriza exactamente estos activos y valores. Si cambian, hay que preparar otra previsualización.</p>
+            <p class="bulk-warning">{{ $t('ui.phase6.bulk.warning_approval') }}</p>
           </template>
 
           <template v-if="step === 3">
-            <p class="bulk-lead">Estado: {{ stateLabel(state) }}<span v-if="operation && operation.jobId"> · trabajo {{ operation.jobId }}</span></p>
+            <p class="bulk-lead">{{ $t('ui.phase6.bulk.state', { state: stateLabel(state) }) }}<span v-if="operation && operation.jobId"> · {{ $t('ui.phase6.bulk.job', { id: operation.jobId }) }}</span></p>
             <div class="bulk-summary">
-              <div class="bulk-summary__value"><span class="bulk-summary__label">Procesados</span><strong>{{ operation ? operation.processed : 0 }} / {{ operation ? operation.total : 0 }}</strong></div>
+              <div class="bulk-summary__value"><span class="bulk-summary__label">{{ $t('ui.phase6.kpi.processed') }}</span><strong>{{ operation ? operation.processed : 0 }} / {{ operation ? operation.total : 0 }}</strong></div>
             </div>
           </template>
 
           <template v-if="step === 4">
             <div class="bulk-summary">
-              <div class="bulk-summary__value"><span class="bulk-summary__label">Modificados</span><strong>{{ summary.modified }}</strong></div>
-              <div class="bulk-summary__value"><span class="bulk-summary__label">Omitidos</span><strong>{{ summary.omitted }}</strong></div>
-              <div class="bulk-summary__value"><span class="bulk-summary__label">Fallidos</span><strong>{{ summary.failed }}</strong></div>
+              <div class="bulk-summary__value"><span class="bulk-summary__label">{{ $t('ui.phase6.kpi.modified') }}</span><strong>{{ summary.modified }}</strong></div>
+              <div class="bulk-summary__value"><span class="bulk-summary__label">{{ $t('ui.phase6.kpi.omitted') }}</span><strong>{{ summary.omitted }}</strong></div>
+              <div class="bulk-summary__value"><span class="bulk-summary__label">{{ $t('ui.phase6.kpi.failed') }}</span><strong>{{ summary.failed }}</strong></div>
             </div>
-            <p class="bulk-warning">Los activos fallidos conservan su estado anterior; puedes reintentar la misma operación sin duplicar los ya procesados.</p>
+            <p class="bulk-warning">{{ $t('ui.phase6.bulk.warning_failed') }}</p>
           </template>
         </div>
         <template #footer>
-          <button type="button" class="btn btn--ghost" @click="close">Cerrar</button>
-          <button v-if="step === 1" type="button" class="btn btn--primary" :disabled="busy || !canEdit" @click="preview">Previsualizar</button>
-          <button v-if="step === 2" type="button" class="btn btn--secondary" :disabled="!canApprove || busy" @click="approve">Aprobar</button>
-          <button v-if="step === 3" type="button" class="btn btn--primary" :disabled="!canExecute || busy" @click="execute">Ejecutar</button>
+          <button type="button" class="btn btn--ghost" @click="close">{{ $t('ui.common.close') }}</button>
+          <button v-if="step === 1" type="button" class="btn btn--primary" :disabled="busy || !canEdit" @click="preview">{{ $t('ui.phase6.bulk.preview') }}</button>
+          <button v-if="step === 2" type="button" class="btn btn--secondary" :disabled="!canApprove || busy" @click="approve">{{ $t('ui.phase6.bulk.approve') }}</button>
+          <button v-if="step === 3" type="button" class="btn btn--primary" :disabled="!canExecute || busy" @click="execute">{{ $t('ui.phase6.bulk.execute') }}</button>
         </template>
       </modal-shell>
     `
@@ -1132,11 +1153,11 @@
           this.busy = false;
           if (!result || !result.ok) {
             this.errors = (result && result.fieldErrors) || {};
-            this.message = (result && result.error) || 'No se pudo guardar la garantía.';
+            this.message = (result && result.error) || tr('ui.phase6.warranty.error_save');
             return false;
           }
           this.editor.open = false;
-          this.message = 'Garantía guardada.';
+          this.message = tr('ui.phase6.warranty.saved');
           this.reload();
           return true;
         });
@@ -1150,12 +1171,12 @@
         return this.app.deleteAssetWarranty(this.editor.assetId).then((result) => {
           this.busy = false;
           if (!result || !result.ok) {
-            this.message = (result && result.error) || 'No se pudo eliminar la garantía.';
+            this.message = (result && result.error) || tr('ui.phase6.warranty.error_delete');
             return false;
           }
           this.confirmDelete = false;
           this.editor.open = false;
-          this.message = 'Garantía eliminada.';
+          this.message = tr('ui.phase6.warranty.deleted');
           this.reload();
           return true;
         });
@@ -1165,27 +1186,27 @@
       <section class="phase6-page warranties-page">
         <header class="page-head">
           <div>
-            <p class="eyebrow">Garantías</p>
-            <h1>Garantías individuales</h1>
-            <p>Los vencimientos se calculan con los datos guardados en el servidor; no hay garantías compartidas.</p>
+            <p class="eyebrow">{{ $t('ui.phase6.warranty.eyebrow') }}</p>
+            <h1>{{ $t('ui.phase6.warranty.title') }}</h1>
+            <p>{{ $t('ui.phase6.warranty.lead') }}</p>
           </div>
         </header>
-        <div class="chip-filter" role="group" aria-label="Cobertura de garantías">
+        <div class="chip-filter" role="group" :aria-label="$t('ui.phase6.warranty.coverage_aria')">
           <button v-for="value in coverages" :key="value" type="button" class="chip" :class="{ 'is-active': coverage === value }" :aria-pressed="coverage === value" @click="setCoverage(value)">{{ coverageLabel(value) }}</button>
         </div>
         <p v-if="message" class="config-note" role="status">{{ message }}</p>
-        <p v-if="state.loading" class="config-note" role="status">Consultando garantías…</p>
+        <p v-if="state.loading" class="config-note" role="status">{{ $t('ui.phase6.warranty.loading') }}</p>
         <p v-else-if="state.error" class="field__error" role="alert">{{ state.error }}</p>
-        <p v-else-if="!items.length" class="config-note">No hay garantías registradas para esta cobertura.</p>
+        <p v-else-if="!items.length" class="config-note">{{ $t('ui.phase6.warranty.empty') }}</p>
         <template v-else>
-          <div class="phase6-table" role="table" aria-label="Garantías registradas">
+          <div class="phase6-table" role="table" :aria-label="$t('ui.phase6.warranty.table_aria')">
             <div class="phase6-row phase6-row--head" role="row">
-              <span role="columnheader">Activo</span>
-              <span role="columnheader">Proveedor</span>
-              <span role="columnheader">Compra y vencimiento</span>
-              <span role="columnheader">Cobertura</span>
-              <span role="columnheader">Estado</span>
-              <span role="columnheader">Acciones</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_asset') }}</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_supplier') }}</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_dates') }}</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_coverage') }}</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_status') }}</span>
+              <span role="columnheader">{{ $t('ui.phase6.warranty.col_actions') }}</span>
             </div>
             <div v-for="item in items" :key="item.assetId" class="phase6-row" role="row">
               <span role="cell" class="truncate">{{ assetLabel(item.assetId) }}</span>
@@ -1193,37 +1214,37 @@
               <span role="cell" class="mono">{{ formatDate(item.purchaseDate) || '—' }} → {{ formatDate(item.expiresOn) || '—' }}</span>
               <span role="cell"><span class="status" :class="'status--' + coverageTone(item.coverage)">{{ coverageLabel(item.coverage) }}</span></span>
               <span role="cell">{{ statusLabel(item.status) }}</span>
-              <span role="cell"><button type="button" class="btn btn--ghost btn--small" @click="openEditor(item)">{{ canEdit ? 'Editar' : 'Consultar' }}</button></span>
+              <span role="cell"><button type="button" class="btn btn--ghost btn--small" @click="openEditor(item)">{{ canEdit ? $t('ui.phase6.warranty.edit') : $t('ui.phase6.warranty.view') }}</button></span>
             </div>
           </div>
-          <button v-if="state.hasMore" type="button" class="btn btn--secondary btn--small" @click="loadMore">Cargar más garantías</button>
+          <button v-if="state.hasMore" type="button" class="btn btn--secondary btn--small" @click="loadMore">{{ $t('ui.phase6.warranty.load_more') }}</button>
         </template>
 
-        <modal-shell :open="editor.open" :title="'Garantía del activo'" eyebrow="Garantía individual" @close="closeEditor">
+        <modal-shell :open="editor.open" :title="$t('ui.phase6.warranty.modal_title')" :eyebrow="$t('ui.phase6.warranty.modal_eyebrow')" @close="closeEditor">
           <div class="phase6-grid">
             <p class="mono phase6-span">{{ editor.assetId }}</p>
-            <label class="field"><span class="field__label">Proveedor</span><input class="input-shell" v-model="editor.supplier" :disabled="!canEdit"></label>
-            <label class="field"><span class="field__label">Fecha de compra</span><input class="input-shell" type="date" v-model="editor.purchaseDate" :disabled="!canEdit"></label>
-            <label class="field"><span class="field__label">Duración en meses</span><input class="input-shell" type="number" min="1" max="1200" v-model="editor.durationMonths" :disabled="!canEdit"></label>
-            <label class="field"><span class="field__label">Vencimiento</span><input class="input-shell" type="date" v-model="editor.expiresOn" :disabled="!canEdit"></label>
-            <label class="field"><span class="field__label">Estado</span>
+            <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.provider') }}</span><input class="input-shell" v-model="editor.supplier" :disabled="!canEdit"></label>
+            <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.purchase_date') }}</span><input class="input-shell" type="date" v-model="editor.purchaseDate" :disabled="!canEdit"></label>
+            <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.duration_months') }}</span><input class="input-shell" type="number" min="1" max="1200" v-model="editor.durationMonths" :disabled="!canEdit"></label>
+            <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.expires') }}</span><input class="input-shell" type="date" v-model="editor.expiresOn" :disabled="!canEdit"></label>
+            <label class="field"><span class="field__label">{{ $t('ui.labels.field.status') }}</span>
               <select class="input-shell" v-model="editor.status" :disabled="!canEdit">
                 <option v-for="status in ['active','cancelled','claimed','unknown']" :key="status" :value="status">{{ statusLabel(status) }}</option>
               </select>
             </label>
-            <label class="field"><span class="field__label">Comprobante</span>
+            <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.receipt') }}</span>
               <select class="input-shell" v-model="editor.receiptId" :disabled="!canEdit">
-                <option value="">Sin comprobante</option>
+                <option value="">{{ $t('ui.phase6.warranty.receipt_none') }}</option>
                 <option v-for="file in receipts" :key="file.id" :value="file.id">{{ file.filename }} · {{ formatSize(file.size) }}</option>
               </select>
             </label>
-            <label class="field phase6-span"><span class="field__label">Observaciones</span><textarea class="input-shell" v-model="editor.notes" :disabled="!canEdit"></textarea></label>
+            <label class="field phase6-span"><span class="field__label">{{ $t('ui.phase6.warranty.notes') }}</span><textarea class="input-shell" v-model="editor.notes" :disabled="!canEdit"></textarea></label>
           </div>
           <p v-if="message" class="config-note" role="status">{{ message }}</p>
           <template #footer>
-            <button type="button" class="btn btn--ghost" @click="closeEditor">Cerrar</button>
-            <button v-if="canEdit" type="button" class="btn btn--ghost" :disabled="busy" @click="remove">{{ confirmDelete ? 'Confirmar eliminación' : 'Eliminar garantía' }}</button>
-            <button v-if="canEdit" type="button" class="btn btn--primary" :disabled="busy" @click="save">Guardar</button>
+            <button type="button" class="btn btn--ghost" @click="closeEditor">{{ $t('ui.common.close') }}</button>
+            <button v-if="canEdit" type="button" class="btn btn--ghost" :disabled="busy" @click="remove">{{ confirmDelete ? $t('ui.phase6.warranty.confirm_delete') : $t('ui.phase6.warranty.delete') }}</button>
+            <button v-if="canEdit" type="button" class="btn btn--primary" :disabled="busy" @click="save">{{ $t('ui.common.save') }}</button>
           </template>
         </modal-shell>
       </section>
@@ -1259,7 +1280,7 @@
         this.busy = true;
         const result = await this.app.saveWarrantyPreferences(this.days);
         this.busy = false;
-        this.message = result && result.ok ? 'Preferencia guardada.' : '';
+        this.message = result && result.ok ? tr('ui.phase6.settings.saved') : '';
         this.error = result && !result.ok ? (result.error || '') : '';
         return !!(result && result.ok);
       }
@@ -1268,20 +1289,20 @@
       <section class="phase6-panel" aria-labelledby="phase6-warranty-settings-title">
         <header class="panel-head">
           <div>
-            <p class="eyebrow">Garantías</p>
-            <h2 id="phase6-warranty-settings-title">Aviso de vencimiento próximo</h2>
+            <p class="eyebrow">{{ $t('ui.phase6.warranty.eyebrow') }}</p>
+            <h2 id="phase6-warranty-settings-title">{{ $t('ui.phase6.settings.title') }}</h2>
           </div>
         </header>
-        <p class="config-note">Días de antelación con los que una garantía se considera próxima a vencer.</p>
+        <p class="config-note">{{ $t('ui.phase6.settings.lead') }}</p>
         <div class="phase6-grid">
           <label class="field">
-            <span class="field__label">Días antes del vencimiento</span>
+            <span class="field__label">{{ $t('ui.phase6.settings.days') }}</span>
             <input class="input-shell" type="number" min="1" max="365" v-model.number="days" :disabled="!canEdit">
           </label>
         </div>
         <p v-if="message" class="config-note" role="status">{{ message }}</p>
         <p v-if="error" class="field__error" role="alert">{{ error }}</p>
-        <button type="button" class="btn btn--primary" :disabled="!canEdit || busy" @click="save">Guardar preferencia</button>
+        <button type="button" class="btn btn--primary" :disabled="!canEdit || busy" @click="save">{{ $t('ui.phase6.settings.save') }}</button>
       </section>
     `
   };
@@ -1370,11 +1391,11 @@
         this.busy = false;
         if (!result || !result.ok) {
           this.errors = (result && result.fieldErrors) || {};
-          this.message = (result && result.error) || 'No se pudo guardar la garantía.';
+          this.message = (result && result.error) || tr('ui.phase6.warranty.error_save');
           return false;
         }
         this.editing = false;
-        this.message = 'Garantía guardada.';
+        this.message = tr('ui.phase6.warranty.saved');
         return true;
       },
       async remove() {
@@ -1382,10 +1403,10 @@
         const result = await this.app.deleteAssetWarranty(this.asset.id);
         this.busy = false;
         if (!result || !result.ok) {
-          this.message = (result && result.error) || 'No se pudo eliminar la garantía.';
+          this.message = (result && result.error) || tr('ui.phase6.warranty.error_delete');
           return false;
         }
-        this.message = 'Garantía eliminada.';
+        this.message = tr('ui.phase6.warranty.deleted');
         return true;
       }
     },
@@ -1393,46 +1414,46 @@
       <section class="phase6-panel" aria-labelledby="phase6-asset-warranty-title">
         <header class="panel-head">
           <div>
-            <p class="eyebrow">Garantía</p>
-            <h2 id="phase6-asset-warranty-title">Garantía individual</h2>
+            <p class="eyebrow">{{ $t('ui.phase6.warranty.eyebrow_single') }}</p>
+            <h2 id="phase6-asset-warranty-title">{{ $t('ui.phase6.warranty.modal_eyebrow') }}</h2>
           </div>
           <span v-if="item" class="status" :class="'status--' + coverageTone(item.coverage)">{{ coverageLabel(item.coverage) }}</span>
-          <button v-if="canEdit && !editing" type="button" class="btn btn--ghost btn--small" @click="startEdit">{{ item ? 'Editar' : 'Registrar garantía' }}</button>
+          <button v-if="canEdit && !editing" type="button" class="btn btn--ghost btn--small" @click="startEdit">{{ item ? $t('ui.phase6.warranty.edit_button') : $t('ui.phase6.warranty.register') }}</button>
         </header>
-        <p v-if="state.loading" class="config-note" role="status">Consultando la garantía…</p>
+        <p v-if="state.loading" class="config-note" role="status">{{ $t('ui.phase6.warranty.loading_single') }}</p>
         <p v-else-if="state.error" class="field__error" role="alert">{{ state.error }}</p>
-        <p v-else-if="!item && !editing" class="config-note">Este activo no tiene garantía registrada.</p>
+        <p v-else-if="!item && !editing" class="config-note">{{ $t('ui.phase6.warranty.empty_single') }}</p>
         <dl v-else-if="item && !editing" class="phase6-details">
-          <div><dt>Proveedor</dt><dd>{{ item.supplier || 'Sin proveedor' }}</dd></div>
-          <div><dt>Fecha de compra</dt><dd class="mono">{{ formatDate(item.purchaseDate) || 'Sin fecha' }}</dd></div>
-          <div><dt>Duración</dt><dd>{{ item.durationMonths ? item.durationMonths + ' meses' : 'Sin duración' }}</dd></div>
-          <div><dt>Vencimiento</dt><dd class="mono">{{ formatDate(item.expiresOn) || 'Sin vencimiento' }}</dd></div>
-          <div><dt>Estado</dt><dd>{{ statusLabel(item.status) }}</dd></div>
-          <div><dt>Comprobante</dt><dd>{{ item.receiptId ? 'Adjunto vinculado' : 'Sin comprobante' }}</dd></div>
-          <div class="phase6-span"><dt>Observaciones</dt><dd>{{ item.notes || 'Sin observaciones' }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.provider') }}</dt><dd>{{ item.supplier || $t('ui.phase6.warranty.no_provider') }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.purchase_date') }}</dt><dd class="mono">{{ formatDate(item.purchaseDate) || $t('ui.phase6.warranty.no_date') }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.duration') }}</dt><dd>{{ item.durationMonths ? $t('ui.phase6.warranty.months', { count: item.durationMonths }) : $t('ui.phase6.warranty.no_duration') }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.expires') }}</dt><dd class="mono">{{ formatDate(item.expiresOn) || $t('ui.phase6.warranty.no_expiry') }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.status') }}</dt><dd>{{ statusLabel(item.status) }}</dd></div>
+          <div><dt>{{ $t('ui.phase6.warranty.receipt') }}</dt><dd>{{ item.receiptId ? $t('ui.phase6.warranty.receipt_linked') : $t('ui.phase6.warranty.receipt_none') }}</dd></div>
+          <div class="phase6-span"><dt>{{ $t('ui.phase6.warranty.notes') }}</dt><dd>{{ item.notes || $t('ui.phase6.warranty.no_notes') }}</dd></div>
         </dl>
         <div v-if="editing" class="phase6-grid">
-          <label class="field"><span class="field__label">Proveedor</span><input class="input-shell" v-model="form.supplier"></label>
-          <label class="field"><span class="field__label">Fecha de compra</span><input class="input-shell" type="date" v-model="form.purchaseDate"></label>
-          <label class="field"><span class="field__label">Duración en meses</span><input class="input-shell" type="number" min="1" max="1200" v-model="form.durationMonths"></label>
-          <label class="field"><span class="field__label">Vencimiento</span><input class="input-shell" type="date" v-model="form.expiresOn"></label>
-          <label class="field"><span class="field__label">Estado</span>
+          <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.provider') }}</span><input class="input-shell" v-model="form.supplier"></label>
+          <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.purchase_date') }}</span><input class="input-shell" type="date" v-model="form.purchaseDate"></label>
+          <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.duration_months') }}</span><input class="input-shell" type="number" min="1" max="1200" v-model="form.durationMonths"></label>
+          <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.expires') }}</span><input class="input-shell" type="date" v-model="form.expiresOn"></label>
+          <label class="field"><span class="field__label">{{ $t('ui.labels.field.status') }}</span>
             <select class="input-shell" v-model="form.status">
               <option v-for="status in ['active','cancelled','claimed','unknown']" :key="status" :value="status">{{ statusLabel(status) }}</option>
             </select>
           </label>
-          <label class="field"><span class="field__label">Comprobante</span>
+          <label class="field"><span class="field__label">{{ $t('ui.phase6.warranty.receipt') }}</span>
             <select class="input-shell" v-model="form.receiptId">
-              <option value="">Sin comprobante</option>
+              <option value="">{{ $t('ui.phase6.warranty.receipt_none') }}</option>
               <option v-for="file in receipts" :key="file.id" :value="file.id">{{ file.filename }} · {{ formatSize(file.size) }}</option>
             </select>
           </label>
-          <label class="field phase6-span"><span class="field__label">Observaciones</span><textarea class="input-shell" v-model="form.notes"></textarea></label>
+          <label class="field phase6-span"><span class="field__label">{{ $t('ui.phase6.warranty.notes') }}</span><textarea class="input-shell" v-model="form.notes"></textarea></label>
           <p v-if="message" class="config-note phase6-span" role="status">{{ message }}</p>
           <div class="phase6-actions phase6-span">
-            <button type="button" class="btn btn--ghost btn--small" @click="cancel">Cancelar</button>
-            <button v-if="item" type="button" class="btn btn--ghost btn--small" @click="remove">Eliminar</button>
-            <button type="button" class="btn btn--primary btn--small" :disabled="busy" @click="save">Guardar garantía</button>
+            <button type="button" class="btn btn--ghost btn--small" @click="cancel">{{ $t('ui.common.cancel') }}</button>
+            <button v-if="item" type="button" class="btn btn--ghost btn--small" @click="remove">{{ $t('ui.common.delete') }}</button>
+            <button type="button" class="btn btn--primary btn--small" :disabled="busy" @click="save">{{ $t('ui.phase6.warranty.save') }}</button>
           </div>
         </div>
       </section>
@@ -1484,9 +1505,9 @@
         const result = await this.app.uploadAssetAttachment(this.asset.id, file, this.category);
         this.busy = false;
         if (result && result.ok) {
-          this.message = 'Archivo subido.';
+          this.message = tr('ui.phase6.attachments.uploaded');
         } else if (result && !result.cancelled) {
-          this.message = result.error || 'No se pudo subir el archivo.';
+          this.message = result.error || tr('ui.phase6.attachments.error_upload');
         }
         if (event.target) event.target.value = '';
         return !!(result && result.ok);
@@ -1495,10 +1516,10 @@
         const result = await this.app.downloadAssetAttachment(item);
         if (result && result.ok) {
           saveBlob(result.blob, result.filename);
-          this.message = 'Descarga preparada.';
+          this.message = tr('ui.phase6.attachments.download_ready');
           return true;
         }
-        if (result && !result.cancelled) this.message = result.error || 'No se pudo descargar el archivo.';
+        if (result && !result.cancelled) this.message = result.error || tr('ui.phase6.attachments.error_download');
         return false;
       },
       async remove(item) {
@@ -1511,10 +1532,10 @@
         this.busy = false;
         this.confirmId = '';
         if (result && result.ok) {
-          this.message = 'Adjunto eliminado.';
+          this.message = tr('ui.phase6.attachments.deleted');
           return true;
         }
-        if (result && !result.cancelled) this.message = result.error || 'No se pudo eliminar el adjunto.';
+        if (result && !result.cancelled) this.message = result.error || tr('ui.phase6.attachments.error_delete');
         return false;
       }
     },
@@ -1522,35 +1543,35 @@
       <section class="phase6-panel" aria-labelledby="phase6-attachments-title">
         <header class="panel-head">
           <div>
-            <p class="eyebrow">Documentos</p>
-            <h2 id="phase6-attachments-title">Adjuntos del activo</h2>
+            <p class="eyebrow">{{ $t('ui.phase6.attachments.eyebrow') }}</p>
+            <h2 id="phase6-attachments-title">{{ $t('ui.phase6.attachments.title') }}</h2>
           </div>
-          <span class="mono info-panel__meta">{{ items.length }} archivos</span>
+          <span class="mono info-panel__meta">{{ $t('ui.phase6.attachments.count', { count: items.length }) }}</span>
         </header>
         <div v-if="canEdit" class="phase6-grid phase6-grid--upload">
           <label class="field">
-            <span class="field__label">Categoría documental</span>
+            <span class="field__label">{{ $t('ui.phase6.attachments.category') }}</span>
             <select class="input-shell" v-model="category">
               <option v-for="value in categories" :key="value" :value="value">{{ categoryLabel(value) }}</option>
             </select>
           </label>
           <label class="field">
-            <span class="field__label">Archivo</span>
+            <span class="field__label">{{ $t('ui.phase6.attachments.file') }}</span>
             <input class="input-shell" type="file" :disabled="busy" @change="upload">
           </label>
         </div>
         <p v-if="message" class="config-note" role="status">{{ message }}</p>
-        <p v-if="state.loading" class="config-note" role="status">Consultando adjuntos…</p>
+        <p v-if="state.loading" class="config-note" role="status">{{ $t('ui.phase6.attachments.loading') }}</p>
         <p v-else-if="state.error" class="field__error" role="alert">{{ state.error }}</p>
-        <p v-else-if="!items.length" class="config-note">Sin fotografías, comprobantes, manuales ni documentos.</p>
+        <p v-else-if="!items.length" class="config-note">{{ $t('ui.phase6.attachments.empty') }}</p>
         <ul v-else class="phase6-list">
           <li v-for="item in items" :key="item.id" class="phase6-list__item">
             <span class="truncate">{{ item.filename }}</span>
             <span class="chip chip--muted">{{ categoryLabel(item.category) }}</span>
             <span class="mono cell-note">{{ formatSize(item.size) }} · {{ formatDate(item.createdAt) }}</span>
             <span class="phase6-list__actions">
-              <button type="button" class="btn btn--ghost btn--small" @click="download(item)">Descargar</button>
-              <button v-if="canEdit" type="button" class="btn btn--ghost btn--small" :disabled="busy" @click="remove(item)">{{ confirmId === item.id ? 'Confirmar' : 'Eliminar' }}</button>
+              <button type="button" class="btn btn--ghost btn--small" @click="download(item)">{{ $t('ui.phase6.attachments.download') }}</button>
+              <button v-if="canEdit" type="button" class="btn btn--ghost btn--small" :disabled="busy" @click="remove(item)">{{ confirmId === item.id ? $t('ui.phase6.attachments.confirm') : $t('ui.common.delete') }}</button>
             </span>
           </li>
         </ul>

@@ -3,17 +3,28 @@
 
   const LABEL = window.AssetLabelEngine;
 
+  // Module copy resolves through the shared runtime: templates use `$t`, the
+  // methods, toasts and status words use this helper.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const JOB_LABELS = {
-    queued: 'En cola',
-    running: 'Generando',
-    completed: 'Completado',
-    failed: 'Con errores'
+    queued: 'ui.labels.job.queued',
+    running: 'ui.labels.job.running',
+    completed: 'ui.labels.job.completed',
+    failed: 'ui.labels.job.failed'
   };
 
   function formatDate(value) {
     if (!value) return '—';
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return String(value);
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime && typeof runtime.datetime === 'function') {
+      return runtime.datetime(date, { dateStyle: 'medium', timeStyle: 'short' });
+    }
     return date.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
   }
 
@@ -34,7 +45,7 @@
       fields: [],
       mode: 'consolidated',
       output: 'pdf',
-      name: 'Etiquetas de inventario',
+      name: tr('ui.labels.job.document_name'),
       labels: LABEL.wireLabelOptions(options)
     };
   }
@@ -43,9 +54,12 @@
     name: 'Phase9AssetQrCode',
     props: {
       svg: { type: String, default: '' },
-      label: { type: String, default: 'Código QR del activo' }
+      label: { type: String, default: '' }
     },
-    template: '<div v-if="svg" class="asset-qr" role="img" :aria-label="label" v-html="svg"></div><p v-else class="doc-help">El código QR se carga desde el servidor.</p>'
+    template: `
+      <div v-if="svg" class="asset-qr" role="img" :aria-label="label || $t('ui.qr.code.aria')" v-html="svg"></div>
+      <p v-else class="doc-help">{{ $t('ui.qr.code.loading') }}</p>
+    `
   };
 
   const AssetQrPanel = {
@@ -93,56 +107,56 @@
     template: `
       <section class="operations-panel qr-asset-panel" data-od-id="asset-qr-panel">
         <header class="panel-head">
-          <div><p class="eyebrow">Identidad permanente</p><h2>Código QR y enlace público</h2></div>
-          <span class="status-pill"><app-icon name="lock"></app-icon> Privado por defecto</span>
+          <div><p class="eyebrow">{{ $t('ui.qr.panel.eyebrow') }}</p><h2>{{ $t('ui.qr.panel.title') }}</h2></div>
+          <span class="status-pill"><app-icon name="lock"></app-icon> {{ $t('ui.qr.panel.private_by_default') }}</span>
         </header>
         <div class="qr-asset-body">
-          <asset-qr-code :svg="qr.svg" :label="'Código QR del activo ' + asset.name"></asset-qr-code>
+          <asset-qr-code :svg="qr.svg" :label="$t('ui.qr.code.asset_aria', { name: asset.name })"></asset-qr-code>
           <div>
             <h3>{{ asset.id }}</h3>
-            <p>El QR usa el identificador permanente del servidor. El enlace privado conserva la identidad aunque cambien el código rápido o la ubicación.</p>
-            <code>{{ privateUrl || 'Cargando dirección del servidor…' }}</code>
+            <p>{{ $t('ui.qr.panel.lead') }}</p>
+            <code>{{ privateUrl || $t('ui.qr.panel.loading_url') }}</code>
             <div class="doc-inline">
-              <button type="button" class="btn btn--secondary btn--small" :disabled="!privateUrl" @click="copy(privateUrl)">Copiar enlace privado</button>
-              <a class="text-button" :href="privateReportUrl()">Previsualizar ficha privada</a>
-              <button type="button" class="text-button" @click="app.openDocuments('reports', [asset.id])">Preparar reporte</button>
-              <button type="button" class="text-button" @click="app.openDocuments('labels', [asset.id])">Crear etiqueta</button>
+              <button type="button" class="btn btn--secondary btn--small" :disabled="!privateUrl" @click="copy(privateUrl)">{{ $t('ui.qr.panel.copy_private') }}</button>
+              <a class="text-button" :href="privateReportUrl()">{{ $t('ui.qr.panel.preview_private') }}</a>
+              <button type="button" class="text-button" @click="app.openDocuments('reports', [asset.id])">{{ $t('ui.qr.panel.prepare_report') }}</button>
+              <button type="button" class="text-button" @click="app.openDocuments('labels', [asset.id])">{{ $t('ui.qr.panel.create_label') }}</button>
             </div>
           </div>
         </div>
         <p v-if="qr.error" class="doc-error" role="alert">{{ qr.error }}</p>
         <div class="qr-share-settings">
           <div>
-            <strong>Enlace público limitado</strong>
-            <p>Solo los campos marcados se publican. Crear o revocar el enlace requiere el permiso específico de reportes, no el de edición de activos.</p>
+            <strong>{{ $t('ui.qr.share.title') }}</strong>
+            <p>{{ $t('ui.qr.share.lead') }}</p>
           </div>
           <template v-if="!share">
             <fieldset class="doc-field-options" :disabled="!canShare">
-              <legend>Campos públicos</legend>
+              <legend>{{ $t('ui.qr.share.fields_legend') }}</legend>
               <label v-for="field in publicFields" :key="field.key">
                 <input type="checkbox" v-model="shareFields" :value="field.key">{{ field.label }}
               </label>
             </fieldset>
-            <label class="doc-field">Caducidad
+            <label class="doc-field">{{ $t('ui.qr.share.expiry') }}
               <select v-model.number="expiresInDays" :disabled="!canShare">
-                <option v-for="days in expiryDays" :key="days" :value="days">{{ days }} {{ days === 1 ? 'día' : 'días' }}</option>
+                <option v-for="days in expiryDays" :key="days" :value="days">{{ $t('ui.qr.expiry_days', { count: days }, days) }}</option>
               </select>
             </label>
             <button type="button" class="btn btn--secondary" :disabled="!canShare || app.phase9.share.creating" @click="createShare">
-              {{ app.phase9.share.creating ? 'Creando…' : 'Crear enlace público' }}
+              {{ app.phase9.share.creating ? $t('ui.qr.share.creating') : $t('ui.qr.share.create') }}
             </button>
-            <span v-if="!canShare" class="doc-help">Necesitas el permiso para compartir reportes.</span>
+            <span v-if="!canShare" class="doc-help">{{ $t('ui.qr.share.no_permission') }}</span>
           </template>
           <template v-else>
             <div v-if="share.url" class="qr-shared-url">
               <code>{{ share.url }}</code>
-              <button type="button" class="text-button" @click="copy(share.url)">Copiar</button>
-              <a class="text-button" :href="share.url" target="_blank" rel="noopener">Abrir</a>
+              <button type="button" class="text-button" @click="copy(share.url)">{{ $t('ui.qr.share.copy') }}</button>
+              <a class="text-button" :href="share.url" target="_blank" rel="noopener">{{ $t('ui.qr.share.open') }}</a>
             </div>
-            <p v-else class="doc-help" role="status">El servidor conserva este enlace, pero la dirección completa solo se muestra al crearlo. Revócalo y crea uno nuevo si necesitas volver a copiarla.</p>
-            <p class="doc-help">Caduca el {{ formatDate(share.expiresAt) }} · {{ share.fields.length }} campos visibles.</p>
+            <p v-else class="doc-help" role="status">{{ $t('ui.qr.share.url_hidden') }}</p>
+            <p class="doc-help">{{ $t('ui.qr.share.expires', { date: formatDate(share.expiresAt), count: share.fields.length }) }}</p>
             <button type="button" class="btn btn--ghost btn--small" :disabled="app.phase9.share.revoking" @click="revoke">
-              {{ app.phase9.share.revoking ? 'Revocando…' : 'Revocar enlace' }}
+              {{ app.phase9.share.revoking ? $t('ui.qr.share.revoking') : $t('ui.qr.share.revoke') }}
             </button>
           </template>
         </div>
@@ -156,7 +170,7 @@
         this.app.phase9LoadQr(this.asset.id);
       },
       copy(value) {
-        if (this.app.copyText) this.app.copyText(value, 'Dirección copiada.');
+        if (this.app.copyText) this.app.copyText(value, tr('ui.qr.copied'));
         this.copied = value;
       },
       privateReportUrl() {
@@ -166,13 +180,13 @@
         this.copied = '';
         const result = await this.app.phase9CreateShare(this.asset.id, this.shareFields, this.expiresInDays);
         if (!result.ok) return;
-        this.app.showToast('Enlace público creado.');
+        this.app.showToast(tr('ui.qr.toast.created'));
       },
       async revoke() {
         if (!this.share) return;
         const result = await this.app.phase9RevokeShare(this.share.id);
         if (!result.ok) return;
-        this.app.showToast('Enlace público revocado.');
+        this.app.showToast(tr('ui.qr.toast.revoked'));
       }
     }
   };
@@ -202,7 +216,7 @@
       },
       state() {
         if (this.invalidPublic) {
-          return { loading: false, asset: null, fields: [], error: 'El enlace no incluye un token de acceso válido.' };
+          return { loading: false, asset: null, fields: [], error: tr('ui.qr.error.token_missing') };
         }
         return this.publicMode ? this.publicState : this.privateState;
       },
@@ -230,9 +244,9 @@
         return this.app.phase9.qr;
       },
       orgName() {
-        if (this.publicMode) return 'Activo';
+        if (this.publicMode) return tr('ui.qr.public_org');
         const branding = this.app.phase9Settings.branding;
-        return branding && branding.name ? branding.name : 'ITMS · Activos';
+        return branding && branding.name ? branding.name : tr('ui.shell.public_brand');
       }
     },
     created() {
@@ -270,15 +284,15 @@
       <section class="page qr-report-page" data-od-id="qr-asset-report">
         <template v-if="asset">
           <a v-if="!publicMode" class="back-link" :href="'#/activo/' + encodeURIComponent(asset.id)">
-            <app-icon name="arrow-left"></app-icon>Volver al activo
+            <app-icon name="arrow-left"></app-icon>{{ $t('ui.qr.report.back') }}
           </a>
           <header class="page-head">
             <div>
-              <p class="eyebrow">{{ publicMode ? 'Reporte público' : 'Reporte del activo · ' + asset.id }}</p>
-              <h1>{{ publicMode ? 'Ficha pública limitada' : 'Ficha privada' }}</h1>
-              <p class="page-head__description">{{ publicMode ? 'Este enlace solo muestra los campos autorizados por la organización y no abre el inventario privado.' : 'Información interna del inventario vinculada al identificador permanente.' }}</p>
+              <p class="eyebrow">{{ publicMode ? $t('ui.qr.report.eyebrow_public') : $t('ui.qr.report.eyebrow_private', { id: asset.id }) }}</p>
+              <h1>{{ publicMode ? $t('ui.qr.report.title_public') : $t('ui.qr.report.title_private') }}</h1>
+              <p class="page-head__description">{{ publicMode ? $t('ui.qr.report.lead_public') : $t('ui.qr.report.lead_private') }}</p>
             </div>
-            <span class="status-pill">{{ publicMode ? 'Enlace público' : 'Privado' }}</span>
+            <span class="status-pill">{{ publicMode ? $t('ui.qr.report.pill_public') : $t('ui.qr.report.pill_private') }}</span>
           </header>
           <article class="qr-record">
             <header>
@@ -290,20 +304,20 @@
             </dl>
             <footer>
               <template v-if="!publicMode && privateQr.svg">
-                <asset-qr-code :svg="privateQr.svg" :label="'Código QR del activo ' + asset.id"></asset-qr-code>
-                <p>Destino privado vinculado al ID permanente.<span class="mono">{{ privateQr.url }}</span></p>
+                <asset-qr-code :svg="privateQr.svg" :label="$t('ui.qr.code.asset_aria', { name: asset.id })"></asset-qr-code>
+                <p>{{ $t('ui.qr.report.dest_private') }}<span class="mono">{{ privateQr.url }}</span></p>
               </template>
-              <p v-else-if="publicMode">Enlace público caduca el {{ date(publicState.expiresAt) }}.<span class="mono">{{ publicState.fields.length }} campos visibles</span></p>
-              <p v-else>Ficha interna del activo.<span class="mono">{{ asset.id }}</span></p>
+              <p v-else-if="publicMode">{{ $t('ui.qr.report.expires', { date: date(publicState.expiresAt) }) }}<span class="mono">{{ $t('ui.qr.report.fields_visible', { count: publicState.fields.length }) }}</span></p>
+              <p v-else>{{ $t('ui.qr.report.internal') }}<span class="mono">{{ asset.id }}</span></p>
             </footer>
           </article>
         </template>
-        <div v-else-if="loading" class="doc-empty"><app-icon name="file-text"></app-icon><h2>Cargando reporte…</h2></div>
+        <div v-else-if="loading" class="doc-empty"><app-icon name="file-text"></app-icon><h2>{{ $t('ui.qr.report.loading') }}</h2></div>
         <div v-else class="qr-public-empty">
           <app-icon name="lock"></app-icon>
-          <h2>{{ publicMode ? 'Este enlace no está disponible' : 'No se pudo cargar la ficha' }}</h2>
-          <p>{{ error || 'El enlace puede haber caducado, haber sido revocado o no corresponder a un activo vigente.' }}</p>
-          <a v-if="!publicMode" href="#/inventario" class="btn btn--secondary">Ir al inventario</a>
+          <h2>{{ publicMode ? $t('ui.qr.report.unavailable_public') : $t('ui.qr.report.unavailable_private') }}</h2>
+          <p>{{ error || $t('ui.qr.report.unavailable_lead') }}</p>
+          <a v-if="!publicMode" href="#/inventario" class="btn btn--secondary">{{ $t('ui.qr.report.go_inventory') }}</a>
         </div>
       </section>
     `
@@ -478,11 +492,11 @@
       async generate() {
         this.error = '';
         if (!this.selectedCount) {
-          this.error = 'Selecciona al menos un activo.';
+          this.error = tr('ui.labels.error.no_assets');
           return;
         }
         if (!this.label.fields.length) {
-          this.error = 'Selecciona al menos un elemento para la etiqueta.';
+          this.error = tr('ui.labels.error.no_fields');
           return;
         }
         const result = await this.app.phase9CreateJob(this.request());
@@ -490,10 +504,10 @@
           this.error = result.error || '';
           return;
         }
-        this.notice = 'Trabajo de etiquetas en cola.';
+        this.notice = tr('ui.labels.toast.queued');
       },
       jobLabel(value) {
-        return JOB_LABELS[value] || value || 'Sin estado';
+        return JOB_LABELS[value] ? tr(JOB_LABELS[value]) : (value || tr('ui.labels.job.none'));
       },
       date(value) {
         return formatDate(value);
@@ -510,129 +524,129 @@
       <section class="page labels-page" data-od-id="labels-center">
         <header class="page-head">
           <div>
-            <p class="eyebrow">Identificación física</p>
-            <h1>Etiquetas de inventario</h1>
-            <p class="page-head__description">Etiquetas reales del servidor con formatos A4 y adhesivos, tamaños y márgenes configurables, logotipo y código QR permanente.</p>
+            <p class="eyebrow">{{ $t('ui.labels.eyebrow_physical') }}</p>
+            <h1>{{ $t('ui.labels.center.title') }}</h1>
+            <p class="page-head__description">{{ $t('ui.labels.center.lead') }}</p>
           </div>
-          <a class="btn btn--secondary" href="#/configuracion/etiquetas"><app-icon name="sliders"></app-icon>Valores predeterminados</a>
+          <a class="btn btn--secondary" href="#/configuracion/etiquetas"><app-icon name="sliders"></app-icon>{{ $t('ui.labels.center.defaults_link') }}</a>
         </header>
         <div class="doc-workspace">
           <aside class="doc-controls">
-            <div class="doc-control-head"><p class="eyebrow">01 · Composición</p><h2>Prepara las etiquetas</h2></div>
-            <label class="doc-field">Formato
+            <div class="doc-control-head"><p class="eyebrow">{{ $t('ui.labels.center.eyebrow_compose') }}</p><h2>{{ $t('ui.labels.center.compose_title') }}</h2></div>
+            <label class="doc-field">{{ $t('ui.labels.field.format') }}
               <select v-model="label.formatId" @change="applyFormat">
                 <option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }}</option>
               </select>
             </label>
             <p class="doc-help">{{ currentFormat.detail }}</p>
             <div v-if="custom" class="doc-form-grid">
-              <label class="doc-field">Ancho (mm)<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
-              <label class="doc-field">Alto (mm)<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
-              <label class="doc-field">Ancho de página<input type="number" v-model.number="label.pageWidthMm" min="20" max="1000" step="0.5"></label>
-              <label class="doc-field">Alto de página<input type="number" v-model.number="label.pageHeightMm" min="20" max="1000" step="0.5"></label>
-              <label class="doc-field">Margen superior<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
-              <label class="doc-field">Margen derecho<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
-              <label class="doc-field">Margen inferior<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
-              <label class="doc-field">Margen izquierdo<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
-              <label class="doc-field">Separación horizontal<input type="number" v-model.number="label.gapXmm" min="0" max="30" step="0.5"></label>
-              <label class="doc-field">Separación vertical<input type="number" v-model.number="label.gapYmm" min="0" max="30" step="0.5"></label>
-              <label class="doc-field">Columnas<input type="number" v-model.number="label.columns" min="1" max="12"></label>
-              <label class="doc-field">Posiciones usadas<input type="number" v-model.number="label.offset" min="0" max="500"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.width') }}<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.height') }}<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.page_width') }}<input type="number" v-model.number="label.pageWidthMm" min="20" max="1000" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.page_height') }}<input type="number" v-model.number="label.pageHeightMm" min="20" max="1000" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.margin_top') }}<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.margin_right') }}<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.margin_bottom') }}<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.margin_left') }}<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.gap_x') }}<input type="number" v-model.number="label.gapXmm" min="0" max="30" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.gap_y') }}<input type="number" v-model.number="label.gapYmm" min="0" max="30" step="0.5"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.columns') }}<input type="number" v-model.number="label.columns" min="1" max="12"></label>
+              <label class="doc-field">{{ $t('ui.labels.geometry.offset') }}<input type="number" v-model.number="label.offset" min="0" max="500"></label>
             </div>
             <div class="doc-inline">
-              <label><input type="checkbox" v-model="label.logo">Logotipo</label>
-              <label><input type="checkbox" v-model="label.qr">Código QR</label>
+              <label><input type="checkbox" v-model="label.logo">{{ $t('ui.labels.field.logo') }}</label>
+              <label><input type="checkbox" v-model="label.qr">{{ $t('ui.labels.field.qr') }}</label>
             </div>
             <fieldset class="doc-field-options">
-              <legend>Elementos de la etiqueta</legend>
+              <legend>{{ $t('ui.labels.center.elements_legend') }}</legend>
               <label v-for="field in fieldOptions" :key="field.key">
                 <input type="checkbox" v-model="label.fields" :value="field.key">{{ field.label }}
               </label>
             </fieldset>
 
             <hr class="doc-rule">
-            <label class="doc-field">Buscar activos<input type="search" v-model="filters.search" placeholder="Nombre, ID o código" @input="scheduleSelection"></label>
+            <label class="doc-field">{{ $t('ui.labels.search.label') }}<input type="search" v-model="filters.search" :placeholder="$t('ui.labels.search.placeholder')" @input="scheduleSelection"></label>
             <div class="doc-form-grid">
-              <label class="doc-field">Categoría
+              <label class="doc-field">{{ $t('ui.labels.field.category') }}
                 <select v-model="filters.category" @change="reloadSelection">
-                  <option value="">Todas</option>
+                  <option value="">{{ $t('ui.labels.filter.all_feminine') }}</option>
                   <option v-for="category in categoryOptions" :key="category.id" :value="category.id">{{ category.label }}</option>
                 </select>
               </label>
-              <label class="doc-field">Estado
+              <label class="doc-field">{{ $t('ui.labels.field.status') }}
                 <select v-model="filters.status" @change="reloadSelection">
-                  <option value="">Todos</option>
+                  <option value="">{{ $t('ui.labels.filter.all_masculine') }}</option>
                   <option v-for="status in statusOptions" :key="status.value" :value="status.value">{{ status.label }}</option>
                 </select>
               </label>
-              <label class="doc-field">Sede
+              <label class="doc-field">{{ $t('ui.labels.field.site') }}
                 <select v-model="filters.siteId" @change="reloadSelection">
-                  <option value="">Todas</option>
+                  <option value="">{{ $t('ui.labels.filter.all_feminine') }}</option>
                   <option v-for="site in siteOptions" :key="site.id" :value="site.id">{{ site.label }}</option>
                 </select>
               </label>
-              <label class="doc-field">Ubicación
+              <label class="doc-field">{{ $t('ui.labels.field.location') }}
                 <select v-model="filters.locationId" @change="reloadSelection">
-                  <option value="">Todas</option>
+                  <option value="">{{ $t('ui.labels.filter.all_feminine') }}</option>
                   <option v-for="location in locationOptions" :key="location.id" :value="location.id">{{ location.name }}</option>
                 </select>
               </label>
-              <label class="doc-field">Responsable
+              <label class="doc-field">{{ $t('ui.labels.field.responsible') }}
                 <select v-model="filters.responsiblePersonId" @change="reloadSelection">
-                  <option value="">Todos</option>
+                  <option value="">{{ $t('ui.labels.filter.all_masculine') }}</option>
                   <option v-for="person in responsibleOptions" :key="person.id" :value="person.id">{{ person.name }}</option>
                 </select>
               </label>
-              <label class="doc-field">Archivados
+              <label class="doc-field">{{ $t('ui.labels.filter.archived') }}
                 <select v-model="filters.archived" @change="reloadSelection">
-                  <option value="active">Solo activos</option>
-                  <option value="archived">Solo archivados</option>
+                  <option value="active">{{ $t('ui.labels.filter.archived_active') }}</option>
+                  <option value="archived">{{ $t('ui.labels.filter.archived_only') }}</option>
                 </select>
               </label>
             </div>
             <div class="doc-section-label">
-              <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'etiqueta' : 'etiquetas' }}</strong>
-              <span class="mono">{{ explicit ? 'Selección manual' : 'Todos los resultados' }}</span>
+              <strong>{{ $t('ui.labels.count', { count: selectedCount }, selectedCount) }}</strong>
+              <span class="mono">{{ explicit ? $t('ui.labels.selection.manual') : $t('ui.reports.all_results') }}</span>
             </div>
             <div class="doc-inline">
-              <button type="button" class="text-button" @click="selectAllMatching">Todos los resultados</button>
-              <button type="button" class="text-button" @click="selectPage">Página actual</button>
-              <button type="button" class="text-button" @click="clearSelection">Vaciar</button>
+              <button type="button" class="text-button" @click="selectAllMatching">{{ $t('ui.reports.all_results') }}</button>
+              <button type="button" class="text-button" @click="selectPage">{{ $t('ui.reports.current_page') }}</button>
+              <button type="button" class="text-button" @click="clearSelection">{{ $t('ui.reports.clear_selection') }}</button>
             </div>
             <div class="doc-asset-picker" aria-live="polite">
-              <p v-if="selection.loading" class="doc-help">Cargando activos del servidor…</p>
+              <p v-if="selection.loading" class="doc-help">{{ $t('ui.labels.selection.loading') }}</p>
               <p v-else-if="selection.error" class="doc-error" role="alert">{{ selection.error }}</p>
-              <p v-else-if="!selection.items.length" class="doc-help">Ningún activo coincide con los filtros.</p>
+              <p v-else-if="!selection.items.length" class="doc-help">{{ $t('ui.labels.selection.empty') }}</p>
               <label v-for="asset in selection.items" :key="asset.id">
                 <input type="checkbox" :checked="rowSelected(asset)" @change="toggle(asset)">
                 <span><strong>{{ asset.name }}</strong><small class="mono">{{ asset.id }} · {{ asset.code || asset.quickCode }}</small></span>
               </label>
             </div>
             <div class="doc-inline">
-              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.offset === 0 || selection.loading" @click="selectionPage('previous')">← Anterior</button>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.offset === 0 || selection.loading" @click="selectionPage('previous')">← {{ $t('ui.inventory.previous') }}</button>
               <span class="mono">{{ pageNumber }} / {{ pageCount }}</span>
-              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.loading || selection.offset + selection.limit >= selection.total" @click="selectionPage('next')">Siguiente →</button>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="selection.loading || selection.offset + selection.limit >= selection.total" @click="selectionPage('next')">{{ $t('ui.inventory.next') }} →</button>
             </div>
           </aside>
 
           <div class="doc-preview-area">
             <header class="doc-preview-toolbar">
               <div>
-                <p class="eyebrow">02 · Vista previa</p>
-                <h2>Hoja de etiquetas</h2>
-                <p>{{ selectedCount }} etiquetas · {{ pages }} {{ pages === 1 ? 'página' : 'páginas' }} · {{ currentFormat.widthMm }} × {{ currentFormat.heightMm }} mm</p>
+                <p class="eyebrow">{{ $t('ui.labels.center.eyebrow_preview') }}</p>
+                <h2>{{ $t('ui.labels.center.preview_title') }}</h2>
+                <p>{{ $t('ui.labels.count', { count: selectedCount }, selectedCount) }} · {{ $t('ui.labels.preview.pages', { count: pages }, pages) }} · {{ currentFormat.widthMm }} × {{ currentFormat.heightMm }} mm</p>
               </div>
               <button type="button" class="btn btn--secondary" :disabled="previewState.loading" @click="preview">
-                <app-icon name="eye"></app-icon>{{ previewState.loading ? 'Preparando…' : 'Actualizar vista previa' }}
+                <app-icon name="eye"></app-icon>{{ previewState.loading ? $t('ui.labels.preview.preparing') : $t('ui.labels.preview.refresh') }}
               </button>
             </header>
             <div v-if="previewState.html" class="doc-pages">
-              <iframe :srcdoc="previewState.html" sandbox="" title="Vista previa de etiquetas" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
+              <iframe :srcdoc="previewState.html" sandbox="" :title="$t('ui.labels.preview.frame_title')" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
             </div>
             <div v-else class="doc-empty">
               <app-icon name="printer"></app-icon>
-              <h3>{{ previewState.loading ? 'Preparando etiquetas…' : 'Sin vista previa' }}</h3>
-              <p>El servidor compone la hoja con la misma geometría y contenido que el PDF final.</p>
+              <h3>{{ previewState.loading ? $t('ui.labels.preview.loading') : $t('ui.labels.preview.empty_title') }}</h3>
+              <p>{{ $t('ui.labels.preview.empty_lead') }}</p>
             </div>
             <p v-if="error || previewState.error || selection.error" class="doc-error" role="alert">{{ error || previewState.error || selection.error }}</p>
             <p v-if="notice" class="doc-help" role="status">{{ notice }}</p>
@@ -641,15 +655,15 @@
                 <strong>{{ jobLabel(activeJob.status) }} · {{ activeJob.processed }} / {{ activeJob.total }}</strong>
                 <p v-if="activeJob.errors.length" class="doc-error">{{ activeJob.errors.join(' · ') }}</p>
               </div>
-              <button v-for="document in activeJobDocuments" :key="document.id" type="button" class="btn btn--ghost btn--small" @click="download(document)">Descargar {{ document.name }}</button>
+              <button v-for="document in activeJobDocuments" :key="document.id" type="button" class="btn btn--ghost btn--small" @click="download(document)">{{ $t('ui.labels.job.download', { name: document.name }) }}</button>
             </div>
             <footer class="doc-output-bar">
               <div>
-                <strong>{{ selectedCount }} {{ selectedCount === 1 ? 'etiqueta' : 'etiquetas' }} para preparar</strong>
-                <p>PDF real generado por el servidor · QR permanente · acceso privado por defecto</p>
+                <strong>{{ $t('ui.labels.footer.count', { count: selectedCount }, selectedCount) }}</strong>
+                <p>{{ $t('ui.labels.footer.note') }}</p>
               </div>
               <button type="button" class="btn btn--primary" :disabled="!selectedCount || !label.fields.length || !canGenerate" data-od-id="prepare-labels" @click="generate">
-                <app-icon name="printer"></app-icon>Preparar PDF de etiquetas
+                <app-icon name="printer"></app-icon>{{ $t('ui.labels.footer.prepare') }}
               </button>
             </footer>
           </div>
@@ -670,6 +684,11 @@
       },
       canSave() {
         return this.app.can('config.general');
+      },
+      // The private destination is a route pattern, not copy: it is built here
+      // so the template has no literal path a translator would touch.
+      privatePath() {
+        return '#/reporte/{id-permanente}';
       },
       example() {
         return this.app.phase9.selection.items[0]
@@ -692,12 +711,12 @@
             const url = new URL(this.baseUrl);
             if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol');
           } catch (_) {
-            this.error = 'Introduce una URL http o https válida.';
+            this.error = tr('ui.qr.settings.error_url');
             return;
           }
         }
         if (!this.canSave) {
-          this.error = 'Necesitas el permiso de configuración general.';
+          this.error = tr('ui.labels.error.permission');
           return;
         }
         const result = await this.app.phase9SaveSettings({ baseUrl: this.baseUrl });
@@ -706,30 +725,30 @@
           return;
         }
         this.saved = true;
-        this.app.showToast('URL base de los códigos QR guardada.');
+        this.app.showToast(tr('ui.qr.settings.toast_saved'));
       }
     },
     template: `
       <section class="config-section doc-settings" data-od-id="qr-settings">
         <header class="config-section-head">
-          <p class="eyebrow">Identidad y acceso</p>
-          <h2>URL base y códigos QR</h2>
-          <p>El QR de cada activo usa la URL base de la organización y el identificador permanente emitido por el servidor.</p>
+          <p class="eyebrow">{{ $t('ui.qr.settings.eyebrow') }}</p>
+          <h2>{{ $t('ui.qr.settings.title') }}</h2>
+          <p>{{ $t('ui.qr.settings.lead') }}</p>
         </header>
         <form class="qr-settings-form" @submit.prevent="save">
-          <label class="doc-field">URL base de los reportes
-            <input type="url" v-model="baseUrl" maxlength="400" placeholder="https://activos.organizacion.example/">
+          <label class="doc-field">{{ $t('ui.qr.settings.base_url') }}
+            <input type="url" v-model="baseUrl" maxlength="400" :placeholder="$t('ui.qr.settings.base_url_placeholder')">
           </label>
-          <p class="doc-help">Destino privado: <code>#/reporte/{id-permanente}</code>. Los enlaces públicos se crean y revocan por activo con el permiso de reportes.</p>
+          <p class="doc-help">{{ $t('ui.qr.settings.private_prefix') }} <code>{{ privatePath }}</code>. {{ $t('ui.qr.settings.private_note') }}</p>
           <div v-if="example" class="qr-example">
-            <div><strong>Ejemplo de destino</strong><code>{{ example }}</code></div>
+            <div><strong>{{ $t('ui.qr.settings.example') }}</strong><code>{{ example }}</code></div>
           </div>
           <div class="qr-access-note">
             <app-icon name="lock"></app-icon>
-            <div><strong>Acceso privado por defecto</strong><p>Cada enlace público limita sus campos y su caducidad, y puede revocarse de forma independiente.</p></div>
+            <div><strong>{{ $t('ui.qr.settings.access_title') }}</strong><p>{{ $t('ui.qr.settings.access_lead') }}</p></div>
           </div>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? 'Guardando…' : (saved ? 'Guardado' : 'Guardar URL base') }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.qr.settings.saved') : $t('ui.qr.settings.save')) }}</button>
         </form>
       </section>
     `
@@ -782,7 +801,7 @@
       },
       async save() {
         if (!this.canSave) {
-          this.error = 'Necesitas el permiso de configuración general.';
+          this.error = tr('ui.labels.error.permission');
           return;
         }
         this.error = '';
@@ -792,44 +811,44 @@
           return;
         }
         this.saved = true;
-        this.app.showToast('Valores predeterminados de etiquetas guardados.');
+        this.app.showToast(tr('ui.labels.settings.toast_saved'));
       }
     },
     template: `
       <section class="config-section doc-settings" data-od-id="label-settings">
         <header class="config-section-head">
-          <p class="eyebrow">Identificación física</p>
-          <h2>Formatos y valores de etiquetas</h2>
-          <p>Los valores predeterminados se aplican al preparar etiquetas; la hoja final conserva la geometría canónica del servidor.</p>
+          <p class="eyebrow">{{ $t('ui.labels.eyebrow_physical') }}</p>
+          <h2>{{ $t('ui.labels.settings.title') }}</h2>
+          <p>{{ $t('ui.labels.settings.lead') }}</p>
         </header>
         <form class="qr-settings-form" @submit.prevent="save">
-          <label class="doc-field">Formato predeterminado
+          <label class="doc-field">{{ $t('ui.labels.settings.format_label') }}
             <select v-model="label.formatId" @change="applyFormat">
               <option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }} · {{ format.detail }}</option>
             </select>
           </label>
           <div class="doc-form-grid">
-            <label class="doc-field">Ancho (mm)<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
-            <label class="doc-field">Alto (mm)<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
-            <label class="doc-field">Columnas<input type="number" v-model.number="label.columns" min="1" max="12"></label>
-            <label class="doc-field">Posiciones usadas<input type="number" v-model.number="label.offset" min="0" max="500"></label>
-            <label class="doc-field">Margen superior<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
-            <label class="doc-field">Margen derecho<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
-            <label class="doc-field">Margen inferior<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
-            <label class="doc-field">Margen izquierdo<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.width') }}<input type="number" v-model.number="label.widthMm" min="10" max="500" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.height') }}<input type="number" v-model.number="label.heightMm" min="10" max="500" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.columns') }}<input type="number" v-model.number="label.columns" min="1" max="12"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.offset') }}<input type="number" v-model.number="label.offset" min="0" max="500"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.margin_top') }}<input type="number" v-model.number="label.marginTopMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.margin_right') }}<input type="number" v-model.number="label.marginRightMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.margin_bottom') }}<input type="number" v-model.number="label.marginBottomMm" min="0" max="50" step="0.5"></label>
+            <label class="doc-field">{{ $t('ui.labels.geometry.margin_left') }}<input type="number" v-model.number="label.marginLeftMm" min="0" max="50" step="0.5"></label>
           </div>
           <div class="doc-inline">
-            <label><input type="checkbox" v-model="label.logo">Logotipo</label>
-            <label><input type="checkbox" v-model="label.qr">Código QR</label>
+            <label><input type="checkbox" v-model="label.logo">{{ $t('ui.labels.field.logo') }}</label>
+            <label><input type="checkbox" v-model="label.qr">{{ $t('ui.labels.field.qr') }}</label>
           </div>
           <fieldset class="doc-field-options">
-            <legend>Elementos predeterminados</legend>
+            <legend>{{ $t('ui.labels.settings.elements_legend') }}</legend>
             <label v-for="field in fieldOptions" :key="field.key">
               <input type="checkbox" v-model="label.fields" :value="field.key">{{ field.label }}
             </label>
           </fieldset>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? 'Guardando…' : (saved ? 'Guardado' : 'Guardar valores') }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.labels.settings.saved') : $t('ui.labels.settings.save')) }}</button>
         </form>
       </section>
     `

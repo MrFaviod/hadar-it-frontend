@@ -2,6 +2,13 @@
   'use strict';
   // Locale-aware collation comes from the i18n runtime; the Spanish literal is
   // the fallback for a module evaluated on its own.
+  // Validation and failure copy resolves through the shared runtime at call
+  // time, so a locale switch also changes a message produced later.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   function compareText(left, right, options) {
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
     if (runtime) return runtime.compare(left, right, options);
@@ -49,7 +56,10 @@
   const FINAL_STATES = ['complete', 'error', 'queue_error'];
   const COVERAGES = ['', 'current', 'expiring', 'expired', 'unknown'];
   const ATTACHMENT_CATEGORIES = ['photo', 'receipt', 'manual', 'document'];
-  const FALLBACK_ERROR = 'No se pudo completar la solicitud.';
+  // Resolved lazily so a locale switch is reflected before the next failure.
+  function fallbackError() {
+    return tr('ui.phase6.error.request_failed');
+  }
 
   let responseEpoch = 0;
   let sessionEpoch = 0;
@@ -282,12 +292,12 @@
       phase6Result(error) {
         return {
           ok: false,
-          error: text(error && error.message) || FALLBACK_ERROR,
+          error: text(error && error.message) || fallbackError(),
           fieldErrors: (error && error.fieldErrors) || {}
         };
       },
       phase6Announce(error) {
-        if (this.showToast) this.showToast(text(error && error.message) || FALLBACK_ERROR, 'error');
+        if (this.showToast) this.showToast(text(error && error.message) || fallbackError(), 'error');
       },
 
       /* A write reports success only while the session that started it is
@@ -342,7 +352,7 @@
             this.clearPhase6State();
             return false;
           }
-          resource.error = text(error && error.message) || FALLBACK_ERROR;
+          resource.error = text(error && error.message) || fallbackError();
           return false;
         } finally {
           if (epoch === resource.epoch && this.phase6Owns(key, resource)) {
@@ -420,7 +430,7 @@
       async saveImportProfile(name, options, profileId) {
         if (!this.phase6CanEdit) return false;
         const label = text(name);
-        if (!label) return { ok: false, error: 'Escribe un nombre para el perfil.' };
+        if (!label) return { ok: false, error: tr('ui.phase6.error.profile_name') };
         const token = this.phase6Token();
         const body = { name: label, options: options && typeof options === 'object' ? options : {} };
         const id = text(profileId);
@@ -447,7 +457,7 @@
       async deleteImportProfile(profileId) {
         if (!this.phase6CanEdit) return false;
         const id = text(profileId);
-        if (!id) return { ok: false, error: 'El perfil no está disponible.' };
+        if (!id) return { ok: false, error: tr('ui.phase6.error.profile_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/import-profiles/' + encodeURIComponent(id), { method: 'DELETE' })
@@ -485,9 +495,9 @@
         try {
           encoded = JSON.stringify(settings);
         } catch (_) {
-          return { ok: false, error: 'Las opciones de importación no se pueden enviar.' };
+          return { ok: false, error: tr('ui.phase6.error.options_encode') };
         }
-        if (encoded.length > 20000) return { ok: false, error: 'Las opciones de importación son demasiado extensas.' };
+        if (encoded.length > 20000) return { ok: false, error: tr('ui.phase6.error.options_too_large') };
         if (run.controller) run.controller.abort();
         const controller = makeController();
         const epoch = nextEpoch();
@@ -522,13 +532,13 @@
               { method: 'POST', body: bytes, signal: controller ? controller.signal : undefined }
             ), current
           );
-          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
           this.applyPhase6Operation(result.payload);
           return { ok: true };
         } catch (error) {
           if (!current() || !this.phase6TokenOpen(token) || (error && error.name === 'AbortError')) return { ok: false, cancelled: true };
           this.phase6Announce(error);
-          return { ok: false, error: text(error && error.message) || 'No se pudo leer el archivo seleccionado.' };
+          return { ok: false, error: text(error && error.message) || tr('ui.phase6.error.file_read') };
         } finally {
           if (current()) {
             run.busy = false;
@@ -579,7 +589,7 @@
             return false;
           }
           if (error && error.name === 'AbortError') return false;
-          this.phase6.operation.error = text(error && error.message) || FALLBACK_ERROR;
+          this.phase6.operation.error = text(error && error.message) || fallbackError();
           this.stopPhase6Polling();
           return false;
         }
@@ -615,7 +625,7 @@
       async resolvePhase6Row(index, action, extra) {
         if (!this.phase6CanEdit) return false;
         const operation = this.phase6.operation;
-        if (!operation.id) return { ok: false, error: 'La previsualización no está disponible.' };
+        if (!operation.id) return { ok: false, error: tr('ui.phase6.error.preview_unavailable') };
         const body = { row: count(index, 0), action: text(action) };
         if (extra && extra.assetId) body.assetId = text(extra.assetId);
         if (extra && extra.values && typeof extra.values === 'object') body.values = extra.values;
@@ -626,21 +636,21 @@
             body
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         this.applyPhase6Operation(result.payload);
         return { ok: true };
       },
 
       phase6OperationAction(suffix) {
         const operation = this.phase6.operation;
-        if (!operation.id) return Promise.resolve({ ok: false, error: 'La previsualización no está disponible.' });
+        if (!operation.id) return Promise.resolve({ ok: false, error: tr('ui.phase6.error.preview_unavailable') });
         const token = this.phase6Token();
         return this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/operations/' + encodeURIComponent(operation.id) + '/' + suffix, {
             method: 'POST'
           })
         ).then((result) => {
-          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
           this.applyPhase6Operation(result.payload);
           return { ok: true, payload: result.payload };
         });
@@ -649,14 +659,14 @@
       async approvePhase6Operation() {
         if (!this.phase6CanEdit) return false;
         const operation = this.phase6.operation;
-        if (!operation.id) return { ok: false, error: 'La previsualización no está disponible.' };
+        if (!operation.id) return { ok: false, error: tr('ui.phase6.error.preview_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/operations/' + encodeURIComponent(operation.id) + '/approve', {
             method: 'POST'
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         this.applyPhase6Operation(result.payload);
         return { ok: true };
       },
@@ -664,14 +674,14 @@
       async enqueuePhase6Operation() {
         if (!this.phase6CanEdit) return false;
         const operation = this.phase6.operation;
-        if (!operation.id) return { ok: false, error: 'La previsualización no está disponible.' };
+        if (!operation.id) return { ok: false, error: tr('ui.phase6.error.preview_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/operations/' + encodeURIComponent(operation.id) + '/enqueue', {
             method: 'POST'
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         this.applyPhase6Operation(result.payload);
         return { ok: true, jobId: this.phase6.operation.jobId };
       },
@@ -679,14 +689,14 @@
       async executePhase6Operation() {
         if (!this.phase6CanEdit) return false;
         const operation = this.phase6.operation;
-        if (!operation.id) return { ok: false, error: 'La previsualización no está disponible.' };
+        if (!operation.id) return { ok: false, error: tr('ui.phase6.error.preview_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/operations/' + encodeURIComponent(operation.id) + '/execute', {
             method: 'POST'
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         this.applyPhase6Operation(result.payload);
         return { ok: true, jobId: this.phase6.operation.jobId };
       },
@@ -719,7 +729,7 @@
               signal: controller ? controller.signal : undefined
             }), current
           );
-          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+          if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
           this.applyPhase6Operation(result.payload);
           return { ok: true };
         } finally {
@@ -764,7 +774,7 @@
           }
           if (error && error.name === 'AbortError') return { ok: false, cancelled: true };
           this.phase6Announce(error);
-          run.error = text(error && error.message) || FALLBACK_ERROR;
+          run.error = text(error && error.message) || fallbackError();
           return this.phase6Result(error);
         } finally {
           if (this.phase6 && this.phase6.exportRun === run && epoch === run.epoch) {
@@ -845,7 +855,7 @@
             detail.error = '';
             return true;
           }
-          detail.error = text(error && error.message) || FALLBACK_ERROR;
+          detail.error = text(error && error.message) || fallbackError();
           return false;
         } finally {
           if (epoch === detail.epoch && this.phase6Owns('warranty', detail)) {
@@ -858,7 +868,7 @@
       async saveAssetWarranty(assetId, values) {
         if (!this.phase6CanEdit) return false;
         const id = text(assetId);
-        if (!id) return { ok: false, error: 'El activo no está disponible.' };
+        if (!id) return { ok: false, error: tr('ui.phase6.error.asset_unavailable') };
         const token = this.phase6Token();
         const body = bodyWithoutEmpty(values || {}, WARRANTY_FIELDS);
         const result = await this.phase6Write(token, () =>
@@ -867,7 +877,7 @@
             body
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         const item = Object.assign({ assetId: id }, result.payload);
         if (this.phase6.warranty.assetId === id) {
           this.phase6.warranty.item = item;
@@ -880,7 +890,7 @@
       async deleteAssetWarranty(assetId) {
         if (!this.phase6CanEdit) return false;
         const id = text(assetId);
-        if (!id) return { ok: false, error: 'El activo no está disponible.' };
+        if (!id) return { ok: false, error: tr('ui.phase6.error.asset_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(this, '/assets/' + encodeURIComponent(id) + '/warranty', { method: 'DELETE' })
@@ -911,7 +921,7 @@
             body: { expiringDays: value }
           })
         );
-        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+        if (!result.ok || !result.payload) return result.ok ? { ok: false, error: fallbackError() } : result;
         this.phase6.warrantyPrefs.expiringDays = clamp(count(result.payload.expiringDays, value), 1, 365);
         this.phase6.warrantyPrefs.loaded = true;
         return { ok: true };
@@ -977,7 +987,7 @@
             )
           );
           if (!result.ok || !result.payload) {
-            return result.ok ? { ok: false, error: FALLBACK_ERROR } : result;
+            return result.ok ? { ok: false, error: fallbackError() } : result;
           }
           const item = result.payload;
           if (this.phase6.attachments.assetId === id) {
@@ -1013,7 +1023,7 @@
         const source = attachment || {};
         const id = text(source.id);
         const assetId = text(source.assetId) || this.phase6.attachments.assetId;
-        if (!id || !assetId) return { ok: false, error: 'El archivo no está disponible.' };
+        if (!id || !assetId) return { ok: false, error: tr('ui.phase6.error.file_unavailable') };
         const token = this.phase6Token();
         try {
           const blob = await window.AssetAccess.request(
@@ -1022,7 +1032,7 @@
             { responseType: 'blob' }
           );
           if (!this.phase6TokenOpen(token)) return { ok: false, cancelled: true };
-          if (!blob || typeof blob !== 'object') return { ok: false, error: 'El servidor no devolvió el archivo.' };
+          if (!blob || typeof blob !== 'object') return { ok: false, error: tr('ui.phase6.error.file_missing') };
           return { ok: true, blob, filename: text(source.filename) || 'documento' };
         } catch (error) {
           if (!this.phase6TokenOpen(token)) return { ok: false, cancelled: true };
@@ -1039,7 +1049,7 @@
         if (!this.phase6CanEdit) return false;
         const id = text(attachmentId);
         const assetId = this.phase6.attachments.assetId;
-        if (!id || !assetId) return { ok: false, error: 'El archivo no está disponible.' };
+        if (!id || !assetId) return { ok: false, error: tr('ui.phase6.error.file_unavailable') };
         const token = this.phase6Token();
         const result = await this.phase6Write(token, () =>
           window.AssetAccess.request(
