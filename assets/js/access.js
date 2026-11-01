@@ -1,5 +1,12 @@
 (function () {
   'use strict';
+  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
+  // the fallback for a module evaluated on its own.
+  function compareText(left, right, options) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime) return runtime.compare(left, right, options);
+    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+  }
   const Store = window.AssetStore || {};
   const ACCESS_KEY = 'asset-manager.access';
   const SESSION_KEY = (Store.KEYS && Store.KEYS.session) || 'asset-manager.session';
@@ -199,6 +206,14 @@
 
 
   function text(value, fallback) { return typeof value === 'string' && value.trim() ? value.trim() : (fallback || ''); }
+  // The i18n runtime is part of the shipped script chain; these helpers keep the
+  // module loadable on its own and every message routed through the catalog.
+  function i18nRuntime() { return typeof window !== 'undefined' ? window.ItsmI18n || null : null; }
+  function tr(key, params) { const runtime = i18nRuntime(); return runtime ? runtime.t(key, params) : ''; }
+  function acceptLanguage() {
+    const runtime = i18nRuntime();
+    return runtime && runtime.activeLocale ? runtime.activeLocale : 'es';
+  }
   function canonicalRoleId(value) { return text(value, ''); }
   function safePermissions(value) {
     return Array.isArray(value) ? value.filter(id => typeof id === 'string' &&
@@ -250,40 +265,56 @@
     vm.demoMode = false;
     vm.security = { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES };
     closeSensitiveDialogs(vm); discardLegacyStorage();
+    // Leaving the session drops the account preference; the anonymous choice (or
+    // the installation default) takes over again.
+    if (window.ItsmI18n) window.ItsmI18n.clearSession();
     // The tokenized public report is a sessionless screen: an expired private
     // session must not replace it with the login form.
     const publicRoute = isPublicReportRoute(vm.route);
     vm.route = publicRoute ? vm.route : loginRoute();
     if (!publicRoute && vm.ensureHash) vm.ensureHash('#/login');
   }
-  const messages = {
-    unauthorized: 'La sesión ha vencido. Inicia sesión de nuevo.',
-    forbidden: 'No tienes permisos para realizar esta acción.',
-    conflict: 'La operación no se puede completar con el estado actual.',
-    validation_error: 'Revisa los campos indicados.',
-    not_found: 'El registro no está disponible.',
-    rate_limited: 'Demasiados intentos. Espera antes de volver a intentarlo.',
-    too_many_requests: 'Se alcanzó el límite diario de tokens. Un motor externo pudo haber procesado la solicitud y la cuota estricta no está garantizada.',
-    unavailable: 'El motor no está disponible en este momento.'
+  const codeMessageKeys = {
+    unauthorized: 'ui.errors.unauthorized',
+    forbidden: 'ui.errors.forbidden',
+    conflict: 'ui.errors.conflict',
+    validation_error: 'ui.errors.validation_error',
+    not_found: 'ui.errors.not_found',
+    rate_limited: 'ui.errors.rate_limited',
+    too_many_requests: 'ui.errors.too_many_requests',
+    unavailable: 'ui.errors.unavailable'
   };
+  function codeMessage(code) {
+    const key = codeMessageKeys[text(code, '')];
+    const translated = key ? tr(key) : '';
+    return translated || tr('ui.errors.request_failed');
+  }
   function responseError(vm, path, response, payload) {
     if (response.status === 401 && path !== '/auth/login' && !path.startsWith('/reports/public/')) clearIdentity(vm);
     const code = payload && payload.error && payload.error.code;
     const serverMessage = payload && payload.error && typeof payload.error.message === 'string' ? payload.error.message.trim() : '';
+    // D8/D11: the server translation wins only when the envelope names a key.
+    // Without one the client keeps its translated code table and, for
+    // validation failures, the composed server reason.
+    const translated = payload && payload.error && typeof payload.error.key === 'string' && payload.error.key.trim() ? serverMessage : '';
     const details = Array.isArray(payload && payload.details) ? payload.details : [];
     const detailText = details.map(item => {
       const field = typeof item.field === 'string' ? item.field.trim() : '';
       const message = typeof item.message === 'string' ? item.message.trim() : '';
       return message ? (field ? field + ': ' + message : message) : '';
     }).filter(Boolean).join(' · ');
-    const reason = code === 'validation_error' ? (detailText || serverMessage) : '';
-    const error = new Error(path === '/auth/login' && response.status === 401 ? 'Usuario o contraseña incorrectos.' : (reason ? 'El servidor rechazó la solicitud: ' + reason : (messages[code] || 'No se pudo completar la solicitud.')));
+    const reason = !translated && code === 'validation_error' ? (detailText || serverMessage) : '';
+    const message = translated
+      || (path === '/auth/login' && response.status === 401 ? tr('ui.login.error_invalid') : '')
+      || (reason ? tr('ui.errors.request_rejected', { reason: reason }) : '')
+      || codeMessage(code);
+    const error = new Error(message);
     error.status = response.status;
     error.code = code || '';
     error.serverMessage = serverMessage;
     error.details = details.map(item => ({ field: String(item.field || ''), message: String(item.message || '') }));
     error.fieldErrors = {};
-    details.forEach(item => { const field = String(item.field || '').split('.').pop(); if (field) error.fieldErrors[field] = 'Revisa este campo.'; });
+    details.forEach(item => { const field = String(item.field || '').split('.').pop(); if (field) error.fieldErrors[field] = tr('ui.errors.field_invalid'); });
     return error;
   }
   function takeFrame(buffer) {
@@ -306,7 +337,7 @@
   }
   async function request(vm, path, options) {
     const init = Object.assign({ method: 'GET' }, options || {});
-    const headers = { Accept: 'application/json' };
+    const headers = { Accept: 'application/json', 'Accept-Language': acceptLanguage() };
     // Inventory images travel as raw bytes; every other write stays JSON. The
     // browser owns the binary Content-Type, so no JSON header is invented.
     const binary = typeof ArrayBuffer !== 'undefined' && (init.body instanceof ArrayBuffer || ArrayBuffer.isView(init.body) || (typeof Blob !== 'undefined' && init.body instanceof Blob));
@@ -332,7 +363,7 @@
   // CSRF, origin and abort semantics as `request`, and yields parsed SSE events.
   async function* stream(vm, path, options) {
     const init = Object.assign({ method: 'GET' }, options || {});
-    const headers = { Accept: 'text/event-stream' };
+    const headers = { Accept: 'text/event-stream', 'Accept-Language': acceptLanguage() };
     if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(init.body); }
     if (init.method !== 'GET' && vm.csrfToken) headers['X-CSRF-Token'] = vm.csrfToken;
     const state = vm.__assetAccess;
@@ -370,7 +401,7 @@
     }
   }
   function applySession(vm, payload) {
-    if (!payload.user || !payload.user.active) throw new Error('La sesión no está disponible.');
+    if (!payload.user || !payload.user.active) throw new Error(tr('ui.errors.session_unavailable'));
     vm.csrfToken = payload.csrfToken || '';
     vm.serverPermissions = safePermissions(payload.permissions);
     // Only the server's exact boolean marks a demo installation. Missing or
@@ -380,6 +411,9 @@
     vm.security.sessionMinutes = payload.sessionMinutes || DEFAULT_SESSION_MINUTES;
     vm.activeUserId = payload.user.id;
     vm.authenticated = true;
+    // D11: the envelope's locale, preference and installation formats are
+    // additive; the runtime keeps its current locale when they are absent.
+    if (window.ItsmI18n) window.ItsmI18n.applySession(payload);
   }
   async function loadState(vm) {
     const payload = await request(vm, '/identity/state');
@@ -392,7 +426,7 @@
     if (vm.ensureHash && vm.hashFor) vm.ensureHash(vm.hashFor(vm.route));
   }
   async function save(vm, path, method, body, permission) {
-    if (!vm.requirePermission(permission)) return makeResult(false, messages.forbidden);
+    if (!vm.requirePermission(permission)) return makeResult(false, tr('ui.errors.forbidden'));
     try {
       const payload = await request(vm, path, { method, body });
       const session = await request(vm, '/auth/me');
@@ -408,7 +442,7 @@
       return !!(this.authenticated && this.currentUser && this.currentUser.active && this.effectivePermissions.includes(permission));
     },
     canConfig(section) { return allows(this, sectionPermissions(section)); },
-    requirePermission(permission) { const allowed = this.can(permission); if (!allowed && this.showToast) this.showToast(messages.forbidden, 'error'); return allowed; },
+    requirePermission(permission) { const allowed = this.can(permission); if (!allowed && this.showToast) this.showToast(tr('ui.errors.forbidden'), 'error'); return allowed; },
     roleLabel(id) { const role = roleFor(this, id); return role ? role.name : 'Sin rol'; },
     userPersonLabel(user) { const person = user && user.personId && (this.people || []).find(item => item.id === user.personId); return person ? person.name : user && user.personId ? 'Persona no disponible' : 'Sin vincular'; },
     userPermissions(user) { const role = roleFor(this, user && user.roleId); return role ? safePermissions(role.permissions) : []; },
@@ -443,10 +477,10 @@
     startSessionListeners() { this.scheduleAccessCheck(); },
     stopSessionListeners() { const state = this.__assetAccess; if (state && state.timer) window.clearTimeout(state.timer); },
     async submitLogin() {
-      if (this.loginBusy) return makeResult(false, 'Solicitud en curso.');
+      if (this.loginBusy) return makeResult(false, tr('ui.login.error_in_progress'));
       const form = this.loginForm || {};
-      this.loginErrors = { username: text(form.username) ? '' : 'Introduce tu usuario.', password: form.password ? '' : 'Introduce tu contraseña.', general: '' };
-      if (this.loginErrors.username || this.loginErrors.password) return makeResult(false, 'Completa los campos requeridos.', this.loginErrors);
+      this.loginErrors = { username: text(form.username) ? '' : tr('ui.login.error_username_required'), password: form.password ? '' : tr('ui.login.error_password_required'), general: '' };
+      if (this.loginErrors.username || this.loginErrors.password) return makeResult(false, tr('ui.login.error_required'), this.loginErrors);
       this.loginBusy = true;
       try {
         applySession(this, await request(this, '/auth/login', { method: 'POST', body: { username: text(form.username), password: form.password } }));
@@ -458,14 +492,30 @@
         const typedPassword = this.loginForm.password;
         clearIdentity(this);
         this.loginForm.password = typedPassword;
-        this.loginErrors.general = error.message || 'No se pudo conectar con el servidor.';
+        this.loginErrors.general = error.message || tr('ui.login.error_unavailable');
         return makeResult(false, this.loginErrors.general);
       } finally { this.loginBusy = false; }
     },
     async logout() {
       try { await request(this, '/auth/logout', { method: 'POST' }); }
-      catch (error) { if (error.status !== 401) { if (this.showToast) this.showToast('No se pudo cerrar la sesión en el servidor.', 'error'); return false; } }
+      catch (error) { if (error.status !== 401) { if (this.showToast) this.showToast(tr('ui.shell.logout_failed'), 'error'); return false; } }
       this.stopSessionListeners(); clearIdentity(this); return true;
+    },
+    // S2: the anonymous selector only remembers a preference, while the signed-in
+    // selector saves it on the caller's own account and then applies it.
+    async changeLocale(tag) {
+      const runtime = i18nRuntime();
+      if (!runtime) return false;
+      const target = text(tag, '');
+      if (!target) return false;
+      if (!this.authenticated) return runtime.setLocale(target, { persist: true }) === target;
+      try {
+        applySession(this, await request(this, '/auth/me/preferences', { method: 'PATCH', body: { locale: target } }));
+        return runtime.activeLocale === target;
+      } catch (error) {
+        if (this.showToast) this.showToast(error.message || runtime.t('ui.i18n.save_failed'), 'error');
+        return false;
+      }
     },
     saveUser(draft) {
       const body = { username: draft.username, name: draft.name, email: draft.email || '', roleId: draft.roleId, personId: draft.personId || '', active: draft.active !== false };
@@ -599,7 +649,7 @@
         if (!search) return true;
         const haystack = [user.username, user.name, user.email, methods.roleLabel.call(this, user.roleId), methods.userPersonLabel.call(this, user)].join(' ').toLocaleLowerCase('es');
         return haystack.indexOf(search) !== -1;
-      }).sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+      }).sort((a, b) => compareText(a.name, b.name, { sensitivity: 'base' }));
     },
 
     currentAccount() {
@@ -615,6 +665,21 @@
 
     canOpenConfig() {
       return this.permittedConfigSections.length > 0;
+    },
+
+    // S2: locale options come from the public installation endpoint and the
+    // runtime's own built-in catalogs; the active locale stays a tracked ref so
+    // a hot switch re-renders the selector without a reload.
+    i18nLocales() {
+      const runtime = i18nRuntime();
+      if (!runtime) return [];
+      if (runtime.version) runtime.version.value;
+      return (runtime.locales || []).map((locale) => ({ tag: locale.tag, name: locale.name, nativeName: locale.nativeName }));
+    },
+
+    interfaceLocale() {
+      const runtime = i18nRuntime();
+      return runtime && runtime.i18n ? runtime.i18n.global.locale.value : 'es';
     }
   };
 
@@ -651,10 +716,11 @@
     data() { return { remainingSeconds: null, sampledAt: 0, ticks: 0, timer: null, stopped: false, controller: new AbortController() }; },
     computed: {
       label() {
-        if (this.remainingSeconds === null) return 'Próximo reinicio no disponible';
+        if (this.remainingSeconds === null) return tr('ui.shell.demo_restart_unknown');
         const seconds = Math.max(0, Math.ceil(this.remainingSeconds));
-        if (seconds === 0) return 'Reinicio pendiente';
-        return 'Reinicio en ' + Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+        if (seconds === 0) return tr('ui.shell.demo_restart_pending');
+        const time = Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+        return tr('ui.shell.demo_restart_in', { time: time });
       }
     },
     methods: {

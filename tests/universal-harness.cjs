@@ -9,14 +9,24 @@ function setup(entry='index.html'){
  requestAnimationFrame:fn=>setTimeout(()=>fn(Date.now()),0),cancelAnimationFrame:id=>clearTimeout(id),
  ResizeObserver:class{observe(){}unobserve(){}disconnect(){}}});c.window=c;
  vm.runInContext(fs.readFileSync('assets/vendor/vue.global.prod.js','utf8'),c);
+ // The i18n runtime is part of the shipped script chain: the harness loads the
+ // same vendored vue-i18n build and hands the runtime its authored catalogs so
+ // catalog-backed labels resolve synchronously, exactly like the browser boot.
+ vm.runInContext(fs.readFileSync('assets/vendor/vue-i18n.global.prod.js','utf8'),c);
+ const readCatalog=name=>{try{return JSON.parse(fs.readFileSync('assets/i18n/'+name+'.json','utf8'));}catch(_){return null;}};
+ c.__ITSM_I18N_CATALOGS__={catalogs:{es:readCatalog('es'),en:readCatalog('en')},context:readCatalog('context')||{}};
  const decode=s=>s.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(_,e)=>({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:'\u00a0'}[e]||String.fromCodePoint(e[1].toLowerCase()==='x'?parseInt(e.slice(2),16):Number(e.slice(1)))));
- c.document={createElement(){return {children:[],set innerHTML(v){this.textContent=decode(v);this.children=[{getAttribute:()=>decode((v.match(/foo="([\s\S]*)"/)||[])[1]||'')}];}};},title:''};
+ c.document={createElement(){return {children:[],set innerHTML(v){this.textContent=decode(v);this.children=[{getAttribute:()=>decode((v.match(/foo="([\s\S]*)"/)||[])[1]||'')}];}};},title:'',documentElement:{attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name];}}};
  const html=fs.readFileSync(entry,'utf8');
  for(const [,src] of html.matchAll(/<script src="([^"]+)"/g)){
-  if((src.includes('/vendor/')&&!src.includes('report-qrcode'))||/theme|sidebar|app\.js/.test(src))continue;
+  if((src.includes('/vendor/')&&!/report-qrcode|vue-i18n/.test(src))||/theme|sidebar|app\.js/.test(src))continue;
   if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
+ // The bundle overlay is a server concern; the harness resolves the source
+ // locale as builtin-only so identity envelopes never add global traffic to a
+ // suite's recorded requests.
+ if(c.ItsmI18n&&c.ItsmI18n.primeBundle)c.ItsmI18n.primeBundle('es');
  const Vue=c.Vue;c.Vue={...Vue,createApp(o){c.options=o;return {mount(){}};}};vm.runInContext(fs.readFileSync('assets/js/app.js','utf8'),c);c.Vue=Vue;
  // The real root mixins (access data/computed and the integrated lifecycle
  // slice) are merged the way Vue merges them: mixin data/methods/computed are
@@ -45,8 +55,14 @@ function setup(entry='index.html'){
   const target=String(url).replace(/^\/api\/v1/,''),method=init.method||'GET';
   let body=init.body;
   if(typeof body==='string'&&body){try{body=JSON.parse(body);}catch(_){/* raw bytes keep their shape */}}
-  server.calls.push({url:target,method,body,rawBody:init.body});
   const [path,query='']=target.split('?'),params=new URLSearchParams(query);
+  // The i18n endpoints are boot/global traffic, not a domain request: they are
+  // answered here but never recorded, so positional `server.calls` assertions
+  // keep describing the unit under test. Bundle overlays are exercised by the
+  // dedicated i18n harness.
+  if(path==='/i18n/locales')return respond({revision:1,defaultLocale:'es',formats:{timezone:'America/Asuncion',currency:'PYG'},locales:[{tag:'es',name:'Español',nativeName:'Español',provider:'builtin'},{tag:'en',name:'English',nativeName:'English',provider:'builtin'}]});
+  if(path==='/i18n/bundle')return respond({error:{code:'api.i18n.unknown_locale'}},404);
+  server.calls.push({url:target,method,body,rawBody:init.body,headers:init.headers||{}});
   if(path==='/workspace/state'){if(method==='PUT')server.state={...server.state,...clone(body||{})};return respond(server.state);}
   if(path==='/workspace/integrations'){if(method==='PUT')server.integrations={...server.integrations,...clone(body||{})};return respond(server.integrations);}
   if(path==='/workspace/shortcuts'&&method==='POST'){const shortcut={id:'shortcut-'+(++shortcutSeq),scope:'personal',ownerId:app.currentUser.id,...clone(body||{})};server.state.shortcuts=server.state.shortcuts.concat(shortcut);return respond({shortcut:clone(shortcut)});}

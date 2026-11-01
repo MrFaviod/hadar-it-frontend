@@ -7,9 +7,25 @@ const path = require('node:path');
 
 function load(fetch) {
   const timers = new Map(); let id = 0;
-  const window = { fetch, AssetStore: { KEYS: {} }, setTimeout: fn => { timers.set(++id, fn); return id; }, clearTimeout: key => timers.delete(key) };
-  const sandbox = { window, AbortController, Date, Promise, Number, Math, String, JSON, Error, Object, Array };
+  const readCatalog = name => JSON.parse(fs.readFileSync(path.resolve(__dirname, '../assets/i18n/' + name + '.json'), 'utf8'));
+  // The countdown renders catalog copy, so this sandbox boots the same ordered
+  // runtime slice the shell loads: vendors, the i18n glue and the access mixin.
+  const runtimeFetch = (url, init) => String(url).includes('/i18n/') ? Promise.resolve({ ok: false, status: 404, json: async () => ({}) }) : fetch(url, init);
+  const window = {
+    fetch: runtimeFetch,
+    AssetStore: { KEYS: {} },
+    setTimeout: fn => { timers.set(++id, fn); return id; },
+    clearTimeout: key => timers.delete(key),
+    __ITSM_I18N_CATALOGS__: { catalogs: { es: readCatalog('es'), en: readCatalog('en') }, context: {} }
+  };
+  const document = { title: '', createElement: () => ({ style: {}, innerHTML: '', setAttribute() {}, appendChild() {}, firstChild: null, content: { firstChild: null } }), documentElement: { setAttribute() {} } };
+  const sandbox = { window, document, console, AbortController, Date, Promise, Number, Math, String, JSON, Error, Object, Array };
+  window.window = window;
   vm.createContext(sandbox);
+  for (const file of ['vue.global.prod.js', 'vue-i18n.global.prod.js']) vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../assets/vendor/' + file), 'utf8'), sandbox);
+  window.Vue = sandbox.Vue;
+  window.VueI18n = sandbox.VueI18n;
+  vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../assets/js/i18n.js'), 'utf8'), sandbox);
   vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../assets/js/access.js'), 'utf8'), sandbox);
   const component = window.AssetAccess.DemoCountdown;
   assert.ok(component, 'the authenticated shell exposes a countdown component');

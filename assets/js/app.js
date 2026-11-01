@@ -1,6 +1,17 @@
 (function () {
   'use strict';
 
+  // Root computeds resolve catalog keys without relying on the plugin injection,
+  // so a computed stays callable before/without the app instance (tests, SDK
+  // consumers, extension host). Templates use `$t` from the installed plugin.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+
+  function collator(options) {
+    return window.ItsmI18n ? window.ItsmI18n.collator(options) : new Intl.Collator('es', options || { sensitivity: 'base' });
+  }
+
   // React calls this factory after the ordered runtime has loaded.
   window.mountAssetApp = function (target) {
   // Extracted so the phase-5 server adapter can delegate to the prototype
@@ -9,7 +20,7 @@
       filteredPeople() {
         const filters = this.prefs.people;
         const term = filters.search.trim().toLocaleLowerCase('es');
-        const collator = new Intl.Collator('es', { sensitivity: 'base' });
+        const peopleCollator = window.ItsmI18n ? window.ItsmI18n.collator() : new Intl.Collator('es', { sensitivity: 'base' });
         return this.people.filter((person) => {
           if (filters.site !== 'all' && person.siteId !== filters.site) return false;
           if (filters.department !== 'all' && person.departmentId !== filters.department) return false;
@@ -21,7 +32,7 @@
             this.departmentLabel(person.departmentId), this.siteLabel(person.siteId)
           ].join(' ').toLocaleLowerCase('es');
           return haystack.indexOf(term) !== -1;
-        }).sort((a, b) => collator.compare(a.name, b.name));
+        }).sort((a, b) => peopleCollator.compare(a.name, b.name));
       },
       peopleFilterCount() {
         const filters = this.prefs.people;
@@ -50,7 +61,7 @@
         if (!this.currentPerson) return [];
         return this.assets
           .filter((asset) => asset.assigneeId === this.currentPerson.id)
-          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+          .sort((a, b) => collator({ numeric: true, sensitivity: 'base' }).compare(a.id, b.id));
       },
       assignContextAsset() {
         if (!this.assignDialog.assetId) return null;
@@ -66,14 +77,14 @@
         return this.people
           .filter((person) => person.active || person.id === currentId)
           .filter((person) => !term || [person.name, person.role].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
-          .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
+          .sort((a, b) => collator({ sensitivity: 'base' }).compare(a.name, b.name));
       },
       assignAssets() {
         const term = this.assignDialog.search.trim().toLocaleLowerCase('es');
         return this.assets
           .filter((asset) => !asset.assigneeId)
           .filter((asset) => !term || [asset.name, asset.id, asset.type].join(' ').toLocaleLowerCase('es').indexOf(term) !== -1)
-          .sort((a, b) => a.id.localeCompare(b.id, 'es', { numeric: true }));
+          .sort((a, b) => collator({ numeric: true, sensitivity: 'base' }).compare(a.id, b.id));
       },
   };
 
@@ -104,6 +115,7 @@
       HelpPage: window.AssetHelp.HelpPage,
       AppIcon: window.AppIcon,
       DemoCountdown: window.AssetAccess.DemoCountdown,
+      LocaleSelect: window.ItsmI18n ? window.ItsmI18n.LocaleSelect : null,
       ItsmTable: window.ItsmTable,
       ItsmField: window.ItsmField,
       ItsmStatus: window.ItsmStatus,
@@ -461,7 +473,7 @@
         });
         const direction = this.prefs.sort.endsWith('-desc') ? -1 : 1;
         const field = this.prefs.sort.replace(/-(asc|desc)$/, '');
-        const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+        const compare = collator({ numeric: true, sensitivity: 'base' });
         const valueFor = (asset) => {
           if (field === 'id') return asset.id;
           if (field === 'site') return this.siteLabel(asset.site);
@@ -469,7 +481,7 @@
           if (field === 'type') return asset.type;
           return asset.name;
         };
-        return filtered.sort((a, b) => collator.compare(valueFor(a), valueFor(b)) * direction);
+        return filtered.sort((a, b) => compare.compare(valueFor(a), valueFor(b)) * direction);
       },
       assignedCount() {
         return this.assets.filter((asset) => !!this.assigneeLabel(asset)).length;
@@ -555,33 +567,33 @@
         return window.UIComposition && window.UIComposition.isKnownTarget(target) ? target : '';
       },
       pageLabel() {
-        if (this.route.name === 'help') return 'Ayuda';
-        if (this.route.name === 'reports') return 'Reportes';
-        if (this.route.name === 'warranties') return 'Garantías';
-        if (this.route.name === 'labels') return 'Etiquetas';
-        if (this.route.name === 'reportAsset') return 'Reporte del activo';
+        if (this.route.name === 'help') return tr('ui.page.help');
+        if (this.route.name === 'reports') return tr('ui.page.reports');
+        if (this.route.name === 'warranties') return tr('ui.page.warranties');
+        if (this.route.name === 'labels') return tr('ui.page.labels');
+        if (this.route.name === 'reportAsset') return tr('ui.page.report_asset');
         if (this.route.name === 'detail' && this.currentAsset) return this.currentAsset.id;
-        if (this.route.name === 'maintenance' || this.route.name === 'incident') return 'Mantenimiento';
-        if (this.route.name === 'monitoring') return 'Supervisión';
-        if (this.route.name === 'monitorDevice') return this.route.assetId || 'Dispositivo';
-        if (this.route.name === 'monitorAlert') return this.route.alertId || 'Alerta';
-        if (this.route.name === 'notifications') return 'Notificaciones';
+        if (this.route.name === 'maintenance' || this.route.name === 'incident') return tr('ui.page.maintenance');
+        if (this.route.name === 'monitoring') return tr('ui.page.monitoring');
+        if (this.route.name === 'monitorDevice') return this.route.assetId || tr('ui.page.device');
+        if (this.route.name === 'monitorAlert') return this.route.alertId || tr('ui.page.alert');
+        if (this.route.name === 'notifications') return tr('ui.page.notifications');
         if (this.route.name === 'person' && this.currentPerson) return this.currentPerson.name;
-        if (this.route.name === 'users') return 'Usuarios';
-        if (this.route.name === 'user') return this.currentAccount ? this.currentAccount.name : 'Usuario';
-        if (this.route.name === 'denied') return 'Acceso denegado';
-        if (this.route.name === 'people') return 'Personas';
-        if (this.route.name === 'panel') return 'Panel';
-        if (this.route.name === 'inventory') return 'Inventario';
-        if (this.route.name === 'conversation') return 'Conversación';
+        if (this.route.name === 'users') return tr('ui.page.users');
+        if (this.route.name === 'user') return this.currentAccount ? this.currentAccount.name : tr('ui.page.user');
+        if (this.route.name === 'denied') return tr('ui.page.denied');
+        if (this.route.name === 'people') return tr('ui.page.people');
+        if (this.route.name === 'panel') return tr('ui.page.panel');
+        if (this.route.name === 'inventory') return tr('ui.page.inventory');
+        if (this.route.name === 'conversation') return tr('ui.page.conversation');
         if (this.route.name === 'extension') {
           const link = this.extensionPageLinks.find((entry) => entry.extensionId === this.route.extensionId && entry.pageId === this.route.pageId);
-          return link ? link.label : 'Extensión';
+          return link ? link.label : tr('ui.page.extension');
         }
-        if (this.route.name === 'map' || this.route.name === 'graph') return 'Infraestructura';
-        if (this.route.name === 'datos') return 'Importar y exportar';
-        if (this.route.name === 'config') return 'Configuración';
-        return 'Acceso';
+        if (this.route.name === 'map' || this.route.name === 'graph') return tr('ui.page.infrastructure');
+        if (this.route.name === 'datos') return tr('ui.page.data');
+        if (this.route.name === 'config') return tr('ui.page.settings');
+        return tr('ui.page.login');
       },
       remoteDialogId() {
         if (!this.remoteDialog.asset) return '';
@@ -600,21 +612,21 @@
         return this.themeMode === 'system' ? this.themeResolvedMode : this.themeMode;
       },
       themeToggleLabel() {
-        return this.themeResolved === 'dark' ? 'Activar modo claro' : 'Activar modo oscuro';
+        return this.themeResolved === 'dark' ? tr('ui.shell.theme_light') : tr('ui.shell.theme_dark');
       },
       themeToggleText() {
-        return this.themeResolved === 'dark' ? 'Claro' : 'Oscuro';
+        return this.themeResolved === 'dark' ? tr('ui.shell.theme_light_label') : tr('ui.shell.theme_dark_label');
       },
       sidebarPinned() {
         return this.sidebarPinnedPref && this.sidebarDockable;
       },
       sidebarPinLabel() {
-        return 'Anclar el menú lateral';
+        return tr('ui.shell.sidebar_pin');
       },
       sidebarPinTitle() {
         return this.sidebarPinned
-          ? 'Menú anclado · clic para liberarlo'
-          : 'Anclar el menú lateral';
+          ? tr('ui.shell.sidebar_pinned')
+          : tr('ui.shell.sidebar_pin');
       }
     }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed, window.AssetExtensions.computed),
     watch: {
@@ -774,6 +786,9 @@
       methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, window.AssetExtensions.methods, RouteMethods))
   };
   const app = window.Vue.createApp(appOptions);
+  // D1: the single vue-i18n instance provides `$t`/`$n`/`$d` to every component;
+  // the guard keeps the factory usable when a host stubs `createApp`.
+  if (typeof app.use === 'function' && window.ItsmI18n) app.use(window.ItsmI18n.i18n);
   // Vue local registrations do not propagate to a module's child components.
   // Only these six stable host primitives are part of the public SDK.
   if (typeof app.component === 'function') {
