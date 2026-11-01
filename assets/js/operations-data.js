@@ -1,117 +1,115 @@
 (function () {
   'use strict';
 
+  // Every label below is a catalog key resolved when it is read, so the same
+  // movement definitions render in the active language without a reload.
+  function translate(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
+  function localized(source) {
+    const entry = {};
+    Object.keys(source).forEach(function (key) {
+      if (key === 'labelKey' || key === 'actionKey' || key === 'titleKey' || key === 'hintKey') {
+        Object.defineProperty(entry, key.replace(/Key$/, ''), {
+          enumerable: true,
+          get: function () { return translate(source[key]); }
+        });
+        return;
+      }
+      entry[key] = source[key];
+    });
+    return entry;
+  }
+
   const MOVEMENTS = [
-    {
+    localized({
       id: 'transfer',
-      label: 'Trasladar',
-      action: 'Trasladar activo',
-      title: 'Traslado de activo',
-      icon: 'map-pin',
-      hint: 'Cambia la sede o la ubicación. El código rápido se recalcula y conserva el anterior.'
-    },
-    {
+      labelKey: 'ui.operations.movement.transfer.label',
+      actionKey: 'ui.operations.movement.transfer.action',
+      titleKey: 'ui.operations.movement.transfer.title',
+      hintKey: 'ui.operations.movement.transfer.hint',
+      icon: 'map-pin'
+    }),
+    localized({
       id: 'assigned',
-      label: 'Asignar responsable',
-      action: 'Asignar responsable',
-      title: 'Responsable actualizado',
-      icon: 'user',
-      hint: 'Vincula el activo a una persona activa del directorio sin abrir la ficha completa.'
-    },
-    {
+      labelKey: 'ui.operations.movement.assigned.label',
+      actionKey: 'ui.operations.movement.assigned.action',
+      titleKey: 'ui.operations.movement.assigned.title',
+      hintKey: 'ui.operations.movement.assigned.hint',
+      icon: 'user'
+    }),
+    localized({
       id: 'returned',
-      label: 'Registrar devolución',
-      action: 'Registrar devolución',
-      title: 'Devolución registrada',
-      icon: 'restore',
-      hint: 'Devuelve el equipo al inventario operativo sin responsable y con su estado destino.'
-    },
-    {
+      labelKey: 'ui.operations.movement.returned.label',
+      actionKey: 'ui.operations.movement.returned.action',
+      titleKey: 'ui.operations.movement.returned.title',
+      hintKey: 'ui.operations.movement.returned.hint',
+      icon: 'restore'
+    }),
+    localized({
       id: 'status',
-      label: 'Cambiar estado',
-      action: 'Cambiar estado',
-      title: 'Estado actualizado',
-      icon: 'activity',
-      hint: 'Mueve el activo entre estados operativos sin tocar el resto de la ficha.'
-    },
-    {
+      labelKey: 'ui.operations.movement.status.label',
+      actionKey: 'ui.operations.movement.status.action',
+      titleKey: 'ui.operations.movement.status.title',
+      hintKey: 'ui.operations.movement.status.hint',
+      icon: 'activity'
+    }),
+    localized({
       id: 'retired',
-      label: 'Registrar baja',
-      action: 'Registrar baja',
-      title: 'Activo dado de baja',
-      icon: 'minus',
-      hint: 'Saca el equipo del inventario operativo y conserva ficha, adjuntos e historial.'
-    }
+      labelKey: 'ui.operations.movement.retired.label',
+      actionKey: 'ui.operations.movement.retired.action',
+      titleKey: 'ui.operations.movement.retired.title',
+      hintKey: 'ui.operations.movement.retired.hint',
+      icon: 'minus'
+    })
   ];
 
   const KIND_META = {
-    created: { label: 'Alta', icon: 'plus', tone: 'ok' },
-    updated: { label: 'Ficha', icon: 'pencil', tone: 'neutral' },
-    assigned: { label: 'Asignación', icon: 'user', tone: 'ok' },
-    status: { label: 'Estado', icon: 'activity', tone: 'warn' },
-    code: { label: 'Código', icon: 'layers', tone: 'warn' },
-    retired: { label: 'Baja', icon: 'minus', tone: 'down' },
-    restored: { label: 'Restauración', icon: 'restore', tone: 'ok' },
-    transfer: { label: 'Traslado', icon: 'map-pin', tone: 'ok' },
-    returned: { label: 'Devolución', icon: 'restore', tone: 'neutral' },
-    bulk: { label: 'Edición masiva', icon: 'layers', tone: 'neutral' },
-    relation: { label: 'Relación', icon: 'network', tone: 'neutral' },
-    maintenance: { label: 'Mantenimiento', icon: 'refresh', tone: 'ok' },
-    incident: { label: 'Incidente', icon: 'alert', tone: 'warn' },
-    monitoring: { label: 'Supervisión', icon: 'activity', tone: 'warn' }
+    created: localized({ labelKey: 'ui.operations.kind.created', icon: 'plus', tone: 'ok' }),
+    updated: localized({ labelKey: 'ui.operations.kind.updated', icon: 'pencil', tone: 'neutral' }),
+    assigned: localized({ labelKey: 'ui.operations.kind.assigned', icon: 'user', tone: 'ok' }),
+    status: localized({ labelKey: 'ui.operations.kind.status', icon: 'activity', tone: 'warn' }),
+    code: localized({ labelKey: 'ui.operations.kind.code', icon: 'layers', tone: 'warn' }),
+    retired: localized({ labelKey: 'ui.operations.kind.retired', icon: 'minus', tone: 'down' }),
+    restored: localized({ labelKey: 'ui.operations.kind.restored', icon: 'restore', tone: 'ok' }),
+    transfer: localized({ labelKey: 'ui.operations.kind.transfer', icon: 'map-pin', tone: 'ok' }),
+    returned: localized({ labelKey: 'ui.operations.kind.returned', icon: 'restore', tone: 'neutral' }),
+    bulk: localized({ labelKey: 'ui.operations.kind.bulk', icon: 'layers', tone: 'neutral' }),
+    relation: localized({ labelKey: 'ui.operations.kind.relation', icon: 'network', tone: 'neutral' }),
+    maintenance: localized({ labelKey: 'ui.operations.kind.maintenance', icon: 'refresh', tone: 'ok' }),
+    incident: localized({ labelKey: 'ui.operations.kind.incident', icon: 'alert', tone: 'warn' }),
+    monitoring: localized({ labelKey: 'ui.operations.kind.monitoring', icon: 'activity', tone: 'warn' })
   };
 
   const HISTORY_FILTERS = [
-    { id: 'all', label: 'Todos', kinds: null },
-    { id: 'movements', label: 'Movimientos', kinds: ['transfer', 'assigned', 'returned'] },
-    { id: 'status', label: 'Estado', kinds: ['status', 'restored'] },
-    { id: 'fields', label: 'Ficha', kinds: ['created', 'updated', 'bulk'] },
-    { id: 'code', label: 'Código', kinds: ['code'] },
-    { id: 'relations', label: 'Relaciones', kinds: ['relation'] },
-    { id: 'maintenance', label: 'Mantenimiento', kinds: ['maintenance'] },
-    { id: 'incidents', label: 'Incidentes', kinds: ['incident'] },
-    { id: 'monitoring', label: 'Supervisión', kinds: ['monitoring'] },
-    { id: 'retired', label: 'Bajas', kinds: ['retired'] }
+    localized({ id: 'all', labelKey: 'ui.operations.filter.all', kinds: null }),
+    localized({ id: 'movements', labelKey: 'ui.operations.filter.movements', kinds: ['transfer', 'assigned', 'returned'] }),
+    localized({ id: 'status', labelKey: 'ui.operations.filter.status', kinds: ['status', 'restored'] }),
+    localized({ id: 'fields', labelKey: 'ui.operations.filter.fields', kinds: ['created', 'updated', 'bulk'] }),
+    localized({ id: 'code', labelKey: 'ui.operations.filter.code', kinds: ['code'] }),
+    localized({ id: 'relations', labelKey: 'ui.operations.filter.relations', kinds: ['relation'] }),
+    localized({ id: 'maintenance', labelKey: 'ui.operations.filter.maintenance', kinds: ['maintenance'] }),
+    localized({ id: 'incidents', labelKey: 'ui.operations.filter.incidents', kinds: ['incident'] }),
+    localized({ id: 'monitoring', labelKey: 'ui.operations.filter.monitoring', kinds: ['monitoring'] }),
+    localized({ id: 'retired', labelKey: 'ui.operations.filter.retired', kinds: ['retired'] })
   ];
 
-  const TRANSFER_REASONS = [
-    'Reubicación de puesto',
-    'Nuevo puesto de trabajo',
-    'Cambio de sede',
-    'Reorganización del área',
-    'Otro motivo'
-  ];
+  // The suggested reasons travel with the position they belong to; the form
+  // stores the visible text the person accepted, exactly like any typed reason.
+  const REASON_KEYS = {
+    transfer: ['ui.operations.reason.transfer.relocation', 'ui.operations.reason.transfer.workstation', 'ui.operations.reason.transfer.site', 'ui.operations.reason.transfer.area', 'ui.operations.reason.other'],
+    assigned: ['ui.operations.reason.assigned.position', 'ui.operations.reason.assigned.reassignment', 'ui.operations.reason.assigned.cover', 'ui.operations.reason.other'],
+    returned: ['ui.operations.reason.returned.change', 'ui.operations.reason.returned.assignment_end', 'ui.operations.reason.returned.leave', 'ui.operations.reason.returned.position_end', 'ui.operations.reason.other'],
+    status: ['ui.operations.reason.status.preventive', 'ui.operations.reason.status.fault', 'ui.operations.reason.status.storage', 'ui.operations.reason.status.repaired', 'ui.operations.reason.other'],
+    retired: ['ui.operations.reason.retired.end_of_life', 'ui.operations.reason.retired.irreparable', 'ui.operations.reason.retired.loss', 'ui.operations.reason.retired.renewal', 'ui.operations.reason.other']
+  };
 
-  const ASSIGN_REASONS = [
-    'Nuevo puesto',
-    'Reasignación de equipo',
-    'Cobertura temporal',
-    'Otro motivo'
-  ];
-
-  const RETURN_REASONS = [
-    'Cambio de equipo',
-    'Fin de asignación',
-    'Licencia del responsable',
-    'Baja del puesto',
-    'Otro motivo'
-  ];
-
-  const STATUS_REASONS = [
-    'Revisión preventiva',
-    'Falla reportada',
-    'Equipo en resguardo',
-    'Reparación finalizada',
-    'Otro motivo'
-  ];
-
-  const RETIRE_REASONS = [
-    'Fin de vida útil',
-    'Avería irreparable',
-    'Robo o extravío',
-    'Sustitución por renovación',
-    'Otro motivo'
-  ];
+  function reasonList(type) {
+    const keys = REASON_KEYS[type] || REASON_KEYS.retired;
+    return keys.map(function (key) { return translate(key); });
+  }
 
   function dayFrom(base, days) {
     return base + days * 86400000;
@@ -119,9 +117,9 @@
 
   function actorAt(people, index) {
     const list = Array.isArray(people) ? people : [];
-    if (!list.length) return 'Administrador';
+    if (!list.length) return translate('ui.operations.actor.administrator');
     const person = list[index % list.length];
-    return person && person.name ? person.name : 'Administrador';
+    return person && person.name ? person.name : translate('ui.operations.actor.administrator');
   }
 
   // Deterministic demo timeline built from the asset's own values: no invented
@@ -156,9 +154,14 @@
     if (asset.assigneeId && asset.assignee) {
       push(
         'assigned',
-        'Responsable asignado',
-        'El equipo queda a cargo de ' + asset.assignee + '.',
-        [{ field: 'assigneeId', label: 'Responsable', before: 'Sin asignar', after: asset.assignee }],
+        translate('ui.operations.demo.assigned.title'),
+        translate('ui.operations.demo.assigned.detail', { name: asset.assignee }),
+        [{
+          field: 'assigneeId',
+          label: translate('ui.operations.field.owner'),
+          before: translate('ui.operations.value.unassigned'),
+          after: asset.assignee
+        }],
         3
       );
     }
@@ -170,11 +173,11 @@
       if (other) {
         push(
           'transfer',
-          'Ubicación actualizada',
-          'Reubicación dentro de ' + site.label + ' por reorganización del área.',
+          translate('ui.operations.demo.transfer.title'),
+          translate('ui.operations.demo.transfer.detail', { site: site.label }),
           [
-            { field: 'locationId', label: 'Ubicación', before: other.label, after: asset.location || asset.locationId },
-            { field: 'site', label: 'Sede', before: site.label, after: site.label }
+            { field: 'locationId', label: translate('ui.operations.field.location'), before: other.label, after: asset.location || asset.locationId },
+            { field: 'site', label: translate('ui.operations.field.site'), before: site.label, after: site.label }
           ],
           9
         );
@@ -184,19 +187,34 @@
     if (asset.statusId === 'mantenimiento') {
       push(
         'status',
-        'Envío a mantenimiento',
-        'Revisión preventiva programada por soporte técnico.',
-        [{ field: 'statusId', label: 'Estado', before: 'Asignado', after: 'Mantenimiento' }],
+        translate('ui.operations.demo.maintenance.title'),
+        translate('ui.operations.demo.maintenance.detail'),
+        [{
+          field: 'statusId',
+          label: translate('ui.operations.field.status'),
+          before: translate('ui.operations.value.assigned'),
+          after: translate('ui.operations.value.maintenance')
+        }],
         14
       );
     } else if (asset.statusId === 'resguardo' && !asset.retired) {
       push(
         'status',
-        'Equipo en resguardo',
-        'Sin responsable activo: el equipo queda disponible en depósito.',
+        translate('ui.operations.demo.storage.title'),
+        translate('ui.operations.demo.storage.detail'),
         [
-          { field: 'statusId', label: 'Estado', before: 'Asignado', after: 'En resguardo' },
-          { field: 'assigneeId', label: 'Responsable', before: asset.assignee || 'Sin asignar', after: 'Sin asignar' }
+          {
+            field: 'statusId',
+            label: translate('ui.operations.field.status'),
+            before: translate('ui.operations.value.assigned'),
+            after: translate('ui.operations.value.storage')
+          },
+          {
+            field: 'assigneeId',
+            label: translate('ui.operations.field.owner'),
+            before: asset.assignee || translate('ui.operations.value.unassigned'),
+            after: translate('ui.operations.value.unassigned')
+          }
         ],
         7
       );
@@ -226,11 +244,7 @@
     MOVEMENTS,
     KIND_META,
     HISTORY_FILTERS,
-    TRANSFER_REASONS,
-    ASSIGN_REASONS,
-    RETURN_REASONS,
-    STATUS_REASONS,
-    RETIRE_REASONS,
+    reasonList,
     seedDemoHistory,
     enrich
   };

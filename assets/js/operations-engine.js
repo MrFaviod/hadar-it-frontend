@@ -1,11 +1,22 @@
 (function () {
   'use strict';
-  // Locale-aware collation comes from the i18n runtime; the Spanish literal is
-  // the fallback for a module evaluated on its own.
+  // Locale-aware collation comes from the i18n runtime; a runtime-less module
+  // falls back to the platform collation.
   function compareText(left, right, options) {
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
     if (runtime) return runtime.compare(left, right, options);
-    return String(left).localeCompare(String(right), 'es', options || { sensitivity: 'base' });
+    return String(left).localeCompare(String(right), undefined, options || { sensitivity: 'base' });
+  }
+
+  function runtime() {
+    return typeof window !== 'undefined' ? window.ItsmI18n : null;
+  }
+
+  // Every visible string in this module is a stable key resolved at call time,
+  // so a running session switches language without reloading the engine.
+  function tr(key, params) {
+    const api = runtime();
+    return api ? api.t(key, params) : '';
   }
 
   const Schema = window.AssetSchema;
@@ -23,7 +34,7 @@
   function currency(value) {
     return window.ItsmI18n
       ? window.ItsmI18n.amount(value)
-      : new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(value) || 0);
+      : String(Number(value) || 0);
   }
 
   function findById(list, id) {
@@ -69,7 +80,7 @@
   function actorOf(app) {
     const user = app && app.currentUser ? app.currentUser : null;
     if (user && user.name) return user.name;
-    return 'Administrador';
+    return tr('ui.operations.actor.administrator');
   }
 
   function effectiveIso(value) {
@@ -117,9 +128,9 @@
   function guardRetired(asset, plan, type) {
     if (!asset.retired) return true;
     if (type === 'retired') {
-      plan.errors.push('El activo ya está dado de baja.');
+      plan.errors.push(tr('ui.operations.error.retired_already'));
     } else {
-      plan.errors.push('Un activo dado de baja no admite movimientos. Restáuralo primero.');
+      plan.errors.push(tr('ui.operations.error.retired_no_moves'));
     }
     return false;
   }
@@ -130,7 +141,7 @@
     if (next !== asset.code) {
       plan.code = { from: asset.code, to: next, changed: true };
       plan.patch.code = next;
-      addChange(plan, 'code', 'Código rápido', asset.code, next);
+      addChange(plan, 'code', tr('ui.operations.field.quick_code'), asset.code, next);
     }
   }
 
@@ -139,12 +150,12 @@
     const type = movement && movement.type ? movement.type : '';
     const plan = planBase(asset, type);
     if (!asset) {
-      plan.errors.push('No se encontró el activo.');
+      plan.errors.push(tr('ui.operations.error.asset_missing'));
       plan.ok = false;
       return plan;
     }
     if (Data.MOVEMENTS.map(function (item) { return item.id; }).indexOf(type) === -1) {
-      plan.errors.push('Tipo de movimiento no reconocido.');
+      plan.errors.push(tr('ui.operations.error.unknown_type'));
       plan.ok = false;
       return plan;
     }
@@ -155,20 +166,20 @@
       const site = findById(ctx.sites, siteId);
       const locationId = text(movement.locationId, '');
       const location = site ? locationOf(ctx.sites, site.id, locationId) : null;
-      if (!site) plan.errors.push('Elige la sede de destino.');
-      if (!text(movement.reason, '')) plan.errors.push('Indica el motivo del traslado.');
-      if (site && locationId && !location) plan.errors.push('La ubicación elegida no pertenece a la sede de destino.');
+      if (!site) plan.errors.push(tr('ui.operations.error.choose_site'));
+      if (!text(movement.reason, '')) plan.errors.push(tr('ui.operations.error.transfer_reason'));
+      if (site && locationId && !location) plan.errors.push(tr('ui.operations.error.location_outside_site'));
       if (site && site.id === asset.site && (locationId || '') === (asset.locationId || '')) {
-        plan.errors.push('El destino coincide con la ubicación actual del activo.');
+        plan.errors.push(tr('ui.operations.error.same_destination'));
       }
       if (site && site.id === asset.site) {
-        plan.warnings.push('La sede no cambia: el código rápido se mantiene igual.');
+        plan.warnings.push(tr('ui.operations.warn.site_unchanged'));
       }
       if (site && !locationId) {
-        plan.warnings.push('El activo queda sin ubicación dentro de ' + site.label + '.');
+        plan.warnings.push(tr('ui.operations.warn.no_location', { site: site.label }));
       }
       if (site && asset.assigneeId && site.id !== asset.site) {
-        plan.warnings.push('El responsable actual se mantiene aunque cambie de sede.');
+        plan.warnings.push(tr('ui.operations.warn.owner_kept'));
       }
       if (!plan.errors.length) {
         if (site.id !== asset.site) {
@@ -177,7 +188,7 @@
           recalcCode(asset, plan, ctx, site.id);
         }
         if ((locationId || '') !== (asset.locationId || '')) {
-          addChange(plan, 'locationId', 'Ubicación', asset.location || 'Sin ubicación', location ? location.label : 'Sin ubicación');
+          addChange(plan, 'locationId', tr('ui.operations.field.location'), asset.location || tr('ui.operations.value.no_location'), location ? location.label : tr('ui.operations.value.no_location'));
           plan.patch.locationId = location ? location.id : '';
           plan.patch.location = location ? location.label : '';
         }
@@ -188,16 +199,16 @@
     if (type === 'assigned') {
       if (!guardRetired(asset, plan, type)) return finish(plan);
       const person = personOf(ctx.people, movement.personId);
-      if (!person) plan.errors.push('Elige la persona responsable.');
-      else if (!person.active) plan.errors.push('La persona está inactiva y no puede recibir asignaciones.');
-      else if (person.id === asset.assigneeId) plan.errors.push('El activo ya está asignado a esa persona.');
-      if (!text(movement.reason, '')) plan.errors.push('Indica el motivo de la asignación.');
+      if (!person) plan.errors.push(tr('ui.operations.error.choose_person'));
+      else if (!person.active) plan.errors.push(tr('ui.operations.error.person_inactive'));
+      else if (person.id === asset.assigneeId) plan.errors.push(tr('ui.operations.error.already_assigned'));
+      if (!text(movement.reason, '')) plan.errors.push(tr('ui.operations.error.assign_reason'));
       if (person && !plan.errors.length) {
-        addChange(plan, 'assigneeId', 'Responsable', asset.assignee || 'Sin asignar', person.name);
+        addChange(plan, 'assigneeId', tr('ui.operations.field.owner'), asset.assignee || tr('ui.operations.value.unassigned'), person.name);
         plan.patch.assigneeId = person.id;
         plan.patch.assignee = person.name;
         if (asset.statusId === 'resguardo') {
-          plan.warnings.push('El activo sigue en «En resguardo». Cambia su estado en el movimiento «Cambiar estado».');
+          plan.warnings.push(tr('ui.operations.warn.still_in_storage'));
         }
       }
       return finish(plan);
@@ -205,16 +216,16 @@
 
     if (type === 'returned') {
       if (!guardRetired(asset, plan, type)) return finish(plan);
-      if (!asset.assigneeId) plan.errors.push('El activo no tiene un responsable asignado.');
-      if (!text(movement.reason, '')) plan.errors.push('Indica el motivo de la devolución.');
+      if (!asset.assigneeId) plan.errors.push(tr('ui.operations.error.no_owner'));
+      if (!text(movement.reason, '')) plan.errors.push(tr('ui.operations.error.return_reason'));
       const target = statusOf(ctx.admin, movement.statusId) || findById(openStatuses(ctx.admin), 'resguardo') || openStatuses(ctx.admin)[0];
-      if (target && target.final) plan.errors.push('Un estado final no es válido para una devolución.');
+      if (target && target.final) plan.errors.push(tr('ui.operations.error.final_status_return'));
       if (!plan.errors.length) {
-        addChange(plan, 'assigneeId', 'Responsable', asset.assignee || 'Sin asignar', 'Sin asignar');
+        addChange(plan, 'assigneeId', tr('ui.operations.field.owner'), asset.assignee || tr('ui.operations.value.unassigned'), tr('ui.operations.value.unassigned'));
         plan.patch.assigneeId = '';
         plan.patch.assignee = '';
         if (target && target.id !== asset.statusId) {
-          addChange(plan, 'statusId', 'Estado', asset.status, target.label);
+          addChange(plan, 'statusId', tr('ui.operations.field.status'), asset.status, target.label);
           plan.patch.statusId = target.id;
           plan.patch.status = target.label;
           plan.patch.statusTone = target.tone;
@@ -226,12 +237,12 @@
     if (type === 'status') {
       if (!guardRetired(asset, plan, type)) return finish(plan);
       const target = statusOf(ctx.admin, movement.statusId);
-      if (!target) plan.errors.push('Elige el estado de destino.');
-      else if (target.final) plan.errors.push('Para dar de baja usa el movimiento «Registrar baja».');
-      else if (target.id === asset.statusId) plan.errors.push('El activo ya está en ese estado.');
-      if (!text(movement.reason, '')) plan.errors.push('Indica el motivo del cambio de estado.');
+      if (!target) plan.errors.push(tr('ui.operations.error.choose_status'));
+      else if (target.final) plan.errors.push(tr('ui.operations.error.retire_use_retire'));
+      else if (target.id === asset.statusId) plan.errors.push(tr('ui.operations.error.same_status'));
+      if (!text(movement.reason, '')) plan.errors.push(tr('ui.operations.error.status_reason'));
       if (target && !plan.errors.length) {
-        addChange(plan, 'statusId', 'Estado', asset.status, target.label);
+        addChange(plan, 'statusId', tr('ui.operations.field.status'), asset.status, target.label);
         plan.patch.statusId = target.id;
         plan.patch.status = target.label;
         plan.patch.statusTone = target.tone;
@@ -241,19 +252,19 @@
 
     // retired
     if (asset.retired) {
-      plan.errors.push('El activo ya está dado de baja.');
+      plan.errors.push(tr('ui.operations.error.retired_already'));
       return finish(plan);
     }
     const target = finalStatus(ctx.admin);
-    if (!text(movement.reason, '')) plan.errors.push('Indica el motivo de la baja.');
-    if (!movement.ack) plan.errors.push('Confirma que el activo deja de estar operativo.');
-    if (!target) plan.errors.push('No hay un estado final configurado para la baja.');
+    if (!text(movement.reason, '')) plan.errors.push(tr('ui.operations.error.retire_reason'));
+    if (!movement.ack) plan.errors.push(tr('ui.operations.error.retire_ack'));
+    if (!target) plan.errors.push(tr('ui.operations.error.no_final_status'));
     if (!plan.errors.length) {
-      addChange(plan, 'statusId', 'Estado', asset.status, target.label);
+      addChange(plan, 'statusId', tr('ui.operations.field.status'), asset.status, target.label);
       if (asset.assigneeId) {
-        addChange(plan, 'assigneeId', 'Responsable', asset.assignee || 'Sin asignar', 'Sin asignar');
+        addChange(plan, 'assigneeId', tr('ui.operations.field.owner'), asset.assignee || tr('ui.operations.value.unassigned'), tr('ui.operations.value.unassigned'));
       }
-      addChange(plan, 'retired', 'Conservación', 'Inventario operativo', 'Ficha, adjuntos e historial conservados');
+      addChange(plan, 'retired', tr('ui.operations.field.conservation'), tr('ui.operations.value.operational_inventory'), tr('ui.operations.value.conservation_kept'));
       plan.patch.statusId = target.id;
       plan.patch.status = target.label;
       plan.patch.statusTone = target.tone;
@@ -283,19 +294,19 @@
       const afterLocation = plan.patch.location !== undefined ? plan.patch.location : asset.location;
       detail = before + ' → ' + afterSite + (afterLocation ? ' · ' + afterLocation : '') + '.';
       if (reason) detail += ' ' + reason + '.';
-      if (plan.code.changed) detail += ' Código ' + plan.code.from + ' → ' + plan.code.to + '.';
+      if (plan.code.changed) detail += ' ' + tr('ui.operations.detail.code_changed', { from: plan.code.from, to: plan.code.to });
     } else if (type === 'assigned') {
       const person = personOf(ctx.people, plan.patch.assigneeId);
-      detail = (asset.assignee || 'Sin asignar') + ' → ' + (person ? person.name : '') + '.';
+      detail = (asset.assignee || tr('ui.operations.value.unassigned')) + ' → ' + (person ? person.name : '') + '.';
       if (reason) detail += ' ' + reason + '.';
     } else if (type === 'returned') {
-      detail = 'Devuelto por ' + (asset.assignee || 'responsable sin registrar') + '. Estado «' + (plan.patch.status || asset.status) + '».';
+      detail = tr('ui.operations.detail.returned', { name: asset.assignee || tr('ui.operations.value.owner_unrecorded'), status: plan.patch.status || asset.status });
       if (reason) detail += ' ' + reason + '.';
     } else if (type === 'status') {
       detail = asset.status + ' → ' + (plan.patch.status || asset.status) + '.';
       if (reason) detail += ' ' + reason + '.';
     } else if (type === 'retired') {
-      detail = reason + '. La ficha, los adjuntos y el historial se conservan. Los activos relacionados no se modifican.';
+      detail = tr('ui.operations.detail.retired', { reason: reason });
     }
     if (note) detail += ' ' + note;
     return detail;
@@ -316,7 +327,7 @@
       detail,
       plan,
       { type: type },
-      ctx.actor || 'Administrador',
+      ctx.actor || tr('ui.operations.actor.administrator'),
       effectiveAt
     );
     asset.history.unshift(entry);
@@ -330,15 +341,15 @@
   function bulkCatalog(context, assets) {
     const ctx = context || {};
     const fields = [
-      { key: 'statusId', label: 'Estado', control: 'status', group: 'Estado y responsable' },
-      { key: 'assigneeId', label: 'Responsable', control: 'person', group: 'Estado y responsable' },
-      { key: 'site', label: 'Sede', control: 'site', group: 'Ubicación' },
-      { key: 'locationId', label: 'Ubicación', control: 'location', group: 'Ubicación' },
-      { key: 'brand', label: 'Marca', control: 'text', group: 'Datos comunes' },
-      { key: 'model', label: 'Modelo', control: 'text', group: 'Datos comunes' },
-      { key: 'serial', label: 'Número de serie', control: 'text', group: 'Datos comunes' },
-      { key: 'ip', label: 'Dirección IP', control: 'text', group: 'Datos comunes' },
-      { key: 'cost', label: 'Coste', control: 'number', group: 'Datos comunes' }
+      { key: 'statusId', labelKey: 'ui.operations.field.status', control: 'status', group: 'status' },
+      { key: 'assigneeId', labelKey: 'ui.operations.field.owner', control: 'person', group: 'status' },
+      { key: 'site', labelKey: 'ui.operations.field.site', control: 'site', group: 'location' },
+      { key: 'locationId', labelKey: 'ui.operations.field.location', control: 'location', group: 'location' },
+      { key: 'brand', labelKey: 'ui.operations.field.brand', control: 'text', group: 'common' },
+      { key: 'model', labelKey: 'ui.operations.field.model', control: 'text', group: 'common' },
+      { key: 'serial', labelKey: 'ui.operations.field.serial', control: 'text', group: 'common' },
+      { key: 'ip', labelKey: 'ui.operations.field.ip', control: 'text', group: 'common' },
+      { key: 'cost', labelKey: 'ui.operations.field.cost', control: 'number', group: 'common' }
     ];
     const seen = {};
     const selected = Array.isArray(assets) ? assets : [];
@@ -351,7 +362,7 @@
           key: 'tech.' + field.key,
           label: field.label,
           control: CONTROL_TYPES[field.type] || 'text',
-          group: 'Campos técnicos',
+          group: 'technical',
           field: field,
           options: Array.isArray(field.options) ? field.options : []
         });
@@ -367,9 +378,9 @@
   }
 
   function previewValue(value) {
-    if (value === true) return 'Sí';
-    if (value === false) return 'No';
-    if (value === '' || value === undefined || value === null) return 'Sin valor';
+    if (value === true) return tr('ui.operations.value.yes');
+    if (value === false) return tr('ui.operations.value.no');
+    if (value === '' || value === undefined || value === null) return tr('ui.operations.value.empty');
     return String(value);
   }
 
@@ -384,7 +395,7 @@
       const row = { asset: asset, skipped: false, skipReason: '', changes: [], warnings: [], patch: {} };
       if (asset.retired) {
         row.skipped = true;
-        row.skipReason = 'Activo dado de baja: conserva su ficha pero no admite ediciones por lote.';
+        row.skipReason = tr('ui.operations.bulk.skip_retired');
         return row;
       }
       const work = working.find(function (item) { return item.id === asset.id; });
@@ -394,9 +405,9 @@
       const targetSiteId = has('site') ? values.site : asset.site;
       const targetSite = findById(ctx.sites, targetSiteId);
       if (has('site') && !targetSite) {
-        row.warnings.push('La sede elegida no existe. Se omite el activo.');
+        row.warnings.push(tr('ui.operations.bulk.skip_site'));
         row.skipped = true;
-        row.skipReason = 'Sede de destino inválida.';
+        row.skipReason = tr('ui.operations.bulk.skip_invalid_site');
         return row;
       }
       const siteChanged = !!targetSite && targetSite.id !== asset.site;
@@ -408,23 +419,23 @@
       let targetLocationId = has('locationId') ? values.locationId : asset.locationId;
       let targetLocation = targetLocationId ? locationOf(ctx.sites, targetSiteId, targetLocationId) : null;
       if (has('locationId') && values.locationId && !targetLocation) {
-        row.warnings.push('La ubicación elegida no pertenece a la sede de destino: no se aplica.');
+        row.warnings.push(tr('ui.operations.bulk.warn_location_outside'));
         targetLocationId = asset.locationId;
         targetLocation = targetLocationId ? locationOf(ctx.sites, targetSiteId, targetLocationId) : null;
       }
       if (siteChanged && !has('locationId') && asset.locationId && !targetLocation) {
         targetLocationId = '';
         targetLocation = null;
-        row.warnings.push('La ubicación anterior no existe en la sede destino: el activo queda sin ubicación.');
+        row.warnings.push(tr('ui.operations.bulk.warn_no_location'));
       }
       if (targetLocationId !== asset.locationId) {
         row.patch.locationId = targetLocation ? targetLocation.id : '';
         row.patch.location = targetLocation ? targetLocation.label : '';
         row.changes.push({
           field: 'locationId',
-          label: 'Ubicación',
-          before: asset.location || 'Sin ubicación',
-          after: targetLocation ? targetLocation.label : 'Sin ubicación'
+          label: tr('ui.operations.field.location'),
+          before: asset.location || tr('ui.operations.value.no_location'),
+          after: targetLocation ? targetLocation.label : tr('ui.operations.value.no_location')
         });
       }
 
@@ -432,7 +443,7 @@
         const nextCode = Schema.nextCode(working, asset.category, targetSite.id, ctx.admin, asset.id);
         if (nextCode && nextCode !== asset.code) {
           row.patch.code = nextCode;
-          row.changes.push({ field: 'code', label: 'Código rápido', before: asset.code, after: nextCode });
+          row.changes.push({ field: 'code', label: tr('ui.operations.field.quick_code'), before: asset.code, after: nextCode });
           work.code = nextCode;
         }
         work.site = targetSite.id;
@@ -441,14 +452,14 @@
       if (has('statusId')) {
         const status = statusOf(ctx.admin, values.statusId);
         if (!status) {
-          row.warnings.push('El estado elegido no existe: no se aplica.');
+          row.warnings.push(tr('ui.operations.bulk.warn_status_missing'));
         } else if (status.final) {
-          row.warnings.push('El estado final no se aplica por lote: usa «Registrar baja».');
+          row.warnings.push(tr('ui.operations.bulk.warn_final_status'));
         } else if (status.id !== asset.statusId) {
           row.patch.statusId = status.id;
           row.patch.status = status.label;
           row.patch.statusTone = status.tone;
-          row.changes.push({ field: 'statusId', label: 'Estado', before: asset.status, after: status.label });
+          row.changes.push({ field: 'statusId', label: tr('ui.operations.field.status'), before: asset.status, after: status.label });
         }
       }
 
@@ -456,17 +467,17 @@
         const personId = values.assigneeId || '';
         const person = personId ? personOf(ctx.people, personId) : null;
         if (personId && !person) {
-          row.warnings.push('La persona elegida no existe: no se aplica.');
+          row.warnings.push(tr('ui.operations.bulk.warn_person_missing'));
         } else if (person && !person.active) {
-          row.warnings.push('La persona elegida está inactiva: no se aplica.');
+          row.warnings.push(tr('ui.operations.bulk.warn_person_inactive'));
         } else if ((person ? person.id : '') !== (asset.assigneeId || '')) {
           row.patch.assigneeId = person ? person.id : '';
           row.patch.assignee = person ? person.name : '';
           row.changes.push({
             field: 'assigneeId',
             label: 'Responsable',
-            before: asset.assignee || 'Sin asignar',
-            after: person ? person.name : 'Sin asignar'
+            before: asset.assignee || tr('ui.operations.value.unassigned'),
+            after: person ? person.name : tr('ui.operations.value.unassigned')
           });
         }
       }
@@ -479,8 +490,8 @@
         row.changes.push({
           field: key,
           label: Schema.COMMON_FIELDS[key] ? Schema.COMMON_FIELDS[key].label : key,
-          before: asset[key] || 'Sin valor',
-          after: next || 'Sin valor'
+          before: asset[key] || tr('ui.operations.value.empty'),
+          after: next || tr('ui.operations.value.empty')
         });
       });
 
@@ -503,7 +514,7 @@
         const available = Schema.techFields(ctx.admin, asset.category).find(function (item) { return item.key === fieldKey; });
         const label = (bulkCatalog(ctx, [asset]).find(function (item) { return item.key === key; }) || {}).label || fieldKey;
         if (!available) {
-          row.warnings.push('El campo «' + label + '» no aplica a la categoría de ' + asset.name + '.');
+          row.warnings.push(tr('ui.operations.bulk.warn_field_category', { field: label, name: asset.name }));
           return;
         }
         const next = parseTech(available, values[key]);
@@ -522,7 +533,7 @@
       }
 
       if (!row.changes.length && !row.warnings.length) {
-        row.skipReason = 'Sin cambios: los valores coinciden con la ficha.';
+        row.skipReason = tr('ui.operations.bulk.skip_unchanged');
       }
       return row;
     });
@@ -539,10 +550,10 @@
       asset.updatedAt = nowIso();
       asset.history.unshift(Schema.historyEntry(
         'bulk',
-        'Edición masiva',
-        'Campos actualizados: ' + row.changes.map(function (item) { return item.label; }).join(', ') + '.',
+        tr('ui.operations.kind.bulk'),
+        tr('ui.operations.bulk.history_detail', { fields: row.changes.map(function (item) { return item.label; }).join(', ') }),
         {
-          actor: ctx.actor || 'Administrador',
+          actor: ctx.actor || tr('ui.operations.actor.administrator'),
           changes: row.changes,
           movement: 'bulk',
           effectiveAt: nowIso(),
@@ -557,20 +568,20 @@
 
   // ---------------------------------------------------------------- history
   function historyMatches(entry, filters) {
-    const query = text(filters && filters.query, '').toLocaleLowerCase('es');
+    const query = text(filters && filters.query, '').toLocaleLowerCase(runtime() ? runtime().activeLocale : undefined);
     const filter = filters && filters.filter ? filters.filter : 'all';
     const actor = filters && filters.actor ? filters.actor : 'all';
     const meta = Data.KIND_META[entry.kind] || null;
     const option = Data.HISTORY_FILTERS.find(function (item) { return item.id === filter; });
     if (option && option.kinds && option.kinds.indexOf(entry.kind) === -1) return false;
-    if (actor !== 'all' && (entry.actor || 'Sistema') !== actor) return false;
+    if (actor !== 'all' && (entry.actor || tr('ui.operations.actor.system')) !== actor) return false;
     if (!query) return true;
     const haystack = [entry.title, entry.detail, entry.actor, meta ? meta.label : entry.kind]
       .concat((entry.changes || []).map(function (change) {
         return [change.label, change.before, change.after].join(' ');
       }))
       .join(' ')
-      .toLocaleLowerCase('es');
+      .toLocaleLowerCase(runtime() ? runtime().activeLocale : undefined);
     return haystack.indexOf(query) !== -1;
   }
 
@@ -583,7 +594,7 @@
   function historyActors(entries) {
     const seen = {};
     (Array.isArray(entries) ? entries : []).forEach(function (entry) {
-      const name = entry.actor || 'Sistema';
+      const name = entry.actor || tr('ui.operations.actor.system');
       seen[name] = true;
     });
     return Object.keys(seen).sort(function (a, b) { return compareText(a, b, { sensitivity: 'base' }); });
