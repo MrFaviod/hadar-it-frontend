@@ -83,7 +83,7 @@ function setup(entry='index.html'){
  function mount(name,props={}){
   const source=c.options.components[name];assert.ok(source, name+' is registered');
   // Replace only DOM-only modal/transition infrastructure with transparent test components.
-  function adapt(comp){if(!comp||typeof comp!=='object')return comp;const out={...comp,components:{...(comp.components||{})}};if(out.template)out.template=out.template.replace(/<transition name="fade">/g,'<template>').replace(/<\/transition>/g,'</template>');for(const [key,value] of Object.entries(out.components))out.components[key]=key==='ModalShell'?{props:['open'],template:'<div v-if="open"><slot></slot><slot name="footer"></slot></div>'}:adapt(value);return out;}
+  function adapt(comp){if(!comp||typeof comp!=='object')return comp;const out={...comp,components:{...(comp.components||{})}};if(out.template)out.template=out.template.replace(/<transition name="fade">/g,'<template>').replace(/<\/transition>/g,'</template>');for(const [key,value] of Object.entries(out.components))out.components[key]=key==='ModalShell'?{props:['open','title','eyebrow'],template:'<div v-if="open"><p v-if="eyebrow">{{ eyebrow }}</p><h2 v-if="title">{{ title }}</h2><slot></slot><slot name="footer"></slot></div>'}:adapt(value);return out;}
   const root={children:[]},r=Vue.createRenderer(host),a=r.createApp(adapt(source),{app,...props});
   // The shipped root installs the i18n plugin; mounting a component directly must
   // expose the same `$t`/`$n`/`$d` surface the application provides.
