@@ -27,6 +27,11 @@
 
   // Clave del catálogo original -> columna del servidor. Las claves sin
   // correspondencia se muestran deshabilitadas en lugar de enviarse y perderse.
+  // Copy from the ui.transfer.* catalog. Server field names, ids and the
+  // generated file name stay stable.
+  const tr = (key, params) => (window.ItsmI18n ? window.ItsmI18n.t(key, params) : '');
+  const columnsLabel = (count) => tr('ui.transfer.columns_count', { count });
+
   const FIELD_MAP = {
     id: 'id',
     code: 'quick_code',
@@ -49,22 +54,22 @@
   const SCOPE_OPTIONS = [
     {
       id: 'filters',
-      label: 'Filtros de la vista',
-      description: 'El servidor aplica la categoría, el estado y la ubicación del inventario; no incluye activos archivados.',
+      get label() { return tr('ui.transfer.export.scope_filters'); },
+      get description() { return tr('ui.transfer.export.scope_filters_desc'); },
       icon: 'search',
       enabled: true
     },
     {
       id: 'all',
-      label: 'Todo el inventario',
-      description: 'El servidor exporta el inventario completo, sin los filtros de la vista.',
+      get label() { return tr('ui.transfer.export.scope_all'); },
+      get description() { return tr('ui.transfer.export.scope_all_desc'); },
       icon: 'layers',
       enabled: true
     },
     {
       id: 'selection',
-      label: 'Selección manual',
-      description: 'Exporta los activos marcados en la lista cargada de esta vista.',
+      get label() { return tr('ui.transfer.export.scope_selection'); },
+      get description() { return tr('ui.transfer.export.scope_selection_desc'); },
       icon: 'check',
       enabled: true
     }
@@ -200,10 +205,10 @@
         const blocked = [];
         const inventory = this.app.inventoryFilters || {};
         const prefs = this.app.prefs || {};
-        if (text(inventory.query)) blocked.push('la búsqueda de texto del inventario');
-        if (text(prefs.search)) blocked.push('la búsqueda de la vista');
-        if (text(prefs.site) && prefs.site !== 'all') blocked.push('el filtro de sede');
-        return blocked.join(' y ');
+        if (text(inventory.query)) blocked.push(tr('ui.transfer.export.blocked.search_inventory'));
+        if (text(prefs.search)) blocked.push(tr('ui.transfer.export.blocked.search_view'));
+        if (text(prefs.site) && prefs.site !== 'all') blocked.push(tr('ui.transfer.export.blocked.site'));
+        return blocked.join(tr('ui.transfer.export.blocked_and'));
       },
       scopeLabel() {
         const option = SCOPE_OPTIONS.find((item) => item.id === this.scope);
@@ -211,16 +216,17 @@
       },
       scopeCountLabel() {
         if (this.scope === 'selection') return String(this.selectedIds.length);
-        if (this.scope === 'filters') return 'Según filtros';
+        if (this.scope === 'filters') return tr('ui.transfer.export.by_filters');
         return '—';
       },
       scopeFootNote() {
         const columns = this.exportFields.length;
+        const columnCount = columnsLabel(columns);
         if (this.scope === 'selection') {
-          return this.selectedIds.length + ' activos seleccionados · ' + columns + ' columnas · el archivo lo genera el servidor.';
+          return tr('ui.transfer.export.foot_selection', { count: this.selectedIds.length, columns: columnCount });
         }
-        if (this.scope === 'all') return 'Todo el inventario del servidor · ' + columns + ' columnas.';
-        return 'Filtros del servidor · ' + columns + ' columnas · vista previa de los activos cargados.';
+        if (this.scope === 'all') return tr('ui.transfer.export.foot_all', { columns: columnCount });
+        return tr('ui.transfer.export.foot_filters', { columns: columnCount });
       },
       canGenerate() {
         if (this.generating || !this.exportFields.length) return false;
@@ -232,7 +238,7 @@
       fieldInfo(key) {
         const field = Data.EXPORT_FIELDS.find((item) => item.key === key);
         if (field) return field;
-        if (key === 'id') return { key: 'id', label: 'ID permanente', group: 'Identificación' };
+        if (key === 'id') return { key: 'id', get label() { return tr('ui.transfer.field.id'); }, get group() { return tr('ui.transfer.group.identification'); } };
         const name = catalogKey(key);
         return name ? (Data.EXPORT_FIELDS.find((item) => item.key === name) || null) : null;
       },
@@ -248,7 +254,7 @@
       },
       fieldNote(field) {
         if (!field || field.supported) return field ? field.group : '';
-        return field.group + ' · No disponible en el servidor';
+        return field.group + tr('ui.transfer.export.unsupported');
       },
       previewValue(asset, key) {
         if (!asset) return '';
@@ -292,11 +298,11 @@
       },
       toggleField(key) {
         if (key === 'id') {
-          this.error = 'El ID permanente siempre forma parte de la exportación.';
+          this.error = tr('ui.transfer.export.error_id_required');
           return;
         }
         if (!FIELD_MAP[key]) {
-          this.error = 'Ese campo no lo admite la exportación del servidor.';
+          this.error = tr('ui.transfer.export.error_field_unsupported');
           return;
         }
         if (this.fields.indexOf(key) !== -1) {
@@ -328,7 +334,7 @@
         if (!profile) return;
         const options = profile.options && typeof profile.options === 'object' ? profile.options : null;
         if (options && options.kind !== 'export') {
-          this.error = 'Ese perfil no es de exportación.';
+          this.error = tr('ui.transfer.export.error_profile_not_export');
           return;
         }
         const fields = options ? options.fields : profile.fields;
@@ -352,10 +358,10 @@
         this.profilesError = '';
         try {
           const loaded = await this.app.loadImportProfiles();
-          if (loaded === false) this.profilesError = 'No se pudieron cargar los perfiles del servidor.';
+          if (loaded === false) this.profilesError = tr('ui.transfer.toast.profiles_load_failed');
           return loaded !== false;
         } catch (error) {
-          this.profilesError = 'No se pudieron cargar los perfiles del servidor.';
+          this.profilesError = tr('ui.transfer.toast.profiles_load_failed');
           return false;
         }
       },
@@ -363,7 +369,7 @@
         const label = text(name);
         if (!label) return;
         if (!this.app || typeof this.app.saveImportProfile !== 'function') {
-          this.error = 'El servidor no permite guardar perfiles.';
+          this.error = tr('ui.transfer.toast.no_profile_save');
           return;
         }
         const result = await this.app.saveImportProfile(label, {
@@ -372,12 +378,12 @@
           format: 'csv'
         });
         if (!result || !result.ok) {
-          this.error = (result && result.error) || 'No se pudo guardar el perfil.';
+          this.error = (result && result.error) || tr('ui.transfer.toast.profile_save_failed');
           return;
         }
         this.profilesOpen = false;
         this.error = '';
-        this.app.showToast('Perfil «' + label + '» guardado.');
+        this.app.showToast(tr('ui.transfer.toast.profile_saved', { name: label }));
       },
       sessionToken() {
         const state = this.app.phase6;
@@ -397,7 +403,7 @@
       // El adaptador de fase 6 no reenvía `options`; se llama al mismo endpoint
       // con su guarda de sesión y de ejecución viva en lugar de tocarlo.
       async requestExport(body) {
-        if (!this.app.phase6CanView) return { ok: false, error: 'No hay permiso para exportar activos.' };
+        if (!this.app.phase6CanView) return { ok: false, error: tr('ui.transfer.export.no_permission') };
         const token = this.sessionToken();
         const run = this.exportRun;
         if (run.controller) run.controller.abort();
@@ -417,7 +423,7 @@
         } catch (error) {
           if (epoch !== run.epoch || !this.sessionOpen(token)) return { ok: false, cancelled: true };
           if (error && error.name === 'AbortError') return { ok: false, cancelled: true };
-          return { ok: false, error: text(error && error.message) || 'No se pudo exportar.' };
+          return { ok: false, error: text(error && error.message) || tr('ui.transfer.export.failed') };
         } finally {
           if (epoch === run.epoch) run.controller = null;
         }
@@ -425,15 +431,15 @@
       async generate() {
         this.error = '';
         if (!this.exportFields.length) {
-          this.error = 'Elige al menos un campo disponible para exportar.';
+          this.error = tr('ui.transfer.export.error_no_fields');
           return;
         }
         if (this.scope === 'selection' && !this.selectedIds.length) {
-          this.error = 'Selecciona al menos un activo para exportar.';
+          this.error = tr('ui.transfer.export.error_no_assets');
           return;
         }
         if (this.scope === 'filters' && this.blockedFilters) {
-          this.error = 'La exportación por filtros no puede aplicar ' + this.blockedFilters + '. Quita ese filtro o exporta una selección manual.';
+          this.error = tr('ui.transfer.export.error_blocked', { filters: this.blockedFilters });
           return;
         }
         const input = {
@@ -450,22 +456,22 @@
         else input.filters = this.exportFilters;
         this.generating = true;
         this.progress = 0;
-        this.progressLabel = 'Esperando el archivo del servidor…';
+        this.progressLabel = tr('ui.transfer.export.waiting');
         this.result = null;
         try {
           const response = await this.requestExport(input);
           if (!response || !response.ok) {
             this.error = response && response.cancelled
-              ? 'La exportación se canceló.'
-              : (response && response.error) || 'No se pudo exportar.';
+              ? tr('ui.transfer.export.cancelled')
+              : (response && response.error) || tr('ui.transfer.export.failed');
             return;
           }
           if (!response.blob) {
-            this.error = 'El servidor no devolvió el archivo.';
+            this.error = tr('ui.transfer.export.no_file');
             return;
           }
           this.progress = 100;
-          this.progressLabel = 'Archivo recibido.';
+          this.progressLabel = tr('ui.transfer.export.received');
           this.result = {
             fileName: text(response.filename) || 'assets.csv',
             blob: response.blob,
@@ -474,9 +480,9 @@
             format: 'csv',
             rows: null
           };
-          this.app.showToast('Exportación lista: ' + this.exportFields.length + ' columnas.');
+          this.app.showToast(tr('ui.transfer.export.ready', { count: this.exportFields.length }));
         } catch (error) {
-          this.error = (error && error.message) || 'No se pudo exportar.';
+          this.error = (error && error.message) || tr('ui.transfer.export.failed');
         } finally {
           this.generating = false;
         }
@@ -493,9 +499,9 @@
           link.click();
           document.body.removeChild(link);
           window.setTimeout(() => URL.revokeObjectURL(url), 1200);
-          this.app.showToast('Archivo descargado.');
+          this.app.showToast(tr('ui.transfer.export.downloaded'));
         } catch (error) {
-          this.app.showToast('No se pudo descargar el archivo.', 'error');
+          this.app.showToast(tr('ui.transfer.export.download_failed'), 'error');
         }
       },
       clearResult() {
@@ -508,9 +514,9 @@
           <section class="tx-panel" data-od-id="export-scope" aria-labelledby="tx-export-scope">
             <header class="tx-panel__head">
               <div>
-                <p class="eyebrow"><span class="eyebrow__line"></span> Paso 1 · Alcance</p>
-                <h2 id="tx-export-scope">Qué activos entran en el archivo</h2>
-                <p>El servidor genera la exportación con los filtros del inventario y nunca incluye el histórico de cambios.</p>
+                <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.transfer.export.step1_eyebrow') }}</p>
+                <h2 id="tx-export-scope">{{ $t('ui.transfer.export.step1_title') }}</h2>
+                <p>{{ $t('ui.transfer.export.step1_lead') }}</p>
               </div>
             </header>
 
@@ -532,10 +538,10 @@
               <div class="tx-picker__head">
                 <div class="search-field">
                   <app-icon name="search"></app-icon>
-                  <input v-model="assetSearch" type="search" placeholder="Buscar por nombre, ID o serie" aria-label="Buscar activos para exportar">
+                  <input v-model="assetSearch" type="search" :placeholder="$t('ui.transfer.export.search_placeholder')" :aria-label="$t('ui.transfer.export.search_aria')">
                 </div>
-                <button type="button" class="text-button" @click="selectVisible">Seleccionar los {{ filteredAssets.length }} visibles</button>
-                <button type="button" class="text-button" @click="clearSelection">Limpiar</button>
+                <button type="button" class="text-button" @click="selectVisible">{{ $t('ui.transfer.export.select_visible', { count: filteredAssets.length }) }}</button>
+                <button type="button" class="text-button" @click="clearSelection">{{ $t('ui.transfer.export.clear_selection') }}</button>
               </div>
               <ul class="tx-picker__list">
                 <li v-for="asset in filteredAssets" :key="asset.id">
@@ -549,29 +555,29 @@
                   </label>
                 </li>
               </ul>
-              <p v-if="!filteredAssets.length" class="tx-muted">No hay activos que coincidan con la búsqueda.</p>
+              <p v-if="!filteredAssets.length" class="tx-muted">{{ $t('ui.transfer.export.no_matches') }}</p>
             </div>
           </section>
 
           <section class="tx-panel" data-od-id="export-fields" aria-labelledby="tx-export-fields">
             <header class="tx-panel__head">
               <div>
-                <p class="eyebrow"><span class="eyebrow__line"></span> Paso 2 · Contenido</p>
-                <h2 id="tx-export-fields">Campos y perfil</h2>
-                <p>El orden de los campos se traduce en el orden de las columnas del archivo. El ID permanente siempre se exporta.</p>
+                <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.transfer.export.step2_eyebrow') }}</p>
+                <h2 id="tx-export-fields">{{ $t('ui.transfer.export.step2_title') }}</h2>
+                <p>{{ $t('ui.transfer.export.step2_lead') }}</p>
               </div>
               <button type="button" class="btn btn--ghost btn--small" @click="profilesOpen = true">
-                <app-icon name="sliders"></app-icon> Perfiles
+                <app-icon name="sliders"></app-icon> {{ $t('ui.transfer.export.profiles') }}
               </button>
             </header>
 
             <div class="tx-profile-row">
               <div class="field">
-                <label for="tx-export-profile">Perfil de exportación</label>
+                <label for="tx-export-profile">{{ $t('ui.transfer.export.profile_label') }}</label>
                 <div class="input-shell">
                   <app-icon name="file-text"></app-icon>
                   <select id="tx-export-profile" :value="profileId" @change="applyProfileById">
-                    <option value="">Sin perfil</option>
+                    <option value="">{{ $t('ui.transfer.export.no_profile') }}</option>
                     <option v-for="profile in profileOptions" :key="profile.id" :value="profile.id">{{ profile.name }}</option>
                   </select>
                   <app-icon name="chevron-down"></app-icon>
@@ -583,7 +589,7 @@
 
             <div class="tx-field-builder">
               <div class="tx-field-col">
-                <p class="tx-label">Campos incluidos <span class="mono">({{ fields.length }})</span></p>
+                <p class="tx-label">{{ $t('ui.transfer.export.fields_included') }} <span class="mono">({{ fields.length }})</span></p>
                 <ul v-if="fields.length" class="tx-field-list">
                   <li v-for="(key, index) in fields" :key="key" class="tx-field">
                     <span class="tx-field__index mono">{{ index + 1 }}</span>
@@ -591,23 +597,23 @@
                       <strong>{{ fieldLabel(key) }}</strong>
                       <small>{{ fieldGroup(key) }}</small>
                     </span>
-                    <button type="button" class="icon-button" :disabled="index === 0" aria-label="Subir campo" @click="moveField(index, -1)">
+                    <button type="button" class="icon-button" :disabled="index === 0" :aria-label="$t('ui.transfer.export.move_up')" @click="moveField(index, -1)">
                       <app-icon name="chevron-up"></app-icon>
                     </button>
-                    <button type="button" class="icon-button" :disabled="index === 0 || index === fields.length - 1" aria-label="Bajar campo" @click="moveField(index, 1)">
+                    <button type="button" class="icon-button" :disabled="index === 0 || index === fields.length - 1" :aria-label="$t('ui.transfer.export.move_down')" @click="moveField(index, 1)">
                       <app-icon name="chevron-down"></app-icon>
                     </button>
-                    <button type="button" class="icon-button" :disabled="key === 'id'" aria-label="Quitar campo" @click="toggleField(key)">
+                    <button type="button" class="icon-button" :disabled="key === 'id'" :aria-label="$t('ui.transfer.export.remove_field')" @click="toggleField(key)">
                       <app-icon name="minus"></app-icon>
                     </button>
                   </li>
                 </ul>
-                <p v-else class="tx-empty">El perfil no tiene campos. Añade al menos uno de la lista de disponibles.</p>
-                <button type="button" class="text-button" @click="resetFields">Restablecer el perfil seleccionado</button>
+                <p v-else class="tx-empty">{{ $t('ui.transfer.export.fields_empty') }}</p>
+                <button type="button" class="text-button" @click="resetFields">{{ $t('ui.transfer.export.reset_fields') }}</button>
               </div>
 
               <div class="tx-field-col">
-                <p class="tx-label">Campos disponibles</p>
+                <p class="tx-label">{{ $t('ui.transfer.export.fields_available') }}</p>
                 <div class="tx-available">
                   <button v-for="field in availableFields" :key="field.key" type="button" class="tx-available__item"
                           :disabled="!field.supported" :aria-disabled="!field.supported ? 'true' : 'false'"
@@ -616,7 +622,7 @@
                     <span>{{ field.label }}</span>
                     <small>{{ fieldNote(field) }}</small>
                   </button>
-                  <p v-if="!availableFields.length" class="tx-muted">Todos los campos están incluidos.</p>
+                  <p v-if="!availableFields.length" class="tx-muted">{{ $t('ui.transfer.export.fields_all_included') }}</p>
                 </div>
               </div>
             </div>
@@ -625,9 +631,9 @@
           <section class="tx-panel" data-od-id="export-format" aria-labelledby="tx-export-format">
             <header class="tx-panel__head">
               <div>
-                <p class="eyebrow"><span class="eyebrow__line"></span> Paso 3 · Formato</p>
-                <h2 id="tx-export-format">Cómo se entrega el archivo</h2>
-                <p>El servidor entrega un CSV separado por comas; no hay otro formato disponible.</p>
+                <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.transfer.export.step3_eyebrow') }}</p>
+                <h2 id="tx-export-format">{{ $t('ui.transfer.export.step3_title') }}</h2>
+                <p>{{ $t('ui.transfer.export.step3_lead') }}</p>
               </div>
             </header>
 
@@ -635,48 +641,48 @@
               <button type="button" class="tx-scope__card" :class="{ 'is-active': format === 'csv' }" :aria-pressed="format === 'csv'" @click="format = 'csv'">
                 <span class="tx-scope__icon"><app-icon name="file-text"></app-icon></span>
                 <span class="tx-scope__body">
-                  <strong>CSV delimitado</strong>
-                  <small>Texto ligero que abre cualquier hoja de cálculo o sistema.</small>
+                  <strong>{{ $t('ui.transfer.export.format_csv') }}</strong>
+                  <small>{{ $t('ui.transfer.export.format_csv_note') }}</small>
                 </span>
               </button>
               <button type="button" class="tx-scope__card" :class="{ 'is-active': false }" :aria-pressed="false"
                       :disabled="true" aria-disabled="true">
                 <span class="tx-scope__icon"><app-icon name="table"></app-icon></span>
                 <span class="tx-scope__body">
-                  <strong>Libro Excel</strong>
-                  <small>No disponible: el servidor solo entrega CSV.</small>
+                  <strong>{{ $t('ui.transfer.export.format_excel') }}</strong>
+                  <small>{{ $t('ui.transfer.export.format_excel_note') }}</small>
                 </span>
               </button>
             </div>
 
             <p class="form-note">
               <app-icon name="info"></app-icon>
-              El servidor aplica el separador, los encabezados, el BOM y las columnas vacías al archivo CSV. El ID permanente nunca se omite.
+              {{ $t('ui.transfer.export.format_note') }}
             </p>
 
             <div class="tx-options">
               <label class="check-row">
                 <input v-model="options.headerRow" type="checkbox">
-                <span><strong>Incluir fila de encabezados</strong><small>La primera fila repite el nombre de cada campo.</small></span>
+                <span><strong>{{ $t('ui.transfer.export.header_row') }}</strong><small>{{ $t('ui.transfer.export.header_row_note') }}</small></span>
               </label>
               <label class="check-row">
                 <input v-model="options.includeEmpty" type="checkbox">
-                <span><strong>Incluir columnas sin datos</strong><small>Si se desactiva, el servidor omite las columnas vacías en todos los registros; el ID permanente se conserva.</small></span>
+                <span><strong>{{ $t('ui.transfer.export.empty_columns') }}</strong><small>{{ $t('ui.transfer.export.empty_columns_note') }}</small></span>
               </label>
               <label class="check-row">
                 <input v-model="options.bom" type="checkbox">
-                <span><strong>Compatible con Excel en español</strong><small>Añade marca de orden de bytes para conservar los acentos.</small></span>
+                <span><strong>{{ $t('ui.transfer.export.bom') }}</strong><small>{{ $t('ui.transfer.export.bom_note') }}</small></span>
               </label>
               <div class="field tx-options__field">
-                <label for="tx-export-separator">Separador de columnas</label>
+                <label for="tx-export-separator">{{ $t('ui.transfer.export.separator') }}</label>
                 <div class="input-shell">
                   <select id="tx-export-separator" v-model="options.separator">
-                    <option value=";">Punto y coma (;)</option>
-                    <option value=",">Coma (,)</option>
+                    <option value=";">{{ $t('ui.transfer.export.separator_semicolon') }}</option>
+                    <option value=",">{{ $t('ui.transfer.export.separator_comma') }}</option>
                   </select>
                   <app-icon name="chevron-down"></app-icon>
                 </div>
-                <p class="field__hint">El servidor aplica el separador elegido.</p>
+                <p class="field__hint">{{ $t('ui.transfer.export.separator_note') }}</p>
               </div>
             </div>
 
@@ -687,30 +693,30 @@
             <p class="tx-foot__note">{{ scopeFootNote }}</p>
             <div class="tx-foot__actions">
               <button type="button" class="btn btn--primary" data-od-id="export-generate" :disabled="!canGenerate" @click="generate">
-                <app-icon name="download"></app-icon> {{ generating ? 'Generando…' : 'Generar exportación' }}
+                <app-icon name="download"></app-icon> {{ generating ? $t('ui.transfer.export.generating') : $t('ui.transfer.export.generate') }}
               </button>
             </div>
           </footer>
         </div>
 
-        <aside class="tx-rail" aria-label="Resumen de la exportación">
+        <aside class="tx-rail" :aria-label="$t('ui.transfer.export.rail_aria')">
           <div class="tx-rail__card">
             <header class="tx-rail__head">
-              <h3>Resumen</h3>
+              <h3>{{ $t('ui.transfer.export.summary') }}</h3>
               <span class="tx-tag">CSV</span>
             </header>
             <dl class="tx-summary-list">
-              <div><dt>Alcance</dt><dd>{{ scopeLabel }}</dd></div>
-              <div><dt>Activos</dt><dd class="mono">{{ scopeCountLabel }}</dd></div>
-              <div><dt>Columnas</dt><dd class="mono">{{ exportFields.length }}</dd></div>
-              <div><dt>Tamaño</dt><dd class="mono">{{ result ? formatSize(result.size) : '—' }}</dd></div>
-              <div><dt>Perfil</dt><dd>{{ activeProfile ? activeProfile.name : 'Personalizado' }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_scope') }}</dt><dd>{{ scopeLabel }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_assets') }}</dt><dd class="mono">{{ scopeCountLabel }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_columns') }}</dt><dd class="mono">{{ exportFields.length }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_size') }}</dt><dd class="mono">{{ result ? formatSize(result.size) : '—' }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_profile') }}</dt><dd>{{ activeProfile ? activeProfile.name : $t('ui.transfer.profile_custom') }}</dd></div>
             </dl>
           </div>
 
           <div class="tx-rail__card">
-            <header class="tx-rail__head"><h3>Vista previa</h3></header>
-            <p class="tx-muted">Datos cargados en esta vista; el archivo lo genera el servidor.</p>
+            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.export.preview') }}</h3></header>
+            <p class="tx-muted">{{ $t('ui.transfer.export.preview_note') }}</p>
             <div v-if="previewRows.length" class="tx-mini-table-wrap">
               <table class="tx-mini-table">
                 <thead>
@@ -723,34 +729,34 @@
                 </tbody>
               </table>
             </div>
-            <p v-else class="tx-muted">Añade campos y activos para ver la vista previa.</p>
+            <p v-else class="tx-muted">{{ $t('ui.transfer.export.preview_empty') }}</p>
           </div>
 
           <div v-if="generating" class="tx-rail__card" role="status" aria-live="polite">
-            <header class="tx-rail__head"><h3>Generando</h3><span class="mono">{{ progress }}%</span></header>
+            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.export.rail_generating') }}</h3><span class="mono">{{ progress }}%</span></header>
             <div class="tx-progress__track"><span class="tx-progress__fill" :style="{ width: progress + '%' }"></span></div>
             <p class="tx-muted">{{ progressLabel }}</p>
           </div>
 
           <div v-if="result" class="tx-rail__card tx-rail__card--result">
-            <header class="tx-rail__head"><h3>Archivo generado</h3><app-icon name="check"></app-icon></header>
+            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.export.generated_title') }}</h3><app-icon name="check"></app-icon></header>
             <p class="tx-result-file mono">{{ result.fileName }}</p>
             <dl class="tx-summary-list">
-              <div><dt>Filas</dt><dd class="mono">—</dd></div>
-              <div><dt>Columnas</dt><dd class="mono">{{ result.fields.length }}</dd></div>
-              <div><dt>Tamaño</dt><dd class="mono">{{ formatSize(result.size) }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_rows') }}</dt><dd class="mono">—</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_columns') }}</dt><dd class="mono">{{ result.fields.length }}</dd></div>
+              <div><dt>{{ $t('ui.transfer.export.rail_size') }}</dt><dd class="mono">{{ formatSize(result.size) }}</dd></div>
             </dl>
             <div class="tx-rail__actions">
               <button type="button" class="btn btn--primary btn--small" data-od-id="export-download" @click="download">
-                <app-icon name="download"></app-icon> Descargar CSV
+                <app-icon name="download"></app-icon> {{ $t('ui.transfer.export.download_csv') }}
               </button>
-              <button type="button" class="text-button" @click="clearResult">Descartar</button>
+              <button type="button" class="text-button" @click="clearResult">{{ $t('ui.transfer.export.discard') }}</button>
             </div>
           </div>
 
           <div class="tx-rail__card">
-            <header class="tx-rail__head"><h3>Exportaciones recientes</h3></header>
-            <p class="tx-muted">El servidor no guarda un historial de exportaciones.</p>
+            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.export.recent') }}</h3></header>
+            <p class="tx-muted">{{ $t('ui.transfer.export.recent_note') }}</p>
           </div>
         </aside>
 
@@ -793,7 +799,7 @@
         return this.serverProfiles.filter((profile) => !this.isBuiltin(profile)).length;
       },
       savedNote() {
-        return 'Los perfiles se guardan en el servidor. Este formulario no guarda preferencias en el navegador.';
+        return tr('ui.transfer.settings.saved_note');
       }
     },
     methods: {
@@ -807,7 +813,7 @@
         const options = profile && profile.options && typeof profile.options === 'object' ? profile.options : {};
         if (this.profileKind(profile) === 'export') {
           const fields = Array.isArray(options.fields) ? options.fields : [];
-          return fields.length + (fields.length === 1 ? ' campo' : ' campos') + ' · CSV';
+          return tr('ui.transfer.profile_meta.export', { count: fields.length });
         }
         const mappings = options.sheetMappings && typeof options.sheetMappings === 'object' ? options.sheetMappings : null;
         let columns = 0;
@@ -819,21 +825,21 @@
           columns = Object.keys(options.mapping).filter((column) => options.mapping[column]).length;
         }
         const match = Array.isArray(options.matchFields) ? options.matchFields.length : 0;
-        return columns + (columns === 1 ? ' columna · ' : ' columnas · ') + (match ? match + (match === 1 ? ' criterio de identificación' : ' criterios de identificación') : 'sin criterios de identificación');
+        return columnsLabel(columns) + ' · ' + (match ? tr('ui.transfer.profile_meta.criteria', { count: match }) : tr('ui.transfer.profile_meta.no_criteria'));
       },
       async refresh() {
         if (typeof this.app.loadImportProfiles !== 'function') {
-          this.error = 'El servidor no permite cargar perfiles.';
+          this.error = tr('ui.transfer.toast.no_profile_load');
           return false;
         }
         this.busy = true;
         this.error = '';
         try {
           const loaded = await this.app.loadImportProfiles();
-          if (loaded === false) this.error = 'No se pudieron cargar los perfiles del servidor.';
+          if (loaded === false) this.error = tr('ui.transfer.toast.profiles_load_failed');
           return loaded !== false;
         } catch (error) {
-          this.error = 'No se pudieron cargar los perfiles del servidor.';
+          this.error = tr('ui.transfer.toast.profiles_load_failed');
           return false;
         } finally {
           this.busy = false;
@@ -842,16 +848,16 @@
       async remove(profile) {
         if (!profile || this.isBuiltin(profile)) return false;
         if (typeof this.app.deleteImportProfile !== 'function') {
-          this.error = 'El servidor no permite eliminar perfiles.';
+          this.error = tr('ui.transfer.toast.no_profile_delete');
           return false;
         }
         this.error = '';
         const result = await this.app.deleteImportProfile(profile.id);
         if (!result || result.ok !== true) {
-          this.error = (result && result.error) || 'No se pudo eliminar el perfil.';
+          this.error = (result && result.error) || tr('ui.transfer.toast.profile_delete_failed');
           return false;
         }
-        this.app.showToast('Perfil «' + profile.name + '» eliminado del servidor.');
+        this.app.showToast(tr('ui.transfer.toast.profile_deleted', { name: profile.name }));
         return true;
       },
       openImport() {
@@ -865,43 +871,43 @@
       <section class="config-section" aria-labelledby="config-data-title" data-od-id="config-data">
         <header class="config-section__head">
           <div>
-            <p class="eyebrow">Entrada y salida</p>
-            <h2 id="config-data-title">Datos e importación</h2>
-            <p>Los perfiles reutilizables se guardan en el servidor. Cada importación y cada exportación se revisan antes de confirmar los cambios.</p>
+            <p class="eyebrow">{{ $t('ui.transfer.settings.eyebrow') }}</p>
+            <h2 id="config-data-title">{{ $t('ui.transfer.settings.title') }}</h2>
+            <p>{{ $t('ui.transfer.settings.lead') }}</p>
           </div>
-          <span class="config-badge"><app-icon name="lock"></app-icon> Servidor</span>
+          <span class="config-badge"><app-icon name="lock"></app-icon> {{ $t('ui.transfer.settings.server') }}</span>
         </header>
 
         <div class="form-stack">
           <div class="form-grid">
             <div class="field">
-              <label for="cfg-data-format">Formato de las exportaciones</label>
+              <label for="cfg-data-format">{{ $t('ui.transfer.settings.format') }}</label>
               <div class="input-shell">
                 <app-icon name="file-text"></app-icon>
                 <select id="cfg-data-format" disabled>
-                  <option value="csv">CSV delimitado</option>
+                  <option value="csv">{{ $t('ui.transfer.export.format_csv') }}</option>
                 </select>
                 <app-icon name="chevron-down"></app-icon>
               </div>
-              <p class="field__hint">El servidor genera CSV; las columnas, el separador y la cabecera se eligen en cada exportación.</p>
+              <p class="field__hint">{{ $t('ui.transfer.settings.format_hint') }}</p>
             </div>
 
             <div class="field">
-              <label for="cfg-data-duplicates">Duplicados en la importación</label>
+              <label for="cfg-data-duplicates">{{ $t('ui.transfer.settings.duplicates') }}</label>
               <div class="input-shell">
                 <app-icon name="layers"></app-icon>
                 <select id="cfg-data-duplicates" disabled>
-                  <option value="ask">Revisión antes de aplicar</option>
+                  <option value="ask">{{ $t('ui.transfer.settings.duplicates_value') }}</option>
                 </select>
                 <app-icon name="chevron-down"></app-icon>
               </div>
-              <p class="field__hint">El servidor clasifica cada fila como coincidencia segura, posible duplicado o error, y la muestra antes de confirmar.</p>
+              <p class="field__hint">{{ $t('ui.transfer.settings.duplicates_hint') }}</p>
             </div>
           </div>
 
           <div class="config-note">
             <app-icon name="lock"></app-icon>
-            <p><strong>Reglas fijas del módulo.</strong> El ID permanente nunca se reemplaza en una actualización, los campos vacíos no sobrescriben valores y cada importación, exportación o edición por lote queda registrada como una operación del servidor.</p>
+            <p><strong>{{ $t('ui.transfer.settings.rules_title') }}</strong> {{ $t('ui.transfer.settings.rules_body') }}</p>
           </div>
 
           <p v-if="error" class="form-error" role="alert">{{ error }}</p>
@@ -911,38 +917,38 @@
               <div class="tx-profile__body">
                 <div class="tx-profile__title">
                   <strong>{{ profile.name }}</strong>
-                  <span class="tx-tag" :class="{ 'tx-tag--builtin': isBuiltin(profile) }">{{ isBuiltin(profile) ? 'Predeterminado' : 'Personalizado' }}</span>
-                  <span class="tx-tag">{{ profileKind(profile) === 'export' ? 'Exportación' : 'Importación' }}</span>
+                  <span class="tx-tag" :class="{ 'tx-tag--builtin': isBuiltin(profile) }">{{ isBuiltin(profile) ? $t('ui.transfer.profile_builtin') : $t('ui.transfer.profile_custom') }}</span>
+                  <span class="tx-tag">{{ profileKind(profile) === 'export' ? $t('ui.transfer.profile_kind_export') : $t('ui.transfer.profile_kind_import') }}</span>
                 </div>
                 <p class="tx-profile__meta mono">{{ profileMeta(profile) }}</p>
               </div>
               <div class="tx-profile__actions">
-                <button v-if="!isBuiltin(profile)" type="button" class="icon-button" :aria-label="'Eliminar el perfil ' + profile.name" @click="remove(profile)">
+                <button v-if="!isBuiltin(profile)" type="button" class="icon-button" :aria-label="$t('ui.transfer.profile_remove_aria', { name: profile.name })" @click="remove(profile)">
                   <app-icon name="trash"></app-icon>
                 </button>
               </div>
             </li>
           </ul>
-          <p v-if="!serverProfiles.length" class="tx-muted">El servidor no tiene perfiles guardados.</p>
+          <p v-if="!serverProfiles.length" class="tx-muted">{{ $t('ui.transfer.settings.no_profiles') }}</p>
 
           <div class="tx-profile-summary">
             <div>
-              <span class="tx-kpi__label">Perfiles</span>
+              <span class="tx-kpi__label">{{ $t('ui.transfer.settings.profiles') }}</span>
               <strong class="mono">{{ serverProfiles.length }}</strong>
             </div>
             <div>
-              <span class="tx-kpi__label">Propios</span>
+              <span class="tx-kpi__label">{{ $t('ui.transfer.settings.custom') }}</span>
               <strong class="mono">{{ customCount }}</strong>
             </div>
             <div class="tx-profile-summary__links">
-              <button type="button" class="text-button" @click="openImport"><app-icon name="upload"></app-icon> Abrir importación</button>
-              <button type="button" class="text-button" @click="openExport"><app-icon name="download"></app-icon> Abrir exportación</button>
+              <button type="button" class="text-button" @click="openImport"><app-icon name="upload"></app-icon> {{ $t('ui.transfer.settings.open_import') }}</button>
+              <button type="button" class="text-button" @click="openExport"><app-icon name="download"></app-icon> {{ $t('ui.transfer.settings.open_export') }}</button>
             </div>
           </div>
 
           <div class="config-form-foot">
             <p class="config-form-foot__note">{{ savedNote }}</p>
-            <button type="button" class="btn btn--secondary" data-od-id="export-settings-reload" :disabled="busy" @click="refresh">Recargar perfiles</button>
+            <button type="button" class="btn btn--secondary" data-od-id="export-settings-reload" :disabled="busy" @click="refresh">{{ $t('ui.transfer.settings.reload') }}</button>
           </div>
         </div>
       </section>

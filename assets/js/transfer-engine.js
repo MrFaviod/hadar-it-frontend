@@ -5,29 +5,37 @@
   const Data = window.AssetTransferData;
   const Schema = window.AssetSchema;
 
+  // Display copy comes from the ui.transfer.* catalog; ids, states and field
+  // keys stay stable. Non-template messages (validation, previews, report CSV)
+  // resolve through the same runtime.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const COMPARE_FIELDS = [
-    { key: 'name', label: 'Nombre', group: 'Identificación' },
-    { key: 'category', label: 'Categoría', group: 'Identificación' },
-    { key: 'brand', label: 'Marca', group: 'Identificación' },
-    { key: 'model', label: 'Modelo', group: 'Identificación' },
-    { key: 'serial', label: 'Número de serie', group: 'Identificación' },
-    { key: 'ip', label: 'Dirección IP', group: 'Red' },
-    { key: 'site', label: 'Sede', group: 'Ubicación' },
-    { key: 'location', label: 'Ubicación', group: 'Ubicación' },
-    { key: 'assignee', label: 'Responsable', group: 'Asignación' },
-    { key: 'cost', label: 'Coste', group: 'Económica' },
-    { key: 'warrantyUntil', label: 'Garantía hasta', group: 'Garantía' }
+    { key: 'name', get label() { return tr('ui.transfer.field.name'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'category', get label() { return tr('ui.transfer.field.category'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'brand', get label() { return tr('ui.transfer.field.brand'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'model', get label() { return tr('ui.transfer.field.model'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'serial', get label() { return tr('ui.transfer.field.serial'); }, get group() { return tr('ui.transfer.group.identification'); } },
+    { key: 'ip', get label() { return tr('ui.transfer.field.ip'); }, get group() { return tr('ui.transfer.group.network'); } },
+    { key: 'site', get label() { return tr('ui.transfer.field.site'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'location', get label() { return tr('ui.transfer.field.location'); }, get group() { return tr('ui.transfer.group.location'); } },
+    { key: 'assignee', get label() { return tr('ui.transfer.field.assignee'); }, get group() { return tr('ui.transfer.group.assignment'); } },
+    { key: 'cost', get label() { return tr('ui.transfer.field.cost'); }, get group() { return tr('ui.transfer.group.financial'); } },
+    { key: 'warrantyUntil', get label() { return tr('ui.transfer.field.warranty_until'); }, get group() { return tr('ui.transfer.group.warranty'); } }
   ];
 
   const STATE_LABELS = {
-    new: 'Listo para crear',
-    update: 'Actualización',
-    conflict: 'Conflicto',
-    duplicate: 'Duplicado',
-    retired: 'Activo de baja',
-    incomplete: 'Incompleto',
-    unchanged: 'Sin cambios',
-    error: 'Error'
+    get new() { return tr('ui.transfer.state.new'); },
+    get update() { return tr('ui.transfer.state.update'); },
+    get conflict() { return tr('ui.transfer.state.conflict'); },
+    get duplicate() { return tr('ui.transfer.state.duplicate'); },
+    get retired() { return tr('ui.transfer.state.retired'); },
+    get incomplete() { return tr('ui.transfer.state.incomplete'); },
+    get unchanged() { return tr('ui.transfer.state.unchanged'); },
+    get error() { return tr('ui.transfer.state.error'); }
   };
 
   const STATE_TONES = {
@@ -66,7 +74,7 @@
   function statusFor(admin, hasAssignee) {
     const target = Schema.statusById(admin, hasAssignee ? 'asignado' : 'resguardo')
       || (admin.statuses && admin.statuses[0])
-      || { id: 'asignado', label: 'Asignado', tone: 'ok' };
+      || { id: 'asignado', get label() { return tr('ui.transfer.status.assigned'); }, tone: 'ok' };
     return target;
   }
 
@@ -169,7 +177,7 @@
           data.name = raw.name;
           display.name = raw.name;
         } else {
-          row.errors.push('Falta el nombre del activo.');
+          row.errors.push(tr('ui.transfer.analysis.name_missing'));
         }
 
         // Tipo
@@ -195,7 +203,7 @@
         // IP
         if (raw.ip) {
           if (!Data.isValidIp(raw.ip)) {
-            row.errors.push('La IP «' + raw.ip + '» no es válida.');
+            row.errors.push(tr('ui.transfer.analysis.ip_invalid', { value: raw.ip }));
           } else {
             data.ip = raw.ip;
             display.ip = raw.ip;
@@ -215,14 +223,14 @@
         // Sede
         const siteFromRow = raw.site ? Data.siteIdFromText(raw.site) : '';
         if (raw.site && !siteFromRow) {
-          row.errors.push('La sede «' + raw.site + '» no existe en el catálogo.');
+          row.errors.push(tr('ui.transfer.analysis.site_unknown', { value: raw.site }));
         }
         const siteId = siteFromRow || sheetSite || '';
         if (siteId) {
           data.site = siteId;
           display.site = siteLabel(app, siteId);
         } else {
-          row.errors.push('No se ha podido determinar la sede del registro.');
+          row.errors.push(tr('ui.transfer.analysis.site_undetermined'));
         }
 
         // Ubicación
@@ -236,7 +244,7 @@
             data.location = location.label;
             display.location = location.label;
           } else {
-            row.warnings.push('La ubicación «' + raw.location + '» no pertenece a ' + (site ? site.label : 'la sede') + '; se conserva la actual.');
+            row.warnings.push(tr('ui.transfer.analysis.location_outside_site', { value: raw.location, site: site ? site.label : tr('ui.transfer.analysis.the_site') }));
           }
         }
 
@@ -256,7 +264,7 @@
         if (raw.cost) {
           const cost = Data.parseNumber(raw.cost);
           if (Number.isNaN(cost)) {
-            row.errors.push('El coste «' + raw.cost + '» no es un número válido.');
+            row.errors.push(tr('ui.transfer.analysis.cost_invalid', { value: raw.cost }));
           } else {
             data.cost = cost;
             display.cost = Data.formatNumber(cost);
@@ -267,7 +275,7 @@
         if (raw.warrantyUntil) {
           const until = Data.parseDate(raw.warrantyUntil);
           if (until === 'invalid') {
-            row.errors.push('La fecha de garantía «' + raw.warrantyUntil + '» no es válida.');
+            row.errors.push(tr('ui.transfer.analysis.warranty_date_invalid', { value: raw.warrantyUntil }));
           } else {
             data.warrantyUntil = until;
             display.warrantyUntil = Data.formatDate(until);
@@ -325,19 +333,19 @@
         const reasons = [];
         let primary = '';
         if (strong.length > 1) {
-          reasons.push('La serie y la IP apuntan a activos distintos.');
+          reasons.push(tr('ui.transfer.conflict.serial_and_ip'));
           primary = strong[0];
         } else if (strong.length === 1 && weak.length) {
-          reasons.push('La IP o la serie coincide con ' + strong[0] + ' y el nombre con ' + weak[0] + '.');
+          reasons.push(tr('ui.transfer.conflict.strong_and_name', { strong: strong[0], weak: weak[0] }));
           primary = strong[0];
         } else if (strong.length === 1) {
           primary = strong[0];
         } else if (weak.length === 1) {
-          reasons.push('Solo coincide el nombre; el registro no tiene serie ni IP para confirmarlo.');
+          reasons.push(tr('ui.transfer.conflict.name_only'));
           primary = weak[0];
           row.matchedByName = true;
         } else if (weak.length > 1) {
-          reasons.push('El nombre coincide con ' + weak.length + ' activos del inventario.');
+          reasons.push(tr('ui.transfer.conflict.name_multiple', { count: weak.length }));
           primary = weak[0];
         }
 
@@ -350,14 +358,14 @@
         const primaryAsset = assets.find((asset) => asset.id === primary) || null;
         if (primaryAsset && primaryAsset.retired) {
           row.isRetired = true;
-          row.warnings.push('El activo ' + primaryAsset.id + ' está dado de baja; una actualización no lo reactiva.');
+          row.warnings.push(tr('ui.transfer.analysis.retired_match', { id: primaryAsset.id }));
         }
         if (!primaryAsset) {
           if (mapping.indexOf('assignee') !== -1 && !raw.assignee) {
-            row.warnings.push('Sin responsable asignado en el archivo.');
+            row.warnings.push(tr('ui.transfer.analysis.no_assignee'));
           }
           if (!data.serial && !data.ip) {
-            row.warnings.push('Sin número de serie ni IP: la coincidencia depende del nombre.');
+            row.warnings.push(tr('ui.transfer.analysis.no_serial_ip'));
           }
         }
 
@@ -384,7 +392,7 @@
           row.state = 'conflict';
         } else if (primaryAsset) {
           row.state = row.changes.length ? 'update' : 'unchanged';
-          if (!row.changes.length) row.warnings.push('El archivo no aporta valores distintos a los del activo.');
+          if (!row.changes.length) row.warnings.push(tr('ui.transfer.analysis.no_new_values'));
         } else {
           row.state = row.warnings.length ? 'incomplete' : 'new';
         }
@@ -415,8 +423,8 @@
         return;
       }
       const first = seen[serial];
-      row.duplicateOf = first.sheetName + ' · fila ' + first.rowNumber;
-      row.warnings.push('La serie ' + row.data.serial + ' ya aparece en ' + row.duplicateOf + '.');
+      row.duplicateOf = tr('ui.transfer.source_row', { sheet: first.sheetName, row: first.rowNumber });
+      row.warnings.push(tr('ui.transfer.analysis.duplicate_serial', { serial: row.data.serial, where: row.duplicateOf }));
       if (row.state !== 'error' && row.state !== 'retired') {
         row.state = 'duplicate';
         row.defaultAction = 'skip';
@@ -540,7 +548,7 @@
     const id = Schema.nextPermanentId(app.assets, app.assetAdmin);
     const code = typeof app.assetNextCode === 'function' ? app.assetNextCode(category, site, '') : '';
     const now = new Date().toISOString();
-    const form = typeof Schema.formFor === 'function' ? Schema.formFor(app.assetAdmin, category) : { type: 'Equipo' };
+    const form = typeof Schema.formFor === 'function' ? Schema.formFor(app.assetAdmin, category) : { get type() { return tr('ui.transfer.default_type'); } };
     const asset = Object.assign(Schema.newAsset(app.assetAdmin, app.categories), {
       id,
       code,
@@ -573,7 +581,7 @@
       retired: null,
       createdAt: now,
       updatedAt: now,
-      history: [Schema.historyEntry('created', 'Alta por importación', row.fileName + ' · ' + row.sheetName + ' · fila ' + row.rowNumber)],
+      history: [Schema.historyEntry('created', tr('ui.transfer.history.created'), row.fileName + ' · ' + tr('ui.transfer.source_row', { sheet: row.sheetName, row: row.rowNumber }))],
       anydeskId: row.data.anydeskId || '',
       rmmAgentId: row.data.rmmAgentId || '',
       rmmOnline: !!row.data.rmmAgentId
@@ -588,26 +596,26 @@
   function applyRow(app, row, decision, target) {
     const result = target || batch();
     if (!decision || !decision.action) {
-      result.pending.push({ row, reason: 'Sin decisión' });
+      result.pending.push({ row, reason: tr('ui.transfer.pending.no_decision') });
       return result;
     }
     if (decision.action === 'review') {
-      result.pending.push({ row, reason: row.state === 'error' ? 'Registro con errores' : 'Revisión posterior' });
+      result.pending.push({ row, reason: row.state === 'error' ? tr('ui.transfer.pending.errors') : tr('ui.transfer.pending.review') });
       return result;
     }
     if (decision.action === 'skip') {
-      result.skipped.push({ row, reason: 'Omitido' });
+      result.skipped.push({ row, reason: tr('ui.transfer.pending.skipped') });
       return result;
     }
     if (decision.action === 'update') {
       const asset = findAsset(app, decision.targetId || row.primaryCandidateId);
       if (!asset) {
-        result.pending.push({ row, reason: 'El activo ya no existe' });
+        result.pending.push({ row, reason: tr('ui.transfer.pending.asset_missing') });
         return result;
       }
       const changed = changesFor(row, asset.id);
       if (!changed.length) {
-        result.skipped.push({ row, reason: 'Sin cambios' });
+        result.skipped.push({ row, reason: tr('ui.transfer.pending.unchanged') });
         return result;
       }
       const labels = changed.map((change) => change.label);
@@ -616,8 +624,8 @@
       asset.history = Array.isArray(asset.history) ? asset.history : [];
       asset.history.unshift(Schema.historyEntry(
         'updated',
-        'Actualizado por importación',
-        (labels.length ? 'Campos: ' + labels.join(', ') + '. ' : '') + row.fileName + ' · ' + row.sheetName + ' · fila ' + row.rowNumber
+        tr('ui.transfer.history.updated'),
+        (labels.length ? tr('ui.transfer.history.fields', { fields: labels.join(', ') }) + ' ' : '') + row.fileName + ' · ' + tr('ui.transfer.source_row', { sheet: row.sheetName, row: row.rowNumber })
       ));
       result.updated.push({ row, assetId: asset.id, fields: labels, name: asset.name });
       return result;
@@ -696,7 +704,9 @@
     const content = bom + csv;
     const profile = Data.profileById(options.profileId);
     const date = new Date().toISOString().slice(0, 10);
-    const base = Data.slug(profile ? profile.name : 'inventario');
+    // The file name is derived from the stable profile id, never from the
+    // localized display name.
+    const base = Data.slug(profile ? profile.id : 'inventario');
     return {
       fields,
       labels,
@@ -709,13 +719,18 @@
     };
   }
 
+  // The report is a document: its header and state words follow the locale of
+  // the user who downloads it.
   function reportCsv(result, extra) {
-    const header = ['Estado', 'Fila', 'Hoja', 'Activo', 'ID resultante', 'Campos'];
+    const header = [
+      tr('ui.transfer.report.status'), tr('ui.transfer.report.row'), tr('ui.transfer.report.sheet'),
+      tr('ui.transfer.report.asset'), tr('ui.transfer.report.result_id'), tr('ui.transfer.report.fields')
+    ];
     const rows = [];
-    result.created.forEach((item) => rows.push(['Creado', item.row.rowNumber, item.row.sheetName, item.name, item.assetId, item.row.display.name || '']));
-    result.updated.forEach((item) => rows.push(['Actualizado', item.row.rowNumber, item.row.sheetName, item.name, item.assetId, item.fields.join(', ')]));
-    result.skipped.forEach((item) => rows.push(['Omitido', item.row.rowNumber, item.row.sheetName, item.row.display.name || '', '', 'Omitido en la revisión']));
-    result.pending.forEach((item) => rows.push(['Pendiente', item.row.rowNumber, item.row.sheetName, item.row.display.name || '', '', item.reason]));
+    result.created.forEach((item) => rows.push([tr('ui.transfer.report.created'), item.row.rowNumber, item.row.sheetName, item.name, item.assetId, item.row.display.name || '']));
+    result.updated.forEach((item) => rows.push([tr('ui.transfer.report.updated'), item.row.rowNumber, item.row.sheetName, item.name, item.assetId, item.fields.join(', ')]));
+    result.skipped.forEach((item) => rows.push([tr('ui.transfer.report.skipped'), item.row.rowNumber, item.row.sheetName, item.row.display.name || '', '', tr('ui.transfer.report.skipped_review')]));
+    result.pending.forEach((item) => rows.push([tr('ui.transfer.report.pending'), item.row.rowNumber, item.row.sheetName, item.row.display.name || '', '', item.reason]));
     const meta = extra ? [extra, ''] : [];
     return Data.toCsv(header, meta.concat(rows), ';');
   }
