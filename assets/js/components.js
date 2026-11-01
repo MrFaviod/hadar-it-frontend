@@ -92,7 +92,7 @@
                   <p v-if="eyebrow" class="eyebrow"><span class="eyebrow__line"></span> {{ eyebrow }}</p>
                   <h2 :id="titleId">{{ title }}</h2>
                 </div>
-                <button type="button" class="icon-button modal__close" aria-label="Cerrar diálogo" @click="$emit('close')">
+                <button type="button" class="icon-button modal__close" :aria-label="$t('ui.shell.close_dialog')" @click="$emit('close')">
                   <app-icon name="close"></app-icon>
                 </button>
               </header>
@@ -168,7 +168,7 @@
           </thead>
           <tbody>
             <template v-if="loading">
-              <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty" role="status">Cargando datos…</td></tr>
+              <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty" role="status">{{ $t('ui.shell.loading_data') }}</td></tr>
             </template>
             <template v-else-if="!rows.length">
               <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty">{{ empty }}</td></tr>

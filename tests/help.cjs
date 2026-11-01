@@ -22,12 +22,24 @@ test('help is a round-trip route without changing existing inventory routing', (
   assert.equal(w.AssetMethods.hashFor({ name: 'inventory' }), '#/inventario');
 });
 // Catches accent-sensitive search hiding the warranty guide for normal typing.
-test('help search finds Spanish topics regardless of accents and case', () => {
-  const w = load('#/ayuda');
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'assets/js/help.js'), 'utf8'), { window: w });
-  const Help = w.AssetHelp;
+// Topics are catalog keys, so the search runs over the text the runtime renders.
+async function helpModule() {
+  const { setup } = require('./i18n-harness.cjs');
+  const { c, ItsmI18n } = await setup();
+  await ItsmI18n.ready;
+  vm.runInContext(fs.readFileSync(path.join(root, 'assets/js/help.js'), 'utf8'), c);
+  return { ItsmI18n, Help: c.AssetHelp };
+}
+test('help search finds Spanish topics regardless of accents and case', async () => {
+  const { Help } = await helpModule();
   assert.deepEqual(Array.from(Help.search(' GARANTIAS '), t => t.id), ['warranties']);
   assert.equal(Help.search('sin coincidencia alguna').length, 0);
   assert.equal(Help.search('').length, 9);
   assert.equal(Help.search('permisos').some(t => t.id === 'extensions'), true);
+});
+test('help search follows the active locale', async () => {
+  const { Help, ItsmI18n } = await helpModule();
+  ItsmI18n.setLocale('en');
+  assert.deepEqual(Array.from(Help.search('warranty'), t => t.id), ['warranties']);
+  assert.equal(Help.search('permisos').length, 0, 'Spanish words no longer match the English copy');
 });

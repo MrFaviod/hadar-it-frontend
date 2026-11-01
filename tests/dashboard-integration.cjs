@@ -62,11 +62,17 @@ async function setup() {
   vm.runInContext(fs.readFileSync(path.join(root, 'assets/vendor/vue.global.prod.js'), 'utf8'), c);
   const decode = text => text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' }[entity] || String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)))));
   c.document = { createElement() { return { children: [], set innerHTML(v) { this.textContent = decode(v); this.children = [{ getAttribute: () => decode((v.match(/foo="([\s\S]*)"/) || [])[1] || '') }]; } }; }, title: '' };
+  vm.runInContext(fs.readFileSync(path.join(root, 'assets/vendor/vue-i18n.global.prod.js'), 'utf8'), c);
+  const catalog = tag => JSON.parse(fs.readFileSync(path.join(root, 'assets/i18n/' + tag + '.json'), 'utf8'));
+  // The runtime boots from the shipped catalogs; the server bundle stays absent here.
+  c.__ITSM_I18N_CATALOGS__ = { catalogs: { es: catalog('es'), en: catalog('en') }, context: catalog('context') };
+  c.fetch = async () => ({ ok: false, status: 404, headers: { get: () => null }, json: async () => ({}) });
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) {
     if (src.includes('/vendor/') || /theme|sidebar|app\.js/.test(src)) continue;
     vm.runInContext(fs.readFileSync(path.join(root, src), 'utf8'), c, { filename: src });
   }
+  c.ItsmI18n.primeBundle('es');
   const server = canonicalServer(c);
   const realVue = c.Vue;
   c.Vue = { ...realVue, createApp(options) { c.rootOptions = options; return { mount() {} }; } };
@@ -90,6 +96,7 @@ async function setup() {
   const component = { ...c.AssetPanel.PanelOverview, template: c.AssetPanel.PanelOverview.template.replace(/<transition name="fade">/g, '<template>').replace(/<\/transition>/g, '</template>') };
   const errors = [];
   const renderer = realVue.createRenderer(host), mountedApp = renderer.createApp(component, { app });
+  mountedApp.use(c.ItsmI18n.i18n);
   mountedApp.config.errorHandler = error => { errors.push(error); };
   const instance = mountedApp.mount(container);
   const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)); await realVue.nextTick(); await new Promise(resolve => setTimeout(resolve, 0)); await realVue.nextTick(); };

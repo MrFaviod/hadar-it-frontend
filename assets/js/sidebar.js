@@ -96,7 +96,7 @@
       this.sidebarPinnedPref = next;
       this.mobileNavOpen = false;
       window.AssetSidebar.setPinned(next);
-      this.showToast(next ? 'Menú lateral anclado' : 'Menú lateral liberado, se abre desde el botón de menú');
+      this.showToast(tr(next ? 'ui.shell.sidebar_pinned_toast' : 'ui.shell.sidebar_released_toast'));
     },
     openSidebar: function () {
       this.userMenuOpen = false;

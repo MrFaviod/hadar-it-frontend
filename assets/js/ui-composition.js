@@ -1,6 +1,12 @@
 (function () {
   'use strict';
 
+  // Validation copy is returned to the caller, which may render it outside the
+  // mounted app: resolve it through the runtime, never through `this`.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+
   // Runtime projection for SDK v2 `frontend.contributions`. The backend schema
   // is authoritative; this module only accepts the exact catalogue it ships and
   // renders declarative views. It never executes module code and it is never an
@@ -108,7 +114,7 @@
       }
     } else {
       if (groupOf(target) === 'nav') {
-        return fail('Los destinos de navegación solo admiten ocultar: la extensión no puede añadir enlaces de navegación.');
+        return fail(tr('ui.shell.composition_nav_error'));
       }
       if (raw.component !== undefined) {
         return fail('El módulo no puede registrar componentes privados: declara una vista.');
@@ -222,7 +228,7 @@
     },
     template: `
       <div class="ui-composition-boundary">
-        <template v-if="hidden"><p class="ui-composition-fallback" role="status">Contenido oculto por la extensión.</p></template>
+        <template v-if="hidden"><p class="ui-composition-fallback" role="status">{{ $t('ui.shell.composition_hidden') }}</p></template>
         <slot v-else></slot>
         <div v-if="additions.length" class="ui-composition-additions">
           <extension-view v-for="entry in additions" :key="entry.key" :app="app" :item="entry.item" :view="entry.view"></extension-view>
@@ -279,7 +285,7 @@
     },
     template: `
       <div v-if="additions.length" class="ui-composition-nav-additions">
-        <p v-for="entry in additions" :key="entry.key" class="cell-note">{{ entry.label }} — la extensión no puede añadir enlaces de navegación.</p>
+        <p v-for="entry in additions" :key="entry.key" class="cell-note">{{ $t('ui.shell.composition_no_links', { label: entry.label }) }}</p>
       </div>
     `
   };
@@ -294,7 +300,7 @@
     template: `
       <section class="noc-widget ui-composition-entry" :aria-label="entry.label">
         <header class="panel-head">
-          <div><p class="eyebrow">Extensión</p><h2>{{ entry.label }}</h2></div>
+          <div><p class="eyebrow">{{ $t('ui.page.extension') }}</p><h2>{{ entry.label }}</h2></div>
           <span class="chip chip--muted">{{ entry.extensionId }}</span>
         </header>
         <extension-view :app="app" :item="entry.item" :view="entry.view"></extension-view>

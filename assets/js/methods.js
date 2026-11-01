@@ -6,6 +6,12 @@
   const CONFIG_SECTIONS = ['apariencia', 'general', 'categorias', 'activos', 'sedes', 'personas', 'integraciones', 'relaciones', 'mantenimiento', 'supervision', 'alertas', 'notificaciones', 'mapas', 'datos', 'seguridad', 'reportes', 'garantias', 'qr', 'etiquetas', 'extensiones'];
   const MONITOR_TABS = ['estado', 'dispositivos', 'alertas'];
 
+  // This module is also evaluated without app.js in component harnesses, so it
+  // resolves its own runtime handle instead of relying on a global helper.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+
   window.AssetMethods = {
     parseRoute() {
       const hash = window.location.hash.replace(/^#\/?/, '');
@@ -230,7 +236,7 @@
       }
       if (parsed.name === 'detail' && !this.assetExists(parsed.assetId)) {
         this.ensureHash('#/inventario');
-        this.showToast('El activo solicitado ya no está disponible.', 'error');
+        this.showToast(tr('ui.shell.asset_missing'), 'error');
         parsed = { name: 'inventory', assetId: null, personId: null, section: null };
       }
       // Server incident routes are authoritative: the detail view loads the
@@ -241,12 +247,12 @@
       }
       if (parsed.name === 'person' && !this.serverOrganizationMode && !this.people.some((person) => person.id === parsed.personId)) {
         this.ensureHash('#/personas');
-        this.showToast('La persona solicitada ya no está disponible.', 'error');
+        this.showToast(tr('ui.shell.person_missing'), 'error');
         parsed = { name: 'people', assetId: null, personId: null, section: null };
       }
       if ((parsed.name === 'graph' || parsed.name === 'map') && !this.serverOrganizationMode && parsed.focusId && !this.assets.some((asset) => asset.id === parsed.focusId)) {
         this.ensureHash(this.hashFor({ name: parsed.name }));
-        this.showToast('El activo enfocado ya no está disponible.', 'error');
+        this.showToast(tr('ui.shell.focus_missing'), 'error');
         parsed = { name: parsed.name, assetId: null, personId: null, section: null, focusId: '' };
       }
       // Device and alert routes are server-owned: the route is applied while the
@@ -313,7 +319,7 @@
     copyText(value, message) {
       const text = String(value || '');
       if (!text) return;
-      const done = () => this.showToast(message || 'Texto copiado.');
+      const done = () => this.showToast(message || tr('ui.shell.copied'));
       const fallback = () => {
         const area = document.createElement('textarea');
         area.value = text;
@@ -326,10 +332,10 @@
           if (document.execCommand('copy')) {
             done();
           } else {
-            this.showToast('No se pudo copiar el identificador.', 'error');
+            this.showToast(tr('ui.shell.copy_failed'), 'error');
           }
         } catch (error) {
-          this.showToast('No se pudo copiar el identificador.', 'error');
+          this.showToast(tr('ui.shell.copy_failed'), 'error');
         }
         document.body.removeChild(area);
       };
@@ -340,53 +346,45 @@
       }
     },
     updateDocumentTitle() {
-      const appName = this.appName || 'Asset Manager';
-      if (this.route.name === 'users' || this.route.name === 'user' || this.route.name === 'denied') {
-        document.title = this.pageLabel + ' · ' + appName;
-      } else if (['reports', 'warranties', 'labels', 'reportAsset', 'conversation'].includes(this.route.name)) {
-        document.title = this.pageLabel + ' · ' + appName;
-      } else if (this.route.name === 'login') {
-        document.title = 'Acceso · ' + appName;
+      const appName = this.appName || tr('ui.shell.brand');
+      // Document titles are composed from catalog entries; no page name is a literal.
+      const title = (page) => tr('ui.shell.document_title', { page, app: appName });
+      const nested = (section, page) => tr('ui.shell.document_title_nested', { section, page, app: appName });
+      const PAGE_KEYS = {
+        users: 'ui.page.users', user: 'ui.page.user', denied: 'ui.page.denied', reports: 'ui.page.reports',
+        warranties: 'ui.page.warranties', labels: 'ui.page.labels', reportAsset: 'ui.page.report_asset',
+        conversation: 'ui.page.conversation', login: 'ui.page.login', extension: 'ui.shell.title_extension',
+        datos: 'ui.page.data', people: 'ui.page.people', maintenance: 'ui.shell.title_maintenance',
+        monitoring: 'ui.shell.title_monitoring', notifications: 'ui.page.notifications', panel: 'ui.page.panel'
+      };
+      if (PAGE_KEYS[this.route.name]) {
+        document.title = title(tr(PAGE_KEYS[this.route.name]));
       } else if (this.route.name === 'detail' && this.currentAsset) {
-        document.title = this.currentAsset.name + ' · ' + appName;
-      } else if (this.route.name === 'extension') {
-        document.title = 'Extensión nativa · ' + appName;
+        document.title = title(this.currentAsset.name);
       } else if (this.route.name === 'config') {
-        document.title = (this.configSectionLabel || 'Configuración') + ' · ' + appName;
-      } else if (this.route.name === 'datos') {
-        document.title = 'Importar y exportar · ' + appName;
-      } else if (this.route.name === 'people') {
-        document.title = 'Personas · ' + appName;
+        document.title = title(this.configSectionLabel || tr('ui.page.settings'));
       } else if (this.route.name === 'graph' || this.route.name === 'map') {
         const focused = this.route.focusId
           ? (this.assets || []).find((asset) => asset.id === this.route.focusId)
           : null;
-        const modeLabel = this.route.name === 'map' ? 'Mapa' : 'Grafo';
+        const modeLabel = tr(this.route.name === 'map' ? 'ui.shell.mode_map' : 'ui.shell.mode_graph');
         document.title = focused
-          ? modeLabel + ' · ' + focused.name + ' · ' + appName
-          : 'Explorador de infraestructura · ' + appName;
-      } else if (this.route.name === 'maintenance') {
-        document.title = 'Mantenimiento e incidentes · ' + appName;
-      } else if (this.route.name === 'monitoring') {
-        document.title = 'Supervisión de dispositivos · ' + appName;
+          ? nested(modeLabel, focused.name)
+          : title(tr('ui.shell.title_infrastructure'));
       } else if (this.route.name === 'monitorDevice') {
         const device = (this.assets || []).find((asset) => asset.id === this.route.assetId);
-        document.title = (device ? device.name : 'Dispositivo') + ' · Supervisión · ' + appName;
+        document.title = nested(tr('ui.nav.monitoring'), device ? device.name : tr('ui.page.device'));
       } else if (this.route.name === 'monitorAlert') {
         const alert = ((this.maintenance || {}).alerts || []).find((item) => item.id === this.route.alertId);
         const alertAsset = alert ? (this.assets || []).find((asset) => asset.id === alert.assetId) : null;
-        document.title = (alertAsset ? alertAsset.name : 'Alerta') + ' · Supervisión · ' + appName;
-      } else if (this.route.name === 'notifications') {
-        document.title = 'Notificaciones · ' + appName;
+        document.title = nested(tr('ui.nav.monitoring'), alertAsset ? alertAsset.name : tr('ui.page.alert'));
       } else if (this.route.name === 'incident') {
         const incident = ((this.maintenance || {}).incidents || []).find((item) => item.id === this.route.incidentId);
-        document.title = (incident ? incident.title : 'Incidente') + ' · ' + appName;
-      } else if (this.route.name === 'panel') {
-        document.title = 'Panel · ' + appName;
+        document.title = title(incident ? incident.title : tr('ui.shell.title_incident'));
       } else if (this.route.name === 'person' && this.currentPerson) {
-        document.title = this.currentPerson.name + ' · ' + appName;
+        document.title = title(this.currentPerson.name);
       } else {
-        document.title = 'Inventario · ' + appName;
+        document.title = title(tr('ui.page.inventory'));
       }
     },
     async submitLoginWithFocus() {
@@ -403,7 +401,7 @@
       if (field === 'username' && !this.loginForm.username.trim()) {
         this.loginErrors.username = 'Introduce tu usuario.';
       } else if (field === 'password' && !this.loginForm.password) {
-        this.loginErrors.password = 'Introduce tu contraseña.';
+        this.loginErrors.password = tr('ui.login.error_password_required');
       } else {
         this.loginErrors[field] = '';
       }
@@ -431,10 +429,10 @@
       const rmmAgentId = dialog.rmmAgentId.trim();
       const errors = { anydeskId: '', rmmAgentId: '', general: '' };
       if (anydeskId && !/^\d{5,12}$/.test(anydeskId)) {
-        errors.anydeskId = 'Usa solo números, entre 5 y 12 dígitos.';
+        errors.anydeskId = tr('ui.shell.error_anydesk_id');
       }
       if (rmmAgentId && !/^[A-Za-z0-9._-]{3,64}$/.test(rmmAgentId)) {
-        errors.rmmAgentId = 'Usa entre 3 y 64 caracteres: letras, números, punto, guion o guion bajo.';
+        errors.rmmAgentId = tr('ui.shell.error_rmm_id');
       }
       this.assetConfigErrors = errors;
       if (errors.anydeskId || errors.rmmAgentId) return false;
@@ -471,12 +469,12 @@
     openRemote(asset, kind) {
       if (!asset) return;
       if (!this.remoteEnabled(kind)) {
-        this.showToast('Esta integración está desactivada en Configuración.', 'error');
+        this.showToast(tr('ui.shell.integration_disabled'), 'error');
         return;
       }
       const id = kind === 'anydesk' ? asset.anydeskId : asset.rmmAgentId;
       if (!id) {
-        this.showToast('Configura primero el identificador de esta integración.', 'error');
+        this.showToast(tr('ui.shell.integration_unconfigured'), 'error');
         return;
       }
       if (this.remoteTimer) {
