@@ -1,19 +1,21 @@
 (function () {
   'use strict';
 
-  const BUCKETS = [
-    { id: 'quick', label: 'Rápido' },
-    { id: 'advanced', label: 'Avanzado' },
-    { id: 'hidden', label: 'Oculto' }
+  const BUCKET_KEYS = [
+    { id: 'quick', key: 'ui.catalog.forms.bucket_quick' },
+    { id: 'advanced', key: 'ui.catalog.forms.bucket_advanced' },
+    { id: 'hidden', key: 'ui.catalog.forms.bucket_hidden' }
   ];
+
+  function t(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : key;
+  }
 
   const AssetFieldsPanel = {
     name: 'AssetFieldsPanel',
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
-    data() {
-      return { buckets: BUCKETS };
-    },
     computed: {
       real() {
         return this.app.inventoryCatalogReady;
@@ -29,14 +31,14 @@
       <section class="config-section" data-od-id="config-asset-fields">
         <div class="config-section__head">
           <div>
-            <span class="eyebrow">Configuración de activos</span>
-            <h2>Biblioteca de campos</h2>
-            <p v-if="real">Campos técnicos reutilizables entre categorías. El tipo y las opciones de un campo existente no se pueden cambiar; los campos se desactivan sin borrar los valores guardados.</p>
-            <p v-else>Campos técnicos reutilizables entre categorías. Edita el nombre, el tipo o las opciones y se actualiza en todos los formularios que los usan.</p>
+            <span class="eyebrow">{{ $t('ui.catalog.fields.eyebrow') }}</span>
+            <h2>{{ $t('ui.catalog.fields.title') }}</h2>
+            <p v-if="real">{{ $t('ui.catalog.fields.lead_server') }}</p>
+            <p v-else>{{ $t('ui.catalog.fields.lead_local') }}</p>
           </div>
           <button v-if="canEdit" type="button" class="btn btn--primary btn--small" data-od-id="create-asset-field" @click="app.openAssetField()">
             <app-icon name="plus" />
-            <span>Nuevo campo</span>
+            <span>{{ $t('ui.catalog.fields.new') }}</span>
           </button>
         </div>
 
@@ -48,23 +50,23 @@
               <strong>{{ field.label }}</strong>
               <span class="mono asset-field-row__key">{{ field.key }}</span>
             </div>
-            <span v-if="field.active === false" class="chip chip--muted">Inactivo</span>
-            <span v-if="field.required" class="chip chip--outline">Obligatorio</span>
+            <span v-if="field.active === false" class="chip chip--muted">{{ $t('ui.catalog.fields.inactive') }}</span>
+            <span v-if="field.required" class="chip chip--outline">{{ $t('ui.catalog.fields.required') }}</span>
             <span class="chip chip--muted">{{ app.assetFieldTypeLabel(field.type) }}</span>
-            <span class="asset-field-row__meta">{{ app.assetFieldUsage(field) }} formulario(s)</span>
+            <span class="asset-field-row__meta">{{ $t('ui.catalog.fields.forms', { count: app.assetFieldUsage(field) }) }}</span>
             <span v-if="field.unit" class="asset-field-row__meta mono">{{ field.unit }}</span>
             <div class="row-actions">
-              <button v-if="canEdit" type="button" class="icon-button" :aria-label="'Editar ' + field.label" @click="app.openAssetField(field)">
+              <button v-if="canEdit" type="button" class="icon-button" :aria-label="$t('ui.catalog.fields.edit', { label: field.label })" @click="app.openAssetField(field)">
                 <app-icon name="pencil" />
               </button>
               <button
                 v-if="real && canEdit"
                 type="button"
                 class="text-button"
-                :aria-label="(field.active === false ? 'Activar ' : 'Desactivar ') + field.label"
+                :aria-label="$t(field.active === false ? 'ui.catalog.fields.activate' : 'ui.catalog.fields.deactivate', { label: field.label })"
                 @click="app.setAssetFieldActive(field, field.active === false)"
-              >{{ field.active === false ? 'Activar' : 'Desactivar' }}</button>
-              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="'Eliminar ' + field.label" @click="app.requestDeleteAssetField(field)">
+              >{{ field.active === false ? $t('ui.catalog.fields.activate_button') : $t('ui.catalog.fields.deactivate_button') }}</button>
+              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.fields.delete', { label: field.label })" @click="app.requestDeleteAssetField(field)">
                 <app-icon name="trash" />
               </button>
             </div>
@@ -78,12 +80,15 @@
     name: 'AssetFormsPanel',
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
-    data() {
-      return { buckets: BUCKETS };
-    },
     computed: {
       real() {
         return this.app.inventoryCatalogReady;
+      },
+      buckets() {
+        // Reading the runtime version keeps the bucket labels reactive to a
+        // language switch without remounting the panel.
+        if (window.ItsmI18n) window.ItsmI18n.version.value;
+        return BUCKET_KEYS.map((bucket) => ({ id: bucket.id, label: t(bucket.key) }));
       },
       draft() {
         return this.app.formDraft;
@@ -123,15 +128,15 @@
       <section class="config-section" data-od-id="config-asset-forms">
         <div class="config-section__head">
           <div>
-            <span class="eyebrow">Configuración de activos</span>
-            <h2>Formularios por categoría</h2>
-            <p v-if="real">Cada categoría define su prefijo de código rápido y qué campos aparecen en el alta rápida, en los datos avanzados y en la ficha técnica. Los cambios se guardan en el servidor.</p>
-            <p v-else>Cada categoría define su prefijo de código rápido y qué campos aparecen en el alta rápida, en los datos avanzados y en la ficha técnica.</p>
+            <span class="eyebrow">{{ $t('ui.catalog.fields.eyebrow') }}</span>
+            <h2>{{ $t('ui.catalog.forms.title') }}</h2>
+            <p v-if="real">{{ $t('ui.catalog.forms.lead_server') }}</p>
+            <p v-else>{{ $t('ui.catalog.forms.lead_local') }}</p>
           </div>
         </div>
 
         <div class="asset-forms-layout">
-          <nav class="form-category-list" aria-label="Categorías con formulario">
+          <nav class="form-category-list" :aria-label="$t('ui.catalog.forms.categories_aria')">
             <button
               v-for="category in categories"
               :key="category.id"
@@ -145,7 +150,7 @@
               <app-icon :name="category.icon" />
               <span class="form-category__copy">
                 <strong>{{ category.label }}</strong>
-                <span class="mono">{{ formFor(category.id).prefix }} · {{ countTech(category.id) }} campos técnicos</span>
+                <span class="mono">{{ formFor(category.id).prefix }} · {{ $t('ui.catalog.forms.tech_count', { count: countTech(category.id) }) }}</span>
               </span>
               <app-icon name="chevron-right" />
             </button>
@@ -154,30 +159,30 @@
           <div v-if="!draft" class="config-note asset-forms-empty">
             <app-icon name="sliders" />
             <div>
-              <strong>Elige una categoría</strong>
-              <p>Vas a poder mover los campos entre alta rápida y datos avanzados, y activar los campos técnicos que correspondan.</p>
+              <strong>{{ $t('ui.catalog.forms.empty_title') }}</strong>
+              <p>{{ $t('ui.catalog.forms.empty_body') }}</p>
             </div>
           </div>
 
           <div v-else class="form-editor" data-od-id="asset-form-editor">
             <div class="form-editor__head">
               <div>
-                <span class="eyebrow">Formulario</span>
+                <span class="eyebrow">{{ $t('ui.catalog.forms.eyebrow') }}</span>
                 <h3>{{ categoryLabel }}</h3>
               </div>
-              <button type="button" class="text-button" @click="app.closeFormDraft()">Cerrar</button>
+              <button type="button" class="text-button" @click="app.closeFormDraft()">{{ $t('ui.common.close') }}</button>
             </div>
 
             <div class="config-form-grid">
               <div class="field">
-                <label :for="'form-prefix-' + draft.categoryId">Prefijo del código rápido</label>
+                <label :for="'form-prefix-' + draft.categoryId">{{ $t('ui.catalog.forms.prefix') }}</label>
                 <span class="input-shell">
                   <input :id="'form-prefix-' + draft.categoryId" type="text" maxlength="6" v-model="draft.form.prefix" :disabled="!canEdit" />
                 </span>
-                <span class="field__hint">Se combina con la sede y el correlativo, por ejemplo {{ draft.form.prefix }}-CEN-001.</span>
+                <span class="field__hint">{{ $t('ui.catalog.forms.prefix_hint', { example: draft.form.prefix + '-CEN-001' }) }}</span>
               </div>
               <div class="field">
-                <label :for="'form-type-' + draft.categoryId">Nombre del tipo</label>
+                <label :for="'form-type-' + draft.categoryId">{{ $t('ui.catalog.forms.type_name') }}</label>
                 <span class="input-shell">
                   <input :id="'form-type-' + draft.categoryId" type="text" v-model="draft.form.type" :disabled="!canEdit" />
                 </span>
@@ -186,21 +191,21 @@
                 <label class="switch">
                   <input type="checkbox" v-model="draft.form.fov" :disabled="!canEdit" />
                   <span class="switch__track"><span class="switch__thumb"></span></span>
-                  <span class="switch__text">Campo de visión</span>
+                  <span class="switch__text">{{ $t('ui.catalog.forms.fov') }}</span>
                 </label>
-                <span class="field__hint">Habilita una imagen de cobertura independiente de la fotografía del activo.</span>
+                <span class="field__hint">{{ $t('ui.catalog.forms.fov_hint') }}</span>
               </div>
             </div>
 
-            <h4 class="form-editor__subhead">Campos comunes</h4>
+            <h4 class="form-editor__subhead">{{ $t('ui.catalog.forms.common_fields') }}</h4>
             <div class="bucket-table">
               <div class="bucket-table__head">
-                <span>Campo</span>
-                <span>Ubicación</span>
+                <span>{{ $t('ui.catalog.forms.column_field') }}</span>
+                <span>{{ $t('ui.catalog.forms.column_location') }}</span>
               </div>
               <div v-for="field in commonFields" :key="field.key" class="bucket-row">
                 <span class="bucket-row__label">{{ field.label }}</span>
-                <div class="bucket-control" role="group" :aria-label="'Ubicación de ' + field.label">
+                <div class="bucket-control" role="group" :aria-label="$t('ui.catalog.forms.bucket_aria', { label: field.label })">
                   <button
                     v-for="bucket in buckets"
                     :key="bucket.id"
@@ -214,7 +219,7 @@
               </div>
             </div>
 
-            <h4 class="form-editor__subhead">Campos técnicos disponibles</h4>
+            <h4 class="form-editor__subhead">{{ $t('ui.catalog.forms.tech_fields') }}</h4>
             <div class="tech-toggle-grid">
               <button
                 v-for="field in techFields"
@@ -234,8 +239,8 @@
             <p v-if="app.formDraftError" class="field__error" role="alert">{{ app.formDraftError }}</p>
 
             <div class="form-editor__actions">
-              <button type="button" class="btn btn--ghost btn--small" @click="app.closeFormDraft()">Descartar</button>
-              <button v-if="canEdit" type="button" class="btn btn--primary btn--small" @click="app.saveFormDraft()">Guardar formulario</button>
+              <button type="button" class="btn btn--ghost btn--small" @click="app.closeFormDraft()">{{ $t('ui.catalog.forms.discard') }}</button>
+              <button v-if="canEdit" type="button" class="btn btn--primary btn--small" @click="app.saveFormDraft()">{{ $t('ui.catalog.forms.save') }}</button>
             </div>
           </div>
         </div>
@@ -262,14 +267,14 @@
       <section class="config-section" data-od-id="config-asset-statuses">
         <div class="config-section__head">
           <div>
-            <span class="eyebrow">Configuración de activos</span>
-            <h2>Estados del activo</h2>
-            <p v-if="real">Los estados se guardan en el servidor. Desactivar un estado no cambia el estado de los activos que ya lo usan.</p>
-            <p v-else>Los estados operativos se pueden renombrar y reordenar según el proceso. Solo el estado final retira el activo del inventario operativo.</p>
+            <span class="eyebrow">{{ $t('ui.catalog.fields.eyebrow') }}</span>
+            <h2>{{ $t('ui.catalog.statuses.title') }}</h2>
+            <p v-if="real">{{ $t('ui.catalog.statuses.lead_server') }}</p>
+            <p v-else>{{ $t('ui.catalog.statuses.lead_local') }}</p>
           </div>
           <button v-if="canEdit" type="button" class="btn btn--primary btn--small" data-od-id="create-asset-status" @click="app.openAssetStatusDialog()">
             <app-icon name="plus" />
-            <span>Nuevo estado</span>
+            <span>{{ $t('ui.catalog.statuses.new') }}</span>
           </button>
         </div>
 
@@ -282,21 +287,21 @@
               <strong>{{ status.label }}</strong>
               <span class="mono asset-status-row__tone">{{ app.assetToneLabel(status.tone) }}</span>
             </div>
-            <span v-if="status.active === false" class="chip chip--muted">Inactivo</span>
-            <span v-if="status.final" class="chip chip--outline">Estado final</span>
+            <span v-if="status.active === false" class="chip chip--muted">{{ $t('ui.catalog.statuses.inactive') }}</span>
+            <span v-if="status.final" class="chip chip--outline">{{ $t('ui.catalog.statuses.final') }}</span>
             <span class="asset-field-row__meta">{{ app.assetStatusUsage(status) }}</span>
             <div class="row-actions">
-              <button v-if="canEdit" type="button" class="icon-button" :aria-label="'Editar ' + status.label" @click="app.openAssetStatusDialog(status)">
+              <button v-if="canEdit" type="button" class="icon-button" :aria-label="$t('ui.catalog.statuses.edit', { label: status.label })" @click="app.openAssetStatusDialog(status)">
                 <app-icon name="pencil" />
               </button>
               <button
                 v-if="real && canEdit"
                 type="button"
                 class="text-button"
-                :aria-label="(status.active === false ? 'Activar ' : 'Desactivar ') + status.label"
+                :aria-label="$t(status.active === false ? 'ui.catalog.statuses.activate' : 'ui.catalog.statuses.deactivate', { label: status.label })"
                 @click="app.setAssetStatusActive(status, status.active === false)"
-              >{{ status.active === false ? 'Activar' : 'Desactivar' }}</button>
-              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="'Eliminar ' + status.label" @click="app.requestDeleteAssetStatus(status)">
+              >{{ status.active === false ? $t('ui.catalog.statuses.activate_button') : $t('ui.catalog.statuses.deactivate_button') }}</button>
+              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.statuses.delete', { label: status.label })" @click="app.requestDeleteAssetStatus(status)">
                 <app-icon name="trash" />
               </button>
             </div>
@@ -343,10 +348,10 @@
       <section class="config-section" data-od-id="config-asset-identity">
         <div class="config-section__head">
           <div>
-            <span class="eyebrow">Configuración de activos</span>
-            <h2>Identificación</h2>
-            <p v-if="real">El servidor asigna un identificador permanente que nunca cambia ni se reutiliza. El código rápido se puede editar y cada cambio queda registrado en el historial.</p>
-            <p v-else>Reglas del ID permanente y del código rápido. El ID nunca cambia; el código rápido se adapta a la sede y al tipo del activo.</p>
+            <span class="eyebrow">{{ $t('ui.catalog.fields.eyebrow') }}</span>
+            <h2>{{ $t('ui.catalog.identity.title') }}</h2>
+            <p v-if="real">{{ $t('ui.catalog.identity.lead_server') }}</p>
+            <p v-else>{{ $t('ui.catalog.identity.lead_local') }}</p>
           </div>
         </div>
 
@@ -354,125 +359,125 @@
 
         <div class="identity-preview">
           <div class="identity-preview__cell">
-            <span class="eyebrow">{{ real ? 'Identificador permanente' : 'Próximo ID permanente' }}</span>
-            <strong class="mono">{{ real ? 'UUID del servidor' : permanentPreview }}</strong>
-            <span class="identity-preview__hint">{{ real ? 'Inmutable e independiente de la sede y del tipo.' : 'Secuencial e inmutable.' }}</span>
+            <span class="eyebrow">{{ real ? $t('ui.catalog.identity.permanent_id') : $t('ui.catalog.identity.next_id') }}</span>
+            <strong class="mono">{{ real ? $t('ui.catalog.identity.server_uuid') : permanentPreview }}</strong>
+            <span class="identity-preview__hint">{{ real ? $t('ui.catalog.identity.permanent_hint') : $t('ui.catalog.identity.sequential_hint') }}</span>
           </div>
           <div class="identity-preview__cell">
-            <span class="eyebrow">Ejemplo de código rápido</span>
+            <span class="eyebrow">{{ $t('ui.catalog.identity.quick_example') }}</span>
             <strong class="mono">{{ quickPreview }}</strong>
-            <span class="identity-preview__hint">Tipo · sede · correlativo.</span>
+            <span class="identity-preview__hint">{{ $t('ui.catalog.identity.quick_example_hint') }}</span>
           </div>
         </div>
 
         <div class="config-form-grid">
           <div v-if="!real" class="field" :class="{ 'field--invalid': !!errors.permanentPrefix }">
-            <label for="rules-permanent-prefix">Prefijo del ID</label>
+            <label for="rules-permanent-prefix">{{ $t('ui.catalog.identity.prefix') }}</label>
             <span class="input-shell">
               <input id="rules-permanent-prefix" type="text" maxlength="6" v-model="rules.permanentPrefix" />
             </span>
-            <span class="field__hint">Se antepone al número correlativo.</span>
+            <span class="field__hint">{{ $t('ui.catalog.identity.prefix_hint') }}</span>
           </div>
           <div class="field">
-            <label for="rules-separator">Separador</label>
+            <label for="rules-separator">{{ $t('ui.catalog.identity.separator') }}</label>
             <span class="input-shell">
               <input id="rules-separator" type="text" maxlength="2" v-model="rules.separator" />
             </span>
-            <span class="field__hint">Se usa entre prefijo, sede y número.</span>
+            <span class="field__hint">{{ $t('ui.catalog.identity.separator_hint') }}</span>
           </div>
           <div v-if="!real" class="field" :class="{ 'field--invalid': !!errors.permanentPad }">
-            <label for="rules-permanent-pad">Dígitos del ID</label>
+            <label for="rules-permanent-pad">{{ $t('ui.catalog.identity.digits') }}</label>
             <span class="input-shell">
               <input id="rules-permanent-pad" type="number" min="3" max="8" v-model="rules.permanentPad" />
             </span>
             <span v-if="errors.permanentPad" class="field__error">{{ errors.permanentPad }}</span>
           </div>
           <div class="field" :class="{ 'field--invalid': !!errors.quickPad }">
-            <label for="rules-quick-pad">Dígitos del correlativo</label>
+            <label for="rules-quick-pad">{{ $t('ui.catalog.identity.counter_digits') }}</label>
             <span class="input-shell">
               <input id="rules-quick-pad" type="number" min="2" max="5" v-model="rules.quickPad" />
             </span>
             <span v-if="errors.quickPad" class="field__error">{{ errors.quickPad }}</span>
           </div>
           <div class="field">
-            <label for="rules-site-length">Letras de la sede en el código</label>
+            <label for="rules-site-length">{{ $t('ui.catalog.identity.site_letters') }}</label>
             <span class="input-shell">
               <input id="rules-site-length" type="number" min="2" max="5" v-model="rules.siteCodeLength" />
             </span>
-            <span class="field__hint">Ej. «Central» se abrevia como CEN.</span>
+            <span class="field__hint">{{ $t('ui.catalog.identity.site_letters_hint') }}</span>
           </div>
           <div class="field">
             <label class="switch">
               <input type="checkbox" v-model="rules.includeSite" />
               <span class="switch__track"><span class="switch__thumb"></span></span>
-              <span class="switch__text">Incluir la sede</span>
+              <span class="switch__text">{{ $t('ui.catalog.identity.include_site') }}</span>
             </label>
-            <span class="field__hint">Si se desactiva, el código queda como PREFIJO-001.</span>
+            <span class="field__hint">{{ $t('ui.catalog.identity.include_site_hint') }}</span>
           </div>
           <div v-if="real" class="field">
-            <label for="rules-order">Orden del código</label>
+            <label for="rules-order">{{ $t('ui.catalog.identity.order') }}</label>
             <span class="input-shell">
               <select id="rules-order" v-model="rules.order">
-                <option value="site-type">Sede y después tipo</option>
-                <option value="type-site">Tipo y después sede</option>
+                <option value="site-type">{{ $t('ui.catalog.identity.order_site_type') }}</option>
+                <option value="type-site">{{ $t('ui.catalog.identity.order_type_site') }}</option>
               </select>
             </span>
-            <span class="field__hint">Cambia solo el orden visible del código rápido.</span>
+            <span class="field__hint">{{ $t('ui.catalog.identity.order_hint') }}</span>
           </div>
         </div>
 
         <div v-if="canEdit" class="form-editor__actions">
-          <button type="button" class="btn btn--ghost btn--small" @click="app.resetAssetIdRules()">Restablecer</button>
-          <button type="button" class="btn btn--primary btn--small" data-od-id="save-asset-identity" @click="app.saveAssetIdRules()">Guardar reglas</button>
+          <button type="button" class="btn btn--ghost btn--small" @click="app.resetAssetIdRules()">{{ $t('ui.catalog.identity.reset') }}</button>
+          <button type="button" class="btn btn--primary btn--small" data-od-id="save-asset-identity" @click="app.saveAssetIdRules()">{{ $t('ui.catalog.identity.save_rules') }}</button>
         </div>
-        <p v-else class="config-note"><app-icon name="info" /><span>Tu rol puede consultar estas reglas, pero no modificarlas.</span></p>
+        <p v-else class="config-note"><app-icon name="info" /><span>{{ $t('ui.catalog.identity.read_only') }}</span></p>
 
         <template v-if="real">
-          <h3 class="identity-subhead">Transiciones de estado</h3>
-          <p class="identity-lead">Cada fila autoriza un cambio de estado. El servidor aplica la tabla de la categoría cuando existe y, si no, esta tabla global.</p>
+          <h3 class="identity-subhead">{{ $t('ui.catalog.identity.transitions') }}</h3>
+          <p class="identity-lead">{{ $t('ui.catalog.identity.transitions_lead') }}</p>
           <div v-if="app.inventoryTransitionRows().length" class="transition-rows">
             <div v-for="(row, index) in app.inventoryTransitionRows()" :key="index" class="transition-row">
               <span class="input-shell">
-                <select v-model="row.from" :aria-label="'Estado de origen de la transición ' + (index + 1)">
+                <select v-model="row.from" :aria-label="$t('ui.catalog.identity.transition_from', { index: index + 1 })">
                   <option value="">Origen</option>
                   <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.label }}</option>
                 </select>
               </span>
               <app-icon name="arrow-right" />
               <span class="input-shell">
-                <select v-model="row.to" :aria-label="'Estado de destino de la transición ' + (index + 1)">
+                <select v-model="row.to" :aria-label="$t('ui.catalog.identity.transition_to', { index: index + 1 })">
                   <option value="">Destino</option>
                   <option v-for="status in statuses" :key="status.id" :value="status.id">{{ status.label }}</option>
                 </select>
               </span>
-              <button type="button" class="config-icon-action" :aria-label="'Quitar la transición ' + (index + 1)" @click="app.removeInventoryTransition(index)">
+              <button type="button" class="config-icon-action" :aria-label="$t('ui.catalog.identity.transition_remove', { index: index + 1 })" @click="app.removeInventoryTransition(index)">
                 <app-icon name="trash" />
               </button>
             </div>
           </div>
-          <p v-else class="config-note">Sin transiciones configuradas: el servidor permite cualquier cambio entre estados activos.</p>
+          <p v-else class="config-note">{{ $t('ui.catalog.identity.transitions_empty') }}</p>
           <div class="form-editor__actions">
-            <button type="button" class="btn btn--ghost btn--small" @click="app.addInventoryTransition()">Añadir transición</button>
-            <button type="button" class="btn btn--secondary btn--small" @click="app.saveInventoryTransitionsDraft()">Guardar transiciones</button>
+            <button type="button" class="btn btn--ghost btn--small" @click="app.addInventoryTransition()">{{ $t('ui.catalog.identity.transition_add') }}</button>
+            <button type="button" class="btn btn--secondary btn--small" @click="app.saveInventoryTransitionsDraft()">{{ $t('ui.catalog.identity.transitions_save') }}</button>
           </div>
 
-          <h3 class="identity-subhead">Entorno del servidor</h3>
-          <p class="identity-lead">El entorno y la política de baja los define el servidor. El navegador no puede cambiarlos.</p>
+          <h3 class="identity-subhead">{{ $t('ui.catalog.identity.environment') }}</h3>
+          <p class="identity-lead">{{ $t('ui.catalog.identity.environment_lead') }}</p>
           <dl class="identity-policy">
             <div>
-              <dt>Entorno</dt>
+              <dt>{{ $t('ui.catalog.identity.environment') }}</dt>
               <dd class="mono">{{ app.inventoryEnvironmentLabel() }}</dd>
             </div>
             <div>
-              <dt>Eliminación definitiva</dt>
-              <dd>{{ purge ? 'Permiso ' + purge.permission + (purge.archivedRequired ? ' · exige archivar antes' : ' · no exige archivar') + (purge.typedIdRequired ? ' · exige escribir el ID' : '') + (purge.reasonRequired ? ' · exige motivo' : '') : 'El servidor no informó la política de eliminación; la acción no se ofrece.' }}</dd>
+              <dt>{{ $t('ui.catalog.identity.purge') }}</dt>
+              <dd>{{ purge ? $t('ui.catalog.identity.purge_policy', { permission: purge.permission, archived: purge.archivedRequired ? $t('ui.catalog.identity.purge_archived') : $t('ui.catalog.identity.purge_not_archived'), typed: purge.typedIdRequired ? $t('ui.catalog.identity.purge_typed') : '', reason: purge.reasonRequired ? $t('ui.catalog.identity.purge_reason') : '' }) : $t('ui.catalog.identity.purge_unknown') }}</dd>
             </div>
           </dl>
         </template>
 
         <template v-else>
-          <h3 class="identity-subhead">Modo de operación</h3>
-          <p class="identity-lead">Comportamiento de la baja y protección de la eliminación definitiva.</p>
+          <h3 class="identity-subhead">{{ $t('ui.catalog.identity.mode') }}</h3>
+          <p class="identity-lead">{{ $t('ui.catalog.identity.mode_lead') }}</p>
           <div class="mode-grid">
             <button
               type="button"
@@ -484,10 +489,10 @@
             >
               <span class="mode-card__head">
                 <app-icon name="sliders" />
-                <strong>Desarrollo</strong>
-                <span v-if="mode === 'development'" class="mode-card__badge">Activo</span>
+                <strong>{{ $t('ui.catalog.identity.mode_development') }}</strong>
+                <span v-if="mode === 'development'" class="mode-card__badge">{{ $t('ui.catalog.identity.mode_active') }}</span>
               </span>
-              <span class="mode-card__copy">Eliminación definitiva con una confirmación simple. Pensado para pruebas y datos de demostración.</span>
+              <span class="mode-card__copy">{{ $t('ui.catalog.identity.mode_development_copy') }}</span>
             </button>
             <button
               type="button"
@@ -499,10 +504,10 @@
             >
               <span class="mode-card__head">
                 <app-icon name="shield" />
-                <strong>Producción</strong>
-                <span v-if="mode === 'production'" class="mode-card__badge">Activo</span>
+                <strong>{{ $t('ui.catalog.identity.mode_production') }}</strong>
+                <span v-if="mode === 'production'" class="mode-card__badge">{{ $t('ui.catalog.identity.mode_active') }}</span>
               </span>
-              <span class="mode-card__copy">La baja conserva el registro y su historial. La eliminación definitiva exige escribir el ID y el motivo.</span>
+              <span class="mode-card__copy">{{ $t('ui.catalog.identity.mode_production_copy') }}</span>
             </button>
           </div>
         </template>

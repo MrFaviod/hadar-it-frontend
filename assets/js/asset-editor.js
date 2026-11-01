@@ -2,20 +2,25 @@
   'use strict';
 
   const PLACEHOLDERS = {
-    name: 'Ej. Notebook de dirección',
-    brand: 'Ej. Lenovo',
-    model: 'Ej. ThinkPad T14 Gen 4',
-    serial: 'Serie del fabricante',
-    ip: 'Ej. 10.24.18.40',
-    type: 'Ej. Notebook',
-    anydesk: 'Ej. 774209618',
-    rmm: 'Ej. rmm-2f6b-1042',
-    cost: '0,00',
-    site: 'Ej. Sede Central',
-    location: 'Ej. Piso 2 · Administración',
-    responsible: 'Ej. Ana Benítez',
-    quickCode: 'Opcional · único en el inventario'
+    name: 'ui.asset.editor.placeholder_name',
+    brand: 'ui.asset.editor.placeholder_brand',
+    model: 'ui.asset.editor.placeholder_model',
+    serial: 'ui.asset.editor.placeholder_serial',
+    ip: 'ui.asset.editor.placeholder_ip',
+    type: 'ui.asset.editor.placeholder_type',
+    anydesk: 'ui.asset.editor.placeholder_anydesk',
+    rmm: 'ui.asset.editor.placeholder_rmm',
+    cost: 'ui.asset.editor.placeholder_cost',
+    site: 'ui.asset.editor.placeholder_site',
+    location: 'ui.asset.editor.placeholder_location',
+    responsible: 'ui.asset.editor.placeholder_responsible',
+    quickCode: 'ui.asset.editor.placeholder_quick_code'
   };
+
+  function t(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : key;
+  }
 
   const AssetCommonField = {
     name: 'AssetCommonField',
@@ -59,10 +64,14 @@
       sites() {
         return this.app.sites;
       },
+      localeRevision() {
+        return window.ItsmI18n ? window.ItsmI18n.version.value : 0;
+      },
       placeholder() {
-        if (this.fieldKey === 'anydeskId') return PLACEHOLDERS.anydesk;
-        if (this.fieldKey === 'rmmAgentId') return PLACEHOLDERS.rmm;
-        return PLACEHOLDERS[this.fieldKey] || '';
+        this.localeRevision;
+        if (this.fieldKey === 'anydeskId') return t(PLACEHOLDERS.anydesk);
+        if (this.fieldKey === 'rmmAgentId') return t(PLACEHOLDERS.rmm);
+        return PLACEHOLDERS[this.fieldKey] ? t(PLACEHOLDERS[this.fieldKey]) : '';
       },
       isSelect() {
         return ['site', 'locationId', 'assigneeId', 'statusId'].indexOf(this.fieldKey) !== -1;
@@ -77,6 +86,7 @@
       }
     },
     methods: {
+      t,
       setText(event) {
         this.draft[this.fieldKey] = event.target.value;
       },
@@ -91,7 +101,7 @@
         <span v-if="fieldKey === 'site' && !real" class="input-shell">
           <app-icon name="building" />
           <select :id="inputId" :value="draft.site" @change="setSite">
-            <option value="">Sin sede</option>
+            <option value="">{{ t('ui.asset.field.no_site') }}</option>
             <option v-for="site in sites" :key="site.id" :value="site.id">{{ site.label }}</option>
           </select>
         </span>
@@ -99,7 +109,7 @@
         <span v-else-if="fieldKey === 'locationId'" class="input-shell" :class="{ 'input-shell--muted': !draft.site }">
           <app-icon name="map-pin" />
           <select :id="inputId" :value="draft.locationId" :disabled="!draft.site" @change="draft.locationId = $event.target.value">
-            <option value="">{{ draft.site ? 'Sin ubicación' : 'Elige una sede primero' }}</option>
+            <option value="">{{ draft.site ? t('ui.asset.field.no_location') : t('ui.asset.field.choose_site') }}</option>
             <option v-for="location in locations" :key="location.id" :value="location.id">{{ location.label }}</option>
           </select>
         </span>
@@ -107,7 +117,7 @@
         <span v-else-if="fieldKey === 'assigneeId'" class="input-shell">
           <app-icon name="user" />
           <select :id="inputId" :value="draft.assigneeId" :disabled="locked" :aria-describedby="locked ? errorId : null" @change="draft.assigneeId = $event.target.value">
-            <option value="">Sin asignar</option>
+            <option value="">{{ t('ui.asset.field.unassigned') }}</option>
             <option v-for="person in people" :key="person.id" :value="person.id">{{ person.name }} · {{ person.role }}</option>
           </select>
         </span>
@@ -132,7 +142,7 @@
           <input :id="inputId" type="text" :value="draft[fieldKey]" :placeholder="placeholder" :aria-invalid="!!error" :aria-describedby="error ? errorId : null" :disabled="locked" autocomplete="off" @input="setText" />
         </span>
 
-        <span v-if="locked" :id="errorId" class="field__hint">Tu rol no permite cambiar el responsable; el valor actual se conserva.</span>
+        <span v-if="locked" :id="errorId" class="field__hint">{{ t('ui.asset.field.responsible_locked') }}</span>
         <span v-if="error" class="field__error" role="alert">{{ error }}</span>
       </div>
     `
@@ -161,7 +171,7 @@
       },
       categoryLabel() {
         const category = this.categories.find((item) => item.id === this.draft.category);
-        return category ? category.label : 'Activo';
+        return category ? category.label : t('ui.asset.editor.default_category');
       },
       quickKeys() {
         return this.app.assetFormKeys('quick', this.draft.category);
@@ -208,23 +218,28 @@
       warranty() {
         return this.draft.warranty || { until: '', provider: '', note: '' };
       },
+      localeRevision() {
+        return window.ItsmI18n ? window.ItsmI18n.version.value : 0;
+      },
       title() {
-        return this.editor.mode === 'create' ? 'Registrar activo' : 'Editar activo';
+        this.localeRevision;
+        return this.editor.mode === 'create' ? t('ui.asset.editor.create_title') : t('ui.asset.editor.edit_title');
       },
       real() {
         return !!this.editor.real;
       },
       identCode() {
-        if (this.real) return this.editor.mode === 'create' ? 'El servidor lo asigna al guardar' : this.draft.quickCode;
+        this.localeRevision;
+        if (this.real) return this.editor.mode === 'create' ? t('ui.asset.editor.server_assigns') : this.draft.quickCode;
         return this.editor.mode === 'create' ? this.codePreview : this.draft.code;
       },
       identNote() {
-        return this.real
-          ? 'El ID permanente lo asigna el servidor y nunca cambia. El código rápido se puede editar en datos avanzados y debe ser único.'
-          : 'El ID nunca cambia. El código rápido se recalcula si cambia el tipo o la ubicación, y el cambio queda en el historial.';
+        this.localeRevision;
+        return this.real ? t('ui.asset.editor.ident_note_server') : t('ui.asset.editor.ident_note_local');
       }
     },
     methods: {
+      t,
       techValue(field) {
         const tech = this.draft.technical || this.draft.tech || {};
         return field.type === 'boolean' ? tech[field.key] === true : (tech[field.key] === undefined ? '' : tech[field.key]);
@@ -268,18 +283,18 @@
       <modal-shell
         :open="editor.open"
         size="wide"
-        eyebrow="Inventario de activos"
+        :eyebrow="t('ui.asset.editor.eyebrow')"
         :title="title"
         @close="app.closeAssetEditor()"
       >
         <form class="asset-editor" id="asset-editor-form" novalidate @submit.prevent="app.saveAsset()">
           <div class="editor-ident">
             <div class="editor-ident__cell">
-              <span class="eyebrow">ID permanente</span>
-              <strong class="mono">{{ editor.mode === 'create' ? 'Se asigna al guardar' : draft.id }}</strong>
+              <span class="eyebrow">{{ t('ui.asset.common.permanent_id') }}</span>
+              <strong class="mono">{{ editor.mode === 'create' ? t('ui.asset.editor.assigned_on_save') : draft.id }}</strong>
             </div>
             <div class="editor-ident__cell">
-              <span class="eyebrow">Código rápido</span>
+              <span class="eyebrow">{{ t('ui.asset.common.quick_code') }}</span>
               <strong class="mono">{{ identCode }}</strong>
             </div>
             <p class="editor-ident__note">
@@ -295,22 +310,22 @@
 
           <section class="editor-section" data-od-id="asset-editor-essentials">
             <div class="editor-section__head">
-              <h3>{{ real ? 'Datos del activo' : 'Alta rápida' }}</h3>
-              <p>{{ real ? 'Solo se guardan los campos que admite el inventario del servidor.' : 'Con el nombre y la categoría ya puedes guardar. El resto puede completarse después.' }}</p>
+              <h3>{{ real ? t('ui.asset.editor.essentials_server') : t('ui.asset.editor.essentials_local') }}</h3>
+              <p>{{ real ? t('ui.asset.editor.essentials_server_hint') : t('ui.asset.editor.essentials_local_hint') }}</p>
             </div>
             <div class="form-grid">
               <div v-if="errors.category" class="field field--invalid form-grid__full">
                 <span class="field__error" role="alert">{{ errors.category }}</span>
               </div>
               <div class="field form-grid__full">
-                <label for="asset-editor-category">Categoría</label>
+                <label for="asset-editor-category">{{ t('ui.asset.common.category') }}</label>
                 <span class="input-shell">
                   <app-icon name="grid" />
                   <select id="asset-editor-category" :value="draft.category" @change="app.applyAssetCategory($event.target.value)">
                     <option v-for="category in categories" :key="category.id" :value="category.id">{{ category.label }}</option>
                   </select>
                 </span>
-                <span class="field__hint">El formulario se adapta a la categoría: {{ categoryLabel }}.</span>
+                <span class="field__hint">{{ t('ui.asset.editor.category_hint', { category: categoryLabel }) }}</span>
               </div>
               <asset-common-field
                 v-for="key in quickKeys"
@@ -326,26 +341,26 @@
 
           <section class="editor-section" data-od-id="asset-editor-photo">
             <div class="editor-section__head">
-              <h3>Fotografía</h3>
-              <p>{{ real ? 'Imagen propia del activo; si no hay, se usa la ilustración de la categoría.' : 'Imagen del equipo o una ilustración del catálogo de dispositivos.' }}</p>
+              <h3>{{ t('ui.asset.editor.photo') }}</h3>
+              <p>{{ real ? t('ui.asset.editor.photo_hint_server') : t('ui.asset.editor.photo_hint_local') }}</p>
             </div>
             <div class="photo-editor">
               <figure class="photo-editor__frame">
-                <img :src="ownPhoto || fallbackImage" :alt="draft.name ? 'Fotografía de ' + draft.name : 'Imagen del activo'" />
-                <figcaption class="mono">{{ ownPhoto ? 'IMAGEN PROPIA' : 'ILUSTRACIÓN DE CATEGORÍA' }}</figcaption>
+                <img :src="ownPhoto || fallbackImage" :alt="draft.name ? t('ui.asset.editor.photo_alt', { name: draft.name }) : t('ui.asset.editor.image_alt')" />
+                <figcaption class="mono">{{ ownPhoto ? t('ui.asset.editor.own_image') : t('ui.asset.editor.category_illustration') }}</figcaption>
               </figure>
               <div class="photo-editor__controls">
                 <template v-if="mediaReady">
                   <label class="btn btn--secondary btn--small photo-upload">
                     <app-icon name="upload" />
-                    <span>Subir fotografía</span>
+                    <span>{{ t('ui.asset.editor.upload_photo') }}</span>
                     <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only" @change="handlePhoto" />
                   </label>
-                  <button v-if="ownPhoto" type="button" class="text-button" @click="removePhoto">Volver a la ilustración</button>
-                  <p class="field__hint">{{ real ? 'PNG, JPG, WebP o GIF de hasta 1 MB. Se guarda en el servidor.' : 'JPG o PNG de hasta 1 MB. La imagen se guarda en este navegador.' }}</p>
+                  <button v-if="ownPhoto" type="button" class="text-button" @click="removePhoto">{{ t('ui.asset.editor.reset_photo') }}</button>
+                  <p class="field__hint">{{ real ? t('ui.asset.editor.photo_limits_server') : t('ui.asset.editor.photo_limits_local') }}</p>
                   <p v-if="errors.image || app.inventoryMediaError" class="field__error" role="alert">{{ errors.image || app.inventoryMediaError }}</p>
                 </template>
-                <p v-else class="field__hint">Guarda el activo para añadir su fotografía.</p>
+                <p v-else class="field__hint">{{ t('ui.asset.editor.save_for_photo') }}</p>
                 <div v-if="!real" class="preset-grid preset-grid--compact">
                   <button
                     v-for="preset in app.deviceImagePresets"
@@ -366,29 +381,29 @@
 
           <section v-if="showFov" class="editor-section" data-od-id="asset-editor-fov">
             <div class="editor-section__head">
-              <h3>Campo de visión</h3>
-              <p>Imagen independiente de la fotografía: representa el área que cubre la cámara.</p>
+              <h3>{{ t('ui.asset.editor.fov') }}</h3>
+              <p>{{ t('ui.asset.editor.fov_hint') }}</p>
             </div>
             <div class="photo-editor photo-editor--compact">
               <figure class="photo-editor__frame photo-editor__frame--diagram">
-                <img v-if="ownFov" :src="ownFov" alt="Campo de visión de la cámara" />
+                <img v-if="ownFov" :src="ownFov" :alt="t('ui.asset.editor.fov_alt')" />
                 <div v-else class="photo-editor__empty">
                   <app-icon name="camera" />
-                  <span>Sin imagen de cobertura</span>
+                  <span>{{ t('ui.asset.editor.no_fov') }}</span>
                 </div>
-                <figcaption class="mono">CAMPO DE VISIÓN</figcaption>
+                <figcaption class="mono">{{ t('ui.asset.editor.fov_caption') }}</figcaption>
               </figure>
               <div class="photo-editor__controls">
                 <template v-if="mediaReady">
                   <label class="btn btn--secondary btn--small photo-upload">
                     <app-icon name="upload" />
-                    <span>Subir imagen de cobertura</span>
+                    <span>{{ t('ui.asset.editor.upload_fov') }}</span>
                     <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="sr-only" @change="handleFov" />
                   </label>
-                  <button v-if="ownFov" type="button" class="text-button" @click="removeFov">Quitar imagen</button>
+                  <button v-if="ownFov" type="button" class="text-button" @click="removeFov">{{ t('ui.asset.editor.remove_fov') }}</button>
                   <p v-if="errors.fov || app.inventoryMediaError" class="field__error" role="alert">{{ errors.fov || app.inventoryMediaError }}</p>
                 </template>
-                <p v-else class="field__hint">Guarda el activo para añadir el campo de visión.</p>
+                <p v-else class="field__hint">{{ t('ui.asset.editor.save_for_fov') }}</p>
               </div>
             </div>
           </section>
@@ -402,8 +417,8 @@
               @click="app.toggleAssetAdvanced()"
             >
               <app-icon :name="editor.advancedOpen ? 'chevron-down' : 'chevron-right'" />
-              <span class="editor-toggle__label">Datos avanzados</span>
-              <span class="editor-toggle__hint">{{ editor.advancedOpen ? 'Ocultar' : (real ? 'Serie, coste, estado, descripción y campos técnicos' : 'Serie, coste, garantía, acceso remoto y campos técnicos') }}</span>
+              <span class="editor-toggle__label">{{ t('ui.asset.editor.advanced') }}</span>
+              <span class="editor-toggle__hint">{{ editor.advancedOpen ? t('ui.asset.editor.hide') : (real ? t('ui.asset.editor.advanced_hint_server') : t('ui.asset.editor.advanced_hint_local')) }}</span>
             </button>
 
             <div v-if="editor.advancedOpen" id="asset-editor-advanced-fields" class="editor-advanced">
@@ -421,49 +436,49 @@
 
               <div v-if="real" class="form-grid">
                 <div class="field">
-                  <label for="asset-editor-quick-code">Código rápido manual</label>
+                  <label for="asset-editor-quick-code">{{ t('ui.asset.editor.manual_quick_code') }}</label>
                   <span class="input-shell">
-                    <input id="asset-editor-quick-code" type="text" maxlength="32" :value="draft.quickCode" placeholder="Opcional" autocomplete="off" @input="draft.quickCode = $event.target.value" />
+                    <input id="asset-editor-quick-code" type="text" maxlength="32" :value="draft.quickCode" :placeholder="t('ui.asset.editor.optional')" autocomplete="off" @input="draft.quickCode = $event.target.value" />
                   </span>
-                  <span class="field__hint">Opcional. Si lo dejas vacío o sin cambios, el servidor conserva o genera el correlativo.</span>
+                  <span class="field__hint">{{ t('ui.asset.editor.manual_quick_hint') }}</span>
                   <span v-if="errors.quickCode" class="field__error" role="alert">{{ errors.quickCode }}</span>
                 </div>
               </div>
 
               <div v-if="showWarranty" class="warranty-editor">
                 <div class="warranty-editor__head">
-                  <h4>Garantía individual</h4>
+                  <h4>{{ t('ui.warranty.editor.title') }}</h4>
                   <div class="warranty-editor__quick">
-                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(12)">+12 meses</button>
-                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(24)">+24 meses</button>
-                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(36)">+36 meses</button>
+                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(12)">{{ t('ui.warranty.editor.preset_months', { months: 12 }) }}</button>
+                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(24)">{{ t('ui.warranty.editor.preset_months', { months: 24 }) }}</button>
+                    <button type="button" class="chip-button" @click="app.applyAssetWarrantyPreset(36)">{{ t('ui.warranty.editor.preset_months', { months: 36 }) }}</button>
                   </div>
                 </div>
                 <div class="form-grid">
                   <div class="field" :class="{ 'field--invalid': !!errors.warranty }">
-                    <label :for="'asset-warranty-until'">Vence el</label>
+                    <label :for="'asset-warranty-until'">{{ t('ui.warranty.field.until') }}</label>
                     <span class="input-shell">
                       <input id="asset-warranty-until" type="date" :value="warranty.until" @input="setWarranty('until', $event.target.value)" />
                     </span>
                     <span v-if="errors.warranty" class="field__error" role="alert">{{ errors.warranty }}</span>
                   </div>
                   <div class="field">
-                    <label :for="'asset-warranty-provider'">Proveedor</label>
+                    <label :for="'asset-warranty-provider'">{{ t('ui.warranty.field.provider') }}</label>
                     <span class="input-shell">
-                      <input id="asset-warranty-provider" type="text" :value="warranty.provider" placeholder="Ej. Lenovo Premier" @input="setWarranty('provider', $event.target.value)" />
+                      <input id="asset-warranty-provider" type="text" :value="warranty.provider" :placeholder="t('ui.warranty.editor.placeholder_provider')" @input="setWarranty('provider', $event.target.value)" />
                     </span>
                   </div>
                   <div class="field form-grid__full">
-                    <label :for="'asset-warranty-note'">Nota de garantía</label>
+                    <label :for="'asset-warranty-note'">{{ t('ui.warranty.field.note') }}</label>
                     <span class="input-shell">
-                      <input id="asset-warranty-note" type="text" :value="warranty.note" placeholder="Contrato, condiciones o número de caso" @input="setWarranty('note', $event.target.value)" />
+                      <input id="asset-warranty-note" type="text" :value="warranty.note" :placeholder="t('ui.warranty.editor.placeholder_note')" @input="setWarranty('note', $event.target.value)" />
                     </span>
                   </div>
                 </div>
               </div>
 
               <div v-if="techFields.length" class="tech-editor">
-                <h4>Campos técnicos · {{ categoryLabel }}</h4>
+                <h4>{{ t('ui.asset.editor.tech_fields_title', { category: categoryLabel }) }}</h4>
                 <div class="form-grid">
                   <div v-for="field in techFields" :key="field.key" class="field" :class="{ 'field--inline': field.type === 'boolean', 'field--invalid': !!errors['technical.' + field.key] }">
                     <label :for="'asset-tech-' + field.key">
@@ -478,11 +493,11 @@
                         @change="setTechBoolean(field, $event)"
                       />
                       <span class="switch__track"><span class="switch__thumb"></span></span>
-                      <span class="switch__text">{{ techValue(field) === true ? 'Sí' : 'No' }}</span>
+                      <span class="switch__text">{{ techValue(field) === true ? t('ui.asset.editor.yes') : t('ui.asset.editor.no') }}</span>
                     </label>
                     <span v-else-if="field.type === 'select'" class="input-shell">
                       <select :id="'asset-tech-' + field.key" :value="techValue(field)" @change="setTech(field, $event.target.value)">
-                        <option value="">Sin definir</option>
+                        <option value="">{{ t('ui.asset.editor.undefined') }}</option>
                         <option v-for="option in field.options" :key="option" :value="option">{{ option }}</option>
                       </select>
                     </span>
@@ -513,10 +528,10 @@
         </form>
 
         <template #footer>
-          <p class="modal-foot__hint">* El nombre es obligatorio. El servidor valida el resto de los campos.</p>
-          <button type="button" class="btn btn--ghost" @click="app.closeAssetEditor()">Cancelar</button>
+          <p class="modal-foot__hint">{{ t('ui.asset.editor.footer_hint') }}</p>
+          <button type="button" class="btn btn--ghost" @click="app.closeAssetEditor()">{{ t('ui.common.cancel') }}</button>
           <button type="button" class="btn btn--primary" :disabled="editor.saving" @click="app.saveAsset()">
-            {{ editor.mode === 'create' ? 'Registrar activo' : 'Guardar cambios' }}
+            {{ editor.mode === 'create' ? t('ui.asset.editor.create_title') : t('ui.asset.editor.save_changes') }}
           </button>
         </template>
       </modal-shell>
