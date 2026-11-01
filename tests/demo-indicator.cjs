@@ -185,7 +185,7 @@ test('a fresh start never reuses a demo flag from the previous identity', async 
   assert.equal(instance.demoMode, false);
 });
 
-test('the authenticated shell renders the factual Spanish demo notice and nothing else', () => {
+test('the authenticated shell renders the demo notice from the catalog and nothing else', () => {
   const template = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const shell = template.indexOf('class="app-shell"');
   const main = template.indexOf('<main id="main-content"');
@@ -193,7 +193,7 @@ test('the authenticated shell renders the factual Spanish demo notice and nothin
   assert.ok(shell !== -1 && main > shell, 'the authenticated shell must own the notice');
   assert.ok(notice, 'index.html must bind the notice to demoMode');
   assert.ok(notice.index > shell && notice.index < main, 'the notice belongs between the shell header and the page content');
-  assert.match(notice[0], /Modo demostración/);
+  assert.match(notice[0], /\$t\('ui\.shell\.demo_mode'\)/, 'the notice copy comes from the active catalog');
   assert.doesNotMatch(notice[0], /no envía|bloquea|alertas|producción/i, 'the notice must not claim unverified outbound guarantees');
   const css = fs.readFileSync(path.join(root, 'assets/css/app.css'), 'utf8');
   assert.match(css, /\.demo-notice\s*\{/);

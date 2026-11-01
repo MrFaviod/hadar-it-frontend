@@ -137,6 +137,48 @@
         background: var(--od-border, #e5e7eb);
       }
     }
+
+    /* Language selector: shell chrome only, so it stays with the shell markup. */
+    .locale-select {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .locale-select__control {
+      min-height: 28px;
+      max-width: 11rem;
+      padding: 0 6px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: var(--paper);
+      color: var(--ink-900);
+      font-size: 12px;
+    }
+    .locale-select__control:focus-visible {
+      outline: 2px solid var(--teal-600);
+      outline-offset: 1px;
+    }
+    .login__actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .login__chrome .locale-select {
+      color: var(--white);
+    }
+    .user-popover__lang {
+      padding: 5px 9px 7px;
+      border-bottom: 1px solid var(--border);
+    }
+    .user-popover__lang .locale-select {
+      justify-content: space-between;
+      width: 100%;
+    }
+    .demo-notice__locale {
+      margin-left: auto;
+    }
   </style>
   <link rel="icon" href="assets/svg/favicon.svg" type="image/svg+xml">
   <link rel="preload" href="assets/fonts/space-grotesk-600.woff2" as="font" type="font/woff2" crossorigin>
@@ -179,7 +221,7 @@
 </head>
 <body>
   <div id="app" v-cloak>
-    <a v-if="route.name !== 'login' && !isPublicReport" class="skip-link" href="#main-content">Saltar al contenido</a>
+    <a v-if="route.name !== 'login' && !isPublicReport" class="skip-link" href="#main-content">{{ $t('ui.shell.skip_link') }}</a>
 
     <!-- Acceso / aplicación: un único cambio animado al iniciar o cerrar sesión -->
     <transition name="auth" mode="out-in">
@@ -206,24 +248,27 @@
           <img :src="brandLogo" width="40" height="40" alt="">
           <span>{{ appName }}</span>
         </div>
-        <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
-                :title="themeToggleLabel" @click="toggleTheme">
-          <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
-          <span class="theme-toggle__label">{{ themeToggleText }}</span>
-        </button>
+        <div class="login__actions">
+          <locale-select></locale-select>
+          <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
+                  :title="themeToggleLabel" @click="toggleTheme">
+            <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
+            <span class="theme-toggle__label">{{ themeToggleText }}</span>
+          </button>
+        </div>
       </header>
 
       <main class="login__panel">
         <div class="login__form-wrap">
-          <h1 id="login-title">Iniciar sesión</h1>
+          <h1 id="login-title">{{ $t('ui.login.title') }}</h1>
 
           <form class="login-form" @submit.prevent="submitLoginWithFocus" novalidate>
             <div class="field" :class="{ 'field--invalid': loginErrors.username }">
-              <label for="login-user">Usuario</label>
+              <label for="login-user">{{ $t('ui.login.username') }}</label>
               <div class="input-shell">
                 <app-icon name="user"></app-icon>
                 <input id="login-user" v-model="loginForm.username" type="text" name="username" autocomplete="username"
-                       placeholder="Nombre de usuario" :aria-invalid="!!loginErrors.username"
+                       :placeholder="$t('ui.login.username_placeholder')" :aria-invalid="!!loginErrors.username"
                        :aria-describedby="loginErrors.username ? 'login-user-error' : null"
                        @blur="validateLoginField('username')" @input="clearLoginError('username')">
               </div>
@@ -231,15 +276,15 @@
             </div>
 
             <div class="field" :class="{ 'field--invalid': loginErrors.password }">
-              <label for="login-password">Contraseña</label>
+              <label for="login-password">{{ $t('ui.login.password') }}</label>
               <div class="input-shell">
                 <app-icon name="lock"></app-icon>
                 <input id="login-password" v-model="loginForm.password" :type="showPassword ? 'text' : 'password'"
-                       name="password" autocomplete="current-password" placeholder="••••••••"
+                       name="password" autocomplete="current-password" :placeholder="$t('ui.login.password_placeholder')"
                        :aria-invalid="!!loginErrors.password"
                        :aria-describedby="loginErrors.password ? 'login-password-error' : null"
                        @blur="validateLoginField('password')" @input="clearLoginError('password')">
-                <button type="button" class="input-action" :aria-label="showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'"
+                <button type="button" class="input-action" :aria-label="showPassword ? $t('ui.login.hide_password') : $t('ui.login.show_password')"
                         :aria-pressed="showPassword" @click="showPassword = !showPassword">
                   <app-icon :name="showPassword ? 'eye-off' : 'eye'"></app-icon>
                 </button>
@@ -254,7 +299,7 @@
 
             <button class="btn btn--primary login-submit" type="submit" :disabled="loginBusy">
               <span v-if="loginBusy" class="spinner" aria-hidden="true"></span>
-              <span>{{ loginBusy ? 'Comprobando…' : 'Entrar' }}</span>
+              <span>{{ loginBusy ? $t('ui.login.submitting') : $t('ui.login.submit') }}</span>
               <app-icon v-if="!loginBusy" name="arrow-right"></app-icon>
             </button>
           </form>
@@ -265,11 +310,11 @@
     <div v-else class="app-shell" :class="sidebarPinned ? 'app-shell--docked' : 'app-shell--drawer'">
       <div class="sidebar-scrim" :class="{ 'is-visible': mobileNavOpen }" @click="closeSidebar"></div>
 
-      <aside id="app-sidebar" class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }" aria-label="Navegación principal" data-od-id="app-sidebar">
+      <aside id="app-sidebar" class="sidebar" :class="{ 'sidebar--open': mobileNavOpen }" :aria-label="$t('ui.shell.nav_aria')" data-od-id="app-sidebar">
         <div class="sidebar__head">
           <a class="brand" href="#/panel" @click="closeSidebar">
             <img :src="brandLogo" width="40" height="40" alt="">
-            <span class="brand__text"><strong>{{ appName }}</strong><small>Gestión de activos TI</small></span>
+            <span class="brand__text"><strong>{{ appName }}</strong><small>{{ $t('ui.shell.brand_subtitle') }}</small></span>
           </a>
           <div class="sidebar__head-actions">
             <button v-if="sidebarDockable" class="icon-button sidebar__pin" type="button"
@@ -278,7 +323,7 @@
                     data-od-id="sidebar-pin-toggle" @click="toggleSidebarPin">
               <app-icon name="pin"></app-icon>
             </button>
-            <button class="icon-button sidebar__close" type="button" aria-label="Cerrar navegación" @click="closeSidebar">
+            <button class="icon-button sidebar__close" type="button" :aria-label="$t('ui.shell.nav_close')" @click="closeSidebar">
               <app-icon name="close"></app-icon>
             </button>
           </div>
@@ -286,20 +331,20 @@
 
         <div class="sidebar__scroll">
           <div class="sidebar__section">
-            <p class="sidebar__label">Espacio de trabajo</p>
-            <nav class="sidebar__nav" aria-label="Secciones">
+            <p class="sidebar__label">{{ $t('ui.shell.workspace') }}</p>
+            <nav class="sidebar__nav" :aria-label="$t('ui.shell.nav_sections')">
               <composition-nav-item :app="$root" target="nav.panel" :permitted="can('assets.view')">
                 <a v-if="!uiNavHidden('nav.panel') && can('assets.view')" class="nav-link" href="#/panel" :class="{ 'is-active': route.name === 'panel' }"
                    :aria-current="route.name === 'panel' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="activity"></app-icon>
-                  <span>Panel</span>
+                  <span>{{ $t('ui.nav.panel') }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.inventory" :permitted="can('assets.view')">
                 <a v-if="!uiNavHidden('nav.inventory') && can('assets.view')" class="nav-link" href="#/inventario" :class="{ 'is-active': route.name === 'inventory' || route.name === 'detail' }"
                    :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="inventory"></app-icon>
-                  <span>Inventario</span>
+                  <span>{{ $t('ui.nav.inventory') }}</span>
                   <span class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
                 </a>
               </composition-nav-item>
@@ -307,7 +352,7 @@
                 <a v-if="!uiNavHidden('nav.conversation') && can('assets.view')" class="nav-link" href="#/conversacion" :class="{ 'is-active': route.name === 'conversation' }"
                    :aria-current="route.name === 'conversation' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="send"></app-icon>
-                  <span>Conversación</span>
+                  <span>{{ $t('ui.nav.conversation') }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.maintenance" :permitted="can('assets.view')">
@@ -315,7 +360,7 @@
                    :class="{ 'is-active': route.name === 'maintenance' || route.name === 'incident' }"
                    :aria-current="route.name === 'maintenance' || route.name === 'incident' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="refresh"></app-icon>
-                  <span>Mantenimiento</span>
+                  <span>{{ $t('ui.nav.maintenance') }}</span>
                   <span v-if="maintenanceOverdueCount" class="nav-link__count nav-link__count--alert">{{ maintenanceOverdueCount }}</span>
                 </a>
               </composition-nav-item>
@@ -324,7 +369,7 @@
                    :class="{ 'is-active': route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' }"
                    :aria-current="route.name === 'monitoring' || route.name === 'monitorDevice' || route.name === 'monitorAlert' || route.name === 'notifications' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="gauge"></app-icon>
-                  <span>Supervisión</span>
+                  <span>{{ $t('ui.nav.monitoring') }}</span>
                   <span v-if="monitorAlertCount" class="nav-link__count nav-link__count--alert">{{ monitorAlertCount }}</span>
                 </a>
               </composition-nav-item>
@@ -333,7 +378,7 @@
                    :class="{ 'is-active': route.name === 'map' || route.name === 'graph' }"
                    :aria-current="route.name === 'map' || route.name === 'graph' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="map-pin"></app-icon>
-                  <span>Infraestructura</span>
+                  <span>{{ $t('ui.nav.infrastructure') }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.datos" :permitted="can('assets.view')">
@@ -341,20 +386,20 @@
                    :class="{ 'is-active': route.name === 'datos' }"
                    :aria-current="route.name === 'datos' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="upload"></app-icon>
-                  <span>Datos</span>
+                  <span>{{ $t('ui.nav.data') }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.reports" :permitted="can('assets.view')">
-                <a v-if="!uiNavHidden('nav.reports') && can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>Reportes</span></a>
+                <a v-if="!uiNavHidden('nav.reports') && can('assets.view')" href="#/reportes" class="nav-link" :class="{ 'is-active': route.name === 'reports' || route.name === 'reportAsset' }" :aria-current="route.name === 'reports' ? 'page' : null" @click="closeSidebar" data-od-id="nav-reports"><app-icon name="file-text"></app-icon><span>{{ $t('ui.nav.reports') }}</span></a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.warranties" :permitted="can('assets.view')">
-                <a v-if="!uiNavHidden('nav.warranties') && can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>Garantías</span></a>
+                <a v-if="!uiNavHidden('nav.warranties') && can('assets.view')" href="#/garantias" class="nav-link" :class="{ 'is-active': route.name === 'warranties' }" :aria-current="route.name === 'warranties' ? 'page' : null" @click="closeSidebar" data-od-id="nav-warranties"><app-icon name="shield"></app-icon><span>{{ $t('ui.nav.warranties') }}</span></a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.labels" :permitted="can('assets.view')">
-                <a v-if="!uiNavHidden('nav.labels') && can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>Etiquetas</span></a>
+                <a v-if="!uiNavHidden('nav.labels') && can('assets.view')" href="#/etiquetas" class="nav-link" :class="{ 'is-active': route.name === 'labels' }" :aria-current="route.name === 'labels' ? 'page' : null" @click="closeSidebar" data-od-id="nav-labels"><app-icon name="printer"></app-icon><span>{{ $t('ui.nav.labels') }}</span></a>
               </composition-nav-item>
               <template v-if="extensionPageLinks.length">
-                <p class="nav-group-label">Extensiones</p>
+                <p class="nav-group-label">{{ $t('ui.shell.extensions') }}</p>
                 <a v-for="link in extensionPageLinks" :key="link.key" class="nav-link" :href="link.href"
                    :class="{ 'is-active': route.name === 'extension' && route.extensionId === link.extensionId && route.pageId === link.pageId }"
                    :aria-current="route.name === 'extension' && route.extensionId === link.extensionId && route.pageId === link.pageId ? 'page' : null"
@@ -368,26 +413,26 @@
                 <a v-if="!uiNavHidden('nav.people') && can('people.view')" class="nav-link" href="#/personas" :class="{ 'is-active': route.name === 'people' || route.name === 'person' }"
                    :aria-current="route.name === 'people' || route.name === 'person' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="user"></app-icon>
-                  <span>Personas</span>
+                  <span>{{ $t('ui.nav.people') }}</span>
                   <span v-if="organization.peopleTotals.loaded" class="nav-link__count">{{ organization.peopleTotals.total }}</span>
                 </a>
               </composition-nav-item>
               <a v-if="can('users.view')" class="nav-link" href="#/usuarios" :class="{ 'is-active': route.name === 'users' || route.name === 'user' }" :aria-current="route.name === 'users' || route.name === 'user' ? 'page' : null" @click="closeSidebar">
-                <app-icon name="user"></app-icon><span>Usuarios</span><span class="nav-link__count">{{ security.users.length }}</span>
+                <app-icon name="user"></app-icon><span>{{ $t('ui.nav.users') }}</span><span class="nav-link__count">{{ security.users.length }}</span>
               </a>
               <a v-if="canOpenConfig" class="nav-link" :href="'#/configuracion/' + (permittedConfigSections[0] ? permittedConfigSections[0].id : 'general')" :class="{ 'is-active': route.name === 'config' }"
                  :aria-current="route.name === 'config' ? 'page' : null" @click="closeSidebar">
                 <app-icon name="sliders"></app-icon>
-                <span>Configuración</span>
+                <span>{{ $t('ui.nav.settings') }}</span>
               </a>
               <composition-nav-item :app="$root" target="nav.help" :permitted="can('assets.view')">
-                <a v-if="!uiNavHidden('nav.help') && can('assets.view')" class="nav-link" href="#/ayuda" :class="{ 'is-active': route.name === 'help' }" :aria-current="route.name === 'help' ? 'page' : null" @click="closeSidebar"><app-icon name="file-text"></app-icon><span>Ayuda</span></a>
+                <a v-if="!uiNavHidden('nav.help') && can('assets.view')" class="nav-link" href="#/ayuda" :class="{ 'is-active': route.name === 'help' }" :aria-current="route.name === 'help' ? 'page' : null" @click="closeSidebar"><app-icon name="file-text"></app-icon><span>{{ $t('ui.nav.help') }}</span></a>
               </composition-nav-item>
             </nav>
           </div>
 
           <div class="sidebar__section">
-            <p v-if="can('assets.view')" class="sidebar__label">Categorías</p>
+            <p v-if="can('assets.view')" class="sidebar__label">{{ $t('ui.shell.categories') }}</p>
             <div v-if="can('assets.view')" class="sidebar__categories">
               <button v-for="category in categories" :key="category.id" type="button" class="side-category"
                       :class="{ 'is-active': (serverInventory ? inventoryFilters.category : prefs.category) === category.id }" @click="filterFromSidebar(category.id); closeSidebar()">
@@ -402,8 +447,8 @@
         <div class="sidebar__foot">
           <div class="sidebar__note">
             <app-icon name="info"></app-icon>
-            <p v-if="serverInventory"><strong>Datos del servidor</strong><span>El Panel, inventario, directorio, infraestructura, búsqueda, mantenimiento, supervisión, reportes y apariencia consultan los servicios autorizados.</span></p>
-            <p v-else><strong>Datos de demostración</strong><span>Los cambios se guardan solo en este navegador.</span></p>
+            <p v-if="serverInventory"><strong>{{ $t('ui.shell.server_data_title') }}</strong><span>{{ $t('ui.shell.server_data_body') }}</span></p>
+            <p v-else><strong>{{ $t('ui.shell.demo_data_title') }}</strong><span>{{ $t('ui.shell.demo_data_body') }}</span></p>
           </div>
         </div>
       </aside>
@@ -411,11 +456,11 @@
       <div class="workspace">
         <header class="topbar">
           <div class="topbar__left">
-            <button class="icon-button topbar__menu" type="button" aria-label="Abrir navegación" aria-controls="app-sidebar"
+            <button class="icon-button topbar__menu" type="button" :aria-label="$t('ui.shell.nav_open')" aria-controls="app-sidebar"
                     :aria-expanded="mobileNavOpen" data-od-id="topbar-menu-toggle" @click="openSidebar">
               <app-icon name="menu"></app-icon>
             </button>
-            <div class="crumb" aria-label="Ruta actual">
+            <div class="crumb" :aria-label="$t('ui.shell.crumb_aria')">
               <span>{{ organizationName }}</span>
               <app-icon name="chevron-right"></app-icon>
               <strong>{{ pageLabel }}</strong>
@@ -423,32 +468,37 @@
           </div>
 
           <div class="topbar__right">
-            <button type="button" class="universal-trigger" aria-label="Buscar en Asset Manager (Ctrl + K)" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>Buscar o ir a…</span><kbd>Ctrl K</kbd></button>
+            <button type="button" class="universal-trigger" :aria-label="$t('ui.shell.search_aria', { app: appName })" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>{{ $t('ui.shell.search_trigger') }}</span><kbd>Ctrl K</kbd></button>
             <notification-bell :app="$root"></notification-bell>
             <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
                     :title="themeToggleLabel" @click="toggleTheme">
               <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
               <span class="theme-toggle__label">{{ themeToggleText }}</span>
             </button>
-            <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> Prealfa</span>
+            <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> {{ $t('ui.shell.prealpha') }}</span>
             <div class="user-menu" ref="userMenu">
               <button class="user-trigger" type="button" aria-haspopup="menu" :aria-expanded="userMenuOpen" @click="userMenuOpen = !userMenuOpen">
-                <span class="avatar" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : 'Usuario') }}</span>
-                <span class="user-trigger__text"><strong>{{ currentUser ? currentUser.name : 'Usuario' }}</strong><small>{{ currentRole ? currentRole.name : 'Sin rol' }}</small></span>
+                <span class="avatar" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : $t('ui.shell.user_fallback')) }}</span>
+                <span class="user-trigger__text"><strong>{{ currentUser ? currentUser.name : $t('ui.shell.user_fallback') }}</strong><small>{{ currentRole ? currentRole.name : $t('ui.shell.role_none') }}</small></span>
                 <app-icon name="chevron-down"></app-icon>
               </button>
               <transition name="dropdown">
-                <div v-if="userMenuOpen" class="user-popover" role="menu" aria-label="Cuenta">
+                <div v-if="userMenuOpen" class="user-popover">
                   <div class="user-popover__head">
-                    <span class="avatar avatar--large" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : 'Usuario') }}</span>
-                    <div><strong>{{ currentUser ? currentUser.name : 'Usuario' }}</strong><span>{{ currentUser ? currentUser.username : '' }} · {{ currentRole ? currentRole.name : 'Sin rol' }}</span></div>
+                    <span class="avatar avatar--large" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : $t('ui.shell.user_fallback')) }}</span>
+                    <div><strong>{{ currentUser ? currentUser.name : $t('ui.shell.user_fallback') }}</strong><span>{{ currentUser ? currentUser.username : '' }} · {{ currentRole ? currentRole.name : $t('ui.shell.role_none') }}</span></div>
                   </div>
-                  <button v-if="canOpenConfig" class="popover-item" type="button" role="menuitem" @click="goToConfig(permittedConfigSections[0].id)">
-                    <app-icon name="sliders"></app-icon> Abrir configuración
-                  </button>
-                  <button class="popover-item popover-item--danger" type="button" role="menuitem" @click="logout">
-                    <app-icon name="logout"></app-icon> Cerrar sesión
-                  </button>
+                  <div class="user-popover__lang">
+                    <locale-select></locale-select>
+                  </div>
+                  <div role="menu" :aria-label="$t('ui.shell.account_aria')">
+                    <button v-if="canOpenConfig" class="popover-item" type="button" role="menuitem" @click="goToConfig(permittedConfigSections[0].id)">
+                      <app-icon name="sliders"></app-icon> {{ $t('ui.shell.open_config') }}
+                    </button>
+                    <button class="popover-item popover-item--danger" type="button" role="menuitem" @click="logout">
+                      <app-icon name="logout"></app-icon> {{ $t('ui.shell.logout') }}
+                    </button>
+                  </div>
                 </div>
               </transition>
             </div>
@@ -457,8 +507,9 @@
 
         <p v-if="demoMode" class="demo-notice" data-od-id="demo-mode-notice">
           <span class="demo-notice__dot" aria-hidden="true"></span>
-          <strong>Modo demostración</strong>
+          <strong>{{ $t('ui.shell.demo_mode') }}</strong>
           <demo-countdown></demo-countdown>
+          <locale-select class="demo-notice__locale"></locale-select>
         </p>
 
         <main id="main-content" class="main" tabindex="-1">
@@ -2885,7 +2936,9 @@
   </div>
 
   <script src="assets/vendor/vue.global.prod.js"></script>
+  <script src="assets/vendor/vue-i18n.global.prod.js"></script>
   <script src="assets/vendor/maplibre-gl.js"></script>
+  <script src="assets/js/i18n.js"></script>
   <script src="assets/js/data.js"></script>
   <script src="assets/js/map-data.js"></script>
   <script src="assets/js/asset-schema.js"></script>
