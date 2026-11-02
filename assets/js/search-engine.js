@@ -1,19 +1,19 @@
 (function () {
   'use strict';
   const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
-  // Spanish fallbacks exist only for callers that evaluate this module without
-  // the runtime; the shipped app always resolves through ItsmI18n.
-  function tr(key, params, fallback) {
-    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : (fallback || '');
+  // Copy is resolved on read through the runtime; without it the engine shows
+  // nothing instead of a second, untranslated copy of the catalog.
+  function tr(key, params) {
+    if (!window.ItsmI18n) return '';
+    if (window.ItsmI18n.version) window.ItsmI18n.version.value;
+    return window.ItsmI18n.t(key, params);
   }
   // Record kinds and there route ids are stable; labels are resolved on read.
-  const SECTIONS = [['panel','ui.search.section_panel','activity','Dashboard'],['inventory','ui.search.section_inventory','inventory','Inventario'],['people','ui.search.section_people','user','Personas'],['map','ui.search.section_map','map-pin','Mapa de infraestructura'],['graph','ui.search.section_graph','network','Grafo de relaciones'],['maintenance','ui.search.section_maintenance','refresh','Mantenimiento e incidentes'],['monitoring','ui.search.section_monitoring','gauge','Supervisión'],['reports','ui.search.section_reports','file-text','Reportes'],['warranties','ui.search.section_warranties','shield','Garantías'],['labels','ui.search.section_labels','printer','Etiquetas']];
+  const SECTIONS = [['panel','ui.search.section_panel','activity'],['inventory','ui.search.section_inventory','inventory'],['people','ui.search.section_people','user'],['map','ui.search.section_map','map-pin'],['graph','ui.search.section_graph','network'],['maintenance','ui.search.section_maintenance','refresh'],['monitoring','ui.search.section_monitoring','gauge'],['reports','ui.search.section_reports','file-text'],['warranties','ui.search.section_warranties','shield'],['labels','ui.search.section_labels','printer']];
   const TYPE_KEYS={asset:'ui.search.type_asset',person:'ui.search.type_person',site:'ui.search.type_site',location:'ui.search.type_location',incident:'ui.search.type_incident',intervention:'ui.search.type_intervention',maintenance:'ui.search.type_maintenance',plan:'ui.search.type_plan',report:'ui.search.type_report',category:'ui.search.type_category',section:'ui.search.type_section',view:'ui.search.type_view',action:'ui.search.type_action'};
-  const TYPES={ get asset(){return tr(TYPE_KEYS.asset,{},TYPE_FALLBACK.asset);}, get person(){return tr(TYPE_KEYS.person,{},TYPE_FALLBACK.person);}, get site(){return tr(TYPE_KEYS.site,{},TYPE_FALLBACK.site);}, get location(){return tr(TYPE_KEYS.location,{},TYPE_FALLBACK.location);}, get incident(){return tr(TYPE_KEYS.incident,{},TYPE_FALLBACK.incident);}, get intervention(){return tr(TYPE_KEYS.intervention,{},TYPE_FALLBACK.intervention);}, get maintenance(){return tr(TYPE_KEYS.maintenance,{},TYPE_FALLBACK.maintenance);}, get plan(){return tr(TYPE_KEYS.plan,{},TYPE_FALLBACK.plan);}, get report(){return tr(TYPE_KEYS.report,{},TYPE_FALLBACK.report);}, get category(){return tr(TYPE_KEYS.category,{},TYPE_FALLBACK.category);}, get section(){return tr(TYPE_KEYS.section,{},TYPE_FALLBACK.section);}, get view(){return tr(TYPE_KEYS.view,{},TYPE_FALLBACK.view);}, get action(){return tr(TYPE_KEYS.action,{},TYPE_FALLBACK.action);} };
-  const TYPE_FALLBACK={"asset": "Activos", "person": "Personas", "site": "Sedes", "location": "Ubicaciones", "incident": "Incidentes", "intervention": "Intervenciones", "maintenance": "Mantenimientos", "plan": "Mantenimientos", "report": "Reportes", "category": "Categorías", "section": "Secciones", "view": "Vistas guardadas", "action": "Acciones"};
-  const FAMILY_FALLBACK={inventory:'Inventario',history:'Historial',warranty:'Garantías'};
+  const TYPES={ get asset(){return tr(TYPE_KEYS.asset);}, get person(){return tr(TYPE_KEYS.person);}, get site(){return tr(TYPE_KEYS.site);}, get location(){return tr(TYPE_KEYS.location);}, get incident(){return tr(TYPE_KEYS.incident);}, get intervention(){return tr(TYPE_KEYS.intervention);}, get maintenance(){return tr(TYPE_KEYS.maintenance);}, get plan(){return tr(TYPE_KEYS.plan);}, get report(){return tr(TYPE_KEYS.report);}, get category(){return tr(TYPE_KEYS.category);}, get section(){return tr(TYPE_KEYS.section);}, get view(){return tr(TYPE_KEYS.view);}, get action(){return tr(TYPE_KEYS.action);} };
   const FAMILY_KEYS={inventory:'ui.search.family_inventory',history:'ui.search.family_history',warranty:'ui.search.family_warranty'};
-  function record(kind,id,label,subtitle,icon,tokens,target) { return {key:kind+':'+id,type:TYPE_KEYS[kind]?tr(TYPE_KEYS[kind],{},TYPE_FALLBACK[kind]):tr('ui.search.type_results',{},'Resultados'),kind,id,label:label||id,subtitle:subtitle||'',icon:icon||'box',tokens:(tokens||[]).filter(Boolean),target:target||{kind,id}}; }
+  function record(kind,id,label,subtitle,icon,tokens,target) { return {key:kind+':'+id,type:TYPE_KEYS[kind]?tr(TYPE_KEYS[kind]):tr('ui.search.type_results'),kind,id,label:label||id,subtitle:subtitle||'',icon:icon||'box',tokens:(tokens||[]).filter(Boolean),target:target||{kind,id}}; }
   function targetFor(item) {
     const t=item.target||{kind:item.type,id:item.id};
     if(t.kind==='maintenance')return {...t,kind:'plan'};
@@ -42,15 +42,15 @@
     const label=(list,id)=>list.find(x=>x.id===id)?.label||id||'';
     if(!app.can||app.can('assets.view')) {
       (app.assets||[]).forEach(a=>{const person=people.find(p=>p.id===a.assigneeId);out.push(record('asset',a.id,a.name,[a.code,a.id,a.ip].filter(Boolean).join(' · '),'box',[a.id,a.permanentId,a.code,a.name,a.model,a.brand,a.ip,a.type,label(categories,a.category),label(sites,a.site),person?.name,...Object.values(a.tech||{})]));});
-      sites.forEach(s=>{out.push(record('site',s.id,s.label,tr('ui.search.subtitle_site',{},'Sede · Mapa'),'building',[s.short]));(s.locations||[]).forEach(l=>out.push(record('location',s.id+':'+l.id,l.label,s.label,'map-pin',[s.label],{kind:'location',id:l.id,siteId:s.id})));});
+      sites.forEach(s=>{out.push(record('site',s.id,s.label,tr('ui.search.subtitle_site'),'building',[s.short]));(s.locations||[]).forEach(l=>out.push(record('location',s.id+':'+l.id,l.label,s.label,'map-pin',[s.label],{kind:'location',id:l.id,siteId:s.id})));});
       const m=app.maintenance||{};
       // Plans carry no title of their own: name them after their template and asset.
       const planName=r=>{const t=(m.templates||[]).find(x=>x.id===r.templateId),a=(app.assets||[]).find(x=>x.id===r.assetId);return t&&a?t.label+' · '+a.name:'';};
       [['incidents','incident'],['interventions','intervention'],['plans','plan']].forEach(([list,kind])=>(m[list]||[]).forEach(r=>out.push(record(kind,r.id,r.title||r.name||r.label||(kind==='plan'&&planName(r))||r.id,[r.id,r.assetId,r.state].filter(Boolean).join(' · '),kind==='incident'?'bell':'refresh',[r.description,r.assetId,kind==='plan'&&planName(r)],{kind,id:r.id,assetId:r.assetId}))));
-      (app.phase9?.templates?.items||[]).forEach(t=>out.push(record('report',t.id,t.name,tr('ui.search.subtitle_template',{family:FAMILY_KEYS[t.family]?tr(FAMILY_KEYS[t.family],{},FAMILY_FALLBACK[t.family]):t.family}),'file-text',[t.description,t.family])));
+      (app.phase9?.templates?.items||[]).forEach(t=>out.push(record('report',t.id,t.name,tr('ui.search.subtitle_template',{family:FAMILY_KEYS[t.family]?tr(FAMILY_KEYS[t.family]):t.family}),'file-text',[t.description,t.family])));
     }
     if(!app.can||app.can('people.view'))people.forEach(p=>out.push(record('person',p.id,p.name,[p.role,p.email].filter(Boolean).join(' · '),'user',[p.id,p.departmentId,label(sites,p.siteId),p.phone])));
-    SECTIONS.forEach(([id,key,icon,fallback])=>{if(!app.can||app.can(id==='people'?'people.view':'assets.view'))out.push(record('section',id,tr(key,{},fallback),tr('ui.workspace.record_section',{},'Sección de la aplicación'),icon,[],{kind:'section',id,route:{name:id}}));});
+    SECTIONS.forEach(([id,key,icon])=>{if(!app.can||app.can(id==='people'?'people.view':'assets.view'))out.push(record('section',id,tr(key),tr('ui.workspace.record_section'),icon,[],{kind:'section',id,route:{name:id}}));});
     (app.permittedConfigSections||app.configSections||[]).forEach(s=>{out.push(record('section','config-'+s.id,s.label,tr('ui.page.settings'),'sliders',[s.hint],{kind:'section',id:'config-'+s.id,route:{name:'config',section:s.id}}));});
     return out.concat(actions(app));
   }

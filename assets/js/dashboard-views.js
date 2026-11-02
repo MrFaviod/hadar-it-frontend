@@ -1,7 +1,12 @@
 (function () {
   'use strict';
   const components = { AppIcon: window.AppIcon, MonChart: window.Views.MonChart, MonStatusPill: window.Views.MonStatusPill };
-  const format = value => value === null || value === undefined ? '—' : Number(value).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+  // The dashboard renders outside a mounted template too (KPI cards), so copy
+  // and formats come from the runtime instead of a module-level literal.
+  function tr(key, params) {
+    return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
+  }
+  const format = value => value === null || value === undefined ? '—' : (window.ItsmI18n ? window.ItsmI18n.number(value, { maximumFractionDigits: 2 }) : String(value));
   const DashboardKpis = {
     props: ['app', 'filters', 'snapshot'],
     computed: {
@@ -29,8 +34,14 @@
     },
     methods: {
       format,
-      when(value) { return value ? new Date(value).toLocaleString('es-ES', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Sin registro'; },
-      day(value) { return value ? new Date(value + (value.length === 10 ? 'T12:00:00' : '')).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin fecha'; },
+      when(value) {
+        const formatted = value && window.ItsmI18n ? window.ItsmI18n.formatDate(value, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        return formatted || tr('ui.dashboard.time_none');
+      },
+      day(value) {
+        const formatted = value && window.ItsmI18n ? window.ItsmI18n.formatDate(value + (value.length === 10 ? 'T12:00:00' : ''), { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+        return formatted || tr('ui.dashboard.date_none');
+      },
       fraction(n, total) { return total ? Math.max(0, n / total * 100) + '%' : '0%'; },
       assetName(alert) { const asset = this.model.assets.find(item => item.id === alert.assetId); return asset ? asset.name : ''; },
       open(asset) { this.app.openAsset(asset); }
