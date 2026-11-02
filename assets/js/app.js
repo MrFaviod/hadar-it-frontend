@@ -106,6 +106,20 @@
       if (route && route.name === 'config' && route.section === 'ia') return '#/configuracion/ia';
       if (route && route.name === 'config' && route.section === 'sistema') return '#/configuracion/sistema';
       return window.AssetMethods.hashFor.call(this, route);
+    },
+    // The languages section is readable with system.view: its writes check
+    // system.configure in the component and in the server. The shared section
+    // table predates this section, so the exception stays in this override.
+    canConfig(section) {
+      if (section === 'idiomas') return this.can('system.view');
+      return window.AssetAccess.methods.canConfig.call(this, section);
+    },
+    accessRoute(route) {
+      if (route && route.name === 'config' && route.section === 'idiomas' &&
+          this.authenticated && this.currentUser && this.currentUser.active && this.can('system.view')) {
+        return route;
+      }
+      return window.AssetAccess.methods.accessRoute.call(this, route);
     }
   };
 
@@ -144,6 +158,7 @@
       AgentIntegrationsSettings: window.AssetAgentViews.AgentIntegrationsSettings,
       AgentProvidersPanel: window.AssetAgentViews.AgentProvidersPanel,
       SystemOperations: window.AssetSystemViews.SystemOperations,
+      TranslationSettings: window.AssetTranslationViews.TranslationSettings,
       AssetFieldsPanel: window.AssetConfigViews.AssetFieldsPanel,
       AssetFormsPanel: window.AssetConfigViews.AssetFormsPanel,
       AssetStatusesPanel: window.AssetConfigViews.AssetStatusesPanel,
@@ -399,11 +414,17 @@
           { value: 'type-asc', label: tr('ui.shell.sort_type') }
         ];
       },
+      permittedConfigSections() {
+        return this.configSections.filter((section) => (
+          section.id === 'idiomas' ? this.can('system.view') : this.canConfig(section.id)
+        ));
+      },
       configSections() {
         // Installation ownership stays a filtered section of the existing
         // Configuración nav; it never becomes a second navigation level.
         return [
           { id: 'sistema', label: tr('ui.shell.config_section_sistema'), hint: tr('ui.shell.config_section_sistema_hint'), icon: 'server' },
+          { id: 'idiomas', label: tr('ui.shell.config_section_idiomas'), hint: tr('ui.shell.config_section_idiomas_hint'), icon: 'file-text' },
           { id: 'extensiones', label: tr('ui.shell.config_section_extensiones'), hint: tr('ui.shell.config_section_extensiones_hint'), icon: 'package' },
           { id: 'seguridad', label: tr('ui.shell.config_section_seguridad'), hint: tr('ui.shell.config_section_seguridad_hint'), icon: 'user' },
           { id: 'general', label: tr('ui.shell.config_section_general'), hint: tr('ui.shell.config_section_general_hint'), icon: 'sliders' },
