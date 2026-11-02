@@ -1164,6 +1164,7 @@
                     <!-- Sistema: instalación, no administración del negocio -->
                     <system-operations v-if="route.section === 'sistema'" :app="$root"></system-operations>
                     <extension-review v-else-if="route.section === 'extensiones'" :app="$root"></extension-review>
+                    <translation-settings v-else-if="route.section === 'idiomas'" :app="$root"></translation-settings>
                     <!-- General -->
                     <access-security v-else-if="route.section === 'seguridad'" :app="$root"></access-security>
                     <section v-else-if="route.section === 'general'" class="config-section" aria-labelledby="config-general-title">
@@ -3010,6 +3011,7 @@
   <script src="assets/js/maintenance-api.js"></script>
   <script src="assets/js/agent-integrations.js"></script>
   <script src="assets/js/system-operations.js"></script>
+  <script src="assets/js/translation-views.js"></script>
   <script src="assets/js/conversation.js"></script>
   <script src="assets/js/extension-frame.js"></script>
   <script src="assets/js/extension-views.js"></script>
