@@ -223,7 +223,7 @@
   }
   function normalizeShortcut(vm, draft) {
     if (window.AssetDashboardPrefs && window.AssetDashboardPrefs.normalizeShortcut) return window.AssetDashboardPrefs.normalizeShortcut(draft, localShortcuts(vm), ownerOf(vm), shared(vm));
-    return { ok: false, error: 'Validador de accesos no disponible.' };
+    return { ok: false, error: tr('ui.shell.shortcut_validator_unavailable') };
   }
   async function saveShortcut(vm, draft) {
     const normalized = normalizeShortcut(vm, draft || {});
@@ -254,7 +254,7 @@
   function writeViews(vm, views) { if (vm.workspaceState) vm.workspaceState = { ...vm.workspaceState, views: views.slice() }; }
   async function saveView(vm, draft) {
     const engine = window.AssetWorkspace;
-    const result = engine && engine.validateView ? engine.validateView(draft || {}, ownerOf(vm), localViews(vm)) : { ok: false, error: 'Validador de vistas no disponible.' };
+    const result = engine && engine.validateView ? engine.validateView(draft || {}, ownerOf(vm), localViews(vm)) : { ok: false, error: tr('ui.shell.view_validator_unavailable') };
     if (!result.ok) return { ok: false, error: result.error };
     const stale = sessionGuard(vm);
     try {
