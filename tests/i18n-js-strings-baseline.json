@@ -8,7 +8,7 @@
     "relations-data.js": "Demo relationship types and seeded links for the prototype graph.",
     "transfer-data.js": "Demo import rows and export fixtures for the prototype transfer flow."
   },
-  "total": 620,
+  "total": 556,
   "files": {
     "access-views.js": 5,
     "access.js": 3,
@@ -33,7 +33,7 @@
     "map-engine.js": 1,
     "methods.js": 9,
     "monitoring-api.js": 19,
-    "monitoring-engine.js": 65,
+    "monitoring-engine.js": 1,
     "phase10-api.js": 2,
     "phase6-api.js": 1,
     "phase9-api.js": 8,
