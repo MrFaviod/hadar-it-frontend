@@ -1755,7 +1755,7 @@
                   <span class="retired-banner__icon"><app-icon name="alert"></app-icon></span>
                   <div class="retired-banner__copy">
                     <strong>{{ $t('ui.asset.detail.retired_on', { date: assetDate(currentAsset.retired.at) }) }}</strong>
-                    <p>{{ currentAsset.retired.reason }}<span v-if="currentAsset.retired.note"> · {{ currentAsset.retired.note }}</span>{{ $t('ui.asset.detail.retired_note') }}</p>
+                    <p>{{ retireReasonText(currentAsset.retired.reason) }}<span v-if="currentAsset.retired.note"> · {{ currentAsset.retired.note }}</span>{{ $t('ui.asset.detail.retired_note') }}</p>
                   </div>
                 </div>
 
@@ -2714,7 +2714,7 @@
           <label for="asset-retire-reason">{{ $t('ui.asset.retire_dialog.reason') }}</label>
           <div class="input-shell">
             <select id="asset-retire-reason" v-model="retireDialog.reason">
-              <option v-for="reason in retireReasons" :key="reason" :value="reason">{{ reason }}</option>
+              <option v-for="reason in retireReasons" :key="reason.id" :value="reason.id">{{ reason.label }}</option>
             </select>
           </div>
         </div>

@@ -1445,8 +1445,8 @@
                 <div><dt>{{ $t('ui.extensions.candidate.submitted') }}</dt><dd>{{ detail.submittedBy || $t('ui.extensions.candidate.unknown_submitter') }} · {{ formatDate(detail.submittedAt) }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.runtime') }}</dt><dd>{{ runtimeLabel(detail.manifest.runtime) }}</dd></div>
                 <div><dt>{{ $t('ui.extensions.candidate.storage') }}</dt><dd>{{ detail.manifest.storage && detail.manifest.storage.engine === 'sqlite' ? $t('ui.extensions.candidate.storage_sqlite') : $t('ui.extensions.candidate.storage_none') }}</dd></div>
-                <div><dt>{{ $t('ui.extensions.candidate.capabilities') }}</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : 'Ninguna' }}</dd></div>
-                <div><dt>{{ $t('ui.extensions.candidate.rollback') }}</dt><dd>{{ detail.rollbackCompatible ? 'Compatible con los datos actuales' : 'Requiere restaurar la copia de datos previa' }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.capabilities') }}</dt><dd>{{ (detail.manifest.capabilities || []).length ? (detail.manifest.capabilities || []).join(', ') : $t('ui.extensions.candidate.capabilities_none') }}</dd></div>
+                <div><dt>{{ $t('ui.extensions.candidate.rollback') }}</dt><dd>{{ detail.rollbackCompatible ? $t('ui.extensions.candidate.rollback_compatible') : $t('ui.extensions.candidate.rollback_restore') }}</dd></div>
               </dl>
 
               <section class="extension-block" aria-labelledby="extension-trust-title">
@@ -1468,7 +1468,7 @@
                   <p>{{ $t('ui.extensions.validation.result') }} <strong>{{ validationStatusLabel(detail.validation.status) }}</strong> · {{ $t('ui.extensions.validation.digest_label') }} {{ shortDigest(detail.validation.digest) }} · {{ $t('ui.extensions.validation.container_label') }} {{ detail.validation.container && detail.validation.container.image || $t('ui.extensions.validation.unknown') }} · {{ $t('ui.extensions.validation.engine_label') }} {{ detail.validation.container && detail.validation.container.engine || $t('ui.extensions.validation.unknown') }}</p>
                   <ul class="extension-checks">
                     <li v-for="check in detail.validation.checks" :key="check.name">
-                      <span class="status-pill" :class="check.status === 'passed' ? 'status--ok' : 'status--down'">{{ check.status === 'passed' ? 'Correcto' : 'Fallo' }}</span>
+                      <span class="status-pill" :class="check.status === 'passed' ? 'status--ok' : 'status--down'">{{ check.status === 'passed' ? $t('ui.extensions.checks.passed') : $t('ui.extensions.checks.failed') }}</span>
                       <span><strong>{{ check.name }}</strong> — {{ check.detail }}</span>
                     </li>
                   </ul>
@@ -1483,7 +1483,7 @@
               <section class="extension-block" aria-labelledby="extension-permissions-title">
                 <h4 id="extension-permissions-title">{{ $t('ui.extensions.permissions.title') }}</h4>
                 <p>{{ $t('ui.extensions.permissions.note') }}</p>
-                <p class="cell-note">{{ $t('ui.extensions.permissions.granted_to') }} {{ detail.permissionDelta.grantedTo || 'Superadmin' }}</p>
+                <p class="cell-note">{{ $t('ui.extensions.permissions.granted_to') }} {{ detail.permissionDelta.grantedTo || $t('ui.extensions.permissions.superadmin') }}</p>
                 <div class="extension-permission-columns">
                   <div><strong>{{ $t('ui.extensions.permissions.new') }}</strong><ul v-if="detail.permissionDelta.added.length"><li v-for="permission in detail.permissionDelta.added" :key="'add-' + permission.code"><code>{{ permission.code }}</code> · {{ permission.label }}<p v-if="permission.description" class="cell-note">{{ permission.description }}</p></li></ul><p v-else class="cell-muted">{{ $t('ui.extensions.permissions.none') }}</p></div>
                   <div><strong>{{ $t('ui.extensions.permissions.removed') }}</strong><ul v-if="detail.permissionDelta.removed.length"><li v-for="code in detail.permissionDelta.removed" :key="'rem-' + code"><code>{{ code }}</code> · {{ permissionLabel(code) }}</li></ul><p v-else class="cell-muted">{{ $t('ui.extensions.permissions.none') }}</p></div>
@@ -1561,12 +1561,12 @@
                   <li v-for="entry in history" :key="entry.id">
                     <div>
                       <strong>{{ actionLabel(entry.action) }}</strong>
-                      <p class="cell-note">{{ entry.actorId || 'Sistema' }} · {{ formatDate(entry.createdAt) }}</p>
+                      <p class="cell-note">{{ entry.actorId || $t('ui.extensions.history.actor_system') }} · {{ formatDate(entry.createdAt) }}</p>
                       <p v-if="historySummary(entry)" class="cell-note">{{ historySummary(entry) }}</p>
                     </div>
                     <button v-if="canRollback(entry, installedForDetail())" type="button" class="btn btn--secondary btn--small"
                             @click="askRollback(entry, installedForDetail())">
-                      {{ rollbackMode(entry, installedForDetail()) === 'restore' ? 'Volver a ' + entry.detail.version + ' restaurando datos' : 'Volver a ' + entry.detail.version }}
+                      {{ rollbackMode(entry, installedForDetail()) === 'restore' ? $t('ui.extensions.history.rollback_restore', { version: entry.detail.version }) : $t('ui.extensions.history.rollback_to', { version: entry.detail.version }) }}
                     </button>
                   </li>
                 </ol>
