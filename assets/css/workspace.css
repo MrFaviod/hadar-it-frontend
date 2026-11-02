@@ -4,3 +4,6 @@
 @media(max-width:520px){.universal-filter-strip__controls>select{flex-basis:calc(50% - 10px);min-width:0;font-size:12px}.workspace-popover li{flex-wrap:wrap}.workspace-popover__open{flex-basis:55%}.workspace-shortcuts__current>span{overflow-wrap:anywhere}}
 
 .main>.workspace-shortcuts{margin:0 0 14px}.main>.universal-filter-strip{margin:0 0 22px}.workspace-shortcuts__current{min-width:0}.workspace-shortcuts__actions{flex-shrink:0}.workspace-shortcuts__hint{white-space:nowrap}
+
+/* Stable SVG favorite state; never depend on Unicode font coverage. */
+.workspace-favorite[aria-pressed="true"] .od-icon { fill: currentColor; }

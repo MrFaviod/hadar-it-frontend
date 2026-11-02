@@ -477,13 +477,13 @@
             </button>
             <span class="demo-chip"><span class="demo-chip__dot" aria-hidden="true"></span> {{ $t('ui.shell.prealpha') }}</span>
             <div class="user-menu" ref="userMenu">
-              <button class="user-trigger" type="button" aria-haspopup="menu" :aria-expanded="userMenuOpen" @click="userMenuOpen = !userMenuOpen">
+              <button class="user-trigger" type="button" aria-haspopup="menu" :aria-expanded="userMenuOpen" @click="toggleUserMenu" @keydown.arrow-down.prevent="openUserMenu('first')" @keydown.arrow-up.prevent="openUserMenu('last')">
                 <span class="avatar" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : $t('ui.shell.user_fallback')) }}</span>
                 <span class="user-trigger__text"><strong>{{ currentUser ? currentUser.name : $t('ui.shell.user_fallback') }}</strong><small>{{ currentRole ? currentRole.name : $t('ui.shell.role_none') }}</small></span>
                 <app-icon name="chevron-down"></app-icon>
               </button>
               <transition name="dropdown">
-                <div v-if="userMenuOpen" class="user-popover">
+                <div v-if="userMenuOpen" class="user-popover" @keydown="handleUserMenuKeydown">
                   <div class="user-popover__head">
                     <span class="avatar avatar--large" aria-hidden="true">{{ personInitials(currentUser ? currentUser.name : $t('ui.shell.user_fallback')) }}</span>
                     <div><strong>{{ currentUser ? currentUser.name : $t('ui.shell.user_fallback') }}</strong><span>{{ currentUser ? currentUser.username : '' }} · {{ currentRole ? currentRole.name : $t('ui.shell.role_none') }}</span></div>
@@ -514,12 +514,12 @@
 
         <main id="main-content" class="main" tabindex="-1">
           <workspace-shortcuts :app="$root"></workspace-shortcuts>
-          <section v-if="workspaceCanSave" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
+          <section v-if="workspaceCanSave && route.name !== 'panel'" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
             <div class="universal-filter-strip__controls">
               <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">{{ $t('ui.shell.filter_category') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_categories') }}</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
               <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">{{ $t('ui.shell.filter_site') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_sites') }}</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-status">{{ $t('ui.shell.filter_status') }}</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label class="sr-only" for="shared-location">{{ $t('ui.shell.filter_location') }}</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
+              <label v-if="route.name !== 'inventory'" class="sr-only" for="shared-status">{{ $t('ui.shell.filter_status') }}</label><select v-if="route.name !== 'inventory'" id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label v-if="route.name !== 'inventory'" class="sr-only" for="shared-location">{{ $t('ui.shell.filter_location') }}</label><select v-if="route.name !== 'inventory'" id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
               <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.shell.filter_column_model')},{id:'location',label:$t('ui.shell.filter_column_location')},{id:'assignee',label:$t('ui.shell.filter_column_assignee')},{id:'ip',label:$t('ui.shell.filter_column_ip')},{id:'remote',label:$t('ui.shell.filter_column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
             </div>
             <div v-if="workspaceChips.length" class="universal-filter-strip__chips" :aria-label="$t('ui.shell.filter_chips_aria')"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.shell.filter_remove', { label: chip.label })" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">{{ $t('ui.shell.filter_reset') }}</button></div>
@@ -1149,6 +1149,12 @@
                   </div>
                 </header>
 
+                <label class="config-section-picker" for="config-section-select">
+                  <span>{{ $t('ui.shell.config_nav_aria') }}</span>
+                  <select id="config-section-select" :value="route.section" @change="setHash(hashFor({ name: 'config', section: $event.target.value }))">
+                    <option v-for="section in permittedConfigSections" :key="section.id" :value="section.id">{{ section.label }}</option>
+                  </select>
+                </label>
                 <div class="config-layout">
                   <nav class="config-nav" :aria-label="$t('ui.shell.config_nav_aria')">
                     <a v-for="section in permittedConfigSections" :key="section.id" class="config-nav__item"

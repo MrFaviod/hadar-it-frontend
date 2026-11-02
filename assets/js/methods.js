@@ -507,6 +507,37 @@
         this.toastTimer = null;
       }, 3600);
     },
+    toggleUserMenu() {
+      if (this.userMenuOpen) this.userMenuOpen = false;
+      else this.openUserMenu('first');
+    },
+    openUserMenu(edge) {
+      this.userMenuOpen = true;
+      this.$nextTick(() => {
+        const items = this.$refs?.userMenu?.querySelectorAll('[role="menuitem"]');
+        if (items?.length) items[edge === 'last' ? items.length - 1 : 0].focus();
+      });
+    },
+    handleUserMenuKeydown(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.userMenuOpen = false;
+        this.$refs?.userMenu?.querySelector('.user-trigger')?.focus();
+        return;
+      }
+      const items = Array.from(this.$refs?.userMenu?.querySelectorAll('[role="menuitem"]') || []);
+      const index = items.indexOf(document.activeElement);
+      if (index < 0) return; // The language select keeps its native keyboard behavior.
+      let next;
+      if (event.key === 'ArrowDown') next = (index + 1) % items.length;
+      else if (event.key === 'ArrowUp') next = (index + items.length - 1) % items.length;
+      else if (event.key === 'Home') next = 0;
+      else if (event.key === 'End') next = items.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      items[next].focus();
+    },
     handleDocumentPointerDown(event) {
       if (!this.userMenuOpen) return;
       const menu = this.$refs.userMenu;
