@@ -8,11 +8,13 @@
   const E = window.AssetReportEngine;
   const LABEL = window.AssetLabelEngine;
 
-  const JOB_LABELS = {
-    queued: 'En cola',
-    running: 'Generando',
-    completed: 'Completado',
-    failed: 'Con errores'
+  // The job state ids stay stable; only their rendered label is translated. The
+  // key is resolved on every render so a hot language switch updates the table.
+  const JOB_LABEL_KEYS = {
+    queued: 'ui.reports.job_queued',
+    running: 'ui.reports.job_running',
+    completed: 'ui.reports.job_completed',
+    failed: 'ui.reports.job_failed'
   };
   const OUTPUT_LABELS = { pdf: 'PDF', csv: 'CSV', xlsx: 'Excel' };
 
@@ -20,7 +22,9 @@
     if (!value) return '—';
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return String(value);
-    return date.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
+    return window.ItsmI18n
+      ? window.ItsmI18n.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' })
+      : new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
   }
 
   function formatBytes(value) {
@@ -189,7 +193,9 @@
     },
     methods: {
       jobLabel(value) {
-        return JOB_LABELS[value] || value || 'Sin estado';
+        const key = JOB_LABEL_KEYS[value];
+        if (key) return tr(key);
+        return value || tr('ui.reports.job_none');
       },
       outputLabel(value) {
         return OUTPUT_LABELS[value] || value;
@@ -291,8 +297,8 @@
         }
         await this.app.phase9LoadTemplates();
         this.chooseTemplate(result.template.id);
-        this.notice = 'Plantilla guardada.';
-        this.app.showToast('Plantilla de reportes guardada.');
+        this.notice = tr('ui.reports.notice_template_saved');
+        this.app.showToast(tr('ui.reports.toast_template_saved'));
       },
       async removeTemplate() {
         if (!this.templateId) return;
@@ -303,7 +309,7 @@
         }
         await this.app.phase9LoadTemplates();
         this.pickInitialTemplate();
-        this.app.showToast('Plantilla eliminada.');
+        this.app.showToast(tr('ui.reports.toast_template_deleted'));
       },
       reloadSelection() {
         this.previewStale = true;
