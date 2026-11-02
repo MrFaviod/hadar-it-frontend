@@ -9,6 +9,13 @@
 (function () {
   'use strict';
 
+  // Adapter copy (status fallbacks, validation, toasts, configuration errors) is
+  // resolved at call time: the runtime, not a frozen literal, decides the language.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const PAGE_LIMIT = 25;
   const MAX_NAME = 160;
   const MAX_TEXT = 120;
@@ -21,11 +28,13 @@
   const REASON_MIN = 4;
   const REASON_MAX = 500;
 
+  // The label is a getter: the fallback vocabulary belongs to the catalog and is
+  // resolved when it is rendered, never at module load.
   const STATUS_OPTIONS = [
-    { value: 'in_use', label: 'Asignado', tone: 'ok' },
-    { value: 'in_storage', label: 'En resguardo', tone: 'hold' },
-    { value: 'maintenance', label: 'Mantenimiento', tone: 'warn' },
-    { value: 'retired', label: 'Dado de baja', tone: 'down' }
+    { value: 'in_use', get label() { return tr('ui.inventory.status.in_use'); }, tone: 'ok' },
+    { value: 'in_storage', get label() { return tr('ui.inventory.status.in_storage'); }, tone: 'hold' },
+    { value: 'maintenance', get label() { return tr('ui.inventory.status.maintenance'); }, tone: 'warn' },
+    { value: 'retired', get label() { return tr('ui.inventory.status.retired'); }, tone: 'down' }
   ];
 
   const FALLBACK_IMAGE = 'assets/svg/devices/other.svg';
@@ -218,7 +227,7 @@
         return this.inventory.offset + this.inventory.limit < this.inventory.total;
       },
       inventoryPageLabel() {
-        return 'Página ' + this.inventoryPage + ' de ' + this.inventoryPages;
+        return tr('ui.inventory.page_label', { page: this.inventoryPage, pages: this.inventoryPages });
       },
       inventoryFiltersActive() {
         const filters = this.inventoryFilters || {};
@@ -378,10 +387,11 @@
           this.inventoryCatalog.operations = null;
           this.inventoryCatalog.loaded = false;
           const detail = (error && error.message) || '';
+          const generic = tr('ui.errors.request_failed');
           this.inventoryCatalog.error = (error && error.status === 403)
-            ? 'Tu rol no permite consultar la configuración del inventario.'
-            : ('No se pudo cargar la configuración del inventario desde el servidor.'
-              + (detail && detail !== 'No se pudo completar la solicitud.' ? ' ' + detail : ''));
+            ? tr('ui.inventory.error.config_forbidden')
+            : (tr('ui.inventory.error.config_load_failed')
+              + (detail && detail !== generic ? ' ' + detail : ''));
           return false;
         } finally {
           if (epoch === this.inventoryCatalog.epoch) this.inventoryCatalog.loading = false;
@@ -457,10 +467,10 @@
       },
       inventoryEnvironmentLabel() {
         const policy = this.inventoryPurgePolicy();
-        if (!policy) return 'sin informar';
-        if (policy.environment === 'production') return 'producción';
-        if (policy.environment === 'development') return 'desarrollo';
-        return policy.environment || 'sin informar';
+        if (!policy) return tr('ui.inventory.placeholder.unknown_environment');
+        if (policy.environment === 'production') return tr('ui.inventory.environment.production');
+        if (policy.environment === 'development') return tr('ui.inventory.environment.development');
+        return policy.environment || tr('ui.inventory.placeholder.unknown_environment');
       },
       inventoryPhotoUrl(asset) {
         if (!asset) return '';
@@ -481,7 +491,7 @@
       },
       inventoryCategoryLabel(asset) {
         if (!asset) return '—';
-        return asset.categoryText || this.inventoryCategoryText(asset.category) || 'Sin categoría';
+        return asset.categoryText || this.inventoryCategoryText(asset.category) || tr('ui.inventory.placeholder.no_category');
       },
       inventoryCategoryImage(categoryRef) {
         const category = this.inventoryCategoryById(categoryRef);
@@ -495,12 +505,12 @@
       },
       assetSiteText(asset) {
         if (!asset) return '—';
-        if (asset.serverAsset) return text(asset.site) || 'Sin sede';
+        if (asset.serverAsset) return text(asset.site) || tr('ui.inventory.placeholder.no_site');
         return this.siteLabel(asset.site) || '—';
       },
       assetLocationText(asset) {
         if (!asset) return '—';
-        if (asset.serverAsset) return text(asset.location) || 'Sin ubicación';
+        if (asset.serverAsset) return text(asset.location) || tr('ui.inventory.placeholder.no_location');
         return this.locationLabel(asset);
       },
       assetResponsibleText(asset) {
@@ -641,7 +651,7 @@
           this.inventory.items = [];
           this.inventory.total = 0;
           this.inventory.loaded = false;
-          this.inventory.error = (error && error.message) || 'No se pudo cargar el inventario del servidor.';
+          this.inventory.error = (error && error.message) || tr('ui.inventory.error.inventory_load_failed');
           return false;
         } finally {
           if (epoch === this.inventory.epoch) this.inventory.loading = false;
@@ -693,7 +703,7 @@
           });
           if (epoch !== this.inventoryDetail.epoch || !this.authenticated) return false;
           const asset = this.inventoryMapAsset(payload);
-          if (!asset) throw new Error('El servidor no devolvió el activo solicitado.');
+          if (!asset) throw new Error(tr('ui.inventory.error.asset_missing'));
           this.inventoryDetail.asset = asset;
           return true;
         } catch (error) {
@@ -702,8 +712,8 @@
           if (!this.authenticated) return false;
           this.inventoryDetail.asset = error && error.status === 404 ? null : this.inventoryDetail.asset;
           this.inventoryDetail.error = error && error.status === 404
-            ? 'El activo solicitado ya no está disponible en el servidor.'
-            : (error && error.message) || 'No se pudo cargar el activo desde el servidor.';
+            ? tr('ui.inventory.error.asset_unavailable')
+            : (error && error.message) || tr('ui.inventory.error.asset_load_failed');
           return false;
         } finally {
           if (epoch === this.inventoryDetail.epoch) this.inventoryDetail.loading = false;
@@ -766,7 +776,7 @@
         } catch (error) {
           if (epoch !== this.inventoryHistory.epoch) return false;
           if (error && error.name === 'AbortError') return false;
-          this.inventoryHistory.error = (error && error.message) || 'No se pudo cargar el historial del activo.';
+          this.inventoryHistory.error = (error && error.message) || tr('ui.inventory.error.history_load_failed');
           return false;
         } finally {
           if (epoch === this.inventoryHistory.epoch) this.inventoryHistory.loading = false;
@@ -774,22 +784,23 @@
       },
       inventoryHistoryTitle(action) {
         const titles = {
-          created: 'Alta en el inventario',
-          updated: 'Ficha actualizada',
-          cloned: 'Activo duplicado',
-          archived: 'Activo archivado',
-          restored: 'Activo restaurado',
-          retired: 'Activo dado de baja',
-          purged: 'Eliminación definitiva',
-          assigned: 'Responsable asignado',
-          returned: 'Responsable devuelto',
-          transferred: 'Activo trasladado',
-          relationship_created: 'Relación creada',
-          relationship_updated: 'Relación modificada',
-          relationship_removed: 'Relación eliminada',
-          host_moved: 'Host cambiado'
+          created: 'ui.inventory.history.created',
+          updated: 'ui.inventory.history.updated',
+          cloned: 'ui.inventory.history.cloned',
+          archived: 'ui.inventory.history.archived',
+          restored: 'ui.inventory.history.restored',
+          retired: 'ui.inventory.history.retired',
+          purged: 'ui.inventory.history.purged',
+          assigned: 'ui.inventory.history.assigned',
+          returned: 'ui.inventory.history.returned',
+          transferred: 'ui.inventory.history.transferred',
+          relationship_created: 'ui.inventory.history.relationship_created',
+          relationship_updated: 'ui.inventory.history.relationship_updated',
+          relationship_removed: 'ui.inventory.history.relationship_removed',
+          host_moved: 'ui.inventory.history.host_moved'
         };
-        return titles[text(action)] || 'Cambio registrado';
+        const key = titles[text(action)];
+        return key ? tr(key) : tr('ui.inventory.history.fallback');
       },
       inventoryHistoryNextPage() {
         const next = this.inventoryHistory.offset + this.inventoryHistory.limit;
@@ -884,14 +895,14 @@
       },
       openAssetCreate() {
         if (!this.inventoryCatalogReady) {
-          this.assetEditor = { open: false, mode: 'create', real: true, id: '', advancedOpen: false, category: '', error: 'No se pudo cargar la configuración del inventario.', saving: false, draft: {} };
+          this.assetEditor = { open: false, mode: 'create', real: true, id: '', advancedOpen: false, category: '', error: tr('ui.inventory.error.config_missing'), saving: false, draft: {} };
           this.assetEditorErrors = {};
           return false;
         }
         const active = this.inventoryCategoryChoices;
         const preferred = active.find((category) => category.id === (this.prefs && this.prefs.category)) || active[0] || null;
         if (!preferred) {
-          this.assetEditor = { open: false, mode: 'create', real: true, id: '', advancedOpen: false, category: '', error: 'No hay categorías activas en la configuración del inventario.', saving: false, draft: {} };
+          this.assetEditor = { open: false, mode: 'create', real: true, id: '', advancedOpen: false, category: '', error: tr('ui.inventory.error.no_active_categories'), saving: false, draft: {} };
           this.assetEditorErrors = {};
           return false;
         }
@@ -1014,12 +1025,12 @@
       },
       assetCommonField(key) {
         const inventoryFields = {
-          location: { key: 'location', label: 'Ubicación' },
-          responsible: { key: 'responsible', label: 'Responsable' },
-          quickCode: { key: 'quickCode', label: 'Código rápido' },
-          cost: { key: 'cost', label: 'Coste' },
-          description: { key: 'description', label: 'Descripción' },
-          status: { key: 'status', label: 'Estado' }
+          location: { key: 'location', label: tr('ui.inventory.field.location') },
+          responsible: { key: 'responsible', label: tr('ui.inventory.field.responsible') },
+          quickCode: { key: 'quickCode', label: tr('ui.inventory.field.quick_code') },
+          cost: { key: 'cost', label: tr('ui.inventory.field.cost') },
+          description: { key: 'description', label: tr('ui.inventory.field.description') },
+          status: { key: 'status', label: tr('ui.inventory.field.status') }
         };
         if (inventoryFields[key]) return inventoryFields[key];
         return window.AssetSchema.COMMON_FIELDS.find((field) => field.key === key) || null;
@@ -1032,43 +1043,43 @@
       },
       validateInventoryDraft(draft) {
         const errors = {};
-        if (!text(draft.name)) errors.name = 'El nombre del activo es obligatorio.';
-        else if (text(draft.name).length > MAX_NAME) errors.name = 'Usa ' + MAX_NAME + ' caracteres como máximo.';
-        if (!this.inventoryCategoryById(draft.category || draft.categoryText)) errors.category = 'Selecciona una categoría activa del catálogo.';
-        if (draft.ip && !/^[0-9a-zA-Z.:-]+$/.test(text(draft.ip))) errors.ip = 'Usa una IP o un nombre de host sin espacios.';
-        if (text(draft.site).length > MAX_TEXT) errors.site = 'Usa ' + MAX_TEXT + ' caracteres como máximo.';
-        if (text(draft.location).length > MAX_TEXT) errors.location = 'Usa ' + MAX_TEXT + ' caracteres como máximo.';
-        if (text(draft.responsible).length > MAX_TEXT) errors.responsible = 'Usa ' + MAX_TEXT + ' caracteres como máximo.';
-        if (text(draft.quickCode).length > QUICK_CODE_MAX) errors.quickCode = 'Usa ' + QUICK_CODE_MAX + ' caracteres como máximo.';
+        if (!text(draft.name)) errors.name = tr('ui.inventory.validation.name_required');
+        else if (text(draft.name).length > MAX_NAME) errors.name = tr('ui.inventory.validation.max_length', { max: MAX_NAME });
+        if (!this.inventoryCategoryById(draft.category || draft.categoryText)) errors.category = tr('ui.inventory.validation.category_required');
+        if (draft.ip && !/^[0-9a-zA-Z.:-]+$/.test(text(draft.ip))) errors.ip = tr('ui.inventory.validation.ip_format');
+        if (text(draft.site).length > MAX_TEXT) errors.site = tr('ui.inventory.validation.max_length', { max: MAX_TEXT });
+        if (text(draft.location).length > MAX_TEXT) errors.location = tr('ui.inventory.validation.max_length', { max: MAX_TEXT });
+        if (text(draft.responsible).length > MAX_TEXT) errors.responsible = tr('ui.inventory.validation.max_length', { max: MAX_TEXT });
+        if (text(draft.quickCode).length > QUICK_CODE_MAX) errors.quickCode = tr('ui.inventory.validation.max_length', { max: QUICK_CODE_MAX });
         const status = (this.inventoryCatalog.statuses || []).find((item) => item.id === draft.statusId);
         if (!status || status.active === false) {
-          errors.statusId = 'Selecciona un estado activo del catálogo.';
+          errors.statusId = tr('ui.inventory.validation.status_required');
         } else if (this.assetEditor && this.assetEditor.mode === 'edit') {
           const original = (this.inventoryDetail.asset && this.inventoryDetail.asset.statusId) || draft.statusId;
           if (draft.statusId !== original && !this.inventoryStatusAllowed(draft.category, original, draft.statusId)) {
-            errors.statusId = 'El catálogo no permite esa transición desde el estado actual.';
+            errors.statusId = tr('ui.inventory.validation.status_transition');
           }
         }
         const cost = text(draft.cost);
-        if (cost && this.inventoryCostValue(cost) === null) errors.cost = 'Usa un importe no negativo con dos decimales como máximo.';
+        if (cost && this.inventoryCostValue(cost) === null) errors.cost = tr('ui.inventory.validation.cost_format');
         const technical = draft.technical && typeof draft.technical === 'object' ? draft.technical : {};
         this.inventoryAssociatedFields(draft.category).forEach((field) => {
           const value = technical[field.key];
           const empty = value === undefined || value === null || (typeof value === 'string' && !value.trim());
           if (field.required && empty) {
-            errors['technical.' + field.key] = 'Este campo técnico es obligatorio.';
+            errors['technical.' + field.key] = tr('ui.inventory.validation.field_required');
             return;
           }
           if (empty) return;
           if (field.type === 'number') {
             const parsed = Number(value);
-            if (!Number.isFinite(parsed)) errors['technical.' + field.key] = 'Introduce un número válido.';
-            else if (field.minimum !== null && parsed < field.minimum) errors['technical.' + field.key] = 'El valor mínimo es ' + field.minimum + '.';
-            else if (field.maximum !== null && parsed > field.maximum) errors['technical.' + field.key] = 'El valor máximo es ' + field.maximum + '.';
+            if (!Number.isFinite(parsed)) errors['technical.' + field.key] = tr('ui.inventory.validation.number_invalid');
+            else if (field.minimum !== null && parsed < field.minimum) errors['technical.' + field.key] = tr('ui.inventory.validation.number_min', { min: field.minimum });
+            else if (field.maximum !== null && parsed > field.maximum) errors['technical.' + field.key] = tr('ui.inventory.validation.number_max', { max: field.maximum });
           } else if (field.type === 'select' && field.options.length && field.options.indexOf(String(value)) === -1) {
-            errors['technical.' + field.key] = 'Selecciona una de las opciones del campo.';
+            errors['technical.' + field.key] = tr('ui.inventory.validation.option_required');
           } else if (field.type !== 'boolean' && String(value).length > (field.maxLength || 500)) {
-            errors['technical.' + field.key] = 'Usa ' + (field.maxLength || 500) + ' caracteres como máximo.';
+            errors['technical.' + field.key] = tr('ui.inventory.validation.max_length', { max: field.maxLength || 500 });
           }
         });
         return errors;
@@ -1115,14 +1126,14 @@
         if (!this.assetEditor.real) return window.AssetAdminMethods.saveAsset.call(this);
         if (this.assetEditor.saving) return false;
         if (!this.inventoryCatalogReady) {
-          this.assetEditor.error = 'No se pudo cargar la configuración del inventario; no es posible guardar.';
+          this.assetEditor.error = tr('ui.inventory.error.save_config_missing');
           return false;
         }
         const draft = this.assetEditor.draft;
         const errors = this.validateInventoryDraft(draft);
         this.assetEditorErrors = errors;
         if (Object.keys(errors).length) {
-          this.assetEditor.error = 'Revisa los campos marcados antes de guardar.';
+          this.assetEditor.error = tr('ui.inventory.error.draft_invalid');
           return false;
         }
         const isCreate = this.assetEditor.mode === 'create';
@@ -1145,7 +1156,9 @@
           await this.loadInventory();
           if (saved) {
             if (this.inventoryDetail.id === saved.id) await this.loadInventoryDetail(saved.id);
-            this.showToast(isCreate ? 'Activo ' + saved.id + ' registrado.' : 'Activo ' + saved.id + ' actualizado.');
+            this.showToast(isCreate
+              ? tr('ui.inventory.toast.asset_created', { id: saved.id })
+              : tr('ui.inventory.toast.asset_updated', { id: saved.id }));
             this.openAsset(saved);
           }
           return saved || true;
@@ -1153,14 +1166,14 @@
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
           const fieldErrors = Object.assign({}, error.fieldErrors || {});
           if (error.status === 409) {
-            fieldErrors.quickCode = 'Ese código rápido ya está en uso.';
-            this.assetEditor.error = 'El código rápido debe ser único en el inventario.';
+            fieldErrors.quickCode = tr('ui.inventory.error.quick_code_taken');
+            this.assetEditor.error = tr('ui.inventory.error.quick_code_unique');
           } else if (error.status === 403) {
-            this.assetEditor.error = error.message || 'No tienes permisos para guardar este activo.';
+            this.assetEditor.error = error.message || tr('ui.inventory.error.asset_save_forbidden');
           } else if (error.status === 422) {
-            this.assetEditor.error = error.message || 'Revisa los campos marcados antes de guardar.';
+            this.assetEditor.error = error.message || tr('ui.inventory.error.draft_invalid');
           } else {
-            this.assetEditor.error = error.message || 'No se pudo guardar el activo en el servidor.';
+            this.assetEditor.error = error.message || tr('ui.inventory.error.asset_save_failed');
           }
           this.assetEditorErrors = fieldErrors;
           return false;
@@ -1171,18 +1184,18 @@
 
       /* --------------------------------------------------------- lifecycle */
       inventoryLifecycleAllowed(kind, asset) {
-        if (!asset || !asset.serverAsset) return 'El ciclo de vida del servidor solo aplica a activos del inventario.';
+        if (!asset || !asset.serverAsset) return tr('ui.inventory.error.lifecycle_server_only');
         if (kind === 'purge') {
           const policy = this.inventoryPurgePolicy();
-          if (!policy) return 'El servidor no informó el entorno ni la política de eliminación; la eliminación definitiva no está disponible.';
-          if (!this.can || !this.can(policy.permission)) return 'Tu rol no permite eliminar activos definitivamente en este entorno.';
-          if (policy.archivedRequired && !asset.archived) return 'Archiva el activo antes de eliminarlo definitivamente.';
+          if (!policy) return tr('ui.inventory.error.purge_policy_missing');
+          if (!this.can || !this.can(policy.permission)) return tr('ui.inventory.error.purge_forbidden');
+          if (policy.archivedRequired && !asset.archived) return tr('ui.inventory.error.purge_needs_archive');
           return '';
         }
-        if (kind === 'archive' && asset.archived) return 'El activo ya está archivado.';
-        if (kind === 'restore' && !asset.archived) return 'Solo se puede restaurar un activo archivado.';
-        if (kind === 'retire' && asset.archived) return 'Restaura el activo antes de darlo de baja.';
-        if (!this.can || !this.can('assets.edit')) return 'Tu rol no permite modificar el ciclo de vida del activo.';
+        if (kind === 'archive' && asset.archived) return tr('ui.inventory.error.already_archived');
+        if (kind === 'restore' && !asset.archived) return tr('ui.inventory.error.restore_requires_archive');
+        if (kind === 'retire' && asset.archived) return tr('ui.inventory.error.retire_requires_restore');
+        if (!this.can || !this.can('assets.edit')) return tr('ui.inventory.error.lifecycle_forbidden');
         return '';
       },
       openInventoryLifecycle(asset, kind) {
@@ -1226,14 +1239,14 @@
           body.confirm = true;
           if (policy.typedIdRequired) {
             if (text(dialog.typed) !== dialog.assetId) {
-              dialog.error = 'Escribe el ID permanente completo para confirmar la eliminación.';
+              dialog.error = tr('ui.inventory.error.purge_typed_id');
               return false;
             }
             body.typedId = dialog.assetId;
           }
           if (policy.reasonRequired) {
             if (reason.length < REASON_MIN || reason.length > REASON_MAX) {
-              dialog.error = 'El motivo debe tener entre ' + REASON_MIN + ' y ' + REASON_MAX + ' caracteres.';
+              dialog.error = tr('ui.inventory.error.reason_range', { min: REASON_MIN, max: REASON_MAX });
               return false;
             }
             body.reason = reason;
@@ -1242,13 +1255,13 @@
           }
         } else if (dialog.kind === 'archive') {
           if (reason.length > REASON_MAX) {
-            dialog.error = 'Usa ' + REASON_MAX + ' caracteres como máximo.';
+            dialog.error = tr('ui.inventory.validation.max_length', { max: REASON_MAX });
             return false;
           }
           if (reason) body.reason = reason;
         } else if (dialog.kind === 'retire') {
           if (reason.length < REASON_MIN || reason.length > REASON_MAX) {
-            dialog.error = 'El motivo debe tener entre ' + REASON_MIN + ' y ' + REASON_MAX + ' caracteres.';
+            dialog.error = tr('ui.inventory.error.reason_range', { min: REASON_MIN, max: REASON_MAX });
             return false;
           }
           body.reason = reason;
@@ -1266,17 +1279,17 @@
           if (this.inventoryDetail.id === dialog.assetId) await this.loadInventoryDetail(dialog.assetId);
           if (this.inventoryHistory.id === dialog.assetId) await this.loadInventoryHistory(dialog.assetId);
           const messages = {
-            archive: 'Activo archivado. Se conserva en el historial.',
-            restore: 'Activo restaurado en el inventario.',
-            retire: 'Activo dado de baja. El registro se conserva.',
-            purge: 'Activo eliminado definitivamente.'
+            archive: 'ui.inventory.toast.archived',
+            restore: 'ui.inventory.toast.restored',
+            retire: 'ui.inventory.toast.retired',
+            purge: 'ui.inventory.toast.purged'
           };
-          this.showToast(messages[kind] || 'Operación completada.');
+          this.showToast(messages[kind] ? tr(messages[kind]) : tr('ui.inventory.toast.operation_done'));
           if (kind === 'purge') this.setHash('#/inventario');
           return true;
         } catch (error) {
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
-          dialog.error = (error && error.message) || 'El servidor no completó la operación.';
+          dialog.error = (error && error.message) || tr('ui.inventory.error.operation_incomplete');
           return false;
         } finally {
           if (this.inventoryLifecycle) this.inventoryLifecycle.busy = false;
@@ -1292,12 +1305,12 @@
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
           const saved = this.inventoryMapAsset(payload);
           await this.loadInventory();
-          this.showToast(saved ? 'Duplicado ' + saved.id + ' creado.' : 'Activo duplicado.');
+          this.showToast(saved ? tr('ui.inventory.toast.cloned', { id: saved.id }) : tr('ui.inventory.toast.clone_done'));
           if (saved) this.openAsset(saved);
           return saved || true;
         } catch (error) {
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
-          this.showToast((error && error.message) || 'No se pudo duplicar el activo.', 'error');
+          this.showToast((error && error.message) || tr('ui.inventory.error.clone_failed'), 'error');
           return false;
         }
       },
@@ -1317,7 +1330,7 @@
           this.inventoryLifecycle = Object.assign(createLifecycle(), {
             kind: 'retire',
             assetId: asset ? asset.id : '',
-            error: 'Indica un motivo de baja de al menos ' + REASON_MIN + ' caracteres.'
+            error: tr('ui.inventory.error.retire_reason_short', { min: REASON_MIN })
           });
           return false;
         }
@@ -1345,27 +1358,27 @@
       async uploadInventoryImage(asset, role, file) {
         this.inventoryMediaError = '';
         if (!this.can || !this.can('assets.edit')) {
-          this.inventoryMediaError = 'Tu rol no permite cambiar las imágenes del activo.';
+          this.inventoryMediaError = tr('ui.inventory.error.media_forbidden');
           return false;
         }
         if (!this.inventoryImageAllowed(asset, role)) {
           this.inventoryMediaError = role === 'fov'
-            ? 'El campo de visión solo aplica a activos de categoría cámara.'
-            : 'No se puede subir esa imagen.';
+            ? tr('ui.inventory.error.fov_camera_only')
+            : tr('ui.inventory.error.image_not_allowed');
           return false;
         }
         const type = text(file && file.type);
         const size = Number(file && file.size) || 0;
         if (IMAGE_TYPES.indexOf(type) === -1) {
-          this.inventoryMediaError = 'Usa una imagen PNG, JPEG, WebP o GIF.';
+          this.inventoryMediaError = tr('ui.inventory.error.image_type');
           return false;
         }
         if (!size || size > IMAGE_MAX_BYTES) {
-          this.inventoryMediaError = 'La imagen debe pesar como máximo 1 MB.';
+          this.inventoryMediaError = tr('ui.inventory.error.image_size');
           return false;
         }
         if (typeof file.arrayBuffer !== 'function') {
-          this.inventoryMediaError = 'No se pudo leer el archivo seleccionado.';
+          this.inventoryMediaError = tr('ui.inventory.error.file_read');
           return false;
         }
         const epoch = this.inventory.epoch;
@@ -1384,11 +1397,11 @@
           }
           await this.loadInventory();
           if (this.inventoryDetail.id === asset.id) await this.loadInventoryDetail(asset.id);
-          this.showToast(role === 'fov' ? 'Campo de visión actualizado.' : 'Fotografía actualizada.');
+          this.showToast(role === 'fov' ? tr('ui.inventory.toast.fov_updated') : tr('ui.inventory.toast.photo_updated'));
           return true;
         } catch (error) {
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
-          this.inventoryMediaError = (error && error.message) || 'No se pudo subir la imagen.';
+          this.inventoryMediaError = (error && error.message) || tr('ui.inventory.error.image_upload_failed');
           return false;
         }
       },
@@ -1396,7 +1409,7 @@
         this.inventoryMediaError = '';
         if (!asset || !asset.id || IMAGE_ROLES.indexOf(role) === -1) return false;
         if (!this.can || !this.can('assets.edit')) {
-          this.inventoryMediaError = 'Tu rol no permite cambiar las imágenes del activo.';
+          this.inventoryMediaError = tr('ui.inventory.error.media_forbidden');
           return false;
         }
         const epoch = this.inventory.epoch;
@@ -1409,11 +1422,11 @@
           }
           await this.loadInventory();
           if (this.inventoryDetail.id === asset.id) await this.loadInventoryDetail(asset.id);
-          this.showToast(role === 'fov' ? 'Campo de visión eliminado.' : 'Fotografía eliminada.');
+          this.showToast(role === 'fov' ? tr('ui.inventory.toast.fov_removed') : tr('ui.inventory.toast.photo_removed'));
           return true;
         } catch (error) {
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
-          this.inventoryMediaError = (error && error.message) || 'No se pudo eliminar la imagen.';
+          this.inventoryMediaError = (error && error.message) || tr('ui.inventory.error.image_delete_failed');
           return false;
         }
       },
@@ -1424,7 +1437,7 @@
         const values = asset.technical || {};
         const value = values[field.key];
         if (value === undefined || value === null || value === '') return '—';
-        if (field.type === 'boolean' || typeof value === 'boolean') return value ? 'Sí' : 'No';
+        if (field.type === 'boolean' || typeof value === 'boolean') return value ? tr('ui.inventory.boolean_yes') : tr('ui.inventory.boolean_no');
         const suffix = field.unit ? ' ' + field.unit : '';
         return String(value) + suffix;
       },
@@ -1456,7 +1469,7 @@
         return !this.inventoryServerMode();
       },
       inventoryConfigUnavailable() {
-        this.inventoryConfigError = 'La configuración del inventario no está disponible en el servidor. Reintenta cuando la conexión se restablezca.';
+        this.inventoryConfigError = tr('ui.inventory.error.config_unavailable');
         if (this.showToast) this.showToast(this.inventoryConfigError, 'error');
         return false;
       },
@@ -1493,7 +1506,7 @@
       },
       setOperationsMode() {
         if (this.inventoryServerMode()) {
-          this.showToast('El entorno lo define el servidor (' + this.inventoryEnvironmentLabel() + '); no se puede cambiar desde el navegador.', 'error');
+          this.showToast(tr('ui.inventory.environment_server_defined', { environment: this.inventoryEnvironmentLabel() }), 'error');
           return false;
         }
         return window.AssetAdminMethods.setOperationsMode.apply(this, arguments);
@@ -1521,8 +1534,8 @@
         return this.inventoryCatalog.categories.filter((category) => [].concat(category.quick, category.advanced, category.tech).indexOf(key) !== -1).length;
       },
       assetStatusUsage(status) {
-        if (!this.inventoryCatalogReady) return this.inventoryPrototypeMode() ? window.AssetAdminMethods.assetStatusUsage.call(this, status) : 'sin recuento en el cliente';
-        return 'sin recuento en el cliente';
+        if (!this.inventoryCatalogReady) return this.inventoryPrototypeMode() ? window.AssetAdminMethods.assetStatusUsage.call(this, status) : tr('ui.inventory.status_usage');
+        return tr('ui.inventory.status_usage');
       },
       assetQuickPreview() {
         if (!this.inventoryCatalogReady) return this.inventoryPrototypeMode() ? window.AssetAdminMethods.assetQuickPreview.call(this) : '';
@@ -1585,7 +1598,7 @@
         const saved = await this.saveInventoryField(this.fieldDialog);
         if (saved) {
           this.fieldDialog = Object.assign({}, this.fieldDialog, { open: false });
-          this.showToast('Campo guardado en la configuración del servidor.');
+          this.showToast(tr('ui.inventory.toast.field_saved'));
         }
         return saved;
       },
@@ -1606,7 +1619,7 @@
           maximum: field.maximum,
           default: field.default
         });
-        if (saved) this.showToast(active ? 'Campo activado.' : 'Campo desactivado; los valores guardados se conservan.');
+        if (saved) this.showToast(active ? tr('ui.inventory.toast.field_activated') : tr('ui.inventory.toast.field_deactivated'));
         return saved;
       },
       openAssetStatusDialog(status) {
@@ -1635,7 +1648,7 @@
         const saved = await this.saveInventoryStatus(this.assetStatusDialog);
         if (saved) {
           this.assetStatusDialog = Object.assign({}, this.assetStatusDialog, { open: false });
-          this.showToast('Estado guardado en la configuración del servidor.');
+          this.showToast(tr('ui.inventory.toast.status_saved'));
         }
         return saved;
       },
@@ -1648,7 +1661,7 @@
           final: !!status.final,
           active: active
         });
-        if (saved) this.showToast(active ? 'Estado activado.' : 'Estado desactivado; los activos conservan su estado actual.');
+        if (saved) this.showToast(active ? tr('ui.inventory.toast.status_activated') : tr('ui.inventory.toast.status_deactivated'));
         return saved;
       },
       openFormDraft(categoryId) {
@@ -1678,15 +1691,15 @@
         }
         if (!this.formDraft) return false;
         if (!text(this.formDraft.form.prefix)) {
-          this.formDraftError = 'El prefijo del código rápido es obligatorio.';
+          this.formDraftError = tr('ui.inventory.error.form_prefix_required');
           return false;
         }
         const saved = await this.saveInventoryForm(this.formDraft.categoryId);
         if (saved) {
-          this.showToast('Formulario guardado en la configuración del servidor.');
+          this.showToast(tr('ui.inventory.toast.form_saved'));
           this.closeFormDraft();
         } else if (!this.formDraftError) {
-          this.formDraftError = this.inventoryConfigError || 'No se pudo guardar el formulario.';
+          this.formDraftError = this.inventoryConfigError || tr('ui.inventory.error.form_save_failed');
         }
         return saved;
       },
@@ -1718,16 +1731,16 @@
         const label = text(dialog.label);
         const prefix = text(dialog.prefix).toLocaleUpperCase('es').replace(/[^A-Z0-9]/g, '').slice(0, 6);
         const errors = { label: '', prefix: '', general: '' };
-        if (!label) errors.label = 'Introduce un nombre para la categoría.';
-        else if (label.length > 40) errors.label = 'Usa un máximo de 40 caracteres.';
-        if (!prefix) errors.prefix = 'Indica el prefijo del código rápido.';
+        if (!label) errors.label = tr('ui.inventory.error.category_name_required');
+        else if (label.length > 40) errors.label = tr('ui.inventory.error.category_name_too_long');
+        if (!prefix) errors.prefix = tr('ui.inventory.error.category_prefix_required');
         this.categoryErrors = errors;
         if (errors.label || errors.prefix) return false;
 
         const editing = dialog.mode === 'edit';
         const existing = editing ? this.inventoryCategoryById(dialog.id) : null;
         if (editing && !existing) {
-          this.categoryErrors.general = 'La categoría ya no está disponible.';
+          this.categoryErrors.general = tr('ui.inventory.error.category_unavailable');
           return false;
         }
         const source = existing || { quick: [], advanced: [], tech: [], fov: false, transitions: null };
@@ -1747,9 +1760,9 @@
         });
         if (saved) {
           this.categoryDialog = Object.assign({}, this.categoryDialog, { open: false });
-          this.showToast(editing ? 'Categoría actualizada en el servidor.' : 'Categoría creada en el servidor.');
+          this.showToast(editing ? tr('ui.inventory.toast.category_updated') : tr('ui.inventory.toast.category_created'));
         } else if (!this.categoryErrors.general) {
-          this.categoryErrors.general = this.inventoryConfigError || 'No se pudo guardar la categoría.';
+          this.categoryErrors.general = this.inventoryConfigError || tr('ui.inventory.error.category_save_failed');
         }
         return saved;
       },
@@ -1761,26 +1774,26 @@
       },
       inventoryConfigFailed(kind, error) {
         if (error && error.status === 409) {
-          if (kind === 'fields') this.inventoryConfigError = 'No se puede cambiar el tipo, quitar opciones ni restringir un campo existente; desactívalo o crea otro campo.';
-          else if (kind === 'categories') this.inventoryConfigError = 'La categoría entra en conflicto con otra: revisa la etiqueta y los campos exclusivos.';
-          else this.inventoryConfigError = 'La configuración cambió de forma incompatible; revisa los valores actuales.';
+          if (kind === 'fields') this.inventoryConfigError = tr('ui.inventory.error.field_immutable');
+          else if (kind === 'categories') this.inventoryConfigError = tr('ui.inventory.error.category_conflict');
+          else this.inventoryConfigError = tr('ui.inventory.error.config_conflict');
           return false;
         }
         if (error && error.status === 403) {
-          this.inventoryConfigError = 'Tu rol no permite modificar esta sección de la configuración.';
+          this.inventoryConfigError = tr('ui.inventory.error.config_forbidden');
           return false;
         }
         if (error && error.status === 422) {
-          this.inventoryConfigError = 'El servidor rechazó los valores enviados. Revisa el campo y sus opciones.';
+          this.inventoryConfigError = tr('ui.inventory.error.config_rejected');
           return false;
         }
-        this.inventoryConfigError = (error && error.message) || 'No se pudo guardar la configuración del inventario.';
+        this.inventoryConfigError = (error && error.message) || tr('ui.inventory.error.config_save_failed');
         return false;
       },
       async saveInventoryConfig(kind, key, payload) {
         if (!this.inventoryAvailable()) return false;
         if (!this.inventoryCanConfigure(kind)) {
-          this.inventoryConfigError = 'Tu rol no permite modificar esta sección de la configuración.';
+          this.inventoryConfigError = tr('ui.inventory.error.config_forbidden');
           return false;
         }
         const path = '/inventory/config/' + kind + '/' + encodeURIComponent(key);
@@ -1834,11 +1847,11 @@
         const key = text(dialog.key) || slug(dialog.label, 'campo');
         const payload = this.inventoryFieldPayload(dialog);
         if (!payload || !text(dialog.label)) {
-          this.inventoryConfigError = 'Indica una etiqueta y, si es una selección, al menos una opción.';
+          this.inventoryConfigError = tr('ui.inventory.error.field_label_required');
           return false;
         }
         if (dialog.mode === 'edit' && text(dialog.type) !== text((this.inventoryFieldByKey(key) || {}).type)) {
-          this.inventoryConfigError = 'No se puede cambiar el tipo de un campo existente; crea un campo nuevo.';
+          this.inventoryConfigError = tr('ui.inventory.error.field_type_immutable');
           return false;
         }
         return this.saveInventoryConfig('fields', key, payload);
@@ -1853,7 +1866,7 @@
           active: dialog.active !== false
         };
         if (!payload.label) {
-          this.inventoryConfigError = 'Indica una etiqueta para el estado.';
+          this.inventoryConfigError = tr('ui.inventory.error.status_label_required');
           return false;
         }
         return this.saveInventoryConfig('statuses', id, payload);
@@ -1870,7 +1883,7 @@
         if (!category) return false;
         const label = text(category.label);
         if (!label) {
-          this.inventoryConfigError = 'Indica una etiqueta para la categoría.';
+          this.inventoryConfigError = tr('ui.inventory.error.category_label_required');
           return false;
         }
         const id = text(category.id) || slug(label, 'categoria');
@@ -1882,7 +1895,7 @@
           active: category.active !== false
         }));
         if (!payload.prefix) {
-          this.inventoryConfigError = 'El prefijo de la categoría es obligatorio (1 a 6 caracteres alfanuméricos).';
+          this.inventoryConfigError = tr('ui.inventory.error.category_prefix_required');
           return false;
         }
         return this.saveInventoryConfig('categories', id, payload);
@@ -1901,7 +1914,7 @@
           tech: Array.isArray(form.tech) ? form.tech : source.tech
         }));
         if (!payload.prefix) {
-          this.inventoryConfigError = 'El prefijo de la categoría es obligatorio (1 a 6 caracteres alfanuméricos).';
+          this.inventoryConfigError = tr('ui.inventory.error.category_prefix_required');
           return false;
         }
         return this.saveInventoryConfig('categories', source.id, payload);

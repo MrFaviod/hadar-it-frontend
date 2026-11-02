@@ -968,7 +968,7 @@
         if (!this.phase6CanEdit) return false;
         const id = text(assetId);
         const filename = text(file && file.name);
-        if (!id || !filename) return { ok: false, error: 'Selecciona un archivo con nombre.' };
+        if (!id || !filename) return { ok: false, error: tr('ui.phase6.error.filename_missing') };
         const kind = ATTACHMENT_CATEGORIES.indexOf(text(category)) === -1 ? 'document' : text(category);
         const page = this.phase6.attachments;
         if (!this.phase6Owns('attachments', page)) return { ok: false, cancelled: true };

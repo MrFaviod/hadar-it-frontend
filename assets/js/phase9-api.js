@@ -21,7 +21,6 @@
   const POLL_INTERVAL = 2500;
   const JOB_LIMIT = 25;
   const SELECTION_LIMIT = 25;
-  const FALLBACK_ERROR = 'No se pudo completar la solicitud.';
   const PUBLIC_FIELDS = ['id', 'quickCode', 'name', 'category', 'site', 'location', 'status'];
   const JOB_STATES = ['queued', 'running', 'completed', 'failed'];
 
@@ -148,7 +147,7 @@
       processed: number(raw.processed, 0),
       errors: (Array.isArray(raw.errors) ? raw.errors : []).map(function (item) {
         if (typeof item === 'string') return item;
-        return text(item && item.message) || text(item && item.error) || 'Error del trabajo.';
+        return text(item && item.message) || text(item && item.error) || tr('ui.reports.error.job_error');
       }),
       documents: (Array.isArray(raw.documents) ? raw.documents : []).map(normalizeDocument),
       createdAt: text(raw.createdAt)
@@ -408,7 +407,7 @@
         return {
           ok: false,
           cancelled: !!(error && (error.name === 'AbortError' || error.status === 401)),
-          error: text(error && error.message) || FALLBACK_ERROR,
+          error: text(error && error.message) || tr('ui.errors.request_failed'),
           fieldErrors: (error && error.fieldErrors) || {}
         };
       },
@@ -438,7 +437,7 @@
         }).catch((error) => {
           if (epoch !== resource.epoch || !this.phase9 || this.phase9 !== state) return false;
           if (error && error.name === 'AbortError') return false;
-          resource.error = text(error && error.message) || FALLBACK_ERROR;
+          resource.error = text(error && error.message) || tr('ui.errors.request_failed');
           return false;
         }).finally(() => {
           if (epoch === resource.epoch && this.phase9 === state) {
@@ -462,9 +461,9 @@
       },
 
       phase9SaveTemplate(template) {
-        if (!this.requirePermission('assets.edit')) return Promise.resolve({ ok: false, error: 'No tienes permisos para editar plantillas.' });
+        if (!this.requirePermission('assets.edit')) return Promise.resolve({ ok: false, error: tr('ui.reports.error.template_edit_permission') });
         const normalized = window.AssetReportEngine.normalizeTemplate(template);
-        if (!normalized.name || !normalized.name.trim()) return Promise.resolve({ ok: false, error: 'Indica un nombre para la plantilla.' });
+        if (!normalized.name || !normalized.name.trim()) return Promise.resolve({ ok: false, error: tr('ui.reports.error.template_name_required') });
         if (!normalized.id || normalized.builtin) normalized.id = 'custom-' + Date.now().toString(36) + '-' + nextEpoch();
         const body = {
           id: normalized.id,
@@ -497,7 +496,7 @@
       },
 
       phase9DeleteTemplate(id) {
-        if (!this.requirePermission('assets.edit')) return Promise.resolve({ ok: false, error: 'No tienes permisos para editar plantillas.' });
+        if (!this.requirePermission('assets.edit')) return Promise.resolve({ ok: false, error: tr('ui.reports.error.template_edit_permission') });
         const token = this.phase9Token();
         return window.AssetAccess.request(this, BASE + '/templates/' + encodeURIComponent(id), { method: 'DELETE' })
           .then(() => {
@@ -616,7 +615,7 @@
       /* ---------------------------------------------------------- preview */
       phase9PreviewReport(request) {
         const state = this.phase9;
-        if (!state || !this.phase9CanWrite()) return Promise.resolve({ ok: false, error: 'No tienes permiso para preparar reportes.' });
+        if (!state || !this.phase9CanWrite()) return Promise.resolve({ ok: false, error: tr('ui.reports.error.preview_permission') });
         const preview = state.preview;
         const token = this.phase9Token();
         if (preview.controller) preview.controller.abort();
@@ -709,7 +708,7 @@
           return true;
         }).catch((error) => {
           if (epoch !== active.epoch || !this.phase9TokenOpen(token)) return false;
-          if (error && error.name !== 'AbortError') active.error = text(error.message) || FALLBACK_ERROR;
+          if (error && error.name !== 'AbortError') active.error = text(error.message) || tr('ui.errors.request_failed');
           return false;
         }).finally(() => {
           if (epoch === active.epoch && this.phase9) {
@@ -732,7 +731,7 @@
       },
 
       phase9CreateJob(request) {
-        if (!this.phase9CanWrite()) return Promise.resolve({ ok: false, error: 'No tienes permiso para generar reportes.' });
+        if (!this.phase9CanWrite()) return Promise.resolve({ ok: false, error: tr('ui.reports.error.generate_permission') });
         const token = this.phase9Token();
         return window.AssetAccess.request(this, BASE + '/jobs', { method: 'POST', body: request })
           .then((payload) => {
@@ -746,7 +745,7 @@
 
       phase9DownloadDocument(documentRef) {
         if (!this.authenticated || !this.can || !this.can('assets.view')) {
-          return Promise.resolve({ ok: false, error: 'No tienes permiso para descargar documentos.' });
+          return Promise.resolve({ ok: false, error: tr('ui.reports.error.download_permission') });
         }
         const reference = documentRef && typeof documentRef === 'object' ? documentRef : {};
         const id = text(reference.id);

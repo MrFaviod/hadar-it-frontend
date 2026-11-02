@@ -5,6 +5,14 @@
 (function () {
   'use strict';
 
+  // Adapter copy (member labels, dialog summaries, validation, write failures)
+  // is resolved at call time: the runtime and not a frozen literal decides the
+  // language of the message.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, params) : '';
+  }
+
   const GROUP_PAGE_LIMIT = 200;
   const SEARCH_LIMIT = 50;
   const SEARCH_DEBOUNCE = 250;
@@ -198,24 +206,24 @@
     methods: {
       /* ------------------------------------------------------- etiquetas */
       redundancyModeLabel(mode) {
-        if (mode === 'active_passive') return 'Activo/pasivo';
-        if (mode === 'active_active') return 'Activo/activo';
+        if (mode === 'active_passive') return tr('ui.redundancy.mode.active_passive');
+        if (mode === 'active_active') return tr('ui.redundancy.mode.active_active');
         return text(mode);
       },
       redundancyRoleLabel(role) {
-        if (role === 'primary') return 'Principal';
-        if (role === 'backup') return 'Respaldo';
+        if (role === 'primary') return tr('ui.redundancy.role.primary');
+        if (role === 'backup') return tr('ui.redundancy.role.backup');
         return '';
       },
       redundancyShareLabel(member) {
         if (!member || member.role) return '';
         const value = text(member.share);
-        return value ? 'Reparto de carga ' + value + ' %' : '';
+        return value ? tr('ui.redundancy.share_label', { share: value }) : '';
       },
       redundancyHostLabel(member) {
         const host = member && member.host;
-        if (host && (host.name || host.id)) return 'Host ' + (text(host.name) || text(host.id));
-        return 'Sin host registrado';
+        if (host && (host.name || host.id)) return tr('ui.redundancy.host_label', { host: text(host.name) || text(host.id) });
+        return tr('ui.redundancy.host_none');
       },
       // Hechos de un miembro: nunca inventa un porcentaje donde el modo no lo tiene.
       redundancyMemberFacts(member) {
@@ -243,12 +251,12 @@
       },
       redundancyDraftSummary() {
         const dialog = this.redundancy.dialog;
-        if (!dialog.members.length) return 'Todavía no hay réplicas en el grupo.';
+        if (!dialog.members.length) return tr('ui.redundancy.draft.empty');
         if (dialog.groupMode === 'active_passive') {
           const primaries = dialog.members.filter(function (member) { return member.role === 'primary'; }).length;
-          return dialog.members.length + ' réplicas · ' + primaries + ' principal(es)';
+          return tr('ui.redundancy.draft.summary_passive', { count: dialog.members.length, primaries: primaries });
         }
-        return dialog.members.length + ' réplicas · reparto configurado entre ellas';
+        return tr('ui.redundancy.draft.summary_active', { count: dialog.members.length });
       },
 
       /* ------------------------------------------- sesión y escritura */
@@ -310,7 +318,7 @@
         if (!this.redundancyCanRead) {
           state.items = [];
           state.loaded = false;
-          state.error = 'No tienes permisos para leer los grupos de redundancia.';
+          state.error = tr('ui.redundancy.error.read_forbidden');
           return false;
         }
         if (state.controller) state.controller.abort();
@@ -346,7 +354,7 @@
           state.examined = 0;
           state.truncated = false;
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudieron cargar los grupos de redundancia.';
+          state.error = (error && error.message) || tr('ui.redundancy.error.load_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -358,7 +366,7 @@
         if (!this.redundancyCanRead) {
           state.items = [];
           state.loaded = false;
-          state.error = 'No tienes permisos para leer los grupos de redundancia.';
+          state.error = tr('ui.redundancy.error.read_forbidden');
           return false;
         }
         const next = options || {};
@@ -394,7 +402,7 @@
           if (epoch !== state.epoch || (error && error.name === 'AbortError')) return false;
           state.items = [];
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudieron cargar los grupos de redundancia.';
+          state.error = (error && error.message) || tr('ui.redundancy.error.load_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -405,7 +413,7 @@
         const state = this.redundancy.assetSearch;
         if (!this.redundancyCanRead) {
           state.items = [];
-          state.error = 'No tienes permisos para buscar activos.';
+          state.error = tr('ui.redundancy.error.search_forbidden');
           return false;
         }
         if (state.controller) state.controller.abort();
@@ -436,7 +444,7 @@
           if (epoch !== state.epoch || (error && error.name === 'AbortError')) return false;
           state.items = [];
           state.loaded = false;
-          state.error = (error && error.message) || 'No se pudo buscar en el inventario del servidor.';
+          state.error = (error && error.message) || tr('ui.redundancy.error.search_failed');
           return false;
         } finally {
           if (epoch === state.epoch) state.loading = false;
@@ -464,7 +472,7 @@
       // pertenece a esa ficha y un grupo creado ahí debe incluirla.
       openRedundancyCreate(seed) {
         if (!this.redundancyCanEdit) {
-          if (typeof this.showToast === 'function') this.showToast('No tienes permisos para crear grupos de redundancia.', 'error');
+          if (typeof this.showToast === 'function') this.showToast(tr('ui.redundancy.error.create_forbidden'), 'error');
           return false;
         }
         this.redundancyBumpInteraction();
@@ -488,7 +496,7 @@
 
       openRedundancyEdit(group) {
         if (!this.redundancyCanEdit) {
-          if (typeof this.showToast === 'function') this.showToast('No tienes permisos para editar grupos de redundancia.', 'error');
+          if (typeof this.showToast === 'function') this.showToast(tr('ui.redundancy.error.edit_forbidden'), 'error');
           return false;
         }
         if (!group || !text(group.id)) return false;
@@ -538,11 +546,11 @@
         if (!asset || !text(asset.id)) return false;
         const id = text(asset.id);
         if (dialog.members.some(function (member) { return member.assetId === id; })) {
-          dialog.error = 'Ese activo ya forma parte del grupo.';
+          dialog.error = tr('ui.redundancy.error.member_duplicate');
           return false;
         }
         if (dialog.members.length >= MAX_MEMBERS) {
-          dialog.error = 'Un grupo admite como máximo ' + MAX_MEMBERS + ' activos.';
+          dialog.error = tr('ui.redundancy.error.max_members', { max: MAX_MEMBERS });
           return false;
         }
         dialog.members.push({
@@ -593,17 +601,17 @@
       validateRedundancyDialog() {
         const dialog = this.redundancy.dialog;
         const count = dialog.members.length;
-        if (!text(dialog.name)) return 'Indica un nombre para el grupo.';
-        if (count > MAX_MEMBERS) return 'Un grupo admite como máximo ' + MAX_MEMBERS + ' activos.';
+        if (!text(dialog.name)) return tr('ui.redundancy.error.name_required');
+        if (count > MAX_MEMBERS) return tr('ui.redundancy.error.max_members', { max: MAX_MEMBERS });
         const seen = {};
         for (let index = 0; index < count; index += 1) {
           const member = dialog.members[index];
-          if (seen[member.assetId]) return 'Un activo no puede repetirse en el grupo.';
+          if (seen[member.assetId]) return tr('ui.redundancy.error.member_repeated');
           seen[member.assetId] = true;
         }
         if (count < MIN_MEMBERS) {
-          if (dialog.mode === 'create') return 'Un grupo necesita al menos ' + MIN_MEMBERS + ' activos distintos.';
-          if (dialog.active !== false) return 'Un grupo activo necesita al menos ' + MIN_MEMBERS + ' activos distintos.';
+          if (dialog.mode === 'create') return tr('ui.redundancy.error.min_members', { min: MIN_MEMBERS });
+          if (dialog.active !== false) return tr('ui.redundancy.error.min_members_active', { min: MIN_MEMBERS });
         }
         const complete = count >= MIN_MEMBERS;
         if (dialog.groupMode === 'active_active') {
@@ -611,11 +619,11 @@
           for (let index = 0; index < count; index += 1) {
             const value = shareValue(dialog.members[index].share);
             if (value === null) {
-              return 'Cada réplica necesita un reparto de carga entre 0 y 100 con dos decimales como máximo.';
+              return tr('ui.redundancy.error.share_invalid');
             }
             cents += Math.round(value * 100);
           }
-          if (complete && cents !== 10000) return 'El reparto de carga debe sumar exactamente 100 %.';
+          if (complete && cents !== 10000) return tr('ui.redundancy.error.share_total');
           return '';
         }
         let primaries = 0;
@@ -624,11 +632,11 @@
           const role = dialog.members[index].role;
           if (role === 'primary') primaries += 1;
           else if (role === 'backup') backups += 1;
-          else return 'Cada réplica necesita un rol: Principal o Respaldo.';
+          else return tr('ui.redundancy.error.role_required');
         }
-        if (primaries > 1) return 'El modo activo/pasivo necesita exactamente un Principal.';
-        if (complete && primaries !== 1) return 'El modo activo/pasivo necesita exactamente un Principal.';
-        if (complete && backups < 1) return 'El modo activo/pasivo necesita al menos un Respaldo.';
+        if (primaries > 1) return tr('ui.redundancy.error.one_primary');
+        if (complete && primaries !== 1) return tr('ui.redundancy.error.one_primary');
+        if (complete && backups < 1) return tr('ui.redundancy.error.backup_required');
         return '';
       },
 
@@ -665,7 +673,7 @@
         const dialog = this.redundancy.dialog;
         if (!dialog.open) return false;
         if (!this.redundancyCanEdit) {
-          dialog.error = 'No tienes permisos para guardar grupos de redundancia.';
+          dialog.error = tr('ui.redundancy.error.save_forbidden');
           return false;
         }
         if (dialog.busy) return false;
@@ -690,19 +698,19 @@
           });
           if (!this.redundancyWriteOpen(token)) return false;
           const saved = mapGroup(payload);
-          if (!saved) throw new Error('El servidor no devolvió el grupo guardado.');
+          if (!saved) throw new Error(tr('ui.redundancy.error.server_group_missing'));
           dialog.open = false;
           this.cancelRedundancySearchTimer();
           await this.redundancyRefreshAfterWrite(token);
           if (!this.redundancyWriteOpen(token)) return false;
           if (typeof this.showToast === 'function') {
-            this.showToast(creating ? 'Grupo de redundancia creado.' : 'Grupo de redundancia actualizado.');
+            this.showToast(creating ? tr('ui.redundancy.toast.created') : tr('ui.redundancy.toast.updated'));
           }
           return true;
         } catch (error) {
           if (!this.redundancyWriteOpen(token)) return false;
           if (this.redundancy.dialog !== dialog) return false;
-          dialog.error = (error && error.message) || 'No se pudo guardar el grupo de redundancia.';
+          dialog.error = (error && error.message) || tr('ui.redundancy.error.save_failed');
           return false;
         } finally {
           if (this.redundancy.dialog === dialog) dialog.busy = false;
@@ -712,7 +720,7 @@
       async deactivateRedundancyGroup(group) {
         if (!group || !text(group.id)) return false;
         if (!this.redundancyCanEdit) {
-          this.redundancy.error = 'No tienes permisos para desactivar grupos de redundancia.';
+          this.redundancy.error = tr('ui.redundancy.error.deactivate_forbidden');
           return false;
         }
         if (this.redundancy.busyId) return false;
@@ -727,18 +735,18 @@
             { method: 'POST', body: {} }
           );
           if (!this.redundancyWriteOpen(token)) return false;
-          if (!mapGroup(payload)) throw new Error('El servidor no devolvió el grupo desactivado.');
+          if (!mapGroup(payload)) throw new Error(tr('ui.redundancy.error.server_deactivated_missing'));
           await this.redundancyRefreshAfterWrite(token);
           if (!this.redundancyWriteOpen(token)) return false;
-          if (typeof this.showToast === 'function') this.showToast('Grupo de redundancia desactivado.', 'ok');
+          if (typeof this.showToast === 'function') this.showToast(tr('ui.redundancy.toast.deactivated'), 'ok');
           return true;
         } catch (error) {
           if (!this.redundancyWriteOpen(token)) return false;
           this.redundancyShowError(
             { message: (error && error.status === 409
-              ? 'No se puede desactivar el grupo en su estado actual.'
+              ? tr('ui.redundancy.error.deactivate_conflict')
               : (error && error.message)) },
-            'No se pudo desactivar el grupo de redundancia.'
+            tr('ui.redundancy.error.deactivate_failed')
           );
           return false;
         } finally {
@@ -749,7 +757,7 @@
       async reactivateRedundancyGroup(group) {
         if (!group || !text(group.id)) return false;
         if (!this.redundancyCanEdit) {
-          this.redundancy.error = 'No tienes permisos para reactivar grupos de redundancia.';
+          this.redundancy.error = tr('ui.redundancy.error.reactivate_forbidden');
           return false;
         }
         if (this.redundancy.busyId) return false;
@@ -764,14 +772,14 @@
             { method: 'PATCH', body: { active: true } }
           );
           if (!this.redundancyWriteOpen(token)) return false;
-          if (!mapGroup(payload)) throw new Error('El servidor no devolvió el grupo reactivado.');
+          if (!mapGroup(payload)) throw new Error(tr('ui.redundancy.error.server_reactivated_missing'));
           await this.redundancyRefreshAfterWrite(token);
           if (!this.redundancyWriteOpen(token)) return false;
-          if (typeof this.showToast === 'function') this.showToast('Grupo de redundancia reactivado.', 'ok');
+          if (typeof this.showToast === 'function') this.showToast(tr('ui.redundancy.toast.reactivated'), 'ok');
           return true;
         } catch (error) {
           if (!this.redundancyWriteOpen(token)) return false;
-          this.redundancyShowError(error, 'No se pudo reactivar el grupo de redundancia.');
+          this.redundancyShowError(error, tr('ui.redundancy.error.reactivate_failed'));
           return false;
         } finally {
           if (self.redundancy.busyId === text(group.id)) self.redundancy.busyId = '';

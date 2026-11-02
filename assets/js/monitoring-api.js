@@ -959,16 +959,16 @@
         return true;
       } catch (error) {
         if (error && error.status === 401) this.clearMonitoringState();
-        else if (this.showToast) this.showToast(errorMessage(error, 'No se pudo marcar el aviso.'));
+        else if (this.showToast) this.showToast(errorMessage(error, tr('ui.monitoring.error.inbox_mark_read')));
         return false;
       }
     },
     notificationRecipientLabel(id) {
       const target = text(id);
-      if (!target) return 'Sin destinatario';
+      if (!target) return tr('ui.monitoring.notification.no_recipient');
       const users = (this.security && Array.isArray(this.security.users)) ? this.security.users : [];
       const user = users.find((entry) => entry.id === target);
-      return user ? (text(user.name) || target) : 'Identidad ' + target;
+      return user ? (text(user.name) || target) : tr('ui.monitoring.notification.identity', { id: target });
     },
 
     /* ------------------------------------------------------------ writes */
@@ -984,7 +984,7 @@
         if (error && error.status === 401) this.clearMonitoringState();
         const failure = {
           ok: false,
-          error: errorMessage(error, 'No se pudo guardar el cambio.'),
+          error: errorMessage(error, tr('ui.monitoring.error.save_failed')),
           fieldErrors: (error && error.fieldErrors) || {},
           status: error && error.status
         };
@@ -996,7 +996,7 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(assetId);
-      if (!id) return { ok: false, error: 'Falta el activo que se quiere supervisar.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.asset_watch_required') };
       const body = pick(values, ASSET_KEYS);
       const result = await this.monitoringWrite('/monitoring/assets/' + encodeURIComponent(id), 'PATCH', body);
       if (!result.ok) return result;
@@ -1029,7 +1029,7 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(alertId);
-      if (!id) return { ok: false, error: 'Falta la alerta.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.alert_required') };
       const body = text(notes) ? { notes: text(notes) } : {};
       const result = await this.monitoringWrite('/monitoring/alerts/' + encodeURIComponent(id) + '/acknowledge', 'POST', body);
       if (!result.ok) return result;
@@ -1056,8 +1056,8 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(alertId);
-      if (!id) return { ok: false, error: 'Falta la alerta.' };
-      if (!text(options && options.comment)) return { ok: false, error: 'El silencio necesita un motivo.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.alert_required') };
+      if (!text(options && options.comment)) return { ok: false, error: tr('ui.monitoring.error.silence_reason') };
       const body = Object.assign({ alertId: id }, this.silencePayload(id, options));
       const result = await this.monitoringWrite('/monitoring/silences', 'POST', body);
       if (!result.ok) return result;
@@ -1069,8 +1069,8 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(assetId);
-      if (!id) return { ok: false, error: 'Falta el activo.' };
-      if (!text(options && options.comment)) return { ok: false, error: 'El silencio necesita un motivo.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.api.asset_required') };
+      if (!text(options && options.comment)) return { ok: false, error: tr('ui.monitoring.error.silence_reason') };
       const body = Object.assign({ assetId: id }, this.silencePayload(id, options));
       return this.monitoringWrite('/monitoring/silences', 'POST', body);
     },
@@ -1078,7 +1078,7 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const body = pick(values, WINDOW_KEYS);
-      if (!text(body.name)) return { ok: false, error: 'La ventana necesita un nombre.' };
+      if (!text(body.name)) return { ok: false, error: tr('ui.monitoring.error.window_name') };
       const id = text(values && values.id);
       const path = id ? '/monitoring/windows/' + encodeURIComponent(id) : '/monitoring/windows';
       const result = await this.monitoringWrite(path, id ? 'PUT' : 'POST', body);
@@ -1090,7 +1090,7 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(alertId);
-      if (!id) return { ok: false, error: 'Falta la alerta.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.alert_required') };
       const result = await this.monitoringWrite('/monitoring/alerts/' + encodeURIComponent(id) + '/maintenance', 'POST', {});
       if (!result.ok) return result;
       const suggested = result.payload && result.payload.suggested ? result.payload.suggested : null;
@@ -1114,7 +1114,7 @@
       const denied = this.monitoringDenied('assets.edit');
       if (denied) return denied;
       const id = text(alertId);
-      if (!id) return { ok: false, error: 'Falta la alerta.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.error.alert_required') };
       const target = text(incidentId);
       const result = await this.monitoringWrite('/monitoring/alerts/' + encodeURIComponent(id) + '/incident', 'POST', { incidentId: target || null });
       if (!result.ok) return result;
@@ -1126,12 +1126,12 @@
       const denied = this.monitoringDenied('config.integrations');
       if (denied) return denied;
       if (hasRawSecret(input, 0)) {
-        const error = 'No se admiten secretos ni credenciales en el navegador. Indica solo una referencia de credencial del despliegue.';
+        const error = tr('ui.monitoring.error.secret_in_browser');
         if (this.showToast) this.showToast(error);
         return { ok: false, error };
       }
       const body = cleanChannel(input);
-      if (!text(body.name) || !text(body.kind)) return { ok: false, error: 'El canal necesita nombre y tipo.' };
+      if (!text(body.name) || !text(body.kind)) return { ok: false, error: tr('ui.monitoring.error.channel_required') };
       if (body.secretRef && !/^[A-Za-z0-9_.-]+$/.test(body.secretRef)) {
         const error = tr('ui.monitoring.error.secret_ref');
         if (this.showToast) this.showToast(error);
@@ -1153,8 +1153,8 @@
       const denied = this.monitoringDenied('config.integrations');
       if (denied) return denied;
       const body = cleanRule(input);
-      if (!text(body.name)) return { ok: false, error: 'La regla necesita un nombre.' };
-      if (Array.isArray(body.channelIds) && body.channelIds.length === 0) return { ok: false, error: 'La regla necesita al menos un canal.' };
+      if (!text(body.name)) return { ok: false, error: tr('ui.monitoring.error.rule_name') };
+      if (Array.isArray(body.channelIds) && body.channelIds.length === 0) return { ok: false, error: tr('ui.monitoring.api.rule_channel') };
       const result = await this.monitoringWrite('/notifications/rules', 'POST', body);
       if (!result.ok) return result;
       const api = this.monitoringApi;
@@ -1171,7 +1171,7 @@
       const denied = this.monitoringDenied('config.integrations');
       if (denied) return denied;
       const id = text(channelId);
-      if (!id) return { ok: false, error: 'Falta el canal.' };
+      if (!id) return { ok: false, error: tr('ui.monitoring.api.channel_missing') };
       const result = await this.monitoringWrite('/notifications/channels/' + encodeURIComponent(id) + '/test', 'POST', {});
       if (!result.ok) return result;
       const state = text(result.payload && result.payload.state, 'pending');
@@ -1182,7 +1182,7 @@
         at: new Date().toISOString()
       };
       // A 202 only means the delivery request is queued; it is never a delivery claim.
-      if (this.showToast) this.showToast('Prueba en cola para ' + id + '. El resultado no confirma la entrega.');
+      if (this.showToast) this.showToast(tr('ui.monitoring.toast.channel_test_queued', { id: id }));
       return { ok: true, state, outboxId: api.notificationTestStates[id].outboxId };
     },
 
