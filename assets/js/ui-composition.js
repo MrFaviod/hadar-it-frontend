@@ -84,49 +84,49 @@
 
   function normalize(raw, item, seen) {
     const fail = (error) => ({ ok: false, error });
-    if (!isPlainObject(raw)) return fail('La contribución no es un objeto válido.');
+    if (!isPlainObject(raw)) return fail(tr('ui.extensions.composition.object'));
     const id = text(raw.id);
-    if (!ID_RE.test(id)) return fail('La contribución tiene un id no válido.');
-    if (seen && seen.has(id)) return fail('La contribución repite el id "' + id + '".');
+    if (!ID_RE.test(id)) return fail(tr('ui.extensions.composition.id'));
+    if (seen && seen.has(id)) return fail(tr('ui.extensions.composition.duplicate', { id }));
     const label = text(raw.label);
-    if (!label || label.length > 120) return fail('La contribución "' + id + '" necesita una etiqueta breve.');
+    if (!label || label.length > 120) return fail(tr('ui.extensions.composition.label', { id }));
     const target = text(raw.target);
-    if (isProtectedTarget(target)) return fail('El destino "' + target + '" pertenece al núcleo y no se puede componer.');
-    if (!isKnownTarget(target)) return fail('El destino "' + target + '" no existe en el catálogo consumido.');
+    if (isProtectedTarget(target)) return fail(tr('ui.extensions.composition.protected_target', { target }));
+    if (!isKnownTarget(target)) return fail(tr('ui.extensions.composition.unknown_target', { target }));
     const mode = text(raw.mode);
-    if (mode !== 'add' && mode !== 'hide') return fail('La contribución "' + id + '" usa un modo no válido.');
+    if (mode !== 'add' && mode !== 'hide') return fail(tr('ui.extensions.composition.mode', { id }));
     const permission = text(raw.permission);
-    if (!PERMISSION_RE.test(permission)) return fail('La contribución "' + id + '" necesita un permiso de extensión válido.');
+    if (!PERMISSION_RE.test(permission)) return fail(tr('ui.extensions.composition.permission', { id }));
     if (!declaredPermissions(item).has(permission)) {
-      return fail('El permiso "' + permission + '" no está declarado por la extensión.');
+      return fail(tr('ui.extensions.composition.permission_undeclared', { permission }));
     }
     const order = raw.order === undefined || raw.order === null ? 0 : raw.order;
     if (!Number.isInteger(order) || order < ORDER_MIN || order > ORDER_MAX) {
-      return fail('La contribución "' + id + '" usa un orden fuera de rango.');
+      return fail(tr('ui.extensions.composition.order', { id }));
     }
     let view = null;
     if (mode === 'hide') {
       if (raw.view !== undefined || raw.component !== undefined) {
-        return fail('La contribución "' + id + '" oculta un destino y no puede declarar contenido.');
+        return fail(tr('ui.extensions.composition.hide_content', { id }));
       }
       if (groupOf(target) === 'nav' && target === 'nav.extensions') {
-        return fail('El acceso a extensiones no se puede ocultar.');
+        return fail(tr('ui.extensions.composition.hide_access'));
       }
     } else {
       if (groupOf(target) === 'nav') {
         return fail(tr('ui.shell.composition_nav_error'));
       }
       if (raw.component !== undefined) {
-        return fail('El módulo no puede registrar componentes privados: declara una vista.');
+        return fail(tr('ui.extensions.composition.component'));
       }
       const checked = window.ExtensionViews && typeof window.ExtensionViews.normalizeView === 'function'
         ? window.ExtensionViews.normalizeView(raw.view, (item && item.operations) || [])
-        : { ok: false, error: 'El host no admite vistas declarativas.' };
-      if (!checked.ok) return fail('La contribución "' + id + '" no declara una vista válida. ' + checked.error);
+        : { ok: false, error: tr('ui.extensions.error.view_unsupported') };
+      if (!checked.ok) return fail(tr('ui.extensions.error.contribution_view', { id, reason: checked.error }));
       view = checked.value;
     }
     if (target === 'nav.extensions' && mode !== 'add') {
-      return fail('El grupo de extensiones solo admite contribuciones añadidas.');
+      return fail(tr('ui.extensions.composition.group_add_only'));
     }
     return {
       ok: true,

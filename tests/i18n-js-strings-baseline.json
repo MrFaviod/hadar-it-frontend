@@ -8,22 +8,15 @@
     "relations-data.js": "Demo relationship types and seeded links for the prototype graph.",
     "transfer-data.js": "Demo import rows and export fixtures for the prototype transfer flow."
   },
-  "total": 620,
+  "total": 499,
   "files": {
-    "access-views.js": 5,
-    "access.js": 3,
     "app.js": 1,
-    "appearance-api.js": 5,
-    "appearance-package.js": 7,
-    "appearance-runtime.js": 1,
-    "appearance-views.js": 28,
     "asset-admin.js": 93,
     "asset-schema.js": 51,
     "components.js": 3,
     "conversation.js": 2,
     "dashboard-model.js": 3,
     "dashboard-views.js": 2,
-    "extension-views.js": 49,
     "graph-views.js": 1,
     "i18n.js": 1,
     "inventory-api.js": 126,
@@ -41,7 +34,6 @@
     "report-engine.js": 38,
     "search-engine.js": 7,
     "transfer-export-views.js": 2,
-    "ui-composition.js": 23,
     "warranty-engine.js": 6
   }
 }

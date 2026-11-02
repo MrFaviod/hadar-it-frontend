@@ -66,7 +66,7 @@
         ? this.patchWorkspaceState({ themeMode: themeMode })
         : window.AssetAppearanceApi.saveThemeMode(this, mode);
       return Promise.resolve(saved).catch(error => {
-        if (this.showToast) this.showToast(error.message || 'No se pudo guardar la preferencia de tema.', 'error');
+        if (this.showToast) this.showToast(error.message || tr('ui.appearance.runtime.mode_save_failed'), 'error');
         return null;
       });
     },

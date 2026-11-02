@@ -359,13 +359,13 @@
     if (!response.ok) {
       let payload = null;
       try { payload = await response.json(); } catch (_) { /* Text/HTML failures keep their HTTP status and use the Spanish status mapping. */ }
-      if (state && state.stopped) throw new Error('Solicitud cancelada.');
+      if (state && state.stopped) throw new Error(tr('ui.errors.cancelled'));
       throw responseError(vm, path, response, payload);
     }
     const payload = init.responseType === 'blob'
       ? await response.blob()
       : response.status === 204 ? null : await response.json();
-    if (state && state.stopped) throw new Error('Solicitud cancelada.');
+    if (state && state.stopped) throw new Error(tr('ui.errors.cancelled'));
     return payload;
   }
   // POST streaming: the message body must be sent as a request, so EventSource
@@ -379,7 +379,7 @@
     const state = vm.__assetAccess;
     const signal = init.signal || (state && state.controller.signal);
     const response = await window.fetch('/api/v1' + path, Object.assign(init, { credentials: 'same-origin', headers, signal }));
-    if (state && state.stopped) throw new Error('Solicitud cancelada.');
+    if (state && state.stopped) throw new Error(tr('ui.errors.cancelled'));
     if (!response.ok) {
       let payload = null;
       try { payload = await response.json(); } catch (_) { /* non-JSON failures use the status mapping */ }
@@ -401,7 +401,7 @@
           if (event) yield event;
           taken = takeFrame(buffer);
         }
-        if (state && state.stopped) throw new Error('Solicitud cancelada.');
+        if (state && state.stopped) throw new Error(tr('ui.errors.cancelled'));
       }
       buffer += decoder.decode();
       const trailing = parseFrame(buffer);
@@ -444,7 +444,7 @@
       await loadState(vm);
       vm.syncAccess();
       return makeResult(true, '', {}, payload);
-    } catch (error) { return makeResult(false, error.message || 'No se pudo guardar el cambio.', error.fieldErrors); }
+    } catch (error) { return makeResult(false, error.message || tr('ui.access.error_save_change'), error.fieldErrors); }
   }
   const methods = {
     can(permission) {
@@ -453,8 +453,8 @@
     },
     canConfig(section) { return allows(this, sectionPermissions(section)); },
     requirePermission(permission) { const allowed = this.can(permission); if (!allowed && this.showToast) this.showToast(tr('ui.errors.forbidden'), 'error'); return allowed; },
-    roleLabel(id) { const role = roleFor(this, id); return role ? role.name : 'Sin rol'; },
-    userPersonLabel(user) { const person = user && user.personId && (this.people || []).find(item => item.id === user.personId); return person ? person.name : user && user.personId ? 'Persona no disponible' : 'Sin vincular'; },
+    roleLabel(id) { const role = roleFor(this, id); return role ? role.name : tr('ui.shell.role_none'); },
+    userPersonLabel(user) { const person = user && user.personId && (this.people || []).find(item => item.id === user.personId); return person ? person.name : user && user.personId ? tr('ui.access.person_unavailable') : tr('ui.access.person_none'); },
     userPermissions(user) { const role = roleFor(this, user && user.roleId); return role ? safePermissions(role.permissions) : []; },
     permissionGroups() { return CATALOG; },
     closeAccessDialogs() { closeSensitiveDialogs(this); },

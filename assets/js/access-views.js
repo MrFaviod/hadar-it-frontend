@@ -67,10 +67,10 @@
   }
 
   function personName(app, user) {
-    if (!user) return 'Sin vincular';
+    if (!user) return tr('ui.access.person_none');
     if (app && typeof app.userPersonLabel === 'function') return app.userPersonLabel(user);
     const person = list(app && app.people).find((item) => item.id === user.personId);
-    return person ? person.name : 'Sin vincular';
+    return person ? person.name : tr('ui.access.person_none');
   }
 
   function userInitials(app, user) {
@@ -380,7 +380,7 @@
           this.closeConfirm();
           appToast(this.app, tr('ui.access.toast_deactivated'));
         };
-        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: 'No se pudo desactivar la cuenta.' }));
+        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: tr('ui.access.error_deactivate') }));
         else finish(result);
       },
       activate(user) {
@@ -391,7 +391,7 @@
           if (!normalized.ok) appToast(this.app, normalized.error || tr('ui.access.error_activate'), 'error');
           else appToast(this.app, tr('ui.access.toast_activated'));
         };
-        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: 'No se pudo activar la cuenta.' }));
+        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: tr('ui.access.error_activate') }));
         else finish(result);
       }
     },
@@ -581,7 +581,7 @@
           if (!normalized.ok) appToast(this.app, normalized.error || tr('ui.access.error_update_account'), 'error');
           else { this.confirm.open = false; appToast(this.app, tr(active ? 'ui.access.toast_activated' : 'ui.access.toast_deactivated')); }
         };
-        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: 'No se pudo actualizar la cuenta.' }));
+        if (result && typeof result.then === 'function') result.then(finish).catch(() => finish({ ok: false, error: tr('ui.access.error_update_account') }));
         else finish(result);
       }
     },
