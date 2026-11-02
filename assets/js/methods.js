@@ -399,7 +399,7 @@
     },
     validateLoginField(field) {
       if (field === 'username' && !this.loginForm.username.trim()) {
-        this.loginErrors.username = 'Introduce tu usuario.';
+        this.loginErrors.username = tr('ui.login.error_username_required');
       } else if (field === 'password' && !this.loginForm.password) {
         this.loginErrors.password = tr('ui.login.error_password_required');
       } else {
@@ -438,11 +438,11 @@
       if (errors.anydeskId || errors.rmmAgentId) return false;
       const asset = dialog.asset;
       if (!asset || !asset.serverAsset || !this.authenticated) {
-        errors.general = 'No se ha encontrado el activo en el servidor.';
+        errors.general = tr('ui.asset.config.error_missing');
         return false;
       }
       if (!this.can('assets.edit')) {
-        errors.general = 'Tu rol no permite modificar las integraciones del activo.';
+        errors.general = tr('ui.asset.config.error_permission');
         return false;
       }
       const epoch = this.inventory.epoch;
@@ -458,11 +458,11 @@
         const index = this.inventory.items.findIndex((item) => item.id === asset.id);
         if (index !== -1) this.inventory.items.splice(index, 1, saved);
         dialog.open = false;
-        this.showToast('Integraciones del activo actualizadas.');
+        this.showToast(tr('ui.asset.config.toast_saved'));
         return true;
       } catch (error) {
         if (!current()) return false;
-        this.assetConfigErrors.general = (error && error.message) || 'No se pudieron guardar las integraciones del activo.';
+        this.assetConfigErrors.general = (error && error.message) || tr('ui.asset.config.error_save');
         return false;
       }
     },

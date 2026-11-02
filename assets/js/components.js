@@ -1,6 +1,18 @@
 (function () {
   'use strict';
 
+  // Copy for the shared components comes from the catalog. Reading the tracked
+  // `version` ref inside a render or computed keeps a hot locale switch reactive.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
+
+  function trackLocale() {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (runtime && runtime.version) runtime.version.value;
+  }
+
   let modalSequence = 0;
 
   window.ModalShell = {
@@ -109,7 +121,7 @@
 
   function displayValue(value) {
     if (value === null || value === undefined || value === '') return '—';
-    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+    if (typeof value === 'boolean') return value ? tr('ui.asset.editor.yes') : tr('ui.asset.editor.no');
     if (Array.isArray(value)) return value.map(displayValue).join(', ');
     if (typeof value === 'object') {
       try {
@@ -128,9 +140,23 @@
       columns: { type: Array, default: () => [] },
       rows: { type: Array, default: () => [] },
       caption: { type: String, default: '' },
-      empty: { type: String, default: 'Sin datos.' },
+      empty: { type: String, default: '' },
       loading: { type: Boolean, default: false },
       rowKey: { type: [String, Function], default: 'id' }
+    },
+    computed: {
+      emptyLabel() {
+        trackLocale();
+        return this.empty || tr('ui.common.no_data');
+      },
+      captionLabel() {
+        trackLocale();
+        return this.caption || tr('ui.extensions.frame.caption_fallback');
+      },
+      tableLabel() {
+        trackLocale();
+        return this.caption || tr('ui.extensions.frame.table_aria');
+      }
     },
     methods: {
       rowKeyFor(row, index) {
@@ -146,6 +172,7 @@
         return value === null || value === undefined || value === '' ? index : value;
       },
       cell(row, column) {
+        trackLocale();
         if (!column) return '—';
         let value;
         try {
@@ -158,9 +185,9 @@
       }
     },
     template: `
-      <div class="table-panel itsm-table" role="region" :aria-label="caption || 'Tabla de la extensión'" :aria-busy="loading ? 'true' : 'false'" tabindex="0">
+      <div class="table-panel itsm-table" role="region" :aria-label="tableLabel" :aria-busy="loading ? 'true' : 'false'" tabindex="0">
         <table class="asset-table">
-          <caption class="sr-only">{{ caption || 'Datos de la extensión' }}</caption>
+          <caption class="sr-only">{{ captionLabel }}</caption>
           <thead>
             <tr>
               <th v-for="(column, index) in columns" :key="column.key || column.field || index" scope="col">{{ column.label || column.field || '' }}</th>
@@ -171,7 +198,7 @@
               <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty" role="status">{{ $t('ui.shell.loading_data') }}</td></tr>
             </template>
             <template v-else-if="!rows.length">
-              <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty">{{ empty }}</td></tr>
+              <tr><td :colspan="Math.max(columns.length, 1)" class="itsm-table__empty">{{ emptyLabel }}</td></tr>
             </template>
             <template v-else>
               <tr v-for="(row, index) in rows" :key="rowKeyFor(row, index)" class="asset-row">
@@ -254,19 +281,29 @@
     name: 'ItsmError',
     props: {
       error: { type: String, default: '' },
-      title: { type: String, default: 'No se pudo completar la acción' },
+      title: { type: String, default: '' },
       retry: { type: Boolean, default: false },
-      retryLabel: { type: String, default: 'Reintentar' }
+      retryLabel: { type: String, default: '' }
     },
     emits: ['retry'],
+    computed: {
+      titleLabel() {
+        trackLocale();
+        return this.title || tr('ui.common.action_failed');
+      },
+      retryText() {
+        trackLocale();
+        return this.retryLabel || tr('ui.common.retry');
+      }
+    },
     template: `
       <div v-if="error" class="form-alert itsm-error" role="alert" tabindex="-1">
         <app-icon name="alert"></app-icon>
         <div>
-          <strong>{{ title }}</strong>
+          <strong>{{ titleLabel }}</strong>
           <p>{{ error }}</p>
           <slot></slot>
-          <button v-if="retry" type="button" class="btn btn--secondary btn--small" @click="$emit('retry')">{{ retryLabel }}</button>
+          <button v-if="retry" type="button" class="btn btn--secondary btn--small" @click="$emit('retry')">{{ retryText }}</button>
         </div>
       </div>
     `

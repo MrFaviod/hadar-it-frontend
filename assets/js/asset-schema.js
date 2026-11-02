@@ -3,125 +3,156 @@
 
   const DATA = window.ASSET_DATA || {};
 
+  // Seed labels are user-visible copy, so they are getters over the catalog: a
+  // locale switch re-reads them without rebuilding the seeds. The stable keys,
+  // ids and stored values never change with the locale.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
+
+  function localized(entry, property, key) {
+    Object.defineProperty(entry, property, {
+      enumerable: true,
+      configurable: true,
+      get: function () { return tr(key); }
+    });
+    return entry;
+  }
+
+  function fieldOf(key, labelKey, groupKey) {
+    return localized(localized({ key }, 'label', labelKey), 'group', groupKey);
+  }
+
+  function libraryOf(key, type, unit, labelKey, hintKey) {
+    const entry = localized({ key, type, unit, options: [] }, 'label', labelKey);
+    return hintKey ? localized(entry, 'hint', hintKey) : Object.assign(entry, { hint: '' });
+  }
+
   const FIELD_TYPES = [
-    { value: 'text', label: 'Texto' },
-    { value: 'number', label: 'Número' },
-    { value: 'select', label: 'Selección' },
-    { value: 'boolean', label: 'Sí / No' },
-    { value: 'date', label: 'Fecha' },
-    { value: 'url', label: 'URL' },
-    { value: 'textarea', label: 'Texto largo' }
+    localized({ value: 'text' }, 'label', 'ui.asset.schema.type.text'),
+    localized({ value: 'number' }, 'label', 'ui.asset.schema.type.number'),
+    localized({ value: 'select' }, 'label', 'ui.asset.schema.type.select'),
+    localized({ value: 'boolean' }, 'label', 'ui.asset.schema.type.boolean'),
+    localized({ value: 'date' }, 'label', 'ui.asset.schema.type.date'),
+    localized({ value: 'url' }, 'label', 'ui.asset.schema.type.url'),
+    localized({ value: 'textarea' }, 'label', 'ui.asset.schema.type.textarea')
   ];
 
+  const GROUP_IDENTIFICATION = 'ui.asset.schema.group.identification';
+  const GROUP_LOCATION = 'ui.asset.schema.group.location';
+  const GROUP_REMOTE = 'ui.asset.schema.group.remote';
+
   const COMMON_FIELDS = [
-    { key: 'name', label: 'Nombre', group: 'Identificación' },
-    { key: 'category', label: 'Categoría', group: 'Identificación' },
-    { key: 'type', label: 'Tipo', group: 'Identificación' },
-    { key: 'brand', label: 'Marca', group: 'Identificación' },
-    { key: 'model', label: 'Modelo', group: 'Identificación' },
-    { key: 'serial', label: 'Número de serie', group: 'Identificación' },
-    { key: 'ip', label: 'Dirección IP', group: 'Red' },
-    { key: 'site', label: 'Sede', group: 'Ubicación' },
-    { key: 'locationId', label: 'Ubicación', group: 'Ubicación' },
-    { key: 'assigneeId', label: 'Responsable', group: 'Asignación' },
-    { key: 'cost', label: 'Coste', group: 'Económica' },
-    { key: 'statusId', label: 'Estado', group: 'Estado' },
-    { key: 'image', label: 'Fotografía', group: 'Medios' },
-    { key: 'warranty', label: 'Garantía', group: 'Garantía' },
-    { key: 'anydeskId', label: 'AnyDesk', group: 'Acceso remoto' },
-    { key: 'rmmAgentId', label: 'Agente RMM', group: 'Acceso remoto' }
+    fieldOf('name', 'ui.asset.common.name', GROUP_IDENTIFICATION),
+    fieldOf('category', 'ui.asset.common.category', GROUP_IDENTIFICATION),
+    fieldOf('type', 'ui.asset.schema.field.type', GROUP_IDENTIFICATION),
+    fieldOf('brand', 'ui.asset.common.brand', GROUP_IDENTIFICATION),
+    fieldOf('model', 'ui.asset.common.model', GROUP_IDENTIFICATION),
+    fieldOf('serial', 'ui.asset.common.serial', GROUP_IDENTIFICATION),
+    fieldOf('ip', 'ui.asset.common.ip', 'ui.asset.schema.group.network'),
+    fieldOf('site', 'ui.asset.schema.field.site', GROUP_LOCATION),
+    fieldOf('locationId', 'ui.asset.common.location', GROUP_LOCATION),
+    fieldOf('assigneeId', 'ui.asset.common.responsible', 'ui.asset.schema.group.assignment'),
+    fieldOf('cost', 'ui.asset.common.cost', 'ui.asset.schema.group.financial'),
+    fieldOf('statusId', 'ui.asset.common.status', 'ui.asset.schema.group.status'),
+    fieldOf('image', 'ui.asset.schema.field.image', 'ui.asset.schema.group.media'),
+    fieldOf('warranty', 'ui.asset.schema.field.warranty', 'ui.asset.schema.group.warranty'),
+    // AnyDesk is a product name and stays untranslated.
+    localized({ key: 'anydeskId', label: 'AnyDesk' }, 'group', GROUP_REMOTE),
+    fieldOf('rmmAgentId', 'ui.asset.schema.field.rmm', GROUP_REMOTE)
   ];
 
   const COMMON_KEYS = COMMON_FIELDS.map((field) => field.key);
 
   const FIELD_LIBRARY = [
-    { key: 'serial', label: 'Número de serie', type: 'text', unit: '', options: [], hint: 'Serie del fabricante.' },
-    { key: 'cpu', label: 'Procesador', type: 'text', unit: '', options: [], hint: 'Modelo y núcleos.' },
-    { key: 'ram', label: 'Memoria RAM', type: 'number', unit: 'GB', options: [], hint: '' },
-    { key: 'storage', label: 'Almacenamiento', type: 'text', unit: '', options: [], hint: 'Capacidad y tecnología.' },
-    { key: 'os', label: 'Sistema operativo', type: 'text', unit: '', options: [], hint: '' },
-    { key: 'mac', label: 'Dirección MAC', type: 'text', unit: '', options: [], hint: '' },
-    { key: 'firmware', label: 'Firmware', type: 'text', unit: '', options: [], hint: '' },
-    { key: 'ports', label: 'Puertos', type: 'number', unit: 'u', options: [], hint: 'Cantidad de puertos de acceso.' },
-    { key: 'rack', label: 'Rack / unidad', type: 'text', unit: '', options: [], hint: 'Posición física en el rack.' },
-    { key: 'resolution', label: 'Resolución', type: 'text', unit: '', options: [], hint: 'Ej. 2560 × 1440.' },
-    { key: 'fovAngle', label: 'Ángulo de visión', type: 'text', unit: '', options: [], hint: 'Ej. 110° horizontal.' },
-    { key: 'nightVision', label: 'Visión nocturna', type: 'boolean', unit: '', options: [], hint: '' },
-    { key: 'poe', label: 'Alimentación PoE', type: 'boolean', unit: '', options: [], hint: '' },
-    { key: 'upsCapacity', label: 'Capacidad', type: 'text', unit: '', options: [], hint: 'VA / W nominales.' },
-    { key: 'batteryLife', label: 'Autonomía', type: 'text', unit: '', options: [], hint: 'Tiempo estimado a plena carga.' },
-    { key: 'vmHost', label: 'Host', type: 'text', unit: '', options: [], hint: 'Hipervisor que aloja la máquina.' },
-    { key: 'vmCpu', label: 'vCPU', type: 'number', unit: 'u', options: [], hint: '' },
-    { key: 'vmRam', label: 'RAM asignada', type: 'number', unit: 'GB', options: [], hint: '' },
-    { key: 'vmDisk', label: 'Disco virtual', type: 'text', unit: '', options: [], hint: 'Capacidad y tipo de disco.' },
-    { key: 'containerImage', label: 'Imagen', type: 'text', unit: '', options: [], hint: 'Repositorio y etiqueta.' },
-    { key: 'containerHost', label: 'Host de contenedores', type: 'text', unit: '', options: [], hint: '' },
-    { key: 'containerPorts', label: 'Puertos publicados', type: 'text', unit: '', options: [], hint: 'Ej. 8080:80, 443:443.' }
+    libraryOf('serial', 'text', '', 'ui.asset.common.serial', 'ui.asset.schema.library.serial.hint'),
+    libraryOf('cpu', 'text', '', 'ui.asset.schema.library.cpu.label', 'ui.asset.schema.library.cpu.hint'),
+    libraryOf('ram', 'number', 'GB', 'ui.asset.schema.library.ram.label'),
+    libraryOf('storage', 'text', '', 'ui.asset.schema.library.storage.label', 'ui.asset.schema.library.storage.hint'),
+    libraryOf('os', 'text', '', 'ui.asset.schema.library.os.label'),
+    libraryOf('mac', 'text', '', 'ui.asset.schema.library.mac.label'),
+    libraryOf('firmware', 'text', '', 'ui.asset.schema.library.firmware.label'),
+    libraryOf('ports', 'number', 'u', 'ui.asset.schema.library.ports.label', 'ui.asset.schema.library.ports.hint'),
+    libraryOf('rack', 'text', '', 'ui.asset.schema.library.rack.label', 'ui.asset.schema.library.rack.hint'),
+    libraryOf('resolution', 'text', '', 'ui.asset.schema.library.resolution.label', 'ui.asset.schema.library.resolution.hint'),
+    libraryOf('fovAngle', 'text', '', 'ui.asset.schema.library.fov_label', 'ui.asset.schema.library.fov_hint'),
+    libraryOf('nightVision', 'boolean', '', 'ui.asset.schema.library.night_vision.label'),
+    libraryOf('poe', 'boolean', '', 'ui.asset.schema.library.poe.label'),
+    libraryOf('upsCapacity', 'text', '', 'ui.asset.schema.library.ups_capacity.label', 'ui.asset.schema.library.ups_capacity.hint'),
+    libraryOf('batteryLife', 'text', '', 'ui.asset.schema.library.battery_life.label', 'ui.asset.schema.library.battery_life.hint'),
+    libraryOf('vmHost', 'text', '', 'ui.asset.schema.library.vm_host.label', 'ui.asset.schema.library.vm_host.hint'),
+    libraryOf('vmCpu', 'number', 'u', 'ui.asset.schema.library.vm_cpu.label'),
+    libraryOf('vmRam', 'number', 'GB', 'ui.asset.schema.library.vm_ram.label'),
+    libraryOf('vmDisk', 'text', '', 'ui.asset.schema.library.vm_disk.label', 'ui.asset.schema.library.vm_disk.hint'),
+    libraryOf('containerImage', 'text', '', 'ui.asset.schema.library.container_image.label', 'ui.asset.schema.library.container_image.hint'),
+    libraryOf('containerHost', 'text', '', 'ui.asset.schema.library.container_host.label'),
+    libraryOf('containerPorts', 'text', '', 'ui.asset.schema.library.container_ports.label', 'ui.asset.schema.library.container_ports.hint')
   ];
 
   const FORM_PRESETS = {
     computadoras: {
-      prefix: 'PC', type: 'Computadora',
+      prefix: 'PC', get type() { return tr('ui.shell.device_desktop'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'anydeskId', 'rmmAgentId', 'warranty'],
       tech: ['cpu', 'ram', 'storage', 'os', 'mac'], fov: false
     },
     notebooks: {
-      prefix: 'NB', type: 'Notebook',
+      prefix: 'NB', get type() { return tr('ui.shell.device_notebook'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'anydeskId', 'rmmAgentId', 'warranty'],
       tech: ['cpu', 'ram', 'storage', 'os', 'mac'], fov: false
     },
     servidores: {
-      prefix: 'SRV', type: 'Servidor',
+      prefix: 'SRV', get type() { return tr('ui.shell.device_server'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'anydeskId', 'rmmAgentId', 'warranty'],
       tech: ['cpu', 'ram', 'storage', 'os', 'rack', 'mac'], fov: false
     },
     impresoras: {
-      prefix: 'IMP', type: 'Impresora',
+      prefix: 'IMP', get type() { return tr('ui.shell.device_printer'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'warranty'],
       tech: ['firmware', 'mac', 'ports'], fov: false
     },
     switches: {
-      prefix: 'SW', type: 'Switch',
+      prefix: 'SW', get type() { return tr('ui.shell.device_switch'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'rmmAgentId', 'assigneeId', 'warranty'],
       tech: ['ports', 'firmware', 'rack', 'mac'], fov: false
     },
     monitores: {
-      prefix: 'MON', type: 'Monitor',
+      prefix: 'MON', get type() { return tr('ui.shell.device_monitor'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId'],
       advanced: ['serial', 'cost', 'statusId', 'warranty'],
       tech: ['resolution'], fov: false
     },
     camaras: {
-      prefix: 'CAM', type: 'Cámara IP',
+      prefix: 'CAM', get type() { return tr('ui.shell.device_camera'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'ip'],
       advanced: ['serial', 'cost', 'statusId', 'assigneeId', 'warranty'],
       tech: ['resolution', 'fovAngle', 'nightVision', 'poe'], fov: true
     },
     ups: {
-      prefix: 'UPS', type: 'UPS',
+      prefix: 'UPS', get type() { return tr('ui.shell.device_ups'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId'],
       advanced: ['serial', 'cost', 'statusId', 'assigneeId', 'warranty'],
       tech: ['upsCapacity', 'batteryLife', 'rack'], fov: false
     },
     virtualizacion: {
-      prefix: 'VM', type: 'Máquina virtual',
+      prefix: 'VM', get type() { return tr('ui.shell.device_vm'); },
       quick: ['name', 'type', 'site', 'assigneeId', 'ip'],
       advanced: ['cost', 'statusId', 'rmmAgentId', 'warranty'],
       tech: ['vmHost', 'vmCpu', 'vmRam', 'vmDisk', 'os'], fov: false
     },
     contenedores: {
-      prefix: 'CTR', type: 'Contenedor',
+      prefix: 'CTR', get type() { return tr('ui.shell.device_container'); },
       quick: ['name', 'type', 'site', 'assigneeId', 'ip'],
       advanced: ['cost', 'statusId', 'warranty'],
       tech: ['containerImage', 'containerHost', 'containerPorts'], fov: false
     },
     otros: {
-      prefix: 'OTRO', type: 'Equipo',
+      prefix: 'OTRO', get type() { return tr('ui.asset.schema.default_type'); },
       quick: ['name', 'type', 'brand', 'model', 'site', 'locationId', 'assigneeId'],
       advanced: ['serial', 'cost', 'statusId', 'warranty'],
       tech: [], fov: false
@@ -129,18 +160,16 @@
   };
 
   const STATUS_SEED = [
-    { id: 'asignado', label: 'Asignado', tone: 'ok', final: false },
-    { id: 'resguardo', label: 'En resguardo', tone: 'hold', final: false },
-    { id: 'mantenimiento', label: 'Mantenimiento', tone: 'warn', final: false },
-    { id: 'retirado', label: 'Dado de baja', tone: 'down', final: true }
+    localized({ id: 'asignado', tone: 'ok', final: false }, 'label', 'ui.asset.schema.status.assigned'),
+    localized({ id: 'resguardo', tone: 'hold', final: false }, 'label', 'ui.asset.schema.status.storage'),
+    localized({ id: 'mantenimiento', tone: 'warn', final: false }, 'label', 'ui.asset.schema.status.maintenance'),
+    localized({ id: 'retirado', tone: 'down', final: true }, 'label', 'ui.asset.schema.status.retired')
   ];
 
-  const TONE_LABELS = {
-    ok: 'Operativo',
-    warn: 'Atención',
-    hold: 'Sin asignar',
-    down: 'Baja'
-  };
+  const TONE_LABELS = localized(localized(localized(
+    localized({}, 'ok', 'ui.shell.tone_ok'), 'warn', 'ui.shell.tone_warn'),
+    'hold', 'ui.shell.tone_hold'),
+    'down', 'ui.shell.tone_down');
 
   const ID_RULES_SEED = {
     permanentPrefix: 'AM-',
@@ -463,7 +492,7 @@
     if (!value || typeof value !== 'object') return null;
     return {
       at: isoDateTime(value.at) || new Date().toISOString(),
-      reason: text(value.reason, 'Sin especificar'),
+      reason: text(value.reason, tr('ui.warranty.unspecified')),
       note: text(value.note, '')
     };
   }
@@ -474,7 +503,7 @@
       if (!item || typeof item !== 'object') return result;
       result.push({
         field: text(item.field, ''),
-        label: text(item.label, 'Campo'),
+        label: text(item.label, tr('ui.transfer.compare.field')),
         before: text(item.before, ''),
         after: text(item.after, '')
       });
@@ -493,9 +522,9 @@
         id: text(item.id, 'h-' + index),
         at: at,
         kind: text(item.kind, 'updated'),
-        title: text(item.title, 'Cambio registrado'),
+        title: text(item.title, tr('ui.dashboard.change_registered')),
         detail: text(item.detail, ''),
-        actor: text(item.actor, 'Administrador'),
+        actor: text(item.actor, tr('ui.operations.actor.administrator')),
         changes: normalizeChanges(item.changes),
         movement: text(item.movement, ''),
         effectiveAt: isoDateTime(item.effectiveAt) || '',
@@ -532,9 +561,9 @@
       id: 'seed-created-' + index,
       at: created + 'T09:15:00.000Z',
       kind: 'created',
-      title: 'Alta en el inventario',
-      detail: 'Registro creado con la ficha inicial del activo.',
-      actor: 'Administrador',
+      title: tr('ui.asset.detail.created'),
+      detail: tr('ui.asset.schema.seed_created_detail'),
+      actor: tr('ui.operations.actor.administrator'),
       changes: [],
       movement: 'created',
       effectiveAt: created + 'T09:15:00.000Z',
@@ -545,9 +574,9 @@
         id: 'seed-retired-' + index,
         at: isoDateTime(asset.retired.at),
         kind: 'retired',
-        title: 'Activo dado de baja',
+        title: tr('ui.operations.movement.retired.title'),
         detail: asset.retired.reason + (asset.retired.note ? ' · ' + asset.retired.note : ''),
-        actor: 'Administrador',
+        actor: tr('ui.operations.actor.administrator'),
         changes: [],
         movement: 'retired',
         effectiveAt: isoDateTime(asset.retired.at),
@@ -610,8 +639,8 @@
       const asset = {
         id,
         code,
-        name: text(raw.name, 'Activo sin nombre'),
-        type: text(raw.type, form.type || 'Equipo'),
+        name: text(raw.name, tr('ui.asset.schema.fallback_name')),
+        type: text(raw.type, form.type || tr('ui.asset.schema.default_type')),
         category,
         brand: text(raw.brand, ''),
         model: text(raw.model, ''),
@@ -651,16 +680,16 @@
     const form = formFor(admin, asset.category);
     const included = new Set(form.quick.concat(form.advanced));
     const checks = [
-      { key: 'brand', label: 'Marca', missing: !asset.brand },
-      { key: 'model', label: 'Modelo', missing: !asset.model },
-      { key: 'serial', label: 'Número de serie', missing: !asset.serial },
-      { key: 'site', label: 'Sede', missing: !asset.site },
-      { key: 'locationId', label: 'Ubicación', missing: !asset.locationId },
-      { key: 'assigneeId', label: 'Responsable', missing: !asset.assigneeId },
-      { key: 'cost', label: 'Coste', missing: !asset.cost },
-      { key: 'ip', label: 'Dirección IP', missing: !asset.ip }
+      { key: 'brand', labelKey: 'ui.asset.common.brand', missing: !asset.brand },
+      { key: 'model', labelKey: 'ui.asset.common.model', missing: !asset.model },
+      { key: 'serial', labelKey: 'ui.asset.common.serial', missing: !asset.serial },
+      { key: 'site', labelKey: 'ui.asset.schema.field.site', missing: !asset.site },
+      { key: 'locationId', labelKey: 'ui.asset.common.location', missing: !asset.locationId },
+      { key: 'assigneeId', labelKey: 'ui.asset.common.responsible', missing: !asset.assigneeId },
+      { key: 'cost', labelKey: 'ui.asset.common.cost', missing: !asset.cost },
+      { key: 'ip', labelKey: 'ui.asset.common.ip', missing: !asset.ip }
     ];
-    return checks.filter((item) => included.has(item.key) && item.missing).map((item) => item.label);
+    return checks.filter((item) => included.has(item.key) && item.missing).map((item) => tr(item.labelKey));
   }
 
   function newAsset(admin, categories) {
@@ -708,7 +737,7 @@
       kind,
       title,
       detail: detail || '',
-      actor: text(options.actor, 'Administrador'),
+      actor: text(options.actor, tr('ui.operations.actor.administrator')),
       changes: normalizeChanges(options.changes),
       movement: text(options.movement, ''),
       effectiveAt: isoDateTime(options.effectiveAt) || '',

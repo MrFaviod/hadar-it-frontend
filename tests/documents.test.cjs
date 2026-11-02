@@ -8,6 +8,10 @@ function context() {
   const storage = { getItem:k=>values.get(k)||null, setItem:(k,v)=>values.set(k,v) };
   const c = vm.createContext({console,Date,URL,localStorage:storage}); c.window=c;
   c.AssetStore={clone:v=>JSON.parse(JSON.stringify(v)),readJSON:(s,k,f)=>s.getItem(k)?JSON.parse(s.getItem(k)):f,writeJSON:(s,k,v)=>{s.setItem(k,JSON.stringify(v));return true;}};
+  // The engines resolve visible copy through the runtime; the source catalog is
+  // handed to it directly so the Spanish assertions keep running without a DOM.
+  const source=JSON.parse(fs.readFileSync('assets/i18n/es.json','utf8'));
+  c.ItsmI18n={t:(key)=>typeof source[key]==='string'?source[key]:''};
   for(const file of ['report-engine','warranty-engine','label-engine']) {
     const p='assets/js/'+file+'.js'; if(fs.existsSync(p))vm.runInContext(fs.readFileSync(p,'utf8'),c);
   }

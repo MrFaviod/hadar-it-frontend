@@ -243,7 +243,7 @@
         assetEditorErrors: {},
         statusDialog: { open: false, assetId: '', statusId: '', note: '' },
         statusDialogError: '',
-        retireDialog: { open: false, assetId: '', reason: 'Fin de vida útil', note: '', acknowledged: false },
+        retireDialog: { open: false, assetId: '', reason: '', note: '', acknowledged: false },
         retireDialogError: '',
         deleteDialog: { open: false, assetId: '', typed: '', reason: '' },
         deleteDialogError: '',
@@ -255,7 +255,6 @@
         assetIdRulesErrors: {},
         formDraft: null,
         formDraftError: '',
-        retireReasons: window.AssetAdminReasons || [],
         fieldTypes: window.AssetSchema.FIELD_TYPES,
         people: initial.people,
         authenticated: initial.authenticated,
@@ -342,6 +341,12 @@
       };
     },
     computed: Object.assign({}, window.AssetWorkspaceRuntime.computed, {
+      // The retired reasons are catalog keys; resolving them here keeps the
+      // option list in step with a live locale switch.
+      retireReasons() {
+        const keys = window.AssetAdminReasons || [];
+        return keys.map((key) => tr(key));
+      },
       isPublicReport() {
         return !!(this.route && this.route.name === 'reportAsset' && this.route.section === 'publico' && this.route.shareToken);
       },
