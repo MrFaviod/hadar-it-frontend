@@ -180,7 +180,7 @@ test('a missing server model shows a factual error and no invented reply', async
     throw error;
   };
 
-  vm.draft = 'Registrá un switch Aruba en Example Site';
+  vm.draft = 'Registrá un switch Aruba en Sede Norte';
   assert.equal(await vm.send(), false);
 
   assert.match(vm.error, /no está disponible/i);

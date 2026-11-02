@@ -242,7 +242,7 @@ test('create posts only the fields the inventory API accepts', async () => {
   app.openAssetCreate();
   app.assetEditor.draft.name = 'Switch Aruba';
   app.assetEditor.draft.category = 'switches';
-  app.assetEditor.draft.site = 'Example Site';
+  app.assetEditor.draft.site = 'Sede Norte';
   app.assetEditor.draft.responsible = 'Marta Ríos';
   app.assetEditor.draft.quickCode = '';
 
@@ -253,7 +253,7 @@ test('create posts only the fields the inventory API accepts', async () => {
   assert.equal(post.init.method, 'POST');
   assert.equal(post.body.name, 'Switch Aruba');
   assert.equal(post.body.category, 'Switches');
-  assert.equal(post.body.site, 'Example Site');
+  assert.equal(post.body.site, 'Sede Norte');
   assert.equal(post.body.responsible, 'Marta Ríos');
   assert.equal(post.body.status, 'in_use');
   assert.equal('quickCode' in post.body, false, 'blank quick code must be filled by the server');

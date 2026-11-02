@@ -154,7 +154,7 @@
     },
     {
       id: 'AM-1049', name: 'Impresora de recepción', type: 'Impresora', category: 'impresoras',
-      brand: 'Epson', model: 'WorkForce Pro WF-C5790', ip: '198.51.100.10',
+      brand: 'Epson', model: 'WorkForce Pro WF-C5790', ip: '10.0.4.18',
       location: 'Planta baja · Recepción', locationId: 'recepcion', site: 'norte', assignee: 'Operaciones', cost: 540,
       status: 'Asignado', statusTone: 'ok', image: 'assets/svg/devices/printer.svg', hasOwnImage: false,
       anydeskId: '', rmmAgentId: '', rmmOnline: false
@@ -210,7 +210,7 @@
     },
     {
       id: 'AM-1057', name: 'Cámara de recepción', type: 'Cámara IP', category: 'camaras',
-      brand: 'Axis', model: 'M3086-V', ip: '198.51.100.10', serial: 'AX-M3086-4471',
+      brand: 'Axis', model: 'M3086-V', ip: '10.0.4.61', serial: 'AX-M3086-4471',
       location: 'Planta baja · Recepción', locationId: 'recepcion', site: 'norte', assignee: '', cost: 340,
       status: 'Asignado', statusTone: 'ok', image: 'assets/svg/devices/camera.svg', hasOwnImage: true,
       fovImage: 'assets/svg/camera-fov.svg',
@@ -275,7 +275,7 @@
     },
     {
       id: 'AM-1064', name: 'Switch de acceso Norte', type: 'Switch', category: 'switches',
-      brand: 'Ubiquiti', model: 'USW-Pro-24-PoE', ip: '198.51.100.10', serial: 'UB-PRO24-77190',
+      brand: 'Ubiquiti', model: 'USW-Pro-24-PoE', ip: '10.0.4.2', serial: 'UB-PRO24-77190',
       location: 'Planta baja · Recepción', locationId: 'recepcion', site: 'norte', assignee: 'Redes', cost: 640,
       status: 'Asignado', statusTone: 'ok', image: 'assets/svg/devices/switch.svg', hasOwnImage: false,
       tech: { ports: 24, firmware: '6.6.65', mac: '74:AC:B9:22:0F:5E' },
@@ -283,7 +283,7 @@
     },
     {
       id: 'AM-1065', name: 'Equipo de recepción', type: 'Computadora', category: 'computadoras',
-      brand: 'HP', model: 'EliteDesk 800 G9', ip: '198.51.100.10', serial: 'HP-800G9-50127',
+      brand: 'HP', model: 'EliteDesk 800 G9', ip: '10.0.4.30', serial: 'HP-800G9-50127',
       location: 'Planta baja · Recepción', locationId: 'recepcion', site: 'norte', assignee: 'Diego Salas', cost: 1090,
       status: 'Asignado', statusTone: 'ok', image: 'assets/svg/devices/desktop.svg', hasOwnImage: false,
       tech: { cpu: 'Intel Core i5-13500', ram: '16 GB DDR4', storage: '512 GB NVMe', os: 'Windows 11 Pro', mac: '8C:16:45:90:2A:11' },
@@ -318,7 +318,7 @@
     },
     {
       id: 'AM-1069', name: 'Reloj biométrico de recepción', type: 'Reloj biométrico', category: 'otros',
-      brand: 'ZKTeco', model: 'SpeedFace-V5L', ip: '198.51.100.10', serial: 'ZK-V5L-772904',
+      brand: 'ZKTeco', model: 'SpeedFace-V5L', ip: '10.0.120.80', serial: 'ZK-V5L-772904',
       location: 'Planta baja · Recepción', locationId: 'recepcion', site: 'norte', assignee: 'Operaciones', cost: 690,
       status: 'Asignado', statusTone: 'ok', image: 'assets/svg/devices/other.svg', hasOwnImage: false,
       warranty: { until: '2028-02-14', provider: 'Biométrica Sur', note: 'Control de asistencia y acceso del personal.' },

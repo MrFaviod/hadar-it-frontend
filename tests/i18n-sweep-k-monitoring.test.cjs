@@ -226,7 +226,7 @@ test('the email preview keeps the Spanish bytes and switches the whole message',
 
   I18n.setLocale('es');
   const esPreview = engine.preview(state, 'smtp', alert, assets);
-  assert.equal(esPreview.from, 'Supervisión TI <noc@example-org.local>');
+  assert.equal(esPreview.from, 'Supervisión TI <noc@example.invalid>');
   assert.equal(esPreview.subject, '[Crítica] Servidor · cpu');
   assert.equal(
     esPreview.body,
@@ -240,7 +240,7 @@ test('the email preview keeps the Spanish bytes and switches the whole message',
 
   I18n.setLocale('en');
   const enPreview = engine.preview(state, 'smtp', alert, assets);
-  assert.equal(enPreview.from, 'IT monitoring <noc@example-org.local>');
+  assert.equal(enPreview.from, 'IT monitoring <noc@example.invalid>');
   assert.equal(enPreview.subject, '[Critical] Servidor · cpu');
   assert.match(enPreview.body, /^An issue has been detected on Servidor \(Sede Norte\)\./);
   assert.match(enPreview.body, /Open the alert: #\/supervision\/alerta\/ALT-9$/);

@@ -1038,7 +1038,7 @@ test('an instance validation refusal shows the server-safe reason and field deta
     engine: 'opencode',
     baseUrl: 'http://127.0.0.1:14963',
     secretRef: 'ITSM_OPENCODE_VERIFY_PASSWORD',
-    directory: '/home/example-user/Dev/itms/asset/.verification/opencode-integrations/opencode',
+    directory: '/srv/itsm/.verification/opencode-integrations/opencode',
     integrationIdentityId: MACHINE_ID
   });
 

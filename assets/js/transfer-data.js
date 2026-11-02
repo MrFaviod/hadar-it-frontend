@@ -195,9 +195,9 @@
           columns: ['Equipo', 'Categoría', 'Fabricante', 'Modelo', 'SN', 'IP', 'Usuario', 'Ubicación', 'Valor'],
           rows: [
             ['Notebook de soporte', 'Notebooks', 'Dell', 'Latitude 5440', 'DLL-5440-2210', '10.24.18.57', 'Diego Salas', 'Piso 1 · Soporte técnico', '1.280,00'],
-            ['Impresora de recepción', 'Impresoras', 'Epson', 'WorkForce Pro WF-C5790', 'EPS-WF5790-88', '198.51.100.10', 'Operaciones', 'Planta baja · Recepción', '540,00'],
+            ['Impresora de recepción', 'Impresoras', 'Epson', 'WorkForce Pro WF-C5790', 'EPS-WF5790-88', '10.0.4.18', 'Operaciones', 'Planta baja · Recepción', '540,00'],
             ['Monitor de recepción', 'Monitores', 'Samsung', 'ViewFinity S6', '', '', '', 'Planta baja · Recepción', '360,00'],
-            ['Cámara de recepción', 'Cámaras', 'Axis', 'M3086-V', 'AX-M3086-4471', '198.51.100.10', '', 'Planta baja · Recepción', '340,00']
+            ['Cámara de recepción', 'Cámaras', 'Axis', 'M3086-V', 'AX-M3086-4471', '10.0.4.61', '', 'Planta baja · Recepción', '340,00']
           ]
         },
         {

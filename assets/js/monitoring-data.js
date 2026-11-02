@@ -326,12 +326,12 @@
   const CHANNELS = {
     smtp: template(template(localized({
       enabled: true,
-      host: 'smtp.example-org.local',
+      host: 'smtp.example.invalid',
       port: 587,
       secure: true,
-      from: 'noc@example-org.local',
+      from: 'noc@example.invalid',
       fromNameKey: 'ui.monitoring.channel.from_name',
-      recipients: 'guardia@example-org.local; soporte@example-org.local',
+      recipients: 'guardia@example.invalid; soporte@example.invalid',
       subjectKey: 'ui.monitoring.channel.subject',
       templateKey: 'ui.monitoring.channel.template',
       lastTestAt: isoAgo(1200),
@@ -339,7 +339,7 @@
     }, ['fromName']), 'subject'), 'template'),
     telegram: {
       enabled: false,
-      botName: 'example-org_noc_bot',
+      botName: 'empresa_noc_bot',
       token: '8123456789:AAF-DEMO-token-simulado',
       chatIds: '-1001987654321; 482119034',
       template: '{severity} · {asset}\n{title}\n{message}\n\n{link}',
@@ -359,7 +359,7 @@
     {
       id: 'esc-02', label: 'Altas sin reconocer', severity: 'alta', categories: [], sites: [],
       channels: ['smtp'], afterMinutes: 15, window: 'always', requireUnack: true,
-      recipients: 'guardia@example-org.local', enabled: true
+      recipients: 'guardia@example.invalid', enabled: true
     },
     {
       id: 'esc-03', label: 'Medianas en horario laboral', severity: 'media', categories: [], sites: [],

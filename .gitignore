@@ -5,3 +5,12 @@ dist/
 .codegraph/
 __pycache__/
 *.local
+
+# Private working records: kept local, never published
+AGENTS.md
+odd/
+docs/reviews/
+.worktrees/
+.publish/
+.env
+.env.*

@@ -7,3 +7,12 @@ dist
 .codegraph
 __pycache__
 *.local
+
+# Private working records are not part of a build context
+AGENTS.md
+odd
+docs/reviews
+.worktrees
+.publish
+.env
+.env.*
