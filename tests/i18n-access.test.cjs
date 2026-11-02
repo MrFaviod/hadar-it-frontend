@@ -142,3 +142,30 @@ test('a rejected preference keeps the current language and reports the failure',
   assert.equal(c.ItsmI18n.activeLocale, 'es');
   assert.equal(app.lastToast, 'El servidor rechazó la solicitud: Idioma no admitido.');
 });
+
+test('D11 a rejected write keeps its existing fields and adds only the report', async () => {
+  const s = setup();
+  const { c } = s;
+  const report = { locale: 'en', valid: false, entries: 1, applied: 0, problems: [{ key: 'api.unknown.key', reason: 'unknown_key', message: 'La clave no existe.' }] };
+  c.fetch = failure(422, { error: { code: 'validation_error', message: 'La importación tiene 1 problema.', key: 'api.i18n.import_invalid' }, details: [], report });
+  await assert.rejects(
+    () => c.AssetAccess.request(s.app, '/i18n/import', { method: 'POST', body: { locale: 'en', format: 'json', content: '{}' } }),
+    (error) => {
+      assert.equal(error.message, 'La importación tiene 1 problema.', 'the message is unchanged');
+      assert.equal(error.code, 'validation_error', 'the code is unchanged');
+      assert.deepEqual(error.details, [], 'the detail list is unchanged');
+      assert.deepEqual(error.report, report, 'the documented report rides on the error');
+      return true;
+    }
+  );
+
+  c.fetch = failure(422, { error: { code: 'validation_error', message: 'El nombre ya existe.', key: 'api.assets.name_taken' }, details: [] });
+  await assert.rejects(
+    () => c.AssetAccess.request(s.app, '/assets'),
+    (error) => {
+      assert.equal(error.message, 'El nombre ya existe.');
+      assert.equal('report' in error, false, 'an envelope without a report gains no field');
+      return true;
+    }
+  );
+});

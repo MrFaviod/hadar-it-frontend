@@ -549,7 +549,7 @@
                     <input type="checkbox" :checked="selectedIds.indexOf(asset.id) !== -1" @change="toggleAsset(asset.id)">
                     <span class="tx-picker__body">
                       <strong>{{ asset.name }}</strong>
-                      <small class="mono">{{ asset.id }} · {{ asset.site || 'Sin sede' }}</small>
+                      <small class="mono">{{ asset.id }} · {{ asset.site || $t('ui.transfer.no_site') }}</small>
                     </span>
                     <span class="tx-state" :class="'tx-state--' + (asset.retired ? 'down' : 'ok')"><span class="tx-dot"></span>{{ asset.status }}</span>
                   </label>

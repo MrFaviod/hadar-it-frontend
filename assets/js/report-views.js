@@ -589,7 +589,7 @@
               <header class="doc-preview-toolbar">
                 <div>
                   <p class="eyebrow">{{ $t('ui.reports.step_preview') }}</p>
-                  <h2>{{ draft ? draft.name : 'Sin plantilla' }}</h2>
+                  <h2>{{ draft ? draft.name : $t('ui.reports.no_template') }}</h2>
                   <p>{{ $t('ui.reports.selection_summary', { count: selectedCount, document: composition === 'individual' ? $t('ui.reports.doc_per_asset') : $t('ui.reports.doc_consolidated'), output: outputLabel(output) }) }}</p>
                 </div>
                 <button type="button" class="btn btn--secondary" :disabled="previewState.loading || !draft" @click="previewReport">
@@ -633,14 +633,14 @@
                 <div class="doc-section-label"><strong>{{ $t('ui.reports.blocks') }}</strong><span class="mono">{{ draft.blocks.length }}</span></div>
                 <div class="doc-block-list">
                   <div v-for="(item, index) in draft.blocks" :key="item.id" class="doc-block-row">
-                    <input type="checkbox" :checked="item.enabled !== false" :aria-label="'Activar ' + item.label" @change="toggleBlock(item)">
+                    <input type="checkbox" :checked="item.enabled !== false" :aria-label="$t('ui.reports.block_enable_aria', { name: item.label })" @change="toggleBlock(item)">
                     <span><strong>{{ item.label }}</strong><small class="mono">{{ item.type }}</small></span>
                     <div class="doc-block-moves">
-                      <button type="button" class="btn btn--ghost btn--small" :disabled="index === 0" :aria-label="'Subir ' + item.label" @click="moveBlock(index, -1)">↑</button>
-                      <button type="button" class="btn btn--ghost btn--small" :disabled="index === draft.blocks.length - 1" :aria-label="'Bajar ' + item.label" @click="moveBlock(index, 1)">↓</button>
-                      <button type="button" class="btn btn--ghost btn--small" :aria-label="'Quitar ' + item.label" @click="removeBlock(index)">×</button>
+                      <button type="button" class="btn btn--ghost btn--small" :disabled="index === 0" :aria-label="$t('ui.reports.block_move_up_aria', { name: item.label })" @click="moveBlock(index, -1)">↑</button>
+                      <button type="button" class="btn btn--ghost btn--small" :disabled="index === draft.blocks.length - 1" :aria-label="$t('ui.reports.block_move_down_aria', { name: item.label })" @click="moveBlock(index, 1)">↓</button>
+                      <button type="button" class="btn btn--ghost btn--small" :aria-label="$t('ui.reports.block_remove_aria', { name: item.label })" @click="removeBlock(index)">×</button>
                     </div>
-                    <input v-if="item.type === 'heading' || item.type === 'text' || item.type === 'footer'" v-model="item.text" :aria-label="'Texto de ' + item.label" maxlength="500">
+                    <input v-if="item.type === 'heading' || item.type === 'text' || item.type === 'footer'" v-model="item.text" :aria-label="$t('ui.reports.block_text_aria', { name: item.label })" maxlength="500">
                   </div>
                 </div>
                 <div class="doc-inline">
