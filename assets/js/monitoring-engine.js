@@ -8,8 +8,39 @@
   const HISTORY_LIMIT = 200;
   const NOTIFICATION_LIMIT = 80;
   const DAY_MS = 86400000;
-  const DAY_SHORT = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
-  const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+  function runtime() {
+    return typeof window !== 'undefined' ? window.ItsmI18n : null;
+  }
+
+  // Every visible label and message below is a catalog key resolved on read, so
+  // a locale switch re-reads the catalog instead of keeping the language that
+  // was active when the module loaded (D2, D3).
+  function tr(key, params) {
+    const api = runtime();
+    return api ? api.t(key, params) : '';
+  }
+
+  // Chart axis labels: short weekday and month names per locale.
+  const DAY_SHORT_KEYS = [
+    'ui.monitoring.day_short.sun', 'ui.monitoring.day_short.mon', 'ui.monitoring.day_short.tue',
+    'ui.monitoring.day_short.wed', 'ui.monitoring.day_short.thu', 'ui.monitoring.day_short.fri',
+    'ui.monitoring.day_short.sat'
+  ];
+  const MONTH_KEYS = [
+    'ui.monitoring.month_short.jan', 'ui.monitoring.month_short.feb', 'ui.monitoring.month_short.mar',
+    'ui.monitoring.month_short.apr', 'ui.monitoring.month_short.may', 'ui.monitoring.month_short.jun',
+    'ui.monitoring.month_short.jul', 'ui.monitoring.month_short.aug', 'ui.monitoring.month_short.sep',
+    'ui.monitoring.month_short.oct', 'ui.monitoring.month_short.nov', 'ui.monitoring.month_short.dec'
+  ];
+
+  function dayShort(day) {
+    return tr(DAY_SHORT_KEYS[day] || DAY_SHORT_KEYS[0]);
+  }
+
+  function monthShort(month) {
+    return tr(MONTH_KEYS[month] || MONTH_KEYS[0]);
+  }
 
   function text(value, fallback) {
     return typeof value === 'string' && value.trim() ? value.trim() : (fallback || '');
@@ -77,8 +108,8 @@
   }
 
   function channelMeta(id) {
-    if (id === 'smtp') return { id: 'smtp', label: 'Correo SMTP', icon: 'mail' };
-    if (id === 'telegram') return { id: 'telegram', label: 'Telegram', icon: 'send' };
+    if (id === 'smtp') return { id: 'smtp', label: tr('ui.monitoring.channel.smtp'), icon: 'mail' };
+    if (id === 'telegram') return { id: 'telegram', label: tr('ui.monitoring.channel.telegram'), icon: 'send' };
     return { id: id, label: id, icon: 'info' };
   }
 
@@ -94,10 +125,12 @@
       } else if (crit >= warn) {
         crit = warn - Math.max(base.step, 1);
       }
-      return Object.assign({}, base, {
+      // The copy keeps the catalog keys, so re-attaching the getters keeps the
+      // normalized check hot-switchable instead of freezing its first label.
+      return Data.relabel(Object.assign({}, base, {
         warn: Math.round(warn * 100) / 100,
         crit: Math.round(crit * 100) / 100
-      });
+      }), base);
     });
   }
 
@@ -190,7 +223,7 @@
         until: isoOr(item.until, ''),
         reason: text(item.reason).slice(0, 200),
         createdAt: isoOr(item.createdAt, nowIso()),
-        createdBy: text(item.createdBy, 'Administrador')
+        createdBy: text(item.createdBy, tr('ui.monitoring.actor.administrator'))
       });
       return result;
     }, []);
@@ -228,24 +261,47 @@
     }, []);
   }
 
+  // The SMTP sender, subject and body ship as catalog copy. While the stored
+  // channel has no value of its own the getter re-reads the catalog default, so
+  // a locale switch updates the preview and a saved override still wins.
+  function channelCopy(target, property, stored, fallback, limit, trim) {
+    Object.defineProperty(target, property, {
+      enumerable: true,
+      configurable: true,
+      get: function () {
+        const value = Object.prototype.hasOwnProperty.call(stored, property) ? stored[property] : fallback();
+        if (typeof value !== 'string') return '';
+        return (trim ? value.trim() : value).slice(0, limit);
+      },
+      set: function (value) {
+        stored[property] = value;
+      }
+    });
+    return target;
+  }
+
   function normalizeChannels(value) {
     const source = value && typeof value === 'object' ? value : {};
-    const smtp = Object.assign({}, Data.CHANNELS.smtp, source.smtp && typeof source.smtp === 'object' ? source.smtp : {});
+    const smtpInput = source.smtp && typeof source.smtp === 'object' ? source.smtp : {};
+    const smtp = Object.assign({}, Data.CHANNELS.smtp, smtpInput);
     const telegram = Object.assign({}, Data.CHANNELS.telegram, source.telegram && typeof source.telegram === 'object' ? source.telegram : {});
+    const smtpChannel = {
+      enabled: smtp.enabled !== false,
+      host: text(smtp.host).slice(0, 120),
+      port: clamp(Math.round(num(smtp.port, 587)), 1, 65535),
+      secure: smtp.secure !== false,
+      from: text(smtp.from).slice(0, 120),
+      recipients: text(smtp.recipients).slice(0, 400),
+      lastTestAt: isoOr(smtp.lastTestAt, ''),
+      lastTestResult: smtp.lastTestResult === 'ok' || smtp.lastTestResult === 'error' ? smtp.lastTestResult : ''
+    };
+    [['fromName', 80, true], ['subject', 160, true], ['template', 1200, false]].forEach(function (field) {
+      channelCopy(smtpChannel, field[0], smtpInput, function () {
+        return Data.CHANNELS.smtp[field[0]];
+      }, field[1], field[2]);
+    });
     return {
-      smtp: {
-        enabled: smtp.enabled !== false,
-        host: text(smtp.host).slice(0, 120),
-        port: clamp(Math.round(num(smtp.port, 587)), 1, 65535),
-        secure: smtp.secure !== false,
-        from: text(smtp.from).slice(0, 120),
-        fromName: text(smtp.fromName).slice(0, 80),
-        recipients: text(smtp.recipients).slice(0, 400),
-        subject: text(smtp.subject).slice(0, 160),
-        template: typeof smtp.template === 'string' ? smtp.template.slice(0, 1200) : '',
-        lastTestAt: isoOr(smtp.lastTestAt, ''),
-        lastTestResult: smtp.lastTestResult === 'ok' || smtp.lastTestResult === 'error' ? smtp.lastTestResult : ''
-      },
+      smtp: smtpChannel,
       telegram: {
         enabled: telegram.enabled === true,
         botName: text(telegram.botName).slice(0, 80),
@@ -560,8 +616,8 @@
 
   function pointLabel(date, range) {
     if (range.id === '24h') return pad(date.getHours()) + ':00';
-    if (range.id === '7d') return DAY_SHORT[date.getDay()] + ' ' + pad(date.getHours()) + 'h';
-    return date.getDate() + ' ' + MONTHS[date.getMonth()];
+    if (range.id === '7d') return dayShort(date.getDay()) + ' ' + pad(date.getHours()) + 'h';
+    return date.getDate() + ' ' + monthShort(date.getMonth());
   }
 
   function pointsFor(rangeId, now) {
@@ -745,8 +801,8 @@
     const value = alert.threshold.value;
     const limit = alert.threshold.limit;
     if (value === undefined || limit === undefined) return '';
-    const direction = check && check.direction === 'below' ? 'por debajo de' : 'por encima de';
-    return value + ' ' + unit + ' · umbral ' + direction + ' ' + limit + ' ' + unit;
+    const key = check && check.direction === 'below' ? 'ui.monitoring.threshold.below' : 'ui.monitoring.threshold.above';
+    return tr(key, { value: value, unit: unit, limit: limit });
   }
 
   // ---------------------------------------------------------------- mutations
@@ -778,7 +834,7 @@
       id: 'not-' + Date.now().toString(36) + '-' + Math.round(Math.random() * 1000),
       kind: ['alert', 'incident', 'maintenance', 'system'].indexOf(input.kind) !== -1 ? input.kind : 'alert',
       severity: Data.PRIORITIES.some((item) => item.id === input.severity) ? input.severity : 'media',
-      title: text(input.title, 'Aviso de supervisión').slice(0, 140),
+      title: text(input.title, tr('ui.monitoring.notice.default_title')).slice(0, 140),
       body: text(input.body).slice(0, 300),
       at: nowIso(),
       readAt: '',
@@ -794,31 +850,34 @@
   function acknowledge(state, maintenance, alertId, context) {
     const ctx = context || {};
     const alert = ((maintenance || {}).alerts || []).find((entry) => entry.id === alertId);
-    if (!alert) return { ok: false, errors: ['La alerta ya no está disponible.'] };
-    if (alert.acknowledgedAt) return { ok: false, errors: ['La alerta ya está reconocida.'] };
+    if (!alert) return { ok: false, errors: [tr('ui.monitoring.error.alert_missing')] };
+    if (alert.acknowledgedAt) return { ok: false, errors: [tr('ui.monitoring.error.alert_acknowledged')] };
     alert.acknowledgedAt = nowIso();
-    alert.acknowledgedBy = text(ctx.actor, 'Administrador');
-    logEvent(alert, 'acknowledged', 'Reconocida por ' + alert.acknowledgedBy + '. El problema continúa bajo seguimiento.');
+    alert.acknowledgedBy = text(ctx.actor, tr('ui.monitoring.actor.administrator'));
+    logEvent(alert, 'acknowledged', tr('ui.monitoring.log.acknowledged', { actor: alert.acknowledgedBy }));
     return { ok: true, errors: [], alert: alert };
   }
 
   function silence(state, maintenance, alertId, hours, reason, context) {
     const ctx = context || {};
     const alert = ((maintenance || {}).alerts || []).find((entry) => entry.id === alertId);
-    if (!alert) return { ok: false, errors: ['La alerta ya no está disponible.'] };
+    if (!alert) return { ok: false, errors: [tr('ui.monitoring.error.alert_missing')] };
     const span = clamp(Math.round(num(hours, 4)), 1, 168);
     alert.silencedUntil = new Date(Date.now() + span * 3600000).toISOString();
     alert.silenceReason = text(reason).slice(0, 200);
-    logEvent(alert, 'silenced', 'Silenciada ' + span + ' h por ' + text(ctx.actor, 'Administrador') + '.');
+    logEvent(alert, 'silenced', tr('ui.monitoring.log.silenced', {
+      hours: span,
+      actor: text(ctx.actor, tr('ui.monitoring.actor.administrator'))
+    }));
     return { ok: true, errors: [], alert: alert };
   }
 
   function clearSilence(state, maintenance, alertId) {
     const alert = ((maintenance || {}).alerts || []).find((entry) => entry.id === alertId);
-    if (!alert) return { ok: false, errors: ['La alerta ya no está disponible.'] };
+    if (!alert) return { ok: false, errors: [tr('ui.monitoring.error.alert_missing')] };
     alert.silencedUntil = '';
     alert.silenceReason = '';
-    logEvent(alert, 'unsilenced', 'El silenciamiento se canceló manualmente.');
+    logEvent(alert, 'unsilenced', tr('ui.monitoring.log.unsilenced'));
     return { ok: true, errors: [], alert: alert };
   }
 
@@ -826,8 +885,8 @@
     const ctx = context || {};
     const asset = (assets || []).find((entry) => entry.id === assetId);
     const probe = probeOf(state, assetId);
-    if (!asset || !probe) return { ok: false, errors: ['El dispositivo no tiene supervisión activa.'], recovered: 0 };
-    if (probe.status === 'up') return { ok: false, errors: ['El dispositivo ya figura como disponible.'], recovered: 0 };
+    if (!asset || !probe) return { ok: false, errors: [tr('ui.monitoring.error.device_unmonitored')], recovered: 0 };
+    if (probe.status === 'up') return { ok: false, errors: [tr('ui.monitoring.error.device_available')], recovered: 0 };
     probe.status = 'up';
     probe.downSince = '';
     probe.lastCheckAt = nowIso();
@@ -843,22 +902,22 @@
     open.forEach((alert) => {
       alert.recoveredAt = nowIso();
       alert.state = 'recovered';
-      logEvent(alert, 'recovered', 'El equipo vuelve a responder. La resolución de la alerta se confirma aparte.');
+      logEvent(alert, 'recovered', tr('ui.monitoring.log.recovered'));
       const incident = incidents.find((entry) => entry.id === alert.incidentId) || null;
       alert.suggestion = !!incident && incident.state !== 'resuelto' && incident.state !== 'cerrado';
     });
-    pushHistory(asset, 'Recuperación detectada',
+    pushHistory(asset, tr('ui.monitoring.history.recovery_detected'),
       open.length
-        ? 'El dispositivo vuelve a responder. ' + open.map((alert) => alert.id).join(', ') + ' quedan recuperadas sin cerrar.'
-        : 'El dispositivo vuelve a responder a la comprobación de disponibilidad.',
-      { actor: text(ctx.actor, 'Administrador'), movement: 'monitoring' });
+        ? tr('ui.monitoring.history.recovery_open', { ids: open.map((alert) => alert.id).join(', ') })
+        : tr('ui.monitoring.history.recovery_detail'),
+      { actor: text(ctx.actor, tr('ui.monitoring.actor.administrator')), movement: 'monitoring' });
     notify(state, {
       kind: 'alert',
       severity: 'media',
-      title: asset.name + ' vuelve a estar disponible',
+      title: tr('ui.monitoring.notice.recovered_title', { asset: asset.name }),
       body: open.length
-        ? 'Se recuperaron ' + open.length + ' alertas. La resolución sigue pendiente de confirmación.'
-        : 'La supervisión vuelve a obtener respuesta del equipo.',
+        ? tr('ui.monitoring.notice.recovered_body', { count: open.length })
+        : tr('ui.monitoring.notice.recovered_body_idle'),
       assetId: asset.id,
       alertId: open.length ? open[0].id : ''
     });
@@ -868,18 +927,18 @@
   function resolveAlert(state, maintenance, assets, alertId, context) {
     const ctx = context || {};
     const alert = ((maintenance || {}).alerts || []).find((entry) => entry.id === alertId);
-    if (!alert) return { ok: false, errors: ['La alerta ya no está disponible.'] };
-    if (alert.state === 'resolved') return { ok: false, errors: ['La alerta ya está resuelta.'] };
+    if (!alert) return { ok: false, errors: [tr('ui.monitoring.error.alert_missing')] };
+    if (alert.state === 'resolved') return { ok: false, errors: [tr('ui.monitoring.error.alert_resolved')] };
     if (!alert.recoveredAt && alert.state === 'open') {
-      return { ok: false, errors: ['El problema sigue activo. Marca la recuperación antes de resolver la alerta.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.alert_active')] };
     }
     alert.state = 'resolved';
     alert.resolvedAt = nowIso();
-    alert.resolvedBy = text(ctx.actor, 'Administrador');
+    alert.resolvedBy = text(ctx.actor, tr('ui.monitoring.actor.administrator'));
     alert.suggestion = false;
-    logEvent(alert, 'resolved', 'Resuelta por ' + alert.resolvedBy + '.');
+    logEvent(alert, 'resolved', tr('ui.monitoring.log.resolved', { actor: alert.resolvedBy }));
     const asset = (assets || []).find((entry) => entry.id === alert.assetId);
-    pushHistory(asset, 'Alerta de supervisión resuelta',
+    pushHistory(asset, tr('ui.monitoring.history.alert_resolved'),
       alert.id + ' · ' + alert.message,
       { actor: alert.resolvedBy, movement: 'monitoring' });
     return { ok: true, errors: [], alert: alert };
@@ -889,7 +948,7 @@
     const ctx = context || {};
     const input = payload || {};
     const asset = (assets || []).find((entry) => entry.id === input.assetId);
-    if (!asset || !maintenance) return { ok: false, errors: ['No se encontró el dispositivo.'], alert: null };
+    if (!asset || !maintenance) return { ok: false, errors: [tr('ui.monitoring.error.device_missing')], alert: null };
     maintenance.alerts = Array.isArray(maintenance.alerts) ? maintenance.alerts : [];
     const nextNumber = maintenance.alerts.reduce((max, alert) => {
       const match = /^ALT-(\d+)$/.exec(alert.id || '');
@@ -901,7 +960,7 @@
       checkId: text(input.checkId),
       kind: text(input.kind, 'offline'),
       severity: Data.PRIORITIES.some((item) => item.id === input.severity) ? input.severity : 'alta',
-      message: text(input.message, 'Comprobación fuera de rango en ' + asset.name + '.').slice(0, 240),
+      message: text(input.message, tr('ui.monitoring.log.out_of_range', { asset: asset.name })).slice(0, 240),
       detectedAt: nowIso(),
       recoveredAt: '',
       state: 'open',
@@ -909,11 +968,11 @@
       suggestion: false,
       groupCount: 1,
       lastEventAt: nowIso(),
-      events: [{ id: 'ev-' + nextNumber + '-1', at: nowIso(), type: 'detected', text: text(input.detail, 'Primera detección de la comprobación.') }]
+      events: [{ id: 'ev-' + nextNumber + '-1', at: nowIso(), type: 'detected', text: text(input.detail, tr('ui.monitoring.log.first_detection')) }]
     };
     if (input.threshold) alert.threshold = clone(input.threshold);
     maintenance.alerts.unshift(alert);
-    pushHistory(asset, 'Alerta de supervisión', alert.id + ' · ' + alert.message, { actor: text(ctx.actor, 'Supervisión'), movement: 'monitoring' });
+    pushHistory(asset, tr('ui.monitoring.history.alert_created'), alert.id + ' · ' + alert.message, { actor: text(ctx.actor, tr('ui.monitoring.actor.monitoring')), movement: 'monitoring' });
     notify(state, {
       kind: 'alert', severity: alert.severity, title: asset.name + ' · ' + alertKindMeta(alert.kind).label,
       body: alert.message, alertId: alert.id, assetId: asset.id, channels: ['smtp']
@@ -935,8 +994,8 @@
         checkId: 'availability',
         kind: 'offline',
         severity: 'alta',
-        message: 'Sin respuesta a la comprobación de disponibilidad.',
-        detail: 'La comprobación programada no obtuvo respuesta del equipo.',
+        message: tr('ui.monitoring.log.no_response'),
+        detail: tr('ui.monitoring.log.no_response_detail'),
         threshold: { checkId: 'availability', value: 0, limit: 99, unit: '%' }
       }, context);
       return { created: result.alert };
@@ -950,8 +1009,13 @@
         checkId: row.check.id,
         kind: row.check.id === 'services' ? 'services' : (row.check.id === 'latency' ? 'latency' : 'temperature'),
         severity: 'alta',
-        message: row.check.label + ' en ' + row.value + ' ' + row.check.unit + ' supera el umbral crítico de ' + row.check.crit + ' ' + row.check.unit + '.',
-        detail: 'Detección automática de la comprobación ' + row.check.label + '.',
+        message: tr('ui.monitoring.log.threshold', {
+          check: row.check.label,
+          value: row.value,
+          unit: row.check.unit,
+          limit: row.check.crit
+        }),
+        detail: tr('ui.monitoring.log.auto_detection', { check: row.check.label }),
         threshold: { checkId: row.check.id, value: row.value, limit: row.check.crit, unit: row.check.unit }
       }, context);
       return { created: result.alert };
@@ -988,19 +1052,19 @@
 
   function convertToIncident(state, maintenance, assets, alertId, payload, context) {
     const ctx = context || {};
-    if (!MaintEngine.createFromAlert) return { ok: false, errors: ['El módulo de mantenimiento no está disponible.'], incident: null };
+    if (!MaintEngine.createFromAlert) return { ok: false, errors: [tr('ui.monitoring.error.maintenance_module')], incident: null };
     const alert = ((maintenance || {}).alerts || []).find((entry) => entry.id === alertId);
-    if (!alert) return { ok: false, errors: ['La alerta ya no está disponible.'], incident: null };
+    if (!alert) return { ok: false, errors: [tr('ui.monitoring.error.alert_missing')], incident: null };
     const result = MaintEngine.createFromAlert(maintenance, assets, alertId, payload || {}, {
-      actor: text(ctx.actor, 'Administrador'),
+      actor: text(ctx.actor, tr('ui.monitoring.actor.administrator')),
       actorId: text(ctx.actorId)
     });
     if (!result.ok) return result;
-    logEvent(alert, 'converted', 'Convertida en el incidente ' + result.incident.id + '.');
+    logEvent(alert, 'converted', tr('ui.monitoring.log.converted', { id: result.incident.id }));
     notify(state, {
       kind: 'incident',
       severity: alert.severity,
-      title: result.incident.id + ' · Incidente creado desde ' + alert.id,
+      title: tr('ui.monitoring.notice.incident_created', { id: result.incident.id, alertId: alert.id }),
       body: result.incident.title,
       alertId: alert.id,
       incidentId: result.incident.id,
@@ -1042,15 +1106,27 @@
     }) || null;
   }
 
+  // The channel label is a live getter: a channel state or an escalation plan
+  // can be kept between renders and still follow a locale switch.
+  function channelStateEntry(id, configured, enabled) {
+    const entry = { id: id, configured: configured, enabled: enabled };
+    Object.defineProperty(entry, 'label', {
+      enumerable: true,
+      configurable: true,
+      get: function () { return channelMeta(id).label; }
+    });
+    return entry;
+  }
+
   function channelState(state, id) {
     const channel = (state.channels || {})[id];
-    if (!channel) return { configured: false, enabled: false, label: channelMeta(id).label };
+    if (!channel) return channelStateEntry(id, false, false);
     if (id === 'smtp') {
       const configured = !!(channel.host && channel.from && channel.recipients);
-      return { configured: configured, enabled: channel.enabled, label: channelMeta(id).label };
+      return channelStateEntry(id, configured, channel.enabled);
     }
     const configured = !!(channel.botName && channel.token && channel.chatIds);
-    return { configured: configured, enabled: channel.enabled === true, label: channelMeta(id).label };
+    return channelStateEntry(id, configured, channel.enabled === true);
   }
 
   function ruleMatches(rule, alert, assets, state) {
@@ -1073,7 +1149,7 @@
       const at = Date.parse(alert.detectedAt) + rule.afterMinutes * 60000;
       const channels = rule.channels.map((id) => {
         const status = channelState(state, id);
-        return { id: id, label: channelMeta(id).label, configured: status.configured, enabled: status.enabled };
+        return channelStateEntry(id, status.configured, status.enabled);
       });
       let status = 'scheduled';
       if (!applicable) status = 'skipped';
@@ -1098,6 +1174,13 @@
 
   const TEMPLATE_KEYS = ['severity', 'asset', 'site', 'title', 'message', 'detectedAt', 'state', 'link', 'incident'];
 
+  function formatStamp(value) {
+    const api = runtime();
+    // formatDate is the exact-options entry point: dateStyle/timeStyle cannot be
+    // merged with the day/month/year bundle datetime() applies.
+    return api ? api.formatDate(value, { dateStyle: 'short', timeStyle: 'short' }) : '';
+  }
+
   function templateContext(alert, assets) {
     const asset = (assets || []).find((item) => item.id === alert.assetId) || null;
     return {
@@ -1106,10 +1189,10 @@
       site: asset ? asset.site : '',
       title: alertKindMeta(alert.kind).label,
       message: alert.message,
-      detectedAt: new Date(alert.detectedAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }),
+      detectedAt: formatStamp(alert.detectedAt),
       state: alertStateMeta(alert.state).label,
       link: '#/supervision/alerta/' + alert.id,
-      incident: alert.incidentId || 'Sin incidente'
+      incident: alert.incidentId || tr('ui.monitoring.template.no_incident')
     };
   }
 
@@ -1142,14 +1225,14 @@
   function saveThresholds(state, payload) {
     const input = payload || {};
     const check = checkById(state, input.id);
-    if (!check) return { ok: false, errors: ['La comprobación ya no está disponible.'] };
+    if (!check) return { ok: false, errors: [tr('ui.monitoring.error.check_missing')] };
     const warn = num(input.warn, check.warn);
     const crit = num(input.crit, check.crit);
     if (check.direction === 'above' && crit <= warn) {
-      return { ok: false, errors: ['El umbral crítico debe ser mayor que el umbral de aviso.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.threshold_above')] };
     }
     if (check.direction === 'below' && crit >= warn) {
-      return { ok: false, errors: ['El umbral crítico debe ser menor que el umbral de aviso.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.threshold_below')] };
     }
     check.warn = Math.round(warn * 100) / 100;
     check.crit = Math.round(crit * 100) / 100;
@@ -1159,12 +1242,12 @@
   function savePolicy(state, category, payload) {
     const input = payload || {};
     const policy = policyFor(state, category);
-    if (!policy) return { ok: false, errors: ['La categoría ya no está disponible.'] };
+    if (!policy) return { ok: false, errors: [tr('ui.monitoring.error.category_missing')] };
     const validIds = state.checks.map((check) => check.id);
     const checkIds = (Array.isArray(input.checkIds) ? input.checkIds : policy.checkIds)
       .filter((id, index, all) => validIds.indexOf(id) !== -1 && all.indexOf(id) === index);
     if (input.enabled !== false && !checkIds.length) {
-      return { ok: false, errors: ['Selecciona al menos una comprobación para activar la categoría.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.policy_checks')] };
     }
     policy.enabled = input.enabled !== false;
     policy.intervalMinutes = clamp(Math.round(num(input.intervalMinutes, policy.intervalMinutes)), 1, 1440);
@@ -1176,7 +1259,7 @@
     const input = payload || {};
     const asset = input.asset || null;
     const id = text(assetId, input.assetId);
-    if (!id) return { ok: false, errors: ['Selecciona un activo.'] };
+    if (!id) return { ok: false, errors: [tr('ui.monitoring.error.asset_required')] };
     const validIds = state.checks.map((check) => check.id);
     let exception = exceptionFor(state, id);
     if (!exception) {
@@ -1186,7 +1269,7 @@
     const checkIds = (Array.isArray(input.checkIds) ? input.checkIds : exception.checkIds)
       .filter((checkId, index, all) => validIds.indexOf(checkId) !== -1 && all.indexOf(checkId) === index);
     if (input.enabled !== false && !checkIds.length) {
-      return { ok: false, errors: ['Selecciona al menos una comprobación.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.exception_checks')] };
     }
     exception.enabled = input.enabled !== false;
     exception.intervalMinutes = clamp(Math.round(num(input.intervalMinutes, exception.intervalMinutes)), 1, 1440);
@@ -1197,7 +1280,7 @@
 
   function removeException(state, assetId) {
     const index = (state.exceptions || []).findIndex((item) => item.assetId === assetId);
-    if (index === -1) return { ok: false, errors: ['La excepción ya no existe.'] };
+    if (index === -1) return { ok: false, errors: [tr('ui.monitoring.error.exception_missing')] };
     state.exceptions.splice(index, 1);
     return { ok: true, errors: [] };
   }
@@ -1206,10 +1289,10 @@
     const input = payload || {};
     const scope = input.scope === 'category' ? 'category' : 'asset';
     const target = text(input.target);
-    if (!target) return { ok: false, errors: ['Selecciona el alcance del silenciamiento.'] };
+    if (!target) return { ok: false, errors: [tr('ui.monitoring.error.silence_scope')] };
     const hours = clamp(Math.round(num(input.hours, 4)), 1, 720);
     if (state.silences.some((silence) => silence.scope === scope && silence.target === target)) {
-      return { ok: false, errors: ['Ya existe un silenciamiento para ese alcance.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.silence_exists')] };
     }
     state.silences.unshift({
       id: 'sil-' + Date.now().toString(36),
@@ -1218,14 +1301,14 @@
       until: new Date(Date.now() + hours * 3600000).toISOString(),
       reason: text(input.reason).slice(0, 200),
       createdAt: nowIso(),
-      createdBy: text((context || {}).actor, 'Administrador')
+      createdBy: text((context || {}).actor, tr('ui.monitoring.actor.administrator'))
     });
     return { ok: true, errors: [] };
   }
 
   function removeSilence(state, id) {
     const index = (state.silences || []).findIndex((silence) => silence.id === id);
-    if (index === -1) return { ok: false, errors: ['El silenciamiento ya no existe.'] };
+    if (index === -1) return { ok: false, errors: [tr('ui.monitoring.error.silence_missing')] };
     state.silences.splice(index, 1);
     return { ok: true, errors: [] };
   }
@@ -1233,7 +1316,7 @@
   function saveWindow(state, payload) {
     const input = payload || {};
     const label = text(input.label);
-    if (!label) return { ok: false, errors: ['La ventana necesita un nombre.'] };
+    if (!label) return { ok: false, errors: [tr('ui.monitoring.error.window_name')] };
     const days = (Array.isArray(input.days) ? input.days : [1, 2, 3, 4, 5])
       .map((day) => Math.round(num(day, -1)))
       .filter((day, index, all) => day >= 0 && day <= 6 && all.indexOf(day) === index);
@@ -1259,7 +1342,7 @@
 
   function removeWindow(state, id) {
     const index = (state.windows || []).findIndex((window) => window.id === id);
-    if (index === -1) return { ok: false, errors: ['La ventana ya no existe.'] };
+    if (index === -1) return { ok: false, errors: [tr('ui.monitoring.error.window_missing')] };
     state.windows.splice(index, 1);
     return { ok: true, errors: [] };
   }
@@ -1267,13 +1350,13 @@
   function saveChannel(state, id, payload) {
     const input = payload || {};
     const channel = state.channels[id];
-    if (!channel) return { ok: false, errors: ['El canal ya no está disponible.'] };
+    if (!channel) return { ok: false, errors: [tr('ui.monitoring.error.channel_missing')] };
     if (id === 'smtp') {
       if (input.enabled && (!text(input.host) || !text(input.from) || !text(input.recipients))) {
-        return { ok: false, errors: ['Para activar el correo hacen falta servidor, remitente y destinatarios.'] };
+        return { ok: false, errors: [tr('ui.monitoring.error.smtp_fields')] };
       }
       const port = Math.round(num(input.port, channel.port));
-      if (!(port > 0 && port <= 65535)) return { ok: false, errors: ['El puerto debe estar entre 1 y 65535.'] };
+      if (!(port > 0 && port <= 65535)) return { ok: false, errors: [tr('ui.monitoring.error.port_range')] };
       Object.assign(channel, {
         enabled: input.enabled !== false,
         host: text(input.host),
@@ -1282,13 +1365,15 @@
         from: text(input.from),
         fromName: text(input.fromName),
         recipients: text(input.recipients),
-        subject: text(input.subject),
-        template: typeof input.template === 'string' ? input.template : channel.template
+        subject: text(input.subject)
       });
+      // The stored body only wins when the form actually sends one: copying the
+      // catalog default back would freeze it in the language of the save.
+      if (typeof input.template === 'string') channel.template = input.template;
       return { ok: true, errors: [], channel: channel };
     }
     if (input.enabled && (!text(input.botName) || !text(input.token) || !text(input.chatIds))) {
-      return { ok: false, errors: ['Para activar Telegram hacen falta nombre del bot, token y destinatarios.'] };
+      return { ok: false, errors: [tr('ui.monitoring.error.telegram_fields')] };
     }
     Object.assign(channel, {
       enabled: input.enabled === true,
@@ -1303,26 +1388,26 @@
 
   function testChannel(state, id, context) {
     const status = channelState(state, id);
-    if (!status.configured) return { ok: false, errors: ['El canal todavía no está configurado.'] };
+    if (!status.configured) return { ok: false, errors: [tr('ui.monitoring.error.channel_unconfigured')] };
     const channel = state.channels[id];
     channel.lastTestAt = nowIso();
     channel.lastTestResult = 'ok';
     notify(state, {
       kind: 'system',
       severity: 'baja',
-      title: 'Prueba de ' + channelMeta(id).label + ' enviada',
-      body: 'Mensaje de prueba simulado a ' + (id === 'smtp' ? channel.recipients : channel.chatIds) + '.',
+      title: tr('ui.monitoring.notice.test_title', { channel: channelMeta(id).label }),
+      body: tr('ui.monitoring.notice.test_body', { target: id === 'smtp' ? channel.recipients : channel.chatIds }),
       channels: [id]
     });
-    return { ok: true, errors: [], actor: text((context || {}).actor, 'Administrador') };
+    return { ok: true, errors: [], actor: text((context || {}).actor, tr('ui.monitoring.actor.administrator')) };
   }
 
   function saveEscalation(state, payload) {
     const input = payload || {};
     const label = text(input.label);
-    if (!label) return { ok: false, errors: ['La regla necesita un nombre.'] };
+    if (!label) return { ok: false, errors: [tr('ui.monitoring.error.rule_name')] };
     const channels = (Array.isArray(input.channels) ? input.channels : ['smtp']).filter((id) => id === 'smtp' || id === 'telegram');
-    if (!channels.length) return { ok: false, errors: ['Selecciona al menos un canal.'] };
+    if (!channels.length) return { ok: false, errors: [tr('ui.monitoring.error.rule_channel')] };
     const target = input.id ? state.escalations.find((rule) => rule.id === input.id) : null;
     const data = {
       label: label,
@@ -1347,7 +1432,7 @@
 
   function removeEscalation(state, id) {
     const index = (state.escalations || []).findIndex((rule) => rule.id === id);
-    if (index === -1) return { ok: false, errors: ['La regla ya no existe.'] };
+    if (index === -1) return { ok: false, errors: [tr('ui.monitoring.error.rule_missing')] };
     state.escalations.splice(index, 1);
     return { ok: true, errors: [] };
   }
@@ -1369,7 +1454,7 @@
 
   function markNotificationRead(state, id) {
     const notification = (state.notifications || []).find((item) => item.id === id);
-    if (!notification) return { ok: false, errors: ['La notificación ya no está disponible.'] };
+    if (!notification) return { ok: false, errors: [tr('ui.monitoring.error.notification_unavailable')] };
     if (!notification.readAt) notification.readAt = nowIso();
     return { ok: true, errors: [], notification: notification };
   }

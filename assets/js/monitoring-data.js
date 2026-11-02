@@ -3,6 +3,63 @@
 
   const Maint = window.ASSET_MAINT || {};
 
+  function runtime() {
+    return typeof window !== 'undefined' ? window.ItsmI18n : null;
+  }
+
+  function tr(key, params) {
+    const api = runtime();
+    return api ? api.t(key, params) : '';
+  }
+
+  // The label, short and hint of every catalog entry are enumerable getters, so
+  // the views keep reading plain properties while the value is a live catalog
+  // lookup: a locale switch is never frozen into the dataset (D2, D3).
+  const LOCALIZED = ['label', 'short', 'hint'];
+
+  function relabel(entry, source, properties) {
+    const origin = source || entry;
+    (properties || LOCALIZED).forEach(function (property) {
+      const key = origin[property + 'Key'];
+      if (!key) return;
+      Object.defineProperty(entry, property, {
+        enumerable: true,
+        configurable: true,
+        get: function () { return tr(key); }
+      });
+    });
+    return entry;
+  }
+
+  function localized(entry, properties) {
+    return relabel(entry, entry, properties);
+  }
+
+  // A notification template carries `{severity}`, `{asset}` and the other
+  // tokens the preview replaces. The catalog message keeps them, so the getter
+  // passes each token back as its own value instead of letting the runtime
+  // interpolate it away.
+  const TEMPLATE_TOKENS = {
+    severity: '{severity}',
+    asset: '{asset}',
+    site: '{site}',
+    title: '{title}',
+    message: '{message}',
+    detectedAt: '{detectedAt}',
+    state: '{state}',
+    link: '{link}'
+  };
+
+  function template(entry, property) {
+    const key = entry[property + 'Key'];
+    Object.defineProperty(entry, property, {
+      enumerable: true,
+      configurable: true,
+      get: function () { return tr(key, TEMPLATE_TOKENS); }
+    });
+    return entry;
+  }
+
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
   }
@@ -32,10 +89,11 @@
   // The catalogue is the modular part of the supervision: availability is the
   // base level and every other check adds a metric with its own thresholds.
   const CHECKS = [
-    {
+    localized({
       id: 'availability',
-      label: 'Disponibilidad',
-      short: 'Dispo.',
+      labelKey: 'ui.monitoring.device.metric_availability',
+      shortKey: 'ui.monitoring.check_short.availability',
+      hintKey: 'ui.monitoring.check_hint.availability',
       icon: 'activity',
       unit: '%',
       direction: 'below',
@@ -43,100 +101,99 @@
       crit: 95,
       metric: false,
       base: true,
-      step: 0.01,
-      hint: 'Respuesta al ping y al puerto de gestión del equipo.'
-    },
-    {
+      step: 0.01
+    }),
+    localized({
       id: 'latency',
-      label: 'Latencia',
-      short: 'Latencia',
+      labelKey: 'ui.monitoring.metric.latency',
+      shortKey: 'ui.monitoring.check_short.latency',
+      hintKey: 'ui.monitoring.check_hint.latency',
       icon: 'wifi',
       unit: 'ms',
       direction: 'above',
       warn: 60,
       crit: 120,
       metric: true,
-      step: 1,
-      hint: 'Tiempo de ida y vuelta medio de las últimas comprobaciones.'
-    },
-    {
+      step: 1
+    }),
+    localized({
       id: 'cpu',
-      label: 'CPU',
-      short: 'CPU',
+      labelKey: 'ui.monitoring.metric.cpu',
+      shortKey: 'ui.monitoring.check_short.cpu',
+      hintKey: 'ui.monitoring.check_hint.cpu',
       icon: 'activity',
       unit: '%',
       direction: 'above',
       warn: 75,
       crit: 90,
       metric: true,
-      step: 1,
-      hint: 'Uso medio del procesador durante el intervalo.'
-    },
-    {
+      step: 1
+    }),
+    localized({
       id: 'memory',
-      label: 'Memoria',
-      short: 'Mem.',
+      labelKey: 'ui.monitoring.metric.memory',
+      shortKey: 'ui.monitoring.check_short.memory',
+      hintKey: 'ui.monitoring.check_hint.memory',
       icon: 'layers',
       unit: '%',
       direction: 'above',
       warn: 80,
       crit: 92,
       metric: true,
-      step: 1,
-      hint: 'Memoria en uso sobre el total disponible.'
-    },
-    {
+      step: 1
+    }),
+    localized({
       id: 'disk',
-      label: 'Almacenamiento',
-      short: 'Disco',
+      labelKey: 'ui.monitoring.check_label.disk',
+      shortKey: 'ui.monitoring.metric.disk',
+      hintKey: 'ui.monitoring.check_hint.disk',
       icon: 'server',
       unit: '%',
       direction: 'above',
       warn: 80,
       crit: 90,
       metric: true,
-      step: 1,
-      hint: 'Ocupación del volumen principal.'
-    },
-    {
+      step: 1
+    }),
+    localized({
       id: 'temperature',
-      label: 'Temperatura',
-      short: 'Temp.',
+      labelKey: 'ui.monitoring.metric.temperature',
+      shortKey: 'ui.monitoring.check_short.temperature',
+      hintKey: 'ui.monitoring.check_hint.temperature',
       icon: 'thermometer',
       unit: '°C',
       direction: 'above',
       warn: 32,
       crit: 40,
       metric: true,
-      step: 0.1,
-      hint: 'Lectura de los sensores del equipo o de la sala.'
-    },
-    {
+      step: 0.1
+    }),
+    localized({
       id: 'services',
-      label: 'Servicios',
-      short: 'Servicios',
+      labelKey: 'ui.monitoring.check_label.services',
+      shortKey: 'ui.monitoring.check_short.services',
+      hintKey: 'ui.monitoring.check_hint.services',
       icon: 'sliders',
       unit: '%',
       direction: 'below',
       warn: 90,
       crit: 70,
       metric: true,
-      step: 1,
-      hint: 'Porcentaje de servicios activos sobre el total esperado del equipo.'
-    }
+      step: 1
+    })
   ];
 
   const STATUSES = [
-    { id: 'up', label: 'Disponible', tone: 'ok', icon: 'check', hint: 'Responde y todas las comprobaciones están dentro de rango.' },
-    { id: 'degraded', label: 'Degradado', tone: 'warn', icon: 'alert', hint: 'Responde, pero alguna comprobación supera el umbral de aviso.' },
-    { id: 'down', label: 'No disponible', tone: 'down', icon: 'x-circle', hint: 'No responde a la comprobación de disponibilidad.' },
-    { id: 'unmonitored', label: 'Sin supervisión', tone: 'neutral', icon: 'minus', hint: 'El equipo no tiene comprobaciones configuradas.' }
+    localized({ id: 'up', labelKey: 'ui.monitoring.status.up', hintKey: 'ui.monitoring.status_hint.up', tone: 'ok', icon: 'check' }),
+    localized({ id: 'degraded', labelKey: 'ui.monitoring.status.degraded', hintKey: 'ui.monitoring.status_hint.degraded', tone: 'warn', icon: 'alert' }),
+    localized({ id: 'down', labelKey: 'ui.monitoring.status.down', hintKey: 'ui.monitoring.status_hint.down', tone: 'down', icon: 'x-circle' }),
+    localized({ id: 'unmonitored', labelKey: 'ui.monitoring.status.unmonitored', hintKey: 'ui.monitoring.status_hint.unmonitored', tone: 'neutral', icon: 'minus' })
   ];
 
   const RANGES = [
-    { id: '24h', label: '24 horas', points: 24, stepHours: 1, hint: 'Último día' },
-    { id: '7d', label: '7 días', points: 28, stepHours: 6, hint: 'Última semana' },
-    { id: '30d', label: '30 días', points: 30, stepHours: 24, hint: 'Último mes' }
+    localized({ id: '24h', labelKey: 'ui.monitoring.period.24h', points: 24, stepHours: 1, hintKey: 'ui.monitoring.period_hint.24h' }),
+    localized({ id: '7d', labelKey: 'ui.monitoring.period.7d', points: 28, stepHours: 6, hintKey: 'ui.monitoring.period_hint.7d' }),
+    localized({ id: '30d', labelKey: 'ui.monitoring.period.30d', points: 30, stepHours: 24, hintKey: 'ui.monitoring.period_hint.30d' })
   ];
 
   // ---------------------------------------------------------------- policies
@@ -262,20 +319,24 @@
   ];
 
   // ---------------------------------------------------------------- channels
+  // The sender name, the subject and the body are catalog lookups as well. The
+  // subject and body keep their `{asset}`-style tokens: the getter passes each
+  // token back as its own value so the runtime does not interpolate it away
+  // before the preview renders the alert.
   const CHANNELS = {
-    smtp: {
+    smtp: template(template(localized({
       enabled: true,
       host: 'smtp.example-org.local',
       port: 587,
       secure: true,
       from: 'noc@example-org.local',
-      fromName: 'Supervisión TI',
+      fromNameKey: 'ui.monitoring.channel.from_name',
       recipients: 'guardia@example-org.local; soporte@example-org.local',
-      subject: '[{severity}] {asset} · {title}',
-      template: 'Se ha detectado una incidencia en {asset} ({site}).\n\n{message}\n\nSeveridad: {severity}\nDetectada: {detectedAt}\nEstado: {state}\n\nAbrir la alerta: {link}',
+      subjectKey: 'ui.monitoring.channel.subject',
+      templateKey: 'ui.monitoring.channel.template',
       lastTestAt: isoAgo(1200),
       lastTestResult: 'ok'
-    },
+    }, ['fromName']), 'subject'), 'template'),
     telegram: {
       enabled: false,
       botName: 'example-org_noc_bot',
@@ -357,10 +418,10 @@
   ];
 
   const NOTIFICATION_KINDS = [
-    { id: 'alert', label: 'Alerta', icon: 'alert', tone: 'warn' },
-    { id: 'incident', label: 'Incidente', icon: 'shield', tone: 'down' },
-    { id: 'maintenance', label: 'Mantenimiento', icon: 'refresh', tone: 'hold' },
-    { id: 'system', label: 'Sistema', icon: 'info', tone: 'neutral' }
+    localized({ id: 'alert', labelKey: 'ui.monitoring.notification_kind.alert', icon: 'alert', tone: 'warn' }),
+    localized({ id: 'incident', labelKey: 'ui.monitoring.notification_kind.incident', icon: 'shield', tone: 'down' }),
+    localized({ id: 'maintenance', labelKey: 'ui.monitoring.notification_kind.maintenance', icon: 'refresh', tone: 'hold' }),
+    localized({ id: 'system', labelKey: 'ui.monitoring.notification_kind.system', icon: 'info', tone: 'neutral' })
   ];
 
   const PREFS = {
@@ -376,10 +437,10 @@
   };
 
   const PRIORITIES = Maint.PRIORITIES || [
-    { id: 'critica', label: 'Crítica', tone: 'down', weight: 4 },
-    { id: 'alta', label: 'Alta', tone: 'warn', weight: 3 },
-    { id: 'media', label: 'Media', tone: 'hold', weight: 2 },
-    { id: 'baja', label: 'Baja', tone: 'neutral', weight: 1 }
+    localized({ id: 'critica', labelKey: 'ui.monitoring.severity.critical', tone: 'down', weight: 4 }),
+    localized({ id: 'alta', labelKey: 'ui.monitoring.severity.warning', tone: 'warn', weight: 3 }),
+    localized({ id: 'media', labelKey: 'ui.monitoring.severity.info', tone: 'hold', weight: 2 }),
+    localized({ id: 'baja', labelKey: 'ui.monitoring.severity.low', tone: 'neutral', weight: 1 })
   ];
 
   function seed() {
@@ -417,6 +478,9 @@
     hash,
     isoInHours,
     isoAgo,
+    // Re-attaches the catalog getters after a derived copy, so a normalized
+    // entry still follows a locale switch instead of keeping its first value.
+    relabel,
     seed
   };
 })();
