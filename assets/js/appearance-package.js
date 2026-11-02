@@ -34,7 +34,7 @@
     while (end >= Math.max(0, bytes.length - 65557) && view.getUint32(end, true) !== 0x06054b50) end--;
     if (end < 0 || view.getUint32(end, true) !== 0x06054b50) throw new Error(tr('ui.appearance.package.zip_incomplete'));
     let offset = view.getUint32(end + 16, true); const count = view.getUint16(end + 10, true), files = new Map();
-    if (count > 40) throw new Error('El ZIP contiene demasiados recursos.');
+    if (count > 40) throw new Error(tr('ui.appearance.package.too_many_entries'));
     for (let i = 0; i < count; i++) {
       if (offset + 46 > bytes.length || view.getUint32(offset, true) !== 0x02014b50) throw new Error(tr('ui.appearance.package.index_damaged'));
       const flags = view.getUint16(offset + 8, true), method = view.getUint16(offset + 10, true), size = view.getUint32(offset + 20, true), expanded = view.getUint32(offset + 24, true);
@@ -44,14 +44,14 @@
       const localNameLength = view.getUint16(start + 26, true);
       if (decoder.decode(bytes.slice(start + 30, start + 30 + localNameLength)) !== name) throw new Error(tr('ui.appearance.package.names_incoherent'));
       const payload = start + 30 + localNameLength + view.getUint16(start + 28, true);
-      if (payload + size > bytes.length) throw new Error('Falta un recurso del ZIP.');
+      if (payload + size > bytes.length) throw new Error(tr('ui.appearance.package.entry_missing'));
       let data = bytes.slice(payload, payload + size);
       if (method === 8 && typeof DecompressionStream !== 'undefined') {
         try { data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()); }
-        catch (_) { throw new Error('No se pudo descomprimir el ZIP. Exporta el preset desde Asset Manager.'); }
+        catch (_) { throw new Error(tr('ui.appearance.package.decompress_failed')); }
       } else if (method !== 0) throw new Error(tr('ui.appearance.package.compression_unsupported'));
       if (data.length !== expanded || crc(data) !== view.getUint32(offset + 16, true)) throw new Error(tr('ui.appearance.package.integrity_failed'));
-      if (files.has(name)) throw new Error('El ZIP contiene recursos duplicados.');
+      if (files.has(name)) throw new Error(tr('ui.appearance.package.duplicate_entries'));
       files.set(name, data); offset += 46 + n + extra + comment;
     }
     return files;
@@ -59,7 +59,7 @@
   function check(p) {
     if (!p || p.version !== 1) throw new Error(tr('ui.appearance.package.preset_version'));
     if (!p.name || !p.branding?.appName || !p.branding?.organizationName || !p.colors?.light || !p.colors?.dark) throw new Error(tr('ui.appearance.package.preset_incomplete'));
-    for (const m of ['light', 'dark']) for (const k of ['primary', 'secondary', 'accent']) if (!/^#[\da-f]{6}$/i.test(p.colors[m][k] || '')) throw new Error('El preset contiene colores incompatibles.');
+    for (const m of ['light', 'dark']) for (const k of ['primary', 'secondary', 'accent']) if (!/^#[\da-f]{6}$/i.test(p.colors[m][k] || '')) throw new Error(tr('ui.appearance.package.colors_incompatible'));
     if (!p.preferences || !['light', 'dark', 'system'].includes(p.preferences.defaultMode) || typeof p.preferences.compact !== 'boolean') throw new Error(tr('ui.appearance.package.preset_preferences'));
     for (const key of keys) if (p.branding[key] != null && typeof p.branding[key] !== 'string') throw new Error(tr('ui.appearance.package.resource_invalid', { key }));
   }
@@ -68,13 +68,13 @@
   async function asset(source, resolver) {
     if (source.startsWith('data:')) {
       const match = source.match(/^data:([^;,]+)(;base64)?,([\s\S]*)$/);
-      if (!match || !Object.values(types).includes(match[1])) throw new Error('Formato de recurso no compatible. Usa SVG, PNG, JPEG, WebP o ICO.');
+      if (!match || !Object.values(types).includes(match[1])) throw new Error(tr('ui.appearance.package.resource_format'));
       return { type: match[1], bytes: match[2] ? unbase64(match[3]) : encoder.encode(decodeURIComponent(match[3])) };
     }
-    if (/^[a-z]+:|^\/\//i.test(source)) throw new Error('El paquete no puede depender de recursos externos. Carga una imagen local.');
+    if (/^[a-z]+:|^\/\//i.test(source)) throw new Error(tr('ui.appearance.package.resource_external'));
     if (resolver) return resolver(source);
     const response = await fetch(source);
-    if (!response.ok) throw new Error('No se pudo incluir el recurso ' + source + '.');
+    if (!response.ok) throw new Error(tr('ui.appearance.package.resource_include', { name: source }));
     return { bytes: new Uint8Array(await response.arrayBuffer()), type: types[source.split('.').pop().toLowerCase()] || response.headers.get('content-type')?.split(';')[0] };
   }
   async function encode(preset, resolver) {
@@ -82,7 +82,7 @@
     for (const key of keys) {
       if (!p.branding[key]) continue;
       const result = await asset(p.branding[key], resolver), ext = Object.keys(types).find(k => types[k] === result.type);
-      if (!ext) throw new Error('El recurso ' + key + ' tiene un formato incompatible.');
+      if (!ext) throw new Error(tr('ui.appearance.package.resource_extension', { key: key }));
       const path = 'resources/' + key + '.' + ext;
       files.push([path, result.bytes]); resources.push({ key, name: path, type: result.type }); p.branding[key] = path;
     }
@@ -92,7 +92,7 @@
   async function decode(input) {
     try {
       const files = await unzip(input);
-      if (!files.has('preset.json')) throw new Error('El ZIP no contiene preset.json. Selecciona un paquete de apariencia.');
+      if (!files.has('preset.json')) throw new Error(tr('ui.appearance.package.preset_json_missing'));
       const manifest = JSON.parse(decoder.decode(files.get('preset.json')));
       if (manifest.format !== 'asset-manager-appearance' || manifest.version !== 1) throw new Error(tr('ui.appearance.package.format_incompatible'));
       check(manifest.preset); const p = manifest.preset, resources = [];

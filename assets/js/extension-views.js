@@ -22,10 +22,9 @@
   const MAX_FIELDS = 30;
   const MAX_OPTIONS = 50;
   const PAGE_SIZE = 10;
-  const EMPTY = {
-    ok: false,
-    error: tr('ui.extensions.error.invalid_view')
-  };
+  function emptyView() {
+    return { ok: false, error: tr('ui.extensions.error.invalid_view') };
+  }
 
   // Tables of one extension reload together after any of its forms saves, even
   // when the form lives in a different panel of the same page.
@@ -78,29 +77,29 @@
 
   function operationName(value, declared, kind) {
     if (typeof value !== 'string' || !OPERATION_RE.test(value)) {
-      return { ok: false, error: 'La vista de ' + kind + ' necesita una operación con nombre válido.' };
+      return { ok: false, error: tr('ui.extensions.view.operation_invalid', { kind }) };
     }
     if (declared && !declared.has(value)) {
-      return { ok: false, error: 'La operación ' + value + ' no está declarada por la extensión.' };
+      return { ok: false, error: tr('ui.extensions.view.operation_undeclared', { operation: value }) };
     }
     return { ok: true, value };
   }
 
   function normalizeColumns(raw) {
     if (!Array.isArray(raw) || !raw.length || raw.length > MAX_COLUMNS) {
-      return { ok: false, error: 'La tabla necesita entre 1 y ' + MAX_COLUMNS + ' columnas.' };
+      return { ok: false, error: tr('ui.extensions.view.table_columns', { max: MAX_COLUMNS }) };
     }
     const columns = [];
     const seen = new Set();
     for (const column of raw) {
       if (!isPlainObject(column) || typeof column.field !== 'string' || !FIELD_RE.test(column.field)) {
-        return { ok: false, error: 'Cada columna necesita un campo válido.' };
+        return { ok: false, error: tr('ui.extensions.view.column_field') };
       }
-      if (seen.has(column.field)) return { ok: false, error: 'La tabla repite la columna ' + column.field + '.' };
+      if (seen.has(column.field)) return { ok: false, error: tr('ui.extensions.view.table_duplicate_column', { field: column.field }) };
       seen.add(column.field);
       const format = column.format === undefined ? 'text' : column.format;
       if (FORMATS.indexOf(format) === -1) {
-        return { ok: false, error: 'El formato de la columna ' + column.field + ' no está permitido.' };
+        return { ok: false, error: tr('ui.extensions.view.column_format', { field: column.field }) };
       }
       columns.push({ field: column.field, label: labelOf(column.label, column.field), format });
     }
@@ -109,7 +108,7 @@
 
   function normalizeOptions(raw, field) {
     if (!Array.isArray(raw) || !raw.length || raw.length > MAX_OPTIONS) {
-      return { ok: false, error: 'El campo ' + field + ' necesita entre 1 y ' + MAX_OPTIONS + ' opciones.' };
+      return { ok: false, error: tr('ui.extensions.view.field_options', { field, max: MAX_OPTIONS }) };
     }
     const options = [];
     for (const option of raw) {
@@ -118,7 +117,7 @@
       } else if (isPlainObject(option) && typeof option.value === 'string' && option.value.length <= 80) {
         options.push({ value: option.value, label: labelOf(option.label, option.value) });
       } else {
-        return { ok: false, error: 'Las opciones del campo ' + field + ' no son válidas.' };
+        return { ok: false, error: tr('ui.extensions.view.field_options_invalid', { field }) };
       }
     }
     return { ok: true, value: options };
@@ -126,19 +125,19 @@
 
   function normalizeFields(raw) {
     if (!Array.isArray(raw) || !raw.length || raw.length > MAX_FIELDS) {
-      return { ok: false, error: 'El formulario necesita entre 1 y ' + MAX_FIELDS + ' campos.' };
+      return { ok: false, error: tr('ui.extensions.view.form_fields', { max: MAX_FIELDS }) };
     }
     const fields = [];
     const seen = new Set();
     for (const field of raw) {
       if (!isPlainObject(field) || typeof field.field !== 'string' || !FIELD_RE.test(field.field)) {
-        return { ok: false, error: 'Cada campo del formulario necesita un nombre válido.' };
+        return { ok: false, error: tr('ui.extensions.view.form_field') };
       }
-      if (seen.has(field.field)) return { ok: false, error: 'El formulario repite el campo ' + field.field + '.' };
+      if (seen.has(field.field)) return { ok: false, error: tr('ui.extensions.view.form_duplicate_field', { field: field.field }) };
       seen.add(field.field);
       const input = field.input === undefined ? 'text' : field.input;
       if (INPUTS.indexOf(input) === -1) {
-        return { ok: false, error: 'El tipo del campo ' + field.field + ' no está permitido.' };
+        return { ok: false, error: tr('ui.extensions.view.field_type', { field: field.field }) };
       }
       const normalized = {
         field: field.field,
@@ -157,8 +156,8 @@
   }
 
   function normalizeForm(raw, declared) {
-    if (!isPlainObject(raw)) return { ok: false, error: 'El formulario declarado no es un objeto.' };
-    const operation = operationName(raw.operation, declared, 'formulario');
+    if (!isPlainObject(raw)) return { ok: false, error: tr('ui.extensions.view.form_object') };
+    const operation = operationName(raw.operation, declared, tr('ui.extensions.view.kind_form'));
     if (!operation.ok) return operation;
     const operationKind = operationKindOf(declared, operation.value);
     const fields = normalizeFields(raw.fields);
@@ -166,7 +165,7 @@
     let assetField = '';
     if (raw.assetField !== undefined) {
       if (typeof raw.assetField !== 'string' || !FIELD_RE.test(raw.assetField)) {
-        return { ok: false, error: 'El campo de activo del formulario no es válido.' };
+        return { ok: false, error: tr('ui.extensions.view.form_asset_field') };
       }
       assetField = raw.assetField;
     }
@@ -177,8 +176,8 @@
   }
 
   function normalizeTable(raw, declared) {
-    if (!isPlainObject(raw)) return { ok: false, error: 'La tabla declarada no es un objeto.' };
-    const operation = operationName(raw.operation, declared, 'tabla');
+    if (!isPlainObject(raw)) return { ok: false, error: tr('ui.extensions.view.table_object') };
+    const operation = operationName(raw.operation, declared, tr('ui.extensions.view.kind_table'));
     if (!operation.ok) return operation;
     const operationKind = operationKindOf(declared, operation.value);
     const columns = normalizeColumns(raw.columns);
@@ -186,7 +185,7 @@
     let filterAsset = '';
     if (raw.filterAsset !== undefined) {
       if (typeof raw.filterAsset !== 'string' || !FIELD_RE.test(raw.filterAsset)) {
-        return { ok: false, error: 'El filtro de activo de la tabla no es válido.' };
+        return { ok: false, error: tr('ui.extensions.view.table_asset_filter') };
       }
       filterAsset = raw.filterAsset;
     }
@@ -203,14 +202,14 @@
   }
 
   function normalizeIsolated(raw) {
-    if (!isPlainObject(raw)) return { ok: false, error: 'La vista aislada declarada no es un objeto.' };
+    if (!isPlainObject(raw)) return { ok: false, error: tr('ui.extensions.view.isolated_object') };
     if (typeof raw.component !== 'string' || !COMPONENT_RE.test(raw.component)) {
-      return { ok: false, error: 'La vista aislada necesita un componente con nombre válido.' };
+      return { ok: false, error: tr('ui.extensions.view.isolated_component') };
     }
     let height = 360;
     if (raw.height !== undefined) {
       if (!Number.isInteger(raw.height) || raw.height < 160 || raw.height > 2400) {
-        return { ok: false, error: 'La altura de la vista aislada debe estar entre 160 y 2400 píxeles.' };
+        return { ok: false, error: tr('ui.extensions.view.isolated_height', { min: 160, max: 2400 }) };
       }
       height = raw.height;
     }
@@ -220,11 +219,11 @@
   // `operations` is the list declared by the manifest. When it is omitted the
   // names are still validated, but membership is enforced later by the server.
   function normalizeView(raw, operations) {
-    if (!isPlainObject(raw)) return EMPTY;
+    if (!isPlainObject(raw)) return emptyView();
     const declared = operationIndex(operations);
     const kinds = ['table', 'form', 'isolated'].filter((kind) => raw[kind] !== undefined);
     if (kinds.length !== 1) {
-      return { ok: false, error: 'La vista debe declarar exactamente un tipo: tabla, formulario o aislada.' };
+      return { ok: false, error: tr('ui.extensions.view.kind') };
     }
     if (kinds[0] === 'table') return normalizeTable(raw.table, declared);
     if (kinds[0] === 'form') return normalizeForm(raw.form, declared);
@@ -232,11 +231,11 @@
   }
 
   function describeView(view) {
-    if (!view || typeof view !== 'object') return 'Sin vista declarada.';
-    if (view.kind === 'table') return 'Tabla declarativa sobre ' + view.operation + '.';
-    if (view.kind === 'form') return 'Formulario declarativo sobre ' + view.operation + '.';
-    if (view.kind === 'isolated') return 'Código aislado en un marco sin sesión (' + view.component + ').';
-    return 'Sin vista declarada.';
+    if (!view || typeof view !== 'object') return tr('ui.extensions.review.view_missing');
+    if (view.kind === 'table') return tr('ui.extensions.view.describe_table', { operation: view.operation });
+    if (view.kind === 'form') return tr('ui.extensions.view.describe_form', { operation: view.operation });
+    if (view.kind === 'isolated') return tr('ui.extensions.view.describe_isolated', { component: view.component });
+    return tr('ui.extensions.review.view_missing');
   }
 
   function formatDate(value, options) {
@@ -262,7 +261,7 @@
 
   function formatValue(value, format) {
     if (value === null || value === undefined || value === '') return '—';
-    if (format === 'boolean') return value ? 'Sí' : 'No';
+    if (format === 'boolean') return value ? tr('ui.extensions.frame.boolean_true') : tr('ui.extensions.frame.boolean_false');
     if (format === 'date') return formatDate(value, { dateStyle: 'medium' });
     if (format === 'date-time') return formatDate(value, { dateStyle: 'medium', timeStyle: 'short' });
     if (format === 'number') return formatNumber(value);
@@ -277,7 +276,7 @@
     }
     const message = error && typeof error.message === 'string' && error.message
       ? error.message
-      : 'La operación de la extensión falló.';
+      : tr('ui.extensions.frame.error_operation_failed');
     return message.replace(/\s+/g, ' ').slice(0, 300);
   }
 
@@ -309,8 +308,8 @@
       caption() {
         const name = this.item && this.item.manifest && this.item.manifest.name
           ? this.item.manifest.name
-          : this.item && this.item.id ? this.item.id : 'Extensión';
-        return 'Registros de ' + name;
+          : this.item && this.item.id ? this.item.id : tr('ui.extensions.page.eyebrow');
+        return tr('ui.extensions.view.caption', { name });
       },
       filterValue() {
         const field = this.view.filterAsset;
@@ -323,14 +322,14 @@
         return this.total > 0 && this.offset + this.limit < this.total && !this.loading;
       },
       rangeLabel() {
-        if (this.loading && !this.loaded) return 'Cargando registros…';
-        if (!this.rows.length) return 'Sin registros para mostrar.';
+        if (this.loading && !this.loaded) return tr('ui.extensions.view.loading_records');
+        if (!this.rows.length) return tr('ui.extensions.view.no_records');
         const first = this.offset + 1;
         const last = Math.min(this.offset + this.limit, this.total || this.rows.length);
-        return 'Mostrando ' + first + '–' + last + ' de ' + (this.total || this.rows.length);
+        return tr('ui.extensions.view.range', { first, last, total: this.total || this.rows.length });
       },
       emptyLabel() {
-        return this.loaded ? 'La extensión no devolvió registros.' : 'Sin datos.';
+        return this.loaded ? tr('ui.extensions.view.no_results') : tr('ui.extensions.frame.empty_table');
       }
     },
     watch: {
@@ -373,7 +372,7 @@
       },
       async load() {
         if (!this.sdk) {
-          this.error = 'La extensión ya no está activa.';
+          this.error = tr('ui.extensions.error.runtime_inactive');
           return;
         }
         const epoch = ++this.epoch;
@@ -417,7 +416,7 @@
         </itsm-error>
         <template v-else>
           <itsm-table :caption="caption" :columns="columns" :rows="rows" :loading="loading" :empty="emptyLabel"></itsm-table>
-          <div class="extension-pager" role="group" :aria-label="'Paginación de ' + caption">
+          <div class="extension-pager" role="group" :aria-label="$t('ui.extensions.view.pager_aria', { caption })">
             <button type="button" class="btn btn--secondary btn--small" :disabled="!canPrev" :aria-label="$t('ui.extensions.aria.prev')" @click="prev">{{ $t('ui.extensions.pager.prev') }}</button>
             <p class="extension-pager__status" role="status">{{ rangeLabel }}</p>
             <button type="button" class="btn btn--secondary btn--small" :disabled="!canNext" :aria-label="$t('ui.extensions.aria.next')" @click="next">{{ $t('ui.extensions.pager.next') }}</button>
@@ -497,10 +496,10 @@
           const value = this.values[field.field];
           if (field.required) {
             const empty = field.input === 'checkbox' ? value !== true : !String(value === null || value === undefined ? '' : value).trim();
-            if (empty) errors[field.field] = 'Este campo es obligatorio.';
+            if (empty) errors[field.field] = tr('ui.extensions.view.required');
           }
           if (field.input === 'number' && String(value === undefined || value === null ? '' : value).trim() !== '' && Number.isNaN(Number(value))) {
-            errors[field.field] = 'Introduce un número válido.';
+            errors[field.field] = tr('ui.extensions.view.number_invalid');
           }
         });
         this.errors = errors;
@@ -529,7 +528,7 @@
         this.error = '';
         if (!this.validate()) return false;
         if (!this.sdk) {
-          this.error = 'La extensión ya no está activa.';
+          this.error = tr('ui.extensions.error.runtime_inactive');
           return false;
         }
         const epoch = ++this.epoch;
@@ -538,7 +537,7 @@
           const result = await this.sdk.request(this.view.operation, this.payload());
           if (epoch !== this.epoch) return false;
           this.busy = false;
-          this.message = 'El servidor guardó el registro.';
+          this.message = tr('ui.extensions.view.saved');
           this.$emit('saved', result);
           notifyExtensionSaved(this.item && this.item.id);
           return true;
@@ -641,8 +640,8 @@
       title() {
         const name = this.item && this.item.manifest && this.item.manifest.name
           ? this.item.manifest.name
-          : this.item && this.item.id ? this.item.id : 'Extensión';
-        return 'Vista aislada de ' + name;
+          : this.item && this.item.id ? this.item.id : tr('ui.extensions.page.eyebrow');
+        return tr('ui.extensions.view.isolated_caption', { name });
       }
     },
     mounted() {
@@ -670,7 +669,7 @@
       },
       onTerminated() {
         this.status = 'error';
-        this.error = 'La vista aislada se cerró: el marco dejó de mostrar el documento aprobado y el host dejó de responder.';
+        this.error = tr('ui.extensions.view.isolated_terminated');
       },
       onMessage(event) {
         if (this._bridge) this._bridge.handleMessage(event);
@@ -678,7 +677,7 @@
       async start() {
         if (!window.ExtensionFrame) {
           this.status = 'error';
-          this.error = 'El host no tiene el aislamiento de extensiones disponible.';
+          this.error = tr('ui.extensions.view.isolation_unavailable');
           return;
         }
         try {
@@ -863,7 +862,7 @@
         const message = this.dialog.action.action.confirm;
         return typeof message === 'string' && message
           ? message
-          : 'La extensión ejecutará la acción sobre el activo abierto.';
+          : tr('ui.extensions.action.will_run');
       }
     },
     methods: {
@@ -876,7 +875,7 @@
         this.message = '';
         this.error = '';
         if (!this.asset || !this.asset.id) {
-          this.error = 'Abre un activo del servidor para usar esta acción.';
+          this.error = tr('ui.extensions.action.needs_asset');
           return;
         }
         if (action.action.confirm) {
@@ -896,7 +895,7 @@
         if (!action || !this.asset || !this.asset.id) return false;
         const sdk = this.sdkFor(action);
         if (!sdk) {
-          const message = 'La extensión ya no está activa.';
+          const message = tr('ui.extensions.error.runtime_inactive');
           if (fromDialog) this.dialog = Object.assign({}, this.dialog, { error: message });
           else this.error = message;
           return false;
@@ -906,7 +905,7 @@
         try {
           const result = await sdk.request(action.action.operation, { assetId: String(this.asset.id) });
           this.busy = '';
-          this.message = 'El servidor completó la acción.';
+          this.message = tr('ui.extensions.action.completed');
           this.dialog = { open: false, action: null, busy: false, error: '' };
           this.$emit('completed', { action: action.action.id, result });
           return true;
@@ -934,7 +933,7 @@
         </button>
         <p v-if="message" class="extension-actions__status" role="status">{{ message }}</p>
         <p v-if="error" class="form-alert" role="alert">{{ error }}</p>
-        <modal-shell :open="dialog.open" :title="dialogTitle" eyebrow="Extensión" size="small" @close="closeDialog">
+        <modal-shell :open="dialog.open" :title="dialogTitle" :eyebrow="$t('ui.extensions.page.eyebrow')" size="small" @close="closeDialog">
           <p>{{ dialogMessage }}</p>
           <p v-if="dialog.error" class="form-alert" role="alert">{{ dialog.error }}</p>
           <template #footer>

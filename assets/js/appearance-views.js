@@ -1,13 +1,19 @@
 (function () {
   'use strict';
   const E = window.AssetAppearanceEngine;
+  // Non-template copy (notices, thrown errors) resolves through the runtime so a
+  // locale change reaches strings that a template never holds.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
   const AppearancePreview = {
     props: ['preset', 'mode'],
     data: () => ({ tab: 'panel', query: '', selected: false }),
     computed: {
       palette() { try { return E.tokens(this.preset, this.mode); } catch (_) { return {}; } },
       logo() { return E.safeResource((this.mode === 'dark' && this.preset.branding.logoDark) || this.preset.branding.logo); },
-      rows() { return [{ name: 'Portátil de administración', code: 'EQ-001', status: 'Asignado' }, { name: 'Monitor de recepción', code: 'EQ-002', status: 'Disponible' }].filter(x => x.name.toLowerCase().includes(this.query.toLowerCase())); }
+      rows() { return [{ name: tr('ui.appearance.preview.specimen_laptop'), code: 'EQ-001', status: tr('ui.appearance.preview.specimen_status_assigned') }, { name: tr('ui.appearance.preview.specimen_monitor'), code: 'EQ-002', status: tr('ui.appearance.preview.specimen_status_available') }].filter(x => x.name.toLowerCase().includes(this.query.toLowerCase())); }
     },
     template: `<div class="appearance-specimen" :class="{'is-dark':mode==='dark'}" :style="palette" :data-theme="mode" data-od-id="appearance-preview">
       <div class="appearance-specimen__nav"><div class="appearance-specimen__brand"><img v-if="logo" :src="logo" width="30" height="30" :alt="$t('ui.appearance.preview.alt_logo')"><strong>{{ preset.branding.appName }}</strong></div><span>{{ preset.branding.organizationName }}</span></div>
@@ -36,15 +42,15 @@
       async read(file) {
         this.error = ''; this.detected = null; this.busy = true;
         try {
-          if (!file || !/\.zip$/i.test(file.name)) throw new Error('Selecciona un archivo ZIP de apariencia.');
-          if (file.size > 24 * 1024 * 1024) throw new Error('El paquete supera el máximo de 24 MB.');
+          if (!file || !/\.zip$/i.test(file.name)) throw new Error(tr('ui.appearance.package.file_not_zip'));
+          if (file.size > 24 * 1024 * 1024) throw new Error(tr('ui.appearance.package.size_exceeded'));
           if (this.server) {
             this.detected = await window.AssetAppearanceApi.previewImport(this.app, await file.arrayBuffer());
           } else {
             this.detected = await window.AssetAppearancePackage.decode(await file.arrayBuffer());
             E.validate(this.detected.preset);
           }
-          if (!this.detected) throw new Error('El paquete no se pudo previsualizar.');
+          if (!this.detected) throw new Error(tr('ui.appearance.package.preview_failed'));
           this.policy = 'both';
         } catch (error) { this.detected = null; this.error = error.message; }
         finally { this.busy = false; }
@@ -84,8 +90,18 @@
   };
   const AppearanceSettings = {
     components: { AppearancePreview, AppearancePackageDialog }, props: ['app'],
-    data() { return { draft: E.clone(this.app.appearance.active), previewMode: 'light', editMode: 'light', packageKind: '', error: '', notice: '', restorePrompt: false, resourceKeys: [{ id: 'logo', label: 'Logotipo principal' }, { id: 'logoDark', label: 'Variante para modo oscuro' }, { id: 'logoCompact', label: 'Logotipo compacto' }, { id: 'favicon', label: 'Favicon' }] }; },
+    data() { return { draft: E.clone(this.app.appearance.active), previewMode: 'light', editMode: 'light', packageKind: '', error: '', notice: '', restorePrompt: false }; },
     computed: {
+      // Resolved at render, never at module load: a locale change must reach these labels.
+      resourceKeys() {
+        if (window.ItsmI18n && window.ItsmI18n.version) window.ItsmI18n.version.value;
+        return [
+          { id: 'logo', label: tr('ui.appearance.settings.resource_logo') },
+          { id: 'logoDark', label: tr('ui.appearance.settings.resource_logo_dark') },
+          { id: 'logoCompact', label: tr('ui.appearance.settings.resource_logo_compact') },
+          { id: 'favicon', label: tr('ui.appearance.settings.resource_favicon') }
+        ];
+      },
       dirty() { return JSON.stringify(this.draft) !== JSON.stringify(this.app.appearance.active); },
       valid() { try { E.validate(this.draft); return true; } catch (_) { return false; } },
       currentMode() { return this.app.themeMode; },
@@ -96,8 +112,8 @@
       builtinIds() { return this.app.appearance.builtinIds || ['generic']; }
     },
     methods: {
-      select(preset) { this.draft = E.clone(preset); this.error = ''; this.notice = 'Vista previa seleccionada. Pulsa Aplicar para cambiar la identidad global.'; },
-      discard() { this.draft = E.clone(this.app.appearance.active); this.error = ''; this.notice = 'Cambios sin aplicar descartados.'; },
+      select(preset) { this.draft = E.clone(preset); this.error = ''; this.notice = tr('ui.appearance.notice.selected'); },
+      discard() { this.draft = E.clone(this.app.appearance.active); this.error = ''; this.notice = tr('ui.appearance.notice.discarded'); },
       async apply() {
         try {
           E.validate(this.draft);
@@ -108,7 +124,7 @@
               const candidate = E.clone(this.draft);
               if (candidate.id === 'generic' || this.builtinIds.includes(candidate.id)) {
                 delete candidate.id;
-                if (candidate.name === 'Asset Manager') candidate.name = 'Mi organización';
+                if (candidate.name === 'Asset Manager') candidate.name = tr('ui.appearance.settings.my_organization');
               }
               target = await window.AssetAppearanceApi.savePreset(this.app, candidate);
               if (!target) return;
@@ -117,34 +133,34 @@
             if (!active) return;
             this.draft = E.clone(active);
             this.app.applyAppearanceState(active);
-            this.notice = 'Identidad aplicada. Tu modo de apariencia se mantiene.'; this.error = '';
+            this.notice = tr('ui.appearance.notice.applied'); this.error = '';
             return;
           }
           const generic = this.app.appearance.presets[0];
           if (this.draft.id === 'generic' && JSON.stringify(this.draft) !== JSON.stringify(generic)) {
-            const p = E.clone(this.draft); p.name = p.name === generic.name ? 'Mi organización' : p.name; this.draft = E.savePreset(this.app.appearance, p, 'both');
+            const p = E.clone(this.draft); p.name = p.name === generic.name ? tr('ui.appearance.settings.my_organization') : p.name; this.draft = E.savePreset(this.app.appearance, p, 'both');
           } else {
             const index = this.app.appearance.presets.findIndex(p => p.id === this.draft.id);
             if (index >= 0 && this.draft.id !== 'generic') this.app.appearance.presets.splice(index, 1, E.clone(this.draft));
           }
-          this.app.applyAppearance(this.draft); this.notice = 'Identidad aplicada. Tu modo de apariencia se mantiene.'; this.error = '';
+          this.app.applyAppearance(this.draft); this.notice = tr('ui.appearance.notice.applied'); this.error = '';
         } catch (error) { this.error = error.message; }
       },
       async duplicate() {
         if (this.server) {
           try {
             const copy = E.clone(this.draft);
-            copy.name = (copy.name || 'Preset') + ' · Copia';
+            copy.name = tr('ui.appearance.settings.copy_name', { name: copy.name || tr('ui.appearance.settings.preset_default') });
             delete copy.id;
             const saved = await window.AssetAppearanceApi.savePreset(this.app, copy);
             if (!saved) return;
             this.draft = E.clone(saved);
-            this.notice = 'Copia guardada en la galería de la instalación. Puedes editarla sin cambiar el preset original.';
+            this.notice = tr('ui.appearance.notice.duplicate_gallery');
             this.error = '';
           } catch (error) { this.error = error.message; }
           return;
         }
-        this.draft = E.duplicate(this.app.appearance, this.draft); this.notice = 'Copia guardada. Puedes editarla sin cambiar el preset original.';
+        this.draft = E.duplicate(this.app.appearance, this.draft); this.notice = tr('ui.appearance.notice.duplicate_session');
       },
       async save() {
         try {
@@ -153,16 +169,16 @@
             const candidate = E.clone(this.draft);
             if (candidate.id === 'generic' || this.builtinIds.includes(candidate.id)) {
               delete candidate.id;
-              if (candidate.name === 'Asset Manager') candidate.name = 'Mi organización';
+              if (candidate.name === 'Asset Manager') candidate.name = tr('ui.appearance.settings.my_organization');
             }
             const saved = await window.AssetAppearanceApi.savePreset(this.app, candidate);
             if (!saved) return;
             this.draft = E.clone(saved);
-            this.notice = 'Preset guardado en la galería de la instalación. No se ha aplicado.';
+            this.notice = tr('ui.appearance.notice.saved_gallery');
             this.error = '';
             return;
           }
-          const p = E.clone(this.draft); if (p.id === 'generic') p.name = 'Mi organización'; this.draft = E.savePreset(this.app.appearance, p, 'replace'); this.notice = 'Preset guardado en la galería de esta sesión. No se ha aplicado.';
+          const p = E.clone(this.draft); if (p.id === 'generic') p.name = tr('ui.appearance.settings.my_organization'); this.draft = E.savePreset(this.app.appearance, p, 'replace'); this.notice = tr('ui.appearance.notice.saved_session');
         } catch (error) { this.error = error.message; }
       },
       async restore() {
@@ -173,11 +189,11 @@
             if (!active) return;
             this.draft = E.clone(active);
             this.app.applyAppearanceState(active);
-            this.notice = 'Se ha restaurado la identidad original de Asset Manager.'; this.error = '';
+            this.notice = tr('ui.appearance.notice.restored'); this.error = '';
           } catch (error) { this.error = error.message; }
           return;
         }
-        const generic = this.app.appearance.presets[0]; this.draft = E.clone(generic); this.app.applyAppearance(generic); this.notice = 'Se ha restaurado la identidad original de Asset Manager.';
+        const generic = this.app.appearance.presets[0]; this.draft = E.clone(generic); this.app.applyAppearance(generic); this.notice = tr('ui.appearance.notice.restored');
       },
       async previous() {
         if (this.server) {
@@ -186,12 +202,12 @@
             if (!active) return;
             this.draft = E.clone(active);
             this.app.applyAppearanceState(active);
-            this.notice = 'Se ha recuperado la apariencia anterior.'; this.error = '';
+            this.notice = tr('ui.appearance.notice.previous'); this.error = '';
           } catch (error) { this.error = error.message; }
           return;
         }
         if (!this.app.appearance.previous) return;
-        const p = E.clone(this.app.appearance.previous); this.draft = p; this.app.applyAppearance(p); this.notice = 'Se ha recuperado la apariencia anterior.';
+        const p = E.clone(this.app.appearance.previous); this.draft = p; this.app.applyAppearance(p); this.notice = tr('ui.appearance.notice.previous');
       },
       setMode(mode) { return this.app.setAppearanceMode(mode); },
       async imported(result) {
@@ -201,17 +217,17 @@
             if (!staged) return;
             this.draft = E.clone(staged);
             this.packageKind = '';
-            this.notice = 'Preset importado y guardado. Revisa el resultado antes de pulsar Aplicar.'; this.error = '';
+            this.notice = tr('ui.appearance.notice.imported_gallery'); this.error = '';
           } catch (error) { this.error = error.message; }
           return;
         }
-        try { this.draft = E.savePreset(this.app.appearance, result.preset, result.policy); this.packageKind = ''; this.notice = 'Preset importado. Revisa el resultado antes de pulsar Aplicar.'; } catch (error) { this.error = error.message; }
+        try { this.draft = E.savePreset(this.app.appearance, result.preset, result.policy); this.packageKind = ''; this.notice = tr('ui.appearance.notice.imported_session'); } catch (error) { this.error = error.message; }
       },
       async resource(event, key) {
         const file = event.target.files[0]; if (!file) return;
-        if (!['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'].includes(file.type)) { this.error = 'Selecciona una imagen SVG, PNG, JPEG, WebP o ICO.'; return; }
-        if (file.size > 2 * 1024 * 1024) { this.error = 'La imagen supera los 2 MB. Selecciona un archivo más pequeño.'; return; }
-        try { const reader = new FileReader(); this.draft.branding[key] = await new Promise((resolve, reject) => { reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error('No se pudo leer la imagen.')); reader.readAsDataURL(file); }); this.error = ''; }
+        if (!['image/svg+xml', 'image/png', 'image/jpeg', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'].includes(file.type)) { this.error = tr('ui.appearance.settings.image_format'); return; }
+        if (file.size > 2 * 1024 * 1024) { this.error = tr('ui.appearance.settings.image_too_large'); return; }
+        try { const reader = new FileReader(); this.draft.branding[key] = await new Promise((resolve, reject) => { reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error(tr('ui.appearance.settings.image_read_failed'))); reader.readAsDataURL(file); }); this.error = ''; }
         catch (error) { this.error = error.message; }
       }
     },

@@ -89,12 +89,12 @@
     const list = Array.isArray(payload.presets) ? payload.presets.map(item => normalizePreset(item, tr('ui.appearance.api.gallery_context'))) : null;
     if (list) appearance.presets = list;
     const activeId = String(payload.activeId || (payload.active && payload.active.id) || '');
-    let active = payload.active ? normalizePreset(payload.active, 'La apariencia activa') : null;
+    let active = payload.active ? normalizePreset(payload.active, tr('ui.appearance.api.active_context')) : null;
     if (!active && activeId) active = appearance.presets.find(item => item.id === activeId) || null;
-    if (!active && !vm.authenticated && payload.active) active = normalizePreset(payload.active, 'La apariencia activa');
+    if (!active && !vm.authenticated && payload.active) active = normalizePreset(payload.active, tr('ui.appearance.api.active_context'));
     if (active) appearance.active = active;
     const previousId = String(payload.previousId || (payload.previous && payload.previous.id) || '');
-    if (payload.previous) appearance.previous = normalizePreset(payload.previous, 'La apariencia anterior');
+    if (payload.previous) appearance.previous = normalizePreset(payload.previous, tr('ui.appearance.api.previous_context'));
     else if (previousId) appearance.previous = appearance.presets.find(item => item.id === previousId) || null;
     else if (payload.previousId === null) appearance.previous = null;
     if (Array.isArray(payload.builtinIds)) state.builtins = payload.builtinIds.slice();
@@ -113,7 +113,7 @@
       return applyServer(vm, payload);
     } catch (error) {
       if (!fresh(token)) return null;
-      state.error = error.message || 'No se pudo cargar la apariencia activa.';
+      state.error = error.message || tr('ui.appearance.api.active_failed');
       return null;
     } finally {
       if (fresh(token)) state.loading.active = false;
@@ -248,7 +248,7 @@
     requireSession(vm);
     if (!canManage(vm)) throw makeError(tr('ui.appearance.api.export_forbidden'), 403);
     const id = typeof preset === 'string' ? preset : preset && preset.id;
-    if (!id) throw makeError('Selecciona una apariencia para exportar.', 422);
+    if (!id) throw makeError(tr('ui.appearance.api.select_preset_to_export'), 422);
     const state = ensure(vm), session = state.epochs.session;
     const blob = await request(vm, 'GET', '/appearance/presets/' + encodeURIComponent(id) + '/export', { responseType: 'blob' });
     if (state.epochs.session !== session) return null;
