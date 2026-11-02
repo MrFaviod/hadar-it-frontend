@@ -44,13 +44,28 @@ function translate(locale, key, params) {
  */
 function install(window) {
   let locale = 'es';
+  const listeners = [];
   const runtime = {
     t(key, params) { return translate(locale, key, params); },
     setLocale(tag) {
       locale = CATALOGS[tag] ? tag : 'es';
+      listeners.slice().forEach((listener) => {
+        try { listener(locale); } catch (_) { /* a listener must not break the switch */ }
+      });
       return locale;
     },
+    // Same listener contract as `assets/js/i18n.js`: a sandboxed consumer (the
+    // isolated extension frame) refreshes its copy when the locale changes.
+    subscribe(listener) {
+      if (typeof listener !== 'function') return function () {};
+      listeners.push(listener);
+      return function () {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+      };
+    },
     get locale() { return locale; },
+    get activeLocale() { return locale; },
     number(value) { return new Intl.NumberFormat(locale).format(value); },
     // Vue plugin surface so templates mounted by a harness still get `$t`.
     i18n: {

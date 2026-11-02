@@ -63,6 +63,42 @@
     '.kit-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}'
   ].join('\n');
 
+  const FRAME_STRING_KEYS = {
+    captionFallback: 'ui.extensions.frame.caption_fallback',
+    loadingData: 'ui.shell.loading_data',
+    emptyTable: 'ui.extensions.frame.empty_table',
+    booleanTrue: 'ui.extensions.frame.boolean_true',
+    booleanFalse: 'ui.extensions.frame.boolean_false',
+    invalidOperation: 'ui.extensions.frame.invalid_operation',
+    requestFailed: 'ui.extensions.frame.request_failed',
+    missingComponent: 'ui.extensions.frame.missing_component',
+    missingComponentName: 'ui.extensions.frame.missing_component_name',
+    registerRequired: 'ui.extensions.frame.register_required',
+    documentTitle: 'ui.extensions.frame.document_title'
+  };
+
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
+
+  // A sandboxed frame has no host i18n instance, so the host resolves the kit
+  // copy in the active locale and ships it in the init payload. One catalog stays
+  // the only source of truth and a hot switch can refresh an already open frame.
+  function frameMessages() {
+    const messages = {};
+    Object.keys(FRAME_STRING_KEYS).forEach((name) => {
+      messages[name] = tr(FRAME_STRING_KEYS[name]);
+    });
+    return messages;
+  }
+
+  function activeLocale() {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    const tag = runtime && typeof runtime.activeLocale === 'string' ? runtime.activeLocale : '';
+    return tag || 'es';
+  }
+
   function isPlainObject(value) {
     return !!value && typeof value === 'object' && !Array.isArray(value);
   }
@@ -113,8 +149,12 @@
       .replace(/<!--/g, '<\\!--');
   }
 
-  function kitSource(origin) {
+  function kitSource(origin, initial) {
     const hostOrigin = JSON.stringify(text(origin) || 'null');
+    const initialCopy = JSON.stringify({
+      locale: text(initial && initial.locale) || 'es',
+      messages: isPlainObject(initial && initial.messages) ? initial.messages : {}
+    });
     return `(function () {
   'use strict';
   var HOST_ORIGIN = ${hostOrigin};
@@ -123,11 +163,38 @@
   var sequence = 0;
   var fieldSequence = 0;
   var pending = {};
+  var LOCALE = 'es';
+  var MESSAGES = window.Vue && typeof window.Vue.reactive === 'function' ? window.Vue.reactive({}) : {};
+  function t(name, params) {
+    var message = MESSAGES[name];
+    if (typeof message !== 'string' || !message) return '';
+    return message.replace(/\{(\w+)\}/g, function (match, key) {
+      return params && params[key] !== undefined && params[key] !== null ? String(params[key]) : match;
+    });
+  }
+  function escapeText(value) {
+    return String(value === null || value === undefined ? '' : value).replace(/[<>&"]/g, function (character) {
+      return { '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[character];
+    });
+  }
+  function applyLocale(data) {
+    if (!data || typeof data !== 'object') return;
+    if (typeof data.locale === 'string' && data.locale) LOCALE = data.locale;
+    var incoming = data.messages && typeof data.messages === 'object' ? data.messages : null;
+    if (incoming) {
+      Object.keys(MESSAGES).forEach(function (key) { delete MESSAGES[key]; });
+      Object.keys(incoming).forEach(function (key) {
+        if (typeof incoming[key] === 'string') MESSAGES[key] = incoming[key];
+      });
+    }
+    document.documentElement.lang = LOCALE;
+  }
+  applyLocale(${initialCopy});
   function post(message) {
     try { window.parent.postMessage(message, HOST_ORIGIN); } catch (_) { /* the frame is detached */ }
   }
   function request(operation, args) {
-    if (typeof operation !== 'string' || !operation) return Promise.reject(new Error('La operación no es válida.'));
+    if (typeof operation !== 'string' || !operation) return Promise.reject(new Error(t('invalidOperation')));
     var id = 'r' + (++sequence);
     return new Promise(function (resolve, reject) {
       pending[id] = { resolve: resolve, reject: reject };
@@ -150,19 +217,20 @@
       columns: { type: Array, default: function () { return []; } },
       rows: { type: Array, default: function () { return []; } },
       caption: { type: String, default: '' },
-      empty: { type: String, default: 'Sin datos.' },
+      empty: { type: String, default: '' },
       loading: { type: Boolean, default: false }
     },
     methods: {
+      copy: function (name) { return t(name); },
       cell: function (row, column) {
         var value = row ? row[column.field] : '';
         if (value === null || value === undefined || value === '') return '—';
-        if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+        if (typeof value === 'boolean') return value ? t('booleanTrue') : t('booleanFalse');
         if (typeof value === 'object') return '—';
         return String(value);
       }
     },
-    template: '<div class="kit-table-wrap"><table class="kit-table"><caption class="kit-sr">{{ caption || $t('ui.extensions.frame.caption_fallback') }}</caption><thead><tr><th v-for="column in columns" :key="column.field" scope="col">{{ column.label || column.field }}</th></tr></thead><tbody><tr v-if="loading"><td :colspan="columns.length || 1" class="kit-empty" role="status">{{ $t('ui.shell.loading_data') }}</td></tr><tr v-else-if="!rows.length"><td :colspan="columns.length || 1" class="kit-empty">{{ empty }}</td></tr><tr v-for="(row, index) in rows" :key="row.id || index"><td v-for="column in columns" :key="column.field">{{ cell(row, column) }}</td></tr></tbody></table></div>'
+    template: '<div class="kit-table-wrap"><table class="kit-table"><caption class="kit-sr">{{ caption || copy('captionFallback') }}</caption><thead><tr><th v-for="column in columns" :key="column.field" scope="col">{{ column.label || column.field }}</th></tr></thead><tbody><tr v-if="loading"><td :colspan="columns.length || 1" class="kit-empty" role="status">{{ copy('loadingData') }}</td></tr><tr v-else-if="!rows.length"><td :colspan="columns.length || 1" class="kit-empty">{{ empty || copy('emptyTable') }}</td></tr><tr v-for="(row, index) in rows" :key="row.id || index"><td v-for="column in columns" :key="column.field">{{ cell(row, column) }}</td></tr></tbody></table></div>'
   };
   var KitField = {
     name: 'ItsmField',
@@ -210,12 +278,13 @@
   function boot(init) {
     if (booted) return;
     booted = true;
+    applyLocale(init);
     applyTheme(init.theme);
     var components = (definition && definition.components) || {};
     var component = components[init.component];
     var root = document.getElementById('root');
     if (!component) {
-      root.innerHTML = '<div class="kit-error" role="alert"><strong>El módulo no registró el componente solicitado.</strong><p>Falta ' + String(init.component).replace(/[<>&"]/g, '') + '.</p></div>';
+      root.innerHTML = '<div class="kit-error" role="alert"><strong>' + escapeText(t('missingComponent')) + '</strong><p>' + escapeText(t('missingComponentName', { component: String(init.component || '') })) + '</p></div>';
       return;
     }
     var sdk = {
@@ -249,7 +318,7 @@
   window.ITSMExtension = {
     register: function (registered) {
       if (!registered || typeof registered !== 'object' || !registered.components || typeof registered.components !== 'object') {
-        throw new Error('El módulo debe registrar componentes con window.ITSMExtension.register({components}).');
+        throw new Error(t('registerRequired'));
       }
       definition = registered;
     }
@@ -258,14 +327,18 @@
     if (event.source !== window.parent || event.origin !== HOST_ORIGIN) return;
     var data = event.data;
     if (!data || typeof data !== 'object' || typeof data.type !== 'string') return;
-    if (data.type === 'itsm:init') { boot(data); return; }
+    if (data.type === 'itsm:init') {
+      if (booted) applyLocale(data);
+      else boot(data);
+      return;
+    }
     if (data.type === 'itsm:theme') { applyTheme(data.theme); return; }
     if (data.type === 'itsm:response') {
       var entry = pending[data.id];
       if (!entry) return;
       delete pending[data.id];
       if (data.ok === true) entry.resolve(data.data);
-      else entry.reject(new Error(typeof data.error === 'string' && data.error ? data.error : 'La operación falló en el servidor.'));
+      else entry.reject(new Error(typeof data.error === 'string' && data.error ? data.error : t('requestFailed')));
     }
   });
   post({ type: 'itsm:ready' });
@@ -277,19 +350,22 @@
     const theme = isPlainObject(source.theme) ? source.theme : DEFAULT_THEME;
     return [
       '<!DOCTYPE html>',
-      '<html lang="es">',
+      '<html lang="' + escapeHtml(activeLocale()) + '">',
       '<head>',
       '<meta charset="utf-8">',
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
       '<meta name="referrer" content="no-referrer">',
       '<meta http-equiv="Content-Security-Policy" content="' + CSP + '">',
       '<!-- sandbox-document -->',
-      '<title>' + escapeHtml(text(source.title) || 'Extensión aislada') + '</title>',
+      '<title>' + escapeHtml(text(source.title) || tr('ui.extensions.frame.document_title')) + '</title>',
       '<style>:root{' + themeCss(theme) + '}' + KIT_STYLE + '</style>',
       '</head>',
       '<body><div id="root" class="kit-frame"></div>',
       '<script>' + inlineScript(source.vueSource) + '</script>',
-      '<script>' + inlineScript(kitSource(source.origin || (typeof window !== 'undefined' ? window.location.origin : ''))) + '</script>',
+      '<script>' + inlineScript(kitSource(
+        source.origin || (typeof window !== 'undefined' ? window.location.origin : ''),
+        { locale: activeLocale(), messages: isPlainObject(source.messages) ? source.messages : frameMessages() }
+      )) + '</script>',
       '<script>' + inlineScript(source.moduleSource) + '</script>',
       '</body>',
       '</html>'
@@ -302,32 +378,32 @@
   }
 
   function validatedFrontendUrl(raw, expected) {
-    if (typeof raw !== 'string' || !raw) throw new Error('La extensión no publica un módulo de frontend válido.');
+    if (typeof raw !== 'string' || !raw) throw new Error(tr('ui.extensions.frame.error_module_invalid'));
     const binding = isPlainObject(expected) ? expected : {};
     const expectedId = text(binding.id);
     const expectedDigest = text(binding.digest);
-    if (!expectedId || !DIGEST_RE.test(expectedDigest)) throw new Error('La ruta del módulo de frontend no está ligada a una extensión aprobada.');
+    if (!expectedId || !DIGEST_RE.test(expectedDigest)) throw new Error(tr('ui.extensions.frame.error_binding_unapproved'));
     let parsed;
     try {
       parsed = new URL(raw, window.location.origin);
     } catch (_) {
-      throw new Error('La ruta del módulo de frontend no es válida.');
+      throw new Error(tr('ui.extensions.frame.error_path_invalid'));
     }
-    if (parsed.origin !== window.location.origin) throw new Error('El módulo de frontend debe servirse desde la misma origen del host.');
+    if (parsed.origin !== window.location.origin) throw new Error(tr('ui.extensions.frame.error_origin_mismatch'));
     const pathMatch = FRONTEND_PATH_RE.exec(parsed.pathname);
-    if (!pathMatch) throw new Error('La ruta del módulo de frontend no es la declarada por el host.');
-    if (pathMatch[1] !== expectedId) throw new Error('La ruta del módulo de frontend no corresponde a esta extensión.');
+    if (!pathMatch) throw new Error(tr('ui.extensions.frame.error_path_not_declared'));
+    if (pathMatch[1] !== expectedId) throw new Error(tr('ui.extensions.frame.error_path_extension_mismatch'));
     const digest = parsed.searchParams.get('digest') || '';
-    if (!DIGEST_RE.test(digest)) throw new Error('La firma digest del módulo de frontend no es válida.');
-    if (digest !== expectedDigest) throw new Error('La firma digest del módulo de frontend no corresponde a esta extensión.');
+    if (!DIGEST_RE.test(digest)) throw new Error(tr('ui.extensions.frame.error_digest_invalid'));
+    if (digest !== expectedDigest) throw new Error(tr('ui.extensions.frame.error_digest_mismatch'));
     return parsed.href;
   }
 
   async function fetchTextDefault(url, limit) {
     const response = await window.fetch(url, { credentials: 'same-origin', redirect: 'error', cache: 'no-store' });
-    if (!response || !response.ok) throw new Error('El host no pudo cargar el recurso de la extensión.');
+    if (!response || !response.ok) throw new Error(tr('ui.extensions.frame.error_resource_unavailable'));
     const body = await response.text();
-    if (typeof body !== 'string' || body.length > limit) throw new Error('El recurso de la extensión supera el tamaño permitido.');
+    if (typeof body !== 'string' || body.length > limit) throw new Error(tr('ui.extensions.frame.error_resource_too_large'));
     return body;
   }
 
@@ -339,8 +415,8 @@
       : (url, limit) => fetchTextDefault(url, limit);
     const vueSource = await fetchText(VUE_PATH, VUE_LIMIT);
     const moduleSource = await fetchText(moduleUrl, MODULE_LIMIT);
-    if (typeof vueSource !== 'string' || !vueSource) throw new Error('El host no pudo cargar el motor de vistas aislado.');
-    if (typeof moduleSource !== 'string' || !moduleSource) throw new Error('El módulo de frontend de la extensión está vacío.');
+    if (typeof vueSource !== 'string' || !vueSource) throw new Error(tr('ui.extensions.frame.error_engine_unavailable'));
+    if (typeof moduleSource !== 'string' || !moduleSource) throw new Error(tr('ui.extensions.frame.error_module_empty'));
     return { vueSource, moduleSource, frontendUrl: moduleUrl };
   }
 
@@ -353,14 +429,14 @@
   function messageError(error) {
     const message = error && typeof error.message === 'string' && error.message
       ? error.message
-      : 'La operación de la extensión falló.';
+      : tr('ui.extensions.frame.error_operation_failed');
     return message.replace(/\s+/g, ' ').slice(0, 300);
   }
 
   function bridge(options) {
     const config = options || {};
     const frame = config.frame;
-    if (!frame) throw new Error('El host necesita el marco aislado para conectar la extensión.');
+    if (!frame) throw new Error(tr('ui.extensions.frame.error_frame_required'));
     const item = config.item || {};
     const operations = new Set((item.operations || []).map((operation) => operation && operation.name).filter(Boolean));
     const pages = new Set((item.pages || []).map((page) => page && page.id).filter(Boolean));
@@ -369,6 +445,7 @@
     // operations, so a document that replaces this one learns nothing.
     const assetId = text(config.assetId) || text(config.asset && config.asset.id);
     const state = { ready: false, disposed: false, pending: new Map(), guest: null, loads: 0 };
+    let unsubscribe = null;
 
     function contentWindow() {
       try {
@@ -396,6 +473,10 @@
       if (state.disposed) return false;
       state.disposed = true;
       state.pending.clear();
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
       if (typeof config.onTerminated === 'function') {
         try {
           config.onTerminated();
@@ -413,6 +494,8 @@
         component: text(config.component),
         assetId,
         permissions: Array.isArray(config.permissions) ? config.permissions.slice(0, 60) : [],
+        locale: activeLocale(),
+        messages: frameMessages(),
         theme: typeof config.getTheme === 'function' ? config.getTheme() : {}
       };
     }
@@ -428,11 +511,11 @@
       if (typeof data.operation !== 'string' || !operations.has(data.operation)) return false;
       if (data.args !== undefined && data.args !== null && !isPlainObject(data.args)) return false;
       if (state.pending.size >= MAX_IN_FLIGHT) {
-        post({ type: 'itsm:response', id, ok: false, error: 'Hay demasiadas solicitudes en curso.' });
+        post({ type: 'itsm:response', id, ok: false, error: tr('ui.extensions.frame.error_too_many_requests') });
         return false;
       }
       if (!config.sdk || typeof config.sdk.request !== 'function') {
-        post({ type: 'itsm:response', id, ok: false, error: 'La extensión ya no está activa.' });
+        post({ type: 'itsm:response', id, ok: false, error: tr('ui.extensions.frame.error_extension_inactive') });
         return false;
       }
       const args = data.args === undefined || data.args === null ? {} : data.args;
@@ -487,6 +570,15 @@
         state.guest = source;
         post(initPayload());
         post(themePayload());
+        // The frame has no i18n instance of its own: refresh its copy whenever
+        // the host switches language, not only when the frame is first opened.
+        const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+        if (!unsubscribe && runtime && typeof runtime.subscribe === 'function') {
+          unsubscribe = runtime.subscribe(() => {
+            if (state.disposed || !state.ready) return;
+            post(initPayload());
+          });
+        }
         return true;
       }
       if (data.type === 'itsm:request') return onRequest(data);
@@ -524,6 +616,10 @@
       dispose() {
         state.disposed = true;
         state.pending.clear();
+        if (unsubscribe) {
+          unsubscribe();
+          unsubscribe = null;
+        }
       }
     };
   }
@@ -542,6 +638,7 @@
     buildDocument,
     validatedFrontendUrl,
     loadSources,
+    frameMessages,
     bridge
   };
 })();
