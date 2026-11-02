@@ -7,58 +7,86 @@
    * describes the allowlisted wire vocabulary the editor may show and builds
    * an empty draft; it never stores documents, history or templates. */
 
+  // Copy resolved outside a mounted template goes through the same runtime.
+  // Reading the runtime revision keeps a rendered label reactive, so switching
+  // the language re-renders the catalog the editor shows.
+  function tr(key, params) {
+    if (!window.ItsmI18n) return '';
+    if (window.ItsmI18n.version) window.ItsmI18n.version.value;
+    return window.ItsmI18n.t(key, params);
+  }
+
+  // Stable keys stay on the objects; only their labels and descriptions are
+  // translated. The properties are getters so a language switch updates the
+  // catalog that the editor renders, instead of freezing copy at load time.
+  function localized(ids, textKeys) {
+    const item = Object.assign({}, ids);
+    Object.keys(textKeys).forEach(function (property) {
+      Object.defineProperty(item, property, {
+        enumerable: true,
+        get: function () { return tr(textKeys[property]); }
+      });
+    });
+    return item;
+  }
+
   const FAMILIES = [
-    { id: 'inventory', label: 'Inventario', description: 'Listados y fichas del inventario actual.' },
-    { id: 'history', label: 'Historial', description: 'Movimientos, eventos y trazabilidad.' },
-    { id: 'warranty', label: 'Garantías', description: 'Cobertura vigente, por vencer y vencida.' }
+    localized({ id: 'inventory' }, { label: 'ui.reports.family_inventory', description: 'ui.reports.family_inventory_desc' }),
+    localized({ id: 'history' }, { label: 'ui.reports.family_history', description: 'ui.reports.family_history_desc' }),
+    localized({ id: 'warranty' }, { label: 'ui.reports.family_warranty', description: 'ui.reports.family_warranty_desc' })
   ];
+
+  const FIELD_KEYS = {
+    id: 'ui.reports.field_id',
+    quickCode: 'ui.reports.field_quick_code',
+    name: 'ui.common.name',
+    category: 'ui.reports.field_category',
+    site: 'ui.reports.field_site',
+    location: 'ui.reports.field_location',
+    status: 'ui.reports.field_status',
+    responsible: 'ui.reports.field_responsible',
+    serial: 'ui.reports.field_serial',
+    brand: 'ui.reports.field_brand',
+    model: 'ui.reports.field_model',
+    ip: 'ui.reports.field_ip',
+    purchaseCost: 'ui.reports.field_purchase_cost',
+    technical: 'ui.reports.field_technical',
+    assetId: 'ui.reports.field_asset_id',
+    action: 'ui.reports.field_action',
+    actor: 'ui.reports.actor',
+    effectiveAt: 'ui.reports.field_date',
+    entityType: 'ui.reports.field_origin',
+    entityId: 'ui.reports.field_origin_id',
+    statusOld: 'ui.reports.field_status_old',
+    statusNew: 'ui.reports.field_status_new',
+    changes: 'ui.reports.field_changes',
+    notes: 'ui.reports.field_notes',
+    source: 'ui.reports.field_source',
+    supplier: 'ui.reports.field_supplier',
+    purchaseDate: 'ui.reports.field_purchase',
+    expiresOn: 'ui.reports.field_expires',
+    coverage: 'ui.reports.coverage',
+    receiptId: 'ui.reports.field_receipt'
+  };
+
+  function field(key) {
+    return localized({ key: key }, { label: FIELD_KEYS[key] });
+  }
 
   const ASSET_FIELDS = [
-    { key: 'id', label: 'ID permanente' },
-    { key: 'quickCode', label: 'Código rápido' },
-    { key: 'name', label: 'Nombre' },
-    { key: 'category', label: 'Categoría' },
-    { key: 'site', label: 'Sede' },
-    { key: 'location', label: 'Ubicación' },
-    { key: 'status', label: 'Estado' },
-    { key: 'responsible', label: 'Responsable' },
-    { key: 'serial', label: 'Serie' },
-    { key: 'brand', label: 'Marca' },
-    { key: 'model', label: 'Modelo' },
-    { key: 'ip', label: 'IP' },
-    { key: 'purchaseCost', label: 'Costo de compra' },
-    { key: 'technical', label: 'Ficha técnica' }
-  ];
+    'id', 'quickCode', 'name', 'category', 'site', 'location', 'status',
+    'responsible', 'serial', 'brand', 'model', 'ip', 'purchaseCost', 'technical'
+  ].map(field);
 
   const HISTORY_FIELDS = [
-    { key: 'assetId', label: 'ID del activo' },
-    { key: 'quickCode', label: 'Código rápido' },
-    { key: 'name', label: 'Nombre' },
-    { key: 'action', label: 'Acción' },
-    { key: 'actor', label: 'Actor' },
-    { key: 'effectiveAt', label: 'Fecha' },
-    { key: 'entityType', label: 'Origen' },
-    { key: 'entityId', label: 'ID de origen' },
-    { key: 'statusOld', label: 'Estado anterior' },
-    { key: 'statusNew', label: 'Estado nuevo' },
-    { key: 'changes', label: 'Cambios' },
-    { key: 'notes', label: 'Notas' },
-    { key: 'source', label: 'Fuente' }
-  ];
+    'assetId', 'quickCode', 'name', 'action', 'actor', 'effectiveAt', 'entityType',
+    'entityId', 'statusOld', 'statusNew', 'changes', 'notes', 'source'
+  ].map(field);
 
   const WARRANTY_FIELDS = [
-    { key: 'assetId', label: 'ID del activo' },
-    { key: 'quickCode', label: 'Código rápido' },
-    { key: 'name', label: 'Nombre' },
-    { key: 'category', label: 'Categoría' },
-    { key: 'site', label: 'Sede' },
-    { key: 'supplier', label: 'Proveedor' },
-    { key: 'purchaseDate', label: 'Compra' },
-    { key: 'expiresOn', label: 'Vencimiento' },
-    { key: 'coverage', label: 'Cobertura' },
-    { key: 'receiptId', label: 'Comprobante' },
-    { key: 'notes', label: 'Notas' }
-  ];
+    'assetId', 'quickCode', 'name', 'category', 'site', 'supplier', 'purchaseDate',
+    'expiresOn', 'coverage', 'receiptId', 'notes'
+  ].map(field);
 
   const FIELDS = ASSET_FIELDS.concat(
     HISTORY_FIELDS.filter(function (field) {
@@ -70,15 +98,30 @@
     })
   );
 
+  const BLOCK_KEYS = {
+    heading: 'ui.reports.block_heading',
+    text: 'ui.reports.block_text',
+    asset: 'ui.reports.block_asset',
+    table: 'ui.reports.block_table',
+    photo: 'ui.reports.block_photo',
+    summary: 'ui.reports.block_summary',
+    qr: 'ui.reports.block_qr',
+    footer: 'ui.reports.block_footer'
+  };
+
+  function blockType(type, icon) {
+    return localized({ type: type, icon: icon }, { label: BLOCK_KEYS[type] });
+  }
+
   const BLOCK_TYPES = [
-    { type: 'heading', label: 'Encabezado', icon: 'type' },
-    { type: 'text', label: 'Texto', icon: 'file-text' },
-    { type: 'asset', label: 'Ficha de activo', icon: 'package' },
-    { type: 'table', label: 'Tabla', icon: 'table' },
-    { type: 'photo', label: 'Fotografía', icon: 'image' },
-    { type: 'summary', label: 'Resumen', icon: 'chart' },
-    { type: 'qr', label: 'Código QR', icon: 'qr' },
-    { type: 'footer', label: 'Pie de página', icon: 'minus' }
+    blockType('heading', 'type'),
+    blockType('text', 'file-text'),
+    blockType('asset', 'package'),
+    blockType('table', 'table'),
+    blockType('photo', 'image'),
+    blockType('summary', 'chart'),
+    blockType('qr', 'qr'),
+    blockType('footer', 'minus')
   ];
 
   const FAMILY_OPTIONS = {
@@ -96,24 +139,28 @@
     warranty: ['quickCode', 'name', 'category', 'site', 'supplier', 'purchaseDate', 'expiresOn', 'coverage', 'receiptId', 'notes']
   };
 
+  // Grouping reuses the field label of the column it groups by, so the editor
+  // does not carry a second copy of the same word.
   const GROUPS = [
-    { value: 'none', label: 'Sin agrupar' },
-    { value: 'category', label: 'Categoría' },
-    { value: 'site', label: 'Sede' },
-    { value: 'responsible', label: 'Responsable' },
-    { value: 'location', label: 'Ubicación' },
-    { value: 'status', label: 'Estado' }
+    localized({ value: 'none' }, { label: 'ui.reports.group_none' }),
+    localized({ value: 'category' }, { label: FIELD_KEYS.category }),
+    localized({ value: 'site' }, { label: FIELD_KEYS.site }),
+    localized({ value: 'responsible' }, { label: FIELD_KEYS.responsible }),
+    localized({ value: 'location' }, { label: FIELD_KEYS.location }),
+    localized({ value: 'status' }, { label: FIELD_KEYS.status })
   ];
 
+  // A block snapshots its label and text when it is created, because both are
+  // part of the template draft the server stores.
   const BLOCK_DEFAULTS = {
-    heading: { label: 'Encabezado', text: 'Reporte de inventario' },
-    text: { label: 'Texto', text: '' },
-    asset: { label: 'Ficha de activo', text: '' },
-    table: { label: 'Tabla', text: '' },
-    photo: { label: 'Fotografía', text: '' },
-    summary: { label: 'Resumen', text: '' },
-    qr: { label: 'Código QR', text: '' },
-    footer: { label: 'Pie de página', text: '' }
+    heading: { labelKey: BLOCK_KEYS.heading, textKey: 'ui.reports.block_heading_default_text' },
+    text: { labelKey: BLOCK_KEYS.text, textKey: '' },
+    asset: { labelKey: BLOCK_KEYS.asset, textKey: '' },
+    table: { labelKey: BLOCK_KEYS.table, textKey: '' },
+    photo: { labelKey: BLOCK_KEYS.photo, textKey: '' },
+    summary: { labelKey: BLOCK_KEYS.summary, textKey: '' },
+    qr: { labelKey: BLOCK_KEYS.qr, textKey: '' },
+    footer: { labelKey: BLOCK_KEYS.footer, textKey: '' }
   };
 
   let blockCounter = 0;
@@ -150,8 +197,8 @@
     return {
       id: text(source.id) || 'block-' + blockCounter,
       type: kind,
-      label: text(source.label) || defaults.label,
-      text: typeof source.text === 'string' ? source.text : defaults.text,
+      label: text(source.label) || tr(defaults.labelKey),
+      text: typeof source.text === 'string' ? source.text : tr(defaults.textKey),
       enabled: source.enabled !== false
     };
   }
@@ -160,7 +207,7 @@
     const id = FAMILIES.some(function (item) { return item.id === family; }) ? family : 'inventory';
     return {
       id: '',
-      name: 'Nueva plantilla',
+      name: tr('ui.reports.new_template'),
       description: '',
       family: id,
       mode: 'list',
@@ -170,9 +217,9 @@
       images: false,
       version: 1,
       blocks: [
-        block('heading', { label: 'Encabezado', text: familyOf(id).label }),
-        block('table', { label: 'Tabla de datos' }),
-        block('footer', { label: 'Pie de página' })
+        block('heading', { label: tr(BLOCK_KEYS.heading), text: familyOf(id).label }),
+        block('table', { label: tr('ui.reports.block_data_table') }),
+        block('footer', { label: tr(BLOCK_KEYS.footer) })
       ]
     };
   }
@@ -196,7 +243,7 @@
       : [];
     return {
       id: text(raw.id),
-      name: text(raw.name) || 'Plantilla sin nombre',
+      name: text(raw.name) || tr('ui.reports.template_untitled'),
       description: text(raw.description),
       family: family,
       mode: raw.mode === 'sheet' ? 'sheet' : 'list',

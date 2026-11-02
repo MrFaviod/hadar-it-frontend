@@ -37,6 +37,33 @@ const DEMO_DATA_FILES = {
   'transfer-data.js': 'Demo import rows and export fixtures for the prototype transfer flow.'
 };
 
+// Literals the heuristic reads as Spanish words but that never render: they are
+// stable route hashes and generated identifiers. Each entry needs its reason,
+// and an entry that stops matching the source fails the audit below.
+const NON_COPY_LITERALS = {
+  'dashboard-model.js': {
+    '#/supervision/alerta/': 'Route hash prefix of the monitoring alert view; routes are stable ids.',
+    '#/mantenimiento/incidente/': 'Route hash prefix of the maintenance incident view; routes are stable ids.'
+  },
+  'maintenance-views.js': {
+    '#/mantenimiento/incidente/': 'Route hash prefix of the maintenance incident view; routes are stable ids.',
+    '#/supervision/alerta/': 'Route hash prefix of the monitoring alert view; routes are stable ids.'
+  },
+  'maintenance-panels.js': {
+    '#/mantenimiento/incidente/': 'Route hash prefix of the maintenance incident view; routes are stable ids.'
+  },
+  'transfer-export-views.js': {
+    '#/datos/importar': 'Route hash of the import view; routes are stable ids.',
+    '#/datos/exportar': 'Route hash of the export view; routes are stable ids.'
+  },
+  'graph-views.js': {
+    '#/infra/mapa/activo/': 'Route hash prefix of the infrastructure map focused on one asset; routes are stable ids.'
+  },
+  'map-engine.js': {
+    '-sin-sala': 'Suffix of the generated room id used when a floor has no rooms; it is never displayed.'
+  }
+};
+
 // Words that only exist in Spanish interface copy. `WIDE_WORDS` is the broad
 // function-word list; two of them in one string is already conclusive.
 const WIDE_WORDS = new Set((
@@ -291,14 +318,18 @@ function listModules() {
 
 /**
  * Scan every module that is not an excluded demo dataset.
+ * @param {{includeNonCopy?: boolean}} [options] Keep allowlisted non-copy literals.
  * @returns {{files: Record<string, number>, hits: Record<string, {line: number, value: string}[]>, total: number}}
  */
-function scanTree() {
+function scanTree(options) {
+  const includeNonCopy = !!(options && options.includeNonCopy);
   const files = {};
   const hits = {};
   let total = 0;
   for (const name of listModules()) {
-    const found = scanSource(fs.readFileSync(path.join(MODULE_DIR, name), 'utf8'));
+    const allowed = NON_COPY_LITERALS[name] || {};
+    const found = scanSource(fs.readFileSync(path.join(MODULE_DIR, name), 'utf8'))
+      .filter((hit) => includeNonCopy || !allowed[hit.value]);
     if (!found.length) continue;
     files[name] = found.length;
     hits[name] = found;
@@ -397,6 +428,20 @@ if (require.main === module && process.argv.includes('--write')) {
       assert.ok(fs.existsSync(path.join(MODULE_DIR, file)), `${file} no longer exists; drop its baseline entry`);
     }
   });
+
+  test('the non-copy allowlist names literals that exist and never render', () => {
+    const all = scanTree({ includeNonCopy: true });
+    const current = scanTree();
+    for (const [file, entries] of Object.entries(NON_COPY_LITERALS)) {
+      assert.ok(fs.existsSync(path.join(MODULE_DIR, file)), `${file} must still exist`);
+      const seen = new Set(((all.hits || {})[file] || []).map((hit) => hit.value));
+      for (const [literal, reason] of Object.entries(entries)) {
+        assert.ok(reason.length > 20, `${file}: ${literal} needs a real reason`);
+        assert.ok(seen.has(literal), `${file}: ${literal} no longer exists; drop the entry`);
+        assert.ok(!((current.hits || {})[file] || []).some((hit) => hit.value === literal), `${file}: ${literal} is still counted as copy`);
+      }
+    }
+  });
 }
 
-module.exports = { scanSource, scanTree, compare, looksSpanish, DEMO_DATA_FILES, BASELINE_PATH };
+module.exports = { scanSource, scanTree, compare, looksSpanish, DEMO_DATA_FILES, NON_COPY_LITERALS, BASELINE_PATH };

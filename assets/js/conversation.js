@@ -200,10 +200,10 @@
       },
       agentProviderOptions() {
         if (!this.agentManagedActive) return [];
-        return [{ value: '', label: 'Proveedor de la organización', models: [], capabilities: {} }].concat(
+        return [{ value: '', label: tr('ui.chat.provider_organization'), models: [], capabilities: {} }].concat(
           this.chatProviders.map(provider => ({
             value: provider.id,
-            label: provider.name + ' · Tu clave',
+            label: tr('ui.chat.provider_personal_label', { name: provider.name }),
             models: provider.models,
             capabilities: provider.capabilities || {}
           }))
@@ -1067,7 +1067,8 @@
         if (!providerId) await this.persistAgentPreference(instance.id, model);
         if (!this.isCurrent(epoch)) return;
         if (signal && signal.aborted) {
-          const aborted = new Error('Cancelada');
+          // Internal signal, never rendered: callers return early on AbortError.
+          const aborted = new Error('Aborted');
           aborted.name = 'AbortError';
           throw aborted;
         }

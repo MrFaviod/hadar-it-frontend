@@ -7,6 +7,8 @@ function context() {
   const c = vm.createContext({ console, Date, JSON, Promise, URL, AbortController, setTimeout, clearTimeout, document: { activeElement: null, body: { style: { overflow: '' } } } });
   c.window = c;
   for (const file of ['phase10-api.js', 'workspace-engine.js', 'dashboard-preferences.js', 'search-engine.js', 'search-views.js']) vm.runInContext(read('assets/js/' + file), c, { filename: file });
+  // Record types are catalog copy, so the sandbox needs the real runtime.
+  require('./i18n-test-runtime.cjs').install(c);
   return c;
 }
 function app() {
