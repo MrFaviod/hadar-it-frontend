@@ -497,6 +497,48 @@ test('T7 a rejected import shows the localized server message without claiming s
   ui.unmount();
 });
 
+test('T7 a rejected import lists every problem and reloads nothing', async () => {
+  const s = setup();
+  const table = routes();
+  table['POST /i18n/import'] = () => respond({
+    error: { code: 'validation_error', message: 'La importación tiene 2 problemas.', key: 'api.i18n.import_invalid', params: { count: 2 } },
+    details: [],
+    report: invalidReport('en')
+  }, 422);
+  stubFetch(s, table);
+  const ui = await mountSection(s);
+
+  const bundles = callsTo(s, 'GET', '/i18n/bundle').length;
+  const coverage = callsTo(s, 'GET', '/i18n/coverage').length;
+
+  setValue(findById(ui.root, 'translations-import-locale'), 'en');
+  await s.settle();
+  setValue(findById(ui.root, 'translations-import-content'), '{"api.unknown.key": "x"}');
+  await s.settle();
+
+  await click(buttonByText(ui.root, 'Importar'));
+  await s.settle();
+
+  const copy = textContent(ui.root);
+  assert.match(copy, /La importación tiene 2 problemas\./, 'the server summary is shown');
+  const reportBlock = findAll(ui.root, (node) => node.props && typeof node.props.class === 'string'
+    && node.props.class.split(/\s+/).includes('translation-report'))[0];
+  assert.ok(reportBlock, 'the rejected import still renders the report block');
+  const problems = textContent(reportBlock);
+  assert.match(problems, /api\.unknown\.key/, 'the first problem key is listed');
+  assert.match(problems, /La clave no existe en el catálogo de origen\./, 'the first problem message is listed');
+  assert.match(problems, /api\.assets\.created/, 'the second problem key is listed');
+  assert.match(problems, /Faltan parámetros: \{count\}\./, 'the second problem message is listed');
+  assert.ok(findById(ui.root, 'translations-import-content'), 'the pasted catalog is kept for correction');
+  assert.doesNotMatch(copy, /Importación guardada/, 'no success is claimed');
+  assert.doesNotMatch(copy, /Se recargó el idioma/, 'no locale reload is claimed');
+  assert.equal(callsTo(s, 'GET', '/i18n/bundle').length, bundles, 'the bundle is not fetched again');
+  assert.equal(callsTo(s, 'GET', '/i18n/coverage').length, coverage, 'coverage is not reloaded');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
 test('T7 the languages section is reachable from the config navigation with system.view', async () => {
   const s = setup();
 
@@ -516,6 +558,29 @@ test('T7 the languages section is reachable from the config navigation with syst
   assert.ok(!s.app.permittedConfigSections.some((item) => item.id === 'categorias'), 'other sections keep their own permission');
   assert.equal(s.app.accessRoute({ name: 'config', section: 'idiomas' }).name, 'config', 'the route is not denied');
   assert.equal(s.app.accessRoute({ name: 'config', section: 'categorias' }).name, 'denied', 'other sections keep their own guard');
+
+  assert.deepEqual(s.errors, []);
+});
+
+test('T7 the canonical config table grants idiomas with system.view and nothing wider', async () => {
+  const s = setup();
+
+  // The section permission belongs to the shared table now, so the shared
+  // helpers are the authority. A per-section override in the application would
+  // hide a drift between the table and the shipped guard, which is what this
+  // case prevents.
+  s.app.can = (permission) => permission === 'system.view';
+  assert.equal(s.c.AssetAccess.methods.canConfig.call(s.app, 'idiomas'), true, 'system.view reaches the languages section');
+  assert.equal(s.c.AssetAccess.methods.canConfig.call(s.app, 'categorias'), false, 'categorias keeps config.categories');
+  assert.equal(s.c.AssetAccess.methods.canConfig.call(s.app, 'general'), false, 'general keeps config.general');
+
+  assert.equal(s.c.AssetAccess.methods.accessRoute.call(s.app, { name: 'config', section: 'idiomas' }).name, 'config', 'the shared guard allows the languages route');
+  assert.equal(s.c.AssetAccess.methods.accessRoute.call(s.app, { name: 'config', section: 'categorias' }).name, 'denied', 'categorias stays denied for a system.view-only account');
+
+  const sections = s.app.permittedConfigSections.map((item) => item.id);
+  assert.ok(sections.includes('idiomas'), 'the navigation keeps the languages section');
+  assert.ok(sections.includes('sistema'), 'the installation section keeps its own system.view grant');
+  assert.ok(!sections.includes('categorias'), 'no other section is widened');
 
   assert.deepEqual(s.errors, []);
 });

@@ -324,6 +324,32 @@ function scanModule(source) {
   return markupLiterals(source).reduce((total, markup) => total + countMarkup(markup), 0);
 }
 
+// Every counted literal with its kind and the markup that holds it. The
+// baseline records why a value that stays hard-coded is not copy, and this
+// reader is what keeps those reasons honest.
+function literalEntries(source) {
+  const entries = [];
+  for (const markup of markupLiterals(source)) {
+    const clean = stripNonContent(markup);
+    literalTextNodes(clean).forEach((value) => entries.push({ kind: 'text', value }));
+    literalAttributes(clean).forEach((value) => entries.push({ kind: 'attribute', value }));
+    expressionLiterals(clean).forEach((value) => entries.push({ kind: 'expression', value }));
+  }
+  return entries;
+}
+
+function htmlEntries(source) {
+  const start = source.indexOf('<div id="app"');
+  const end = source.indexOf('<script src="assets/vendor/', start);
+  const shell = start >= 0 ? source.slice(start, end > start ? end : source.length) : source;
+  const clean = stripNonContent(shell);
+  const entries = [];
+  literalTextNodes(clean).forEach((value) => entries.push({ kind: 'text', value }));
+  literalAttributes(clean).forEach((value) => entries.push({ kind: 'attribute', value }));
+  expressionLiterals(clean).forEach((value) => entries.push({ kind: 'expression', value }));
+  return entries;
+}
+
 function scanRepository() {
   const report = {};
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
@@ -343,5 +369,5 @@ function scanRepository() {
 
 module.exports = {
   scanRepository, scanHtml, scanModule, templateLiterals, markupLiterals, stringLiterals, expressionLiterals,
-  isCopyLiteral, literalTextNodes, literalAttributes, countMarkup, ROOT
+  isCopyLiteral, literalTextNodes, literalAttributes, countMarkup, literalEntries, htmlEntries, ROOT
 };

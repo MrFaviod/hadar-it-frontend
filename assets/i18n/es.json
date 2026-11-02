@@ -6519,5 +6519,10 @@
   "ui.translations.confirm.eyebrow": "Confirmación",
   "ui.translations.source.registered": "Catálogo de la interfaz registrado: {keys} claves (revisión {revision}).",
   "ui.translations.source.unchanged": "El catálogo de la interfaz ya estaba registrado.",
-  "ui.translations.source.failed": "No se pudo registrar el catálogo de la interfaz: la cobertura puede estar incompleta."
+  "ui.translations.source.failed": "No se pudo registrar el catálogo de la interfaz: la cobertura puede estar incompleta.",
+  "ui.reports.block_enable_aria": "Activar {name}",
+  "ui.reports.block_move_up_aria": "Subir {name}",
+  "ui.reports.block_move_down_aria": "Bajar {name}",
+  "ui.reports.block_remove_aria": "Quitar {name}",
+  "ui.reports.block_text_aria": "Texto de {name}"
 }

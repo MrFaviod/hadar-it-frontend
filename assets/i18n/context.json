@@ -6519,5 +6519,10 @@
   "ui.translations.confirm.eyebrow": "Eyebrow of the confirmation dialog.",
   "ui.translations.source.registered": "Result of registering the shipped ui source.",
   "ui.translations.source.unchanged": "Result when the shipped ui source did not change.",
-  "ui.translations.source.failed": "Error when the shipped ui source registration fails."
+  "ui.translations.source.failed": "Error when the shipped ui source registration fails.",
+  "ui.reports.block_enable_aria": "Accessible name of the checkbox that shows or hides one report block, naming the block.",
+  "ui.reports.block_move_up_aria": "Accessible name of the button that moves one report block earlier, naming the block.",
+  "ui.reports.block_move_down_aria": "Accessible name of the button that moves one report block later, naming the block.",
+  "ui.reports.block_remove_aria": "Accessible name of the button that removes one report block, naming the block.",
+  "ui.reports.block_text_aria": "Accessible name of the text field of one report block, naming the block."
 }

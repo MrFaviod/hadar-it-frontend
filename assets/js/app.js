@@ -106,20 +106,6 @@
       if (route && route.name === 'config' && route.section === 'ia') return '#/configuracion/ia';
       if (route && route.name === 'config' && route.section === 'sistema') return '#/configuracion/sistema';
       return window.AssetMethods.hashFor.call(this, route);
-    },
-    // The languages section is readable with system.view: its writes check
-    // system.configure in the component and in the server. The shared section
-    // table predates this section, so the exception stays in this override.
-    canConfig(section) {
-      if (section === 'idiomas') return this.can('system.view');
-      return window.AssetAccess.methods.canConfig.call(this, section);
-    },
-    accessRoute(route) {
-      if (route && route.name === 'config' && route.section === 'idiomas' &&
-          this.authenticated && this.currentUser && this.currentUser.active && this.can('system.view')) {
-        return route;
-      }
-      return window.AssetAccess.methods.accessRoute.call(this, route);
     }
   };
 
@@ -426,9 +412,7 @@
         ];
       },
       permittedConfigSections() {
-        return this.configSections.filter((section) => (
-          section.id === 'idiomas' ? this.can('system.view') : this.canConfig(section.id)
-        ));
+        return this.configSections.filter((section) => this.canConfig(section.id));
       },
       configSections() {
         // Installation ownership stays a filtered section of the existing

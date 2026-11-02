@@ -573,7 +573,11 @@
           await this.reload();
         } catch (error) {
           if (this.disposed) return;
-          this.report = null;
+          // D11: a rejected import returns the full report beside the error
+          // envelope, so every problem is listed exactly as the validate path
+          // does instead of only the summary message. Nothing is applied and no
+          // bundle is reloaded.
+          this.report = error && error.report && typeof error.report === 'object' ? error.report : null;
           this.importError = this.errorText(error, T('ui.translations.import.failed'));
         } finally {
           if (!this.disposed) this.importBusy = false;

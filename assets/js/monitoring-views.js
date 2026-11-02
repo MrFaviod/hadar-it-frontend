@@ -1110,7 +1110,7 @@
             <div>
               <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.monitoring.device.eyebrow') }}</p>
               <h1 id="mon-device-title">{{ asset.name }}</h1>
-              <p class="page-sub mono">{{ asset.quickCode || asset.id }} · {{ asset.category || $t('ui.monitoring.device.no_category') }} · {{ asset.site || 'Sin sede' }}</p>
+              <p class="page-sub mono">{{ asset.quickCode || asset.id }} · {{ asset.category || $t('ui.monitoring.device.no_category') }} · {{ asset.site || $t('ui.monitoring.device.no_site') }}</p>
             </div>
           </div>
           <div class="mon-head__actions">

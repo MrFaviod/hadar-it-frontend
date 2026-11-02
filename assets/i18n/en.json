@@ -6519,5 +6519,10 @@
   "ui.translations.confirm.eyebrow": "Confirmation",
   "ui.translations.source.registered": "Interface catalog registered: {keys} keys (revision {revision}).",
   "ui.translations.source.unchanged": "The interface catalog was already registered.",
-  "ui.translations.source.failed": "The interface catalog could not be registered: coverage may be incomplete."
+  "ui.translations.source.failed": "The interface catalog could not be registered: coverage may be incomplete.",
+  "ui.reports.block_enable_aria": "Enable {name}",
+  "ui.reports.block_move_up_aria": "Move {name} up",
+  "ui.reports.block_move_down_aria": "Move {name} down",
+  "ui.reports.block_remove_aria": "Remove {name}",
+  "ui.reports.block_text_aria": "Text for {name}"
 }

@@ -175,6 +175,9 @@
     // travel with business administration. The section route itself needs
     // system.view; each control checks its own backend permission.
     sistema: 'system.view',
+    // The translator page is read with system.view; every write inside it
+    // checks system.configure in the component and on the server.
+    idiomas: 'system.view',
     activos: 'config.categories',
     general: 'config.general',
     apariencia: 'config.general',
@@ -324,6 +327,11 @@
     error.serverMessage = serverMessage;
     error.details = details.map(item => ({ field: String(item.field || ''), message: String(item.message || '') }));
     error.fieldErrors = {};
+    // D11 additive: a rejected write may carry the full report beside the error
+    // envelope (the translator import returns one). It rides on the error so a
+    // caller can show every problem instead of only the summary message; the
+    // existing fields and every caller stay unchanged.
+    if (payload && payload.report && typeof payload.report === 'object') error.report = payload.report;
     details.forEach(item => { const field = String(item.field || '').split('.').pop(); if (field) error.fieldErrors[field] = tr('ui.errors.field_invalid'); });
     return error;
   }
