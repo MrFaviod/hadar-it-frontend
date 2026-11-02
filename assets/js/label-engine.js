@@ -13,70 +13,70 @@
   }
 
   // The label and detail of every entry are getters: a locale switch re-reads
-  // the catalog without rebuilding the vocabulary, and the Spanish source is
-  // the fallback when this module runs without the i18n runtime. The stable
-  // `key`/`id` values never change with the locale.
-  function localized(entry, property, source, key) {
+  // the catalog without rebuilding the vocabulary, and the catalog is the only
+  // source of visible copy. The stable `key`/`id` values never change with the
+  // locale.
+  function localized(entry, property, key) {
     Object.defineProperty(entry, property, {
       enumerable: true,
       configurable: true,
-      get: function () { return tr(key) || source; }
+      get: function () { return tr(key); }
     });
     return entry;
   }
 
-  function fieldOf(key, source, labelKey) {
-    return localized({ key: key }, 'label', source, labelKey);
+  function fieldOf(key, labelKey) {
+    return localized({ key: key }, 'label', labelKey);
   }
 
-  function formatOfDefinition(id, source, keys, geometry) {
-    const entry = localized(localized({ id: id }, 'label', source.label, keys.label), 'detail', source.detail, keys.detail);
+  function formatOfDefinition(id, keys, geometry) {
+    const entry = localized(localized({ id: id }, 'label', keys.label), 'detail', keys.detail);
     return Object.assign(entry, geometry);
   }
 
   const PUBLIC_FIELDS = [
-    fieldOf('id', 'ID permanente', 'ui.labels.field.id'),
-    fieldOf('quickCode', 'Código rápido', 'ui.labels.field.quick_code'),
-    fieldOf('name', 'Nombre', 'ui.labels.field.name'),
-    fieldOf('category', 'Categoría', 'ui.labels.field.category'),
-    fieldOf('site', 'Sede', 'ui.labels.field.site'),
-    fieldOf('location', 'Ubicación', 'ui.labels.field.location'),
-    fieldOf('status', 'Estado', 'ui.labels.field.status')
+    fieldOf('id', 'ui.labels.field.id'),
+    fieldOf('quickCode', 'ui.labels.field.quick_code'),
+    fieldOf('name', 'ui.labels.field.name'),
+    fieldOf('category', 'ui.labels.field.category'),
+    fieldOf('site', 'ui.labels.field.site'),
+    fieldOf('location', 'ui.labels.field.location'),
+    fieldOf('status', 'ui.labels.field.status')
   ];
 
   const LABEL_FIELDS = [
-    fieldOf('logo', 'Logotipo', 'ui.labels.field.logo'),
-    fieldOf('name', 'Nombre', 'ui.labels.field.name'),
-    fieldOf('id', 'ID permanente', 'ui.labels.field.id'),
-    fieldOf('code', 'Código rápido', 'ui.labels.field.code'),
-    fieldOf('qr', 'Código QR', 'ui.labels.field.qr'),
-    fieldOf('site', 'Sede', 'ui.labels.field.site'),
-    fieldOf('location', 'Ubicación', 'ui.labels.field.location'),
-    fieldOf('serial', 'Serie', 'ui.labels.field.serial')
+    fieldOf('logo', 'ui.labels.field.logo'),
+    fieldOf('name', 'ui.labels.field.name'),
+    fieldOf('id', 'ui.labels.field.id'),
+    fieldOf('code', 'ui.labels.field.code'),
+    fieldOf('qr', 'ui.labels.field.qr'),
+    fieldOf('site', 'ui.labels.field.site'),
+    fieldOf('location', 'ui.labels.field.location'),
+    fieldOf('serial', 'ui.labels.field.serial')
   ];
 
   const FORMATS = [
-    formatOfDefinition('a4-24', { label: 'A4 · 24 etiquetas', detail: '70 × 37 mm · 3 columnas × 8 filas' }, { label: 'ui.labels.format.a4_24.label', detail: 'ui.labels.format.a4_24.detail' }, {
+    formatOfDefinition('a4-24', { label: 'ui.labels.format.a4_24.label', detail: 'ui.labels.format.a4_24.detail' }, {
       widthMm: 70, heightMm: 37, pageWidthMm: 210, pageHeightMm: 297,
       marginTopMm: 13.5, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
       gapXmm: 0, gapYmm: 0, columns: 3, rows: 8, offset: 0
     }),
-    formatOfDefinition('a4-21', { label: 'A4 · 21 etiquetas', detail: '63.5 × 38.1 mm · 3 columnas × 7 filas' }, { label: 'ui.labels.format.a4_21.label', detail: 'ui.labels.format.a4_21.detail' }, {
+    formatOfDefinition('a4-21', { label: 'ui.labels.format.a4_21.label', detail: 'ui.labels.format.a4_21.detail' }, {
       widthMm: 63.5, heightMm: 38.1, pageWidthMm: 210, pageHeightMm: 297,
       marginTopMm: 13.5, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
       gapXmm: 0, gapYmm: 0, columns: 3, rows: 7, offset: 0
     }),
-    formatOfDefinition('roll-50x30', { label: 'Rollo · 50 × 30 mm', detail: 'Una etiqueta por fila' }, { label: 'ui.labels.format.roll_50x30.label', detail: 'ui.labels.format.roll_50x30.detail' }, {
+    formatOfDefinition('roll-50x30', { label: 'ui.labels.format.roll_50x30.label', detail: 'ui.labels.format.roll_50x30.detail' }, {
       widthMm: 50, heightMm: 30, pageWidthMm: 50, pageHeightMm: 30,
       marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
       gapXmm: 0, gapYmm: 0, columns: 1, rows: 1, offset: 0
     }),
-    formatOfDefinition('roll-80x50', { label: 'Rollo · 80 × 50 mm', detail: 'Una etiqueta por fila' }, { label: 'ui.labels.format.roll_80x50.label', detail: 'ui.labels.format.roll_80x50.detail' }, {
+    formatOfDefinition('roll-80x50', { label: 'ui.labels.format.roll_80x50.label', detail: 'ui.labels.format.roll_80x50.detail' }, {
       widthMm: 80, heightMm: 50, pageWidthMm: 80, pageHeightMm: 50,
       marginTopMm: 0, marginRightMm: 0, marginBottomMm: 0, marginLeftMm: 0,
       gapXmm: 0, gapYmm: 0, columns: 1, rows: 1, offset: 0
     }),
-    formatOfDefinition('custom', { label: 'Personalizada', detail: 'Define tamaño, márgenes y columnas' }, { label: 'ui.labels.format.custom.label', detail: 'ui.labels.format.custom.detail' }, {
+    formatOfDefinition('custom', { label: 'ui.labels.format.custom.label', detail: 'ui.labels.format.custom.detail' }, {
       widthMm: 70, heightMm: 37, pageWidthMm: 210, pageHeightMm: 297,
       marginTopMm: 10, marginRightMm: 10, marginBottomMm: 10, marginLeftMm: 10,
       gapXmm: 2, gapYmm: 2, columns: 3, rows: 8, offset: 0

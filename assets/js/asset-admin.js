@@ -4,12 +4,20 @@
   const Schema = window.AssetSchema;
   const Store = window.AssetStore;
 
-  const RETIRE_REASONS = [
-    'Fin de vida útil',
-    'Avería irreparable',
-    'Robo o extravío',
-    'Sustitución por renovación',
-    'Otro motivo'
+  // Visible copy comes from the catalog. The retired reason is stored as the
+  // text the operator picked (the dialog binds the option value directly), so
+  // the list is resolved through the catalog on every read.
+  function tr(key, params) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
+  }
+
+  const RETIRE_REASON_KEYS = [
+    'ui.asset.admin.retire_reason.end_of_life',
+    'ui.asset.admin.retire_reason.irreparable',
+    'ui.asset.admin.retire_reason.theft',
+    'ui.asset.admin.retire_reason.renewal',
+    'ui.asset.admin.retire_reason.other'
   ];
 
   function blankEditor() {
@@ -34,7 +42,7 @@
   }
 
   function blankRetireDialog() {
-    return { open: false, assetId: '', reason: RETIRE_REASONS[0], note: '', acknowledged: false };
+    return { open: false, assetId: '', reason: tr(RETIRE_REASON_KEYS[0]), note: '', acknowledged: false };
   }
 
   function blankDeleteDialog() {
@@ -66,7 +74,10 @@
     },
     assetFieldValue(asset, field) {
       const value = asset.tech ? asset.tech[field.key] : '';
-      if (field.type === 'boolean') return value === true ? 'Sí' : (value === false ? 'No' : '—');
+      if (field.type === 'boolean') {
+        if (value === true) return tr('ui.asset.editor.yes');
+        return value === false ? tr('ui.asset.editor.no') : '—';
+      }
       if (value === '' || value === undefined || value === null) return '—';
       return field.unit ? value + ' ' + field.unit : String(value);
     },
@@ -80,11 +91,11 @@
       return Schema.formatDateTime(value);
     },
     assetWarrantyState(asset) {
-      if (!asset || !asset.warranty || !asset.warranty.until) return { label: 'Sin garantía registrada', tone: 'hold' };
+      if (!asset || !asset.warranty || !asset.warranty.until) return { label: tr('ui.asset.admin.warranty_none'), tone: 'hold' };
       const days = Math.round((Date.parse(asset.warranty.until + 'T12:00:00') - Date.now()) / 86400000);
-      if (days < 0) return { label: 'Garantía vencida', tone: 'down' };
-      if (days <= 60) return { label: 'Vence en ' + days + ' días', tone: 'warn' };
-      return { label: 'Vigente hasta el ' + Schema.formatDate(asset.warranty.until), tone: 'ok' };
+      if (days < 0) return { label: tr('ui.asset.admin.warranty_expired'), tone: 'down' };
+      if (days <= 60) return { label: tr('ui.asset.admin.warranty_expiring', { days: days }), tone: 'warn' };
+      return { label: tr('ui.asset.admin.warranty_active', { date: Schema.formatDate(asset.warranty.until) }), tone: 'ok' };
     },
     assetSiteLocations(siteId) {
       const site = this.sites.find((item) => item.id === siteId);
@@ -117,7 +128,7 @@
     },
     assetFieldTypeLabel(type) {
       const entry = Schema.FIELD_TYPES.find((item) => item.value === type);
-      return entry ? entry.label : 'Texto';
+      return entry ? entry.label : tr('ui.asset.schema.type.text');
     },
     assetFieldUsage(field) {
       return Object.keys(this.assetAdmin.forms).filter((categoryId) => {
@@ -128,7 +139,7 @@
       return this.assets.filter((asset) => asset.statusId === status.id).length;
     },
     assetToneLabel(tone) {
-      return Schema.TONE_LABELS[tone] || 'Sin asignar';
+      return Schema.TONE_LABELS[tone] || tr('ui.asset.field.unassigned');
     },
     assetFormTypes() {
       return Object.keys(this.assetAdmin.forms).map((key) => this.assetAdmin.forms[key].type);
@@ -139,16 +150,16 @@
       if (window.AssetOpsEngine && typeof window.AssetOpsEngine.actorOf === 'function') {
         return window.AssetOpsEngine.actorOf(this);
       }
-      return this.currentUser && this.currentUser.name ? this.currentUser.name : 'Administrador';
+      return this.currentUser && this.currentUser.name ? this.currentUser.name : tr('ui.operations.actor.administrator');
     },
     persistAssets() {
       const saved = Store.writeJSON(window.localStorage, Store.KEYS.assets, this.assets);
-      if (!saved) this.showToast('No se pudo guardar el activo en este navegador.', 'error');
+      if (!saved) this.showToast(tr('ui.asset.admin.error_save_assets'), 'error');
       return saved;
     },
     persistAssetAdmin() {
       const saved = Store.writeJSON(window.localStorage, Store.KEYS.assetAdmin, this.assetAdmin);
-      if (!saved) this.showToast('No se pudo guardar la configuración de activos.', 'error');
+      if (!saved) this.showToast(tr('ui.asset.admin.error_save_config'), 'error');
       return saved;
     },
 
@@ -192,7 +203,7 @@
       const draft = Store.clone(asset);
       draft.id = '';
       draft.code = '';
-      draft.name = 'Copia de ' + asset.name;
+      draft.name = tr('ui.asset.admin.copy_name', { name: asset.name });
       draft.retired = null;
       draft.history = [];
       draft.statusId = this.assetStatusOptions()[0] ? this.assetStatusOptions()[0].id : draft.statusId;
@@ -204,7 +215,7 @@
         draft
       });
       this.assetEditorErrors = {};
-      this.showToast('Duplicado listo para revisar antes de guardar.');
+      this.showToast(tr('ui.asset.admin.toast_duplicated'));
     },
     closeAssetEditor() {
       if (this.assetEditor.saving) return;
@@ -283,20 +294,20 @@
 
     validateAssetDraft(draft) {
       const errors = {};
-      if (!Schema.text(draft.name)) errors.name = 'El nombre del activo es obligatorio.';
-      if (!draft.category) errors.category = 'Selecciona una categoría.';
+      if (!Schema.text(draft.name)) errors.name = tr('ui.asset.admin.error_name_required');
+      if (!draft.category) errors.category = tr('ui.asset.admin.error_category_required');
       if (draft.ip && !/^[0-9a-zA-Z.:-]+$/.test(draft.ip.trim())) {
-        errors.ip = 'Usa una IP o un nombre de host sin espacios.';
+        errors.ip = tr('ui.asset.admin.error_ip');
       }
       if (draft.cost !== '' && draft.cost !== null && !(Number(draft.cost) >= 0)) {
-        errors.cost = 'El coste debe ser un número igual o mayor a cero.';
+        errors.cost = tr('ui.asset.admin.error_cost');
       }
       const warranty = draft.warranty || {};
       if (warranty.until && !Schema.isoDate(warranty.until)) {
-        errors.warranty = 'La fecha de garantía no es válida.';
+        errors.warranty = tr('ui.asset.admin.error_warranty_date');
       }
       if (warranty.until && draft.createdAt && Schema.isoDate(warranty.until) < Schema.isoDate(draft.createdAt)) {
-        errors.warranty = 'La garantía no puede vencer antes del alta del activo.';
+        errors.warranty = tr('ui.asset.admin.error_warranty_before_created');
       }
       return errors;
     },
@@ -305,7 +316,7 @@
       const errors = this.validateAssetDraft(draft);
       this.assetEditorErrors = errors;
       if (Object.keys(errors).length) {
-        this.assetEditor.error = 'Revisa los campos marcados antes de guardar.';
+        this.assetEditor.error = tr('ui.asset.admin.error_review_fields');
         return;
       }
       const isCreate = this.assetEditor.mode === 'create';
@@ -339,7 +350,9 @@
           retired: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          history: [Schema.historyEntry('created', 'Alta en el inventario', 'Ficha creada desde el formulario de ' + (category ? category.label : 'activo') + '.', {
+          history: [Schema.historyEntry('created', tr('ui.asset.detail.created'), tr('ui.asset.admin.history_created_detail', {
+            category: category ? category.label : tr('ui.asset.admin.asset_fallback')
+          }), {
             actor: this.assetActor(),
             movement: 'created',
             effectiveAt: new Date().toISOString()
@@ -350,14 +363,14 @@
         this.persistAssetAdmin();
         this.persistAssignments();
         this.closeAssetEditor();
-        this.showToast('Activo ' + id + ' registrado.');
+        this.showToast(tr('ui.asset.admin.toast_created', { id: id }));
         this.openAsset(asset);
         return;
       }
 
       const asset = this.assets.find((item) => item.id === this.assetEditor.id);
       if (!asset) {
-        this.assetEditor.error = 'El activo ya no existe en el inventario.';
+        this.assetEditor.error = tr('ui.asset.admin.error_asset_missing');
         return;
       }
       const before = Store.clone(asset);
@@ -389,26 +402,33 @@
       if (before.category !== asset.category || before.site !== asset.site) {
         const recalculated = this.assetNextCode(asset.category, asset.site, asset.id);
         if (recalculated !== asset.code) {
-          asset.history.unshift(Schema.historyEntry('code', 'Código rápido recalculado', before.code + ' → ' + recalculated + ' · ' + (before.site !== asset.site ? 'cambio de ubicación' : 'cambio de tipo') + '.', {
+          const codeDetail = before.site !== asset.site
+            ? tr('ui.asset.admin.history_code_site', { before: before.code, after: recalculated })
+            : tr('ui.asset.admin.history_code_type', { before: before.code, after: recalculated });
+          asset.history.unshift(Schema.historyEntry('code', tr('ui.asset.admin.history_code_title'), codeDetail, {
             actor: this.assetActor(),
             movement: 'code',
-            changes: [{ field: 'code', label: 'Código rápido', before: before.code, after: recalculated }]
+            changes: [{ field: 'code', label: tr('ui.asset.common.quick_code'), before: before.code, after: recalculated }]
           }));
           asset.code = recalculated;
         }
       }
       if (before.status !== asset.status) {
-        asset.history.unshift(Schema.historyEntry('status', 'Estado actualizado', before.status + ' → ' + asset.status + '.', {
+        asset.history.unshift(Schema.historyEntry('status', tr('ui.asset.admin.history_status_title'), tr('ui.asset.admin.history_status_detail', { before: before.status, after: asset.status }), {
           actor: this.assetActor(),
           movement: 'status',
-          changes: [{ field: 'statusId', label: 'Estado', before: before.status, after: asset.status }]
+          changes: [{ field: 'statusId', label: tr('ui.asset.common.status'), before: before.status, after: asset.status }]
         }));
       }
       if ((before.assigneeId || '') !== (asset.assigneeId || '')) {
-        asset.history.unshift(Schema.historyEntry('assigned', 'Responsable actualizado', (before.assignee || 'Sin asignar') + ' → ' + (asset.assignee || 'Sin asignar') + '.', {
+        const unassigned = tr('ui.asset.field.unassigned');
+        asset.history.unshift(Schema.historyEntry('assigned', tr('ui.asset.admin.history_assignee_title'), tr('ui.asset.admin.history_assignee_detail', {
+          before: before.assignee || unassigned,
+          after: asset.assignee || unassigned
+        }), {
           actor: this.assetActor(),
           movement: 'assigned',
-          changes: [{ field: 'assigneeId', label: 'Responsable', before: before.assignee || 'Sin asignar', after: asset.assignee || 'Sin asignar' }]
+          changes: [{ field: 'assigneeId', label: tr('ui.asset.common.responsible'), before: before.assignee || unassigned, after: asset.assignee || unassigned }]
         }));
       }
       const touched = ['name', 'brand', 'model', 'serial', 'ip', 'cost', 'warranty', 'tech'].filter((key) => {
@@ -416,28 +436,34 @@
       });
       if (touched.length) {
         const labels = touched.slice(0, 4).map((key) => {
-          if (key === 'tech') return 'campos técnicos';
-          if (key === 'warranty') return 'garantía';
-          return this.assetCommonField(key) ? this.assetCommonField(key).label.toLocaleLowerCase('es') : key;
+          if (key === 'tech') return tr('ui.asset.admin.fields_group_lower');
+          if (key === 'warranty') return tr('ui.asset.admin.warranty_lower');
+          return this.assetCommonField(key) ? this.assetCommonField(key).label.toLocaleLowerCase(window.ItsmI18n && window.ItsmI18n.activeLocale ? window.ItsmI18n.activeLocale : 'es') : key;
         });
         const changes = touched.map((key) => {
           if (key === 'tech') {
-            return { field: 'tech', label: 'Campos técnicos', before: 'Valores anteriores', after: 'Valores actualizados' };
+            return {
+              field: 'tech',
+              label: tr('ui.asset.admin.fields_group'),
+              before: tr('ui.asset.admin.values_before'),
+              after: tr('ui.asset.admin.values_after')
+            };
           }
           if (key === 'warranty') {
-            const until = asset.warranty && asset.warranty.until ? asset.warranty.until : 'Sin garantía';
-            const previous = before.warranty && before.warranty.until ? before.warranty.until : 'Sin garantía';
-            return { field: 'warranty', label: 'Garantía', before: previous, after: until };
+            const none = tr('ui.asset.admin.warranty_unset');
+            const until = asset.warranty && asset.warranty.until ? asset.warranty.until : none;
+            const previous = before.warranty && before.warranty.until ? before.warranty.until : none;
+            return { field: 'warranty', label: tr('ui.asset.schema.field.warranty'), before: previous, after: until };
           }
           const label = this.assetCommonField(key) ? this.assetCommonField(key).label : key;
           return {
             field: key,
             label: label,
-            before: String(before[key] === '' || before[key] === undefined ? 'Sin valor' : before[key]),
-            after: String(asset[key] === '' || asset[key] === undefined ? 'Sin valor' : asset[key])
+            before: String(before[key] === '' || before[key] === undefined ? tr('ui.asset.admin.value_empty') : before[key]),
+            after: String(asset[key] === '' || asset[key] === undefined ? tr('ui.asset.admin.value_empty') : asset[key])
           };
         });
-        asset.history.unshift(Schema.historyEntry('updated', 'Ficha actualizada', 'Cambios en ' + labels.join(', ') + '.', {
+        asset.history.unshift(Schema.historyEntry('updated', tr('ui.asset.admin.history_updated_title'), tr('ui.asset.admin.history_updated_detail', { list: labels.join(', ') }), {
           actor: this.assetActor(),
           movement: 'updated',
           changes: changes
@@ -448,7 +474,7 @@
       this.persistAssets();
       this.persistAssignments();
       this.closeAssetEditor();
-      this.showToast('Activo ' + asset.id + ' actualizado.');
+      this.showToast(tr('ui.asset.admin.toast_updated', { id: asset.id }));
       if (this.route.name !== 'detail' || this.route.assetId !== asset.id) this.openAsset(asset);
     },
 
@@ -478,7 +504,7 @@
       const asset = this.assets.find((item) => item.id === dialog.assetId);
       const status = Schema.statusById(this.assetAdmin, dialog.statusId);
       if (!asset || !status) {
-        this.statusDialogError = 'No se encontró el activo o el estado seleccionado.';
+        this.statusDialogError = tr('ui.asset.admin.error_status_missing');
         return;
       }
       if (status.final) {
@@ -495,16 +521,20 @@
       asset.status = status.label;
       asset.statusTone = status.tone;
       asset.updatedAt = new Date().toISOString();
-      const changes = [{ field: 'statusId', label: 'Estado', before: before, after: status.label }];
-      if (dialog.note.trim()) changes.push({ field: 'note', label: 'Observación', before: '', after: dialog.note.trim() });
-      asset.history.unshift(Schema.historyEntry('status', 'Estado actualizado', before + ' → ' + status.label + (dialog.note.trim() ? ' · ' + dialog.note.trim() : '') + '.', {
+      const changes = [{ field: 'statusId', label: tr('ui.asset.common.status'), before: before, after: status.label }];
+      if (dialog.note.trim()) changes.push({ field: 'note', label: tr('ui.asset.admin.change_note'), before: '', after: dialog.note.trim() });
+      asset.history.unshift(Schema.historyEntry('status', tr('ui.asset.admin.history_status_title'), tr(dialog.note.trim() ? 'ui.asset.admin.history_status_note' : 'ui.asset.admin.history_status_detail', {
+        before: before,
+        after: status.label,
+        note: dialog.note.trim()
+      }), {
         actor: this.assetActor(),
         movement: 'status',
         changes: changes
       }));
       this.persistAssets();
       this.closeStatusDialog();
-      this.showToast('Estado actualizado a «' + status.label + '».');
+      this.showToast(tr('ui.asset.admin.toast_status', { status: status.label }));
     },
 
     // ------------------------------------------------------------------- baja
@@ -521,11 +551,11 @@
       const dialog = this.retireDialog;
       const asset = this.assets.find((item) => item.id === dialog.assetId);
       if (!asset) {
-        this.retireDialogError = 'El activo ya no existe en el inventario.';
+        this.retireDialogError = tr('ui.asset.admin.error_asset_missing');
         return;
       }
       if (!dialog.acknowledged) {
-        this.retireDialogError = 'Confirma que el activo deja de estar operativo.';
+        this.retireDialogError = tr('ui.asset.admin.error_ack_required');
         return;
       }
       const finalStatus = this.assetFinalStatus();
@@ -541,10 +571,18 @@
       asset.assigneeId = '';
       asset.assignee = '';
       asset.updatedAt = new Date().toISOString();
-      const retireChanges = [{ field: 'statusId', label: 'Estado', before: asset.status, after: finalStatus.label }];
-      if (asset.assignee) retireChanges.push({ field: 'assigneeId', label: 'Responsable', before: asset.assignee, after: 'Sin asignar' });
-      retireChanges.push({ field: 'retired', label: 'Conservación', before: 'Inventario operativo', after: 'Ficha, adjuntos e historial conservados' });
-      asset.history.unshift(Schema.historyEntry('retired', 'Activo dado de baja', dialog.reason + (note ? ' · ' + note : '') + '. El registro y su historial se conservan.', {
+      const retireChanges = [{ field: 'statusId', label: tr('ui.asset.common.status'), before: asset.status, after: finalStatus.label }];
+      if (asset.assignee) retireChanges.push({ field: 'assigneeId', label: tr('ui.asset.common.responsible'), before: asset.assignee, after: tr('ui.asset.field.unassigned') });
+      retireChanges.push({
+        field: 'retired',
+        label: tr('ui.asset.admin.change_retention'),
+        before: tr('ui.asset.admin.retention_before'),
+        after: tr('ui.asset.admin.retention_after')
+      });
+      asset.history.unshift(Schema.historyEntry('retired', tr('ui.operations.movement.retired.title'), tr(note ? 'ui.asset.admin.history_retired_note' : 'ui.asset.admin.history_retired_detail', {
+        reason: dialog.reason,
+        note: note
+      }), {
         actor: this.assetActor(),
         movement: 'retired',
         changes: retireChanges
@@ -552,7 +590,7 @@
       this.persistAssets();
       this.persistAssignments();
       this.closeRetireDialog();
-      this.showToast('Activo dado de baja. El historial se conserva.');
+      this.showToast(tr('ui.asset.admin.toast_retired'));
     },
     restoreAsset(asset) {
       if (!asset || !asset.retired) return;
@@ -563,13 +601,13 @@
       asset.status = target.label;
       asset.statusTone = target.tone;
       asset.updatedAt = new Date().toISOString();
-      asset.history.unshift(Schema.historyEntry('restored', 'Activo restaurado', 'Vuelve al inventario operativo en estado «' + target.label + '».', {
+      asset.history.unshift(Schema.historyEntry('restored', tr('ui.asset.admin.history_restored_title'), tr('ui.asset.admin.history_restored_detail', { status: target.label }), {
         actor: this.assetActor(),
         movement: 'restored',
-        changes: [{ field: 'statusId', label: 'Estado', before: 'Dado de baja', after: target.label }]
+        changes: [{ field: 'statusId', label: tr('ui.asset.common.status'), before: tr('ui.asset.schema.status.retired'), after: target.label }]
       }));
       this.persistAssets();
-      this.showToast('Activo restaurado en estado «' + target.label + '».');
+      this.showToast(tr('ui.asset.admin.toast_restored', { status: target.label }));
     },
 
     // --------------------------------------------------------------- deletion
@@ -594,11 +632,11 @@
       }
       if (this.deleteAssetIsProtected()) {
         if (dialog.typed.trim() !== asset.id) {
-          this.deleteDialogError = 'Escribe el ID permanente ' + asset.id + ' para habilitar la eliminación.';
+          this.deleteDialogError = tr('ui.asset.admin.error_typed_id', { id: asset.id });
           return;
         }
         if (dialog.reason.trim().length < 4) {
-          this.deleteDialogError = 'Indica el motivo de la eliminación definitiva.';
+          this.deleteDialogError = tr('ui.asset.admin.error_delete_reason');
           return;
         }
       }
@@ -615,7 +653,7 @@
       }
       this.closeDeleteAsset();
       if (this.route.name === 'detail' && this.route.assetId === asset.id) this.setHash('#/inventario');
-      this.showToast('Activo ' + asset.id + ' eliminado definitivamente.');
+      this.showToast(tr('ui.asset.admin.toast_deleted', { id: asset.id }));
     },
 
     // ------------------------------------------------------- asset admin: campos
@@ -642,12 +680,12 @@
     saveAssetField() {
       const dialog = this.fieldDialog;
       const errors = {};
-      if (!Schema.text(dialog.label)) errors.label = 'El nombre del campo es obligatorio.';
+      if (!Schema.text(dialog.label)) errors.label = tr('ui.asset.admin.error_field_label');
       const key = Schema.slug(dialog.key || dialog.label, 'campo');
       const duplicate = this.assetAdmin.fields.some((field) => field.key === key && field.key !== dialog.key);
-      if (duplicate) errors.label = 'Ya existe un campo con esa clave. Cambia el nombre.';
+      if (duplicate) errors.label = tr('ui.asset.admin.error_field_key');
       if (dialog.type === 'select' && !Schema.text(dialog.options)) {
-        errors.options = 'Define al menos una opción separada por comas.';
+        errors.options = tr('ui.asset.admin.error_field_options');
       }
       this.fieldDialogErrors = errors;
       if (Object.keys(errors).length) return;
@@ -681,7 +719,7 @@
       this.persistAssetAdmin();
       this.persistAssets();
       this.closeAssetField();
-      this.showToast('Biblioteca de campos actualizada.');
+      this.showToast(tr('ui.asset.admin.toast_field_saved'));
     },
     requestDeleteAssetField(field) {
       const used = Object.keys(this.assetAdmin.forms).filter((categoryId) => this.assetAdmin.forms[categoryId].tech.indexOf(field.key) !== -1);
@@ -692,10 +730,12 @@
       this.confirmDialog = {
         open: true,
         kind: 'delete-asset-field',
-        title: 'Eliminar campo técnico',
-        message: 'El campo «' + field.label + '» se quitará de la biblioteca y de los formularios que lo usan.',
-        detail: categories.length ? 'Afecta a: ' + categories.join(', ') + '.' : 'Ningún formulario lo está usando.',
-        confirmLabel: 'Eliminar campo',
+        title: tr('ui.asset.admin.delete_field_title'),
+        message: tr('ui.asset.admin.delete_field_message', { label: field.label }),
+        detail: categories.length
+          ? tr('ui.asset.admin.delete_field_detail', { list: categories.join(', ') })
+          : tr('ui.asset.admin.delete_field_unused'),
+        confirmLabel: tr('ui.asset.admin.delete_field_action'),
         fieldKey: field.key,
         statusId: '',
         categoryId: '',
@@ -720,14 +760,14 @@
         this.persistAssetAdmin();
         this.persistAssets();
         this.closeConfirm();
-        this.showToast('Campo eliminado de la biblioteca.');
+        this.showToast(tr('ui.asset.admin.toast_field_deleted'));
         return true;
       }
       if (kind === 'delete-asset-status') {
         this.assetAdmin.statuses = this.assetAdmin.statuses.filter((status) => status.id !== dialog.statusId);
         this.persistAssetAdmin();
         this.closeConfirm();
-        this.showToast('Estado eliminado.');
+        this.showToast(tr('ui.asset.admin.toast_status_deleted'));
         return true;
       }
       return false;
@@ -752,12 +792,12 @@
     saveAssetStatus() {
       const dialog = this.assetStatusDialog;
       const errors = {};
-      if (!Schema.text(dialog.label)) errors.label = 'El nombre del estado es obligatorio.';
+      if (!Schema.text(dialog.label)) errors.label = tr('ui.asset.admin.error_status_label');
       const label = Schema.text(dialog.label).toLocaleLowerCase('es');
       const duplicate = this.assetAdmin.statuses.some((status) => status.label.toLocaleLowerCase('es') === label && status.id !== dialog.id);
-      if (duplicate) errors.label = 'Ya existe un estado con ese nombre.';
+      if (duplicate) errors.label = tr('ui.asset.admin.error_status_duplicate');
       if (dialog.final && this.assetAdmin.statuses.some((status) => status.final && status.id !== dialog.id)) {
-        errors.final = 'Solo puede haber un estado final (baja).';
+        errors.final = tr('ui.asset.admin.error_status_final');
       }
       this.assetStatusErrors = errors;
       if (Object.keys(errors).length) return;
@@ -789,7 +829,7 @@
       this.persistAssetAdmin();
       this.persistAssets();
       this.closeAssetStatusDialog();
-      this.showToast('Estados de activo actualizados.');
+      this.showToast(tr('ui.asset.admin.toast_statuses_saved'));
     },
     requestDeleteAssetStatus(status) {
       const inUse = this.assets.filter((asset) => asset.statusId === status.id).length;
@@ -798,14 +838,14 @@
       this.confirmDialog = {
         open: true,
         kind: blocked ? 'blocked-asset-status' : 'delete-asset-status',
-        title: blocked ? 'No se puede eliminar el estado' : 'Eliminar estado',
+        title: blocked ? tr('ui.asset.admin.delete_status_blocked_title') : tr('ui.asset.admin.delete_status_title'),
         message: blocked
           ? (inUse > 0
-            ? 'Hay ' + inUse + ' activo(s) en este estado. Cambia su estado antes de eliminarlo.'
-            : 'El inventario necesita al menos un estado operativo además del estado final.')
-          : 'El estado «' + status.label + '» se quitará de la lista de estados disponibles.',
+            ? tr('ui.asset.admin.delete_status_in_use', { count: inUse })
+            : tr('ui.asset.admin.delete_status_last'))
+          : tr('ui.asset.admin.delete_status_message', { status: status.label }),
         detail: '',
-        confirmLabel: blocked ? '' : 'Eliminar estado',
+        confirmLabel: blocked ? '' : tr('ui.asset.admin.delete_status_title'),
         fieldKey: '',
         statusId: status.id,
         categoryId: '',
@@ -850,13 +890,13 @@
       if (!this.formDraft) return;
       const draft = this.formDraft;
       if (!Schema.text(draft.form.prefix)) {
-        this.formDraftError = 'El prefijo del código rápido es obligatorio.';
+        this.formDraftError = tr('ui.asset.admin.error_prefix_required');
         return;
       }
       this.assetAdmin.forms[draft.categoryId] = Schema.normalizeForm(draft.form, draft.form);
       this.persistAssetAdmin();
       const category = this.categories.find((item) => item.id === draft.categoryId);
-      this.showToast('Formulario de ' + (category ? category.label : 'activo') + ' guardado.');
+      this.showToast(tr('ui.asset.admin.toast_form_saved', { category: category ? category.label : tr('ui.asset.admin.asset_fallback') }));
       this.closeFormDraft();
     },
 
@@ -864,14 +904,14 @@
     saveAssetIdRules() {
       const rules = this.assetIdRulesDraft;
       const errors = {};
-      if (!Schema.text(rules.permanentPrefix)) errors.permanentPrefix = 'El prefijo del ID es obligatorio.';
+      if (!Schema.text(rules.permanentPrefix)) errors.permanentPrefix = tr('ui.asset.admin.error_id_prefix');
       if (Schema.number(rules.permanentPad, 0) < 3 || Schema.number(rules.permanentPad, 0) > 8) {
-        errors.permanentPad = 'Usa entre 3 y 8 dígitos.';
+        errors.permanentPad = tr('ui.asset.admin.error_id_pad_permanent');
       }
       if (Schema.number(rules.quickPad, 0) < 2 || Schema.number(rules.quickPad, 0) > 5) {
-        errors.quickPad = 'Usa entre 2 y 5 dígitos.';
+        errors.quickPad = tr('ui.asset.admin.error_id_pad_quick');
       }
-      if (!/^[A-Za-z0-9-]{1,2}$/.test(rules.separator)) errors.separator = 'El separador admite hasta 2 caracteres.';
+      if (!/^[A-Za-z0-9-]{1,2}$/.test(rules.separator)) errors.separator = tr('ui.asset.admin.error_id_separator');
       this.assetIdRulesErrors = errors;
       if (Object.keys(errors).length) return;
       this.assetAdmin.idRules = Object.assign({}, this.assetAdmin.idRules, {
@@ -883,7 +923,7 @@
         includeSite: !!rules.includeSite
       });
       this.persistAssetAdmin();
-      this.showToast('Reglas de identificación guardadas.');
+      this.showToast(tr('ui.asset.admin.toast_id_rules_saved'));
     },
     resetAssetIdRules() {
       this.assetIdRulesDraft = Store.clone(Schema.ID_RULES_SEED);
@@ -894,10 +934,11 @@
       this.assetAdmin.operations.mode = mode;
       this.persistAssetAdmin();
       this.showToast(mode === 'production'
-        ? 'Modo producción: la baja conserva el historial y la eliminación requiere confirmación escrita.'
-        : 'Modo desarrollo: la eliminación definitiva pide una confirmación simple.');
+        ? tr('ui.asset.admin.mode_production_toast')
+        : tr('ui.asset.admin.mode_development_toast'));
     }
   };
 
-  window.AssetAdminReasons = RETIRE_REASONS;
+  // The reasons are catalog keys; the shell resolves them where they render.
+  window.AssetAdminReasons = RETIRE_REASON_KEYS;
 })();
