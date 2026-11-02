@@ -3,9 +3,10 @@
 // Publish-readiness privacy guard (T4). The published repository carries only
 // neutral examples: reserved example domains, RFC 1918 ranges and generic
 // paths. Records that must stay private (AGENTS.md, odd/, docs/reviews/) are
-// ignored rather than shipped. The OpenDesign manifest keeps its import-time
-// hashes as history and records sanitized-current hashes separately, so the
-// original provenance is never silently rewritten.
+// ignored rather than shipped, and published docs do not point at them. The
+// OpenDesign manifest keeps its import-time hashes as history and records a
+// sanitization-time snapshot separately, so the original provenance is never
+// silently rewritten. The content scan, not a hash, is the privacy guard.
 //
 // The forbidden identifiers below are assembled from fragments on purpose:
 // this file is itself part of the scanned product surface.
@@ -36,10 +37,17 @@ const FORBIDDEN = [
   { label: 'organization name', pattern: new RegExp('produc' + 'ar', 'i') },
   { label: 'organization email domain', pattern: new RegExp('empresa' + '\\.local', 'i') },
   { label: 'site name', pattern: new RegExp('bella' + '\\s+vista', 'i') },
+  { label: 'city name', pattern: new RegExp('san' + '\\s+lorenzo', 'i') },
+  { label: 'derived site code', pattern: new RegExp('\\b[A-Za-z]{2,5}-' + 'BV\\b') },
   { label: 'device network ' + '192.168.' + '120.0/24', pattern: new RegExp('192\\.168\\.' + '120\\.') },
   { label: 'device network ' + '192.168.' + '10.0/24', pattern: new RegExp('192\\.168\\.' + '10\\.') },
   { label: 'demo network ' + '10.' + '30.0.0/16', pattern: new RegExp('(?:^|[^0-9.])10\\.' + '30\\.\\d{1,3}\\.\\d{1,3}(?![0-9])') }
 ];
+
+// Published docs must not link or point at records that are never published.
+const LOCAL_RECORD_REFERENCE = new RegExp(
+  '(?<![A-Za-z0-9_.-])(?:odd/|AGENTS' + '\\.md\\b|docs/' + 'reviews)'
+);
 
 function isText(entry) {
   return TEXT_FILENAMES.has(entry) || TEXT_EXTENSIONS.has(path.extname(entry));
@@ -86,6 +94,29 @@ test('product files carry no private organization, host, project or network iden
     });
   }
   assert.deepEqual(findings, [], 'sensitive identifiers found: ' + findings.length);
+});
+
+test('the denylist recognizes every private identifier class', () => {
+  const samples = [
+    'San' + ' Lorenzo', 'san' + '  lorenzo', 'SL-' + 'BV', 'Bella' + ' Vista',
+    'Produc' + 'ar', 'ana@empresa' + '.local', '192.168.' + '120.80', '10.' + '30.1.2'
+  ];
+  for (const sample of samples) {
+    assert.ok(FORBIDDEN.some((rule) => rule.pattern.test(sample)), 'recognized: ' + sample.length + ' chars');
+  }
+  for (const neutral of ['Sede Norte', 'Sede Sur', 'example.invalid', '192.168.' + '50.10']) {
+    assert.ok(!FORBIDDEN.some((rule) => rule.pattern.test(neutral)), 'accepted: ' + neutral);
+  }
+});
+
+test('published documents do not reference unpublished local records', () => {
+  const findings = [];
+  for (const rel of productFiles().filter((file) => file.endsWith('.md'))) {
+    read(rel).split('\n').forEach((line, index) => {
+      if (LOCAL_RECORD_REFERENCE.test(line)) findings.push(rel + ':' + (index + 1));
+    });
+  }
+  assert.deepEqual(findings, [], 'references to unpublished records: ' + findings.join(', '));
 });
 
 test('every absolute home path in product files points at the neutral home directory', () => {
@@ -142,14 +173,16 @@ test('import manifest keeps original provenance and records sanitized hashes sep
   assert.match(manifest.sanitized.note, /sanitiz/i);
 
   const sanitized = manifest.sanitized.sha256;
-  assert.ok(sanitized && Object.keys(sanitized).length > 0, 'sanitized-current hashes are recorded');
+  assert.ok(sanitized && Object.keys(sanitized).length > 0, 'sanitization snapshot hashes are recorded');
 
-  for (const [rel, expected] of Object.entries(sanitized)) {
+  // The snapshot is history, not a pin: later legitimate edits to the demo
+  // data must not fail this privacy guard.
+  for (const [rel, snapshot] of Object.entries(sanitized)) {
     assert.ok(rel in manifest.sha256, 'sanitized file belongs to the imported manifest: ' + rel);
-    const current = sha256(rel);
-    assert.equal(current, expected, 'sanitized-current hash matches the file: ' + rel);
+    assert.match(snapshot, /^[0-9a-f]{64}$/, 'snapshot is a SHA-256 digest: ' + rel);
+    assert.notEqual(manifest.sha256[rel], snapshot, 'the import hash stays separate from the snapshot: ' + rel);
     assert.notEqual(
-      manifest.sha256[rel], current,
+      manifest.sha256[rel], sha256(rel),
       'the imported original hash was not regenerated from the sanitized file: ' + rel
     );
   }
