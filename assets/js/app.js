@@ -343,9 +343,15 @@
     computed: Object.assign({}, window.AssetWorkspaceRuntime.computed, {
       // The retired reasons are catalog keys; resolving them here keeps the
       // option list in step with a live locale switch.
+      // The select binds the stable id and shows the localized label, so the
+      // dialog does not depend on the language that was active when it opened.
       retireReasons() {
         const keys = window.AssetAdminReasons || [];
-        return keys.map((key) => tr(key));
+        const ids = window.AssetAdminRetireReasons;
+        return keys.map((key) => ({
+          id: ids ? ids.id(key) : key,
+          label: tr(key)
+        }));
       },
       isPublicReport() {
         return !!(this.route && this.route.name === 'reportAsset' && this.route.section === 'publico' && this.route.shareToken);

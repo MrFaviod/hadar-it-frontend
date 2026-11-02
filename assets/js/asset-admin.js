@@ -4,9 +4,9 @@
   const Schema = window.AssetSchema;
   const Store = window.AssetStore;
 
-  // Visible copy comes from the catalog. The retired reason is stored as the
-  // text the operator picked (the dialog binds the option value directly), so
-  // the list is resolved through the catalog on every read.
+  // Visible copy comes from the catalog. A retirement reason has two faces: the
+  // stable id (`end_of_life`) that the select binds, and the localized text that
+  // a record stores and a reader sees. The id never changes with the locale.
   function tr(key, params) {
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
     return runtime && typeof runtime.t === 'function' ? runtime.t(key, params) : '';
@@ -19,6 +19,21 @@
     'ui.asset.admin.retire_reason.renewal',
     'ui.asset.admin.retire_reason.other'
   ];
+
+  // `ui.asset.admin.retire_reason.theft` -> `theft`.
+  function retireReasonId(key) {
+    const value = String(key === null || key === undefined ? '' : key);
+    const index = value.lastIndexOf('.');
+    return index < 0 ? value : value.slice(index + 1);
+  }
+
+  // Stored records keep free text. A value that matches a known id is resolved
+  // through the catalog so an id written by a newer client still reads correctly.
+  function retireReasonLabel(value) {
+    const raw = String(value === null || value === undefined ? '' : value);
+    const key = RETIRE_REASON_KEYS.find((entry) => retireReasonId(entry) === raw);
+    return key ? tr(key) : raw;
+  }
 
   function blankEditor() {
     return {
@@ -42,7 +57,7 @@
   }
 
   function blankRetireDialog() {
-    return { open: false, assetId: '', reason: tr(RETIRE_REASON_KEYS[0]), note: '', acknowledged: false };
+    return { open: false, assetId: '', reason: retireReasonId(RETIRE_REASON_KEYS[0]), note: '', acknowledged: false };
   }
 
   function blankDeleteDialog() {
@@ -538,6 +553,11 @@
     },
 
     // ------------------------------------------------------------------- baja
+    // Resolves a retirement reason for display: a known id becomes the current
+    // label, any other stored value is shown exactly as it was saved.
+    retireReasonText(value) {
+      return retireReasonLabel(value);
+    },
     openRetireDialog(asset) {
       if (!asset) return;
       this.retireDialog = Object.assign(blankRetireDialog(), { open: true, assetId: asset.id });
@@ -560,9 +580,10 @@
       }
       const finalStatus = this.assetFinalStatus();
       const note = dialog.note.trim();
+      const reason = this.retireReasonText(dialog.reason);
       asset.retired = {
         at: new Date().toISOString(),
-        reason: dialog.reason,
+        reason,
         note
       };
       asset.statusId = finalStatus.id;
@@ -580,7 +601,7 @@
         after: tr('ui.asset.admin.retention_after')
       });
       asset.history.unshift(Schema.historyEntry('retired', tr('ui.operations.movement.retired.title'), tr(note ? 'ui.asset.admin.history_retired_note' : 'ui.asset.admin.history_retired_detail', {
-        reason: dialog.reason,
+        reason,
         note: note
       }), {
         actor: this.assetActor(),
@@ -941,4 +962,5 @@
 
   // The reasons are catalog keys; the shell resolves them where they render.
   window.AssetAdminReasons = RETIRE_REASON_KEYS;
+  window.AssetAdminRetireReasons = { id: retireReasonId, label: retireReasonLabel };
 })();

@@ -268,18 +268,18 @@
   const editorTemplate = `
     <modal-shell :open="editing" :title="t('ui.warranty.editor_title')" :eyebrow="warrantyAssetId" size="wide" @close="closeEditor">
       <form id="warranty-edit-form" data-od-id="warranty-edit-form" class="warranty-form" @submit.prevent="saveEditor()">
-        <p>La cobertura pertenece únicamente a <strong>{{ warrantyAssetLabel }}</strong>.</p>
-        <label class="doc-field">{{ t('ui.warranty.editor_provider') }}<input v-model="draft.provider" required maxlength="160" placeholder="Nombre del proveedor"></label>
+        <p>{{ t('ui.warranty.editor_scope', { name: warrantyAssetLabel }) }}</p>
+        <label class="doc-field">{{ t('ui.warranty.editor_provider') }}<input v-model="draft.provider" required maxlength="160" :placeholder="t('ui.warranty.editor_provider_placeholder')"></label>
         <div class="doc-form-grid">
           <label class="doc-field">{{ t('ui.warranty.purchase') }}<input type="date" v-model="draft.purchase" required></label>
-          <label class="doc-field">Definir vencimiento por<select v-model="draft.mode"><option value="date">{{ t('ui.warranty.editor_mode_date') }}</option><option value="duration">{{ t('ui.warranty.editor_mode_duration') }}</option></select></label>
+          <label class="doc-field">{{ t('ui.warranty.editor_mode') }}<select v-model="draft.mode"><option value="date">{{ t('ui.warranty.editor_mode_date') }}</option><option value="duration">{{ t('ui.warranty.editor_mode_duration') }}</option></select></label>
         </div>
         <label v-if="draft.mode === 'date'" class="doc-field">{{ t('ui.warranty.editor_until') }}<input type="date" v-model="draft.until" :min="draft.purchase" required></label>
         <div v-else class="doc-form-grid">
           <label class="doc-field">{{ t('ui.warranty.editor_months') }}<input type="number" v-model.number="draft.months" min="1" max="1200" required></label>
           <div class="warranty-calculated"><span>{{ t('ui.warranty.editor_calculated') }}</span><strong>{{ previewExpiry(draft) || t('ui.warranty.editor_pick_purchase') }}</strong></div>
         </div>
-        <label class="doc-field">Estado<select v-model="draft.status"><option value="active">{{ t('ui.warranty.status.active') }}</option><option value="claimed">{{ t('ui.warranty.status.claimed') }}</option><option value="cancelled">{{ t('ui.warranty.status.cancelled') }}</option><option value="unknown">{{ t('ui.warranty.status.unknown') }}</option></select></label>
+        <label class="doc-field">{{ t('ui.warranty.editor_status') }}<select v-model="draft.status"><option value="active">{{ t('ui.warranty.status.active') }}</option><option value="claimed">{{ t('ui.warranty.status.claimed') }}</option><option value="cancelled">{{ t('ui.warranty.status.cancelled') }}</option><option value="unknown">{{ t('ui.warranty.status.unknown') }}</option></select></label>
         <label class="doc-field">{{ t('ui.warranty.editor_note') }}<textarea v-model="draft.note" maxlength="2000" :placeholder="t('ui.warranty.note_placeholder')"></textarea></label>
         <div class="warranty-receipts">
           <div class="doc-section-label"><strong>{{ t('ui.warranty.editor_receipt') }}</strong><label class="btn btn--secondary btn--small warranty-upload">{{ t('ui.warranty.editor_add_file') }}<input type="file" accept=".pdf,image/*" :disabled="receiptBusy" @change="uploadReceipt"></label></div>
@@ -585,7 +585,8 @@
         return t('ui.warranty.in_days', { count: days });
       },
       receiptsLabel(row) {
-        return row && text(row.receiptId) ? t('ui.warranty.receipt_linked') : t('ui.warranty.receipt_none');
+        // Reuse the existing short label: the catalog already declares this state once.
+        return row && text(row.receiptId) ? t('ui.warranty.receipt_linked') : t('ui.warranty.receipt_missing');
       },
       setCoverage(value) {
         this.filter = value;
@@ -637,7 +638,7 @@
             <tbody>
               <tr v-for="row in rows" :key="row.assetId">
                 <td :data-label="t('ui.warranty.col_asset')"><a :href="'#/activo/'+row.assetId" class="asset-name">{{ assetLabel(row) }}</a><span class="cell-note mono">{{ row.assetId }}</span></td>
-                <td :data-label="t('ui.warranty.col_provider')"><strong>{{ row.supplier || 'Sin especificar' }}</strong><span class="cell-note">{{ date(row.purchaseDate) }}</span></td>
+                <td :data-label="t('ui.warranty.col_provider')"><strong>{{ row.supplier || t('ui.warranty.unspecified') }}</strong><span class="cell-note">{{ date(row.purchaseDate) }}</span></td>
                 <td :data-label="t('ui.warranty.col_expiry')"><span class="mono">{{ date(row.expiresOn) }}</span><span class="cell-note" v-if="status(row).days !== null">{{ daysLabel(row) }}</span></td>
                 <td :data-label="t('ui.warranty.col_coverage')"><span :class="['status-pill','status--'+status(row).tone]">{{ status(row).label }}</span></td>
                 <td :data-label="t('ui.warranty.col_receipt')"><span class="cell-note">{{ receiptsLabel(row) }}</span></td>

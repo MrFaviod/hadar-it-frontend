@@ -736,7 +736,7 @@
     },
     template: `
       <div class="extension-isolated">
-        <itsm-error v-if="error" :error="error" :title="'No se pudo cargar la vista aislada'"></itsm-error>
+        <itsm-error v-if="error" :error="error" :title="$t('ui.extensions.frame.error_title')"></itsm-error>
         <p v-else-if="status === 'loading'" class="config-note" role="status">{{ $t('ui.extensions.frame.loading') }}</p>
         <iframe
           ref="frame"

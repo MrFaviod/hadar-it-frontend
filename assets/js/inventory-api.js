@@ -16,6 +16,14 @@
     return runtime ? runtime.t(key, params) : '';
   }
 
+  // The archive and retirement endpoints take free text, so a caller that holds
+  // the stable reason id (`theft`) sends the label of the current locale and the
+  // id never leaves the browser. Text the server stores is passed through as is.
+  function lifecycleReasonText(value) {
+    const reasons = typeof window !== 'undefined' ? window.AssetAdminRetireReasons : null;
+    return reasons && typeof reasons.label === 'function' ? reasons.label(value) : text(value);
+  }
+
   const PAGE_LIMIT = 25;
   const MAX_NAME = 160;
   const MAX_TEXT = 120;
@@ -1317,7 +1325,7 @@
       async archiveInventoryAsset(asset, reason) {
         const opened = this.openInventoryLifecycle(asset, 'archive');
         if (!opened) return false;
-        this.inventoryLifecycle.reason = text(reason);
+        this.inventoryLifecycle.reason = lifecycleReasonText(reason);
         return this.confirmInventoryLifecycle();
       },
       async restoreInventoryAsset(asset) {
@@ -1326,7 +1334,8 @@
         return this.confirmInventoryLifecycle();
       },
       async retireInventoryAsset(asset, reason) {
-        if (text(reason).length < REASON_MIN) {
+        const reasonText = lifecycleReasonText(reason);
+        if (reasonText.length < REASON_MIN) {
           this.inventoryLifecycle = Object.assign(createLifecycle(), {
             kind: 'retire',
             assetId: asset ? asset.id : '',
@@ -1336,7 +1345,7 @@
         }
         const opened = this.openInventoryLifecycle(asset, 'retire');
         if (!opened) return false;
-        this.inventoryLifecycle.reason = text(reason);
+        this.inventoryLifecycle.reason = reasonText;
         return this.confirmInventoryLifecycle();
       },
       async purgeInventoryAsset(asset, options) {

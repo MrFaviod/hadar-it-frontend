@@ -115,7 +115,10 @@ test('converted configuration, extension and appearance copy keeps the Spanish s
 
 test('the sweep files only keep technical and product-name literals', () => {
   const { files } = scanRepository();
-  assert.equal(files['index.html'], 2);
+  // The extended scan also reads copy inside template expressions, which adds the
+  // product names in the remote-access rows (`AnyDesk`, `Tactical RMM`) to the
+  // two shell literals counted before. Product names stay untranslated.
+  assert.equal(files['index.html'], 4);
   assert.equal(files['assets/js/extensions.js'], undefined);
   assert.equal(files['assets/js/appearance-api.js'], undefined);
   assert.equal(files['assets/js/appearance-engine.js'], undefined);

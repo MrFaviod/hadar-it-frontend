@@ -108,3 +108,67 @@ test('appearance resource and package errors follow the active locale', async ()
     englishDialog.mounted.unmount();
   }
 });
+
+function textOf(node) {
+  if (!node) return '';
+  if (node.tag === '#text') return node.text || '';
+  return (node.text || '') + (node.children || []).map(textOf).join('');
+}
+
+test('appearance settings render mode, gallery and apply-bar copy from the catalog', async () => {
+  const harness = setup();
+  const mounted = harness.mount('AppearanceSettings', { app: harness.app });
+  await harness.settle();
+  try {
+    let text = textOf(mounted.root);
+    for (const spanish of ['Claro', 'Oscuro', 'Automático', 'Apariencia actualizada',
+      'La identidad genérica siempre estará disponible.', 'Principal', 'Resumen operativo', 'Todo, en su sitio']) {
+      assert.ok(text.includes(spanish), spanish + ' is missing from the Spanish settings view');
+    }
+    harness.c.ItsmI18n.setLocale('en');
+    await harness.settle();
+    text = textOf(mounted.root);
+    for (const english of ['Light', 'Dark', 'Automatic', 'Appearance up to date',
+      'The generic identity is always available.', 'Primary', 'Operational summary', 'Everything in place']) {
+      assert.ok(text.includes(english), english + ' is missing from the English settings view');
+    }
+    assert.ok(!text.includes('Apariencia actualizada'), 'the Spanish apply-bar copy survived the locale switch');
+  } finally {
+    mounted.unmount();
+  }
+});
+
+test('the appearance package dialog renders export and import copy from the catalog', async () => {
+  const harness = setup();
+  try {
+    harness.c.options.components.AppearancePackageDialog = harness.c.AssetAppearanceViews.AppearancePackageDialog;
+    const active = harness.app.appearance.active;
+    const props = { open: true, presets: harness.app.appearance.presets, active, current: active, app: harness.app };
+    const exported = harness.mount('AppearancePackageDialog', { ...props, kind: 'export' });
+    await harness.settle();
+    let text = textOf(exported.root);
+    assert.ok(text.includes('Exportar apariencia'), 'the Spanish export title is missing');
+    assert.ok(text.includes('Descargar ZIP'), 'the Spanish download button is missing');
+    harness.c.ItsmI18n.setLocale('en');
+    await harness.settle();
+    text = textOf(exported.root);
+    assert.ok(text.includes('Export appearance'), 'the English export title is missing');
+    assert.ok(text.includes('Download ZIP'), 'the English download button is missing');
+    exported.unmount();
+
+    harness.c.ItsmI18n.setLocale('es');
+    const imported = harness.mount('AppearancePackageDialog', { ...props, kind: 'import' });
+    await harness.settle();
+    text = textOf(imported.root);
+    assert.ok(text.includes('Importar apariencia'), 'the Spanish import title is missing');
+    assert.ok(text.includes('Arrastra aquí un archivo ZIP'), 'the Spanish drop-zone title is missing');
+    harness.c.ItsmI18n.setLocale('en');
+    await harness.settle();
+    text = textOf(imported.root);
+    assert.ok(text.includes('Import appearance'), 'the English import title is missing');
+    assert.ok(text.includes('Drag a ZIP file here'), 'the English drop-zone title is missing');
+    imported.unmount();
+  } finally {
+    // Components mounted above are unmounted explicitly; nothing else to release.
+  }
+});
