@@ -63,6 +63,10 @@
         drag: null,
         resizeObserver: null,
         syncFrame: 0,
+        // The map canvas can take the whole window without leaving the route:
+        // filters, selection, the MapLibre instance and its camera stay mounted.
+        expanded: false,
+        expandFrame: 0,
         // Authenticated floor plan + selected asset detail. The plan image is a
         // revoked object URL, never a filesystem path or unauthenticated URL.
         floorPlanState: 'idle',
@@ -324,6 +328,8 @@
       window.removeEventListener('pointerup', this.onMarkerUp);
       if (this.resizeObserver) this.resizeObserver.disconnect();
       if (this.syncFrame) window.cancelAnimationFrame(this.syncFrame);
+      if (this.expandFrame) window.cancelAnimationFrame(this.expandFrame);
+      this.lockPageScroll(false);
       if (this.map) {
         this.map.remove();
         this.map = null;
@@ -502,6 +508,53 @@
         Engine.setPrefs(this.app, { base: this.prefs.base === 'detalle' ? 'esquema' : 'detalle' });
         this.announce = tr('ui.map.announce.base', { base: this.prefs.base === 'detalle' ? tr('ui.map.announce.base_detail') : tr('ui.map.announce.base_schema') });
       },
+      // ----------------------------------------------------------- expanded,
+      // The expanded canvas is a layout state of this mounted component. MapLibre
+      // and the floor map are only resized, never re-created, so filters,
+      // selection and camera stay exactly where the user left them.
+      toggleExpand() {
+        this.expanded = !this.expanded;
+        this.lockPageScroll(this.expanded);
+        this.resizeMaps();
+      },
+      collapseExpand() {
+        if (!this.expanded) return;
+        this.expanded = false;
+        this.lockPageScroll(false);
+        this.resizeMaps();
+      },
+      onStageKeydown(event) {
+        if (!event || event.key !== 'Escape' || !this.expanded) return;
+        event.preventDefault();
+        this.collapseExpand();
+        const trigger = this.$refs.expandToggle;
+        if (trigger && typeof trigger.focus === 'function') trigger.focus();
+      },
+      lockPageScroll(locked) {
+        const body = typeof document !== 'undefined' ? document.body : null;
+        if (!body || !body.classList) return;
+        body.classList.toggle('map-workspace-expanded', !!locked);
+      },
+      resizeMaps() {
+        this.$nextTick(() => {
+          this.resizeMountedMaps();
+          if (this.expandFrame) window.cancelAnimationFrame(this.expandFrame);
+          this.expandFrame = window.requestAnimationFrame(() => {
+            this.expandFrame = 0;
+            this.resizeMountedMaps();
+          });
+        });
+      },
+      resizeMountedMaps() {
+        [this.map, this._floorMap].forEach((map) => {
+          if (!map || typeof map.resize !== 'function') return;
+          try {
+            map.resize();
+          } catch (error) {
+            // A removed map instance has nothing left to resize.
+          }
+        });
+      },
       // ------------------------------------------------------------ navigation,
       selectSite(siteId, options) {
         const site = Engine.siteById(this.app, siteId);
@@ -512,7 +565,7 @@
         this.selectedRoom = '';
         if (!options || options.keepSelection !== true) this.selectedId = '';
         this.selectSiteBuildings(siteId);
-        const geo = Engine.siteGeo(this.app, siteId);
+        const geo = Engine.siteGeo(this.source, siteId);
         if (this.map && geo) {
           this.map.easeTo({
             center: [geo.lng, geo.lat],
@@ -846,13 +899,29 @@
       statusTone(asset) {
         return asset && asset.statusTone ? 'tone tone--' + asset.statusTone : 'tone';
       },
+      // Inventory status is administrative state, never device reachability. The
+      // server catalog is the authority for its label: a custom or renamed status
+      // keeps the configured text, and only the four built-in ids fall back to the
+      // shared catalog. An unknown id is shown as stored instead of invented.
+      statusLabel(asset) {
+        const status = asset && asset.status ? String(asset.status) : '';
+        if (!status) return '';
+        const admin = (this.app && this.app.assetAdmin) || null;
+        const configured = admin && Array.isArray(admin.statuses) ? admin.statuses : [];
+        const match = configured.find((entry) => entry && (entry.id === status || entry.label === status));
+        if (match && match.label) return match.label;
+        const key = 'ui.inventory.status.' + status;
+        const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+        if (runtime && typeof runtime.te === 'function' && runtime.te(key)) return tr(key);
+        return status;
+      },
       progressWidth(count) {
         const total = Math.max(1, this.counts.total);
         return Math.max(4, Math.round((count / total) * 100));
       }
     }),
     template: `
-      <div class="map-page" data-od-id="infra-explorer">
+      <div class="map-page" :class="{ 'is-expanded': expanded }" data-od-id="infra-explorer">
         <header class="map-page__head">
           <div class="map-page__titles">
             <p class="eyebrow">{{ $t('ui.map.explorer.eyebrow') }}</p>
@@ -1045,7 +1114,13 @@
             <p class="map-tree__foot">{{ $t('ui.map.tree.rooms_note') }}</p>
           </aside>
 
-          <div ref="stage" class="map-stage-wrap">
+          <div ref="stage" class="map-stage-wrap" :class="{ 'is-expanded': expanded }" @keydown="onStageKeydown">
+            <button ref="expandToggle" type="button" class="icon-button map-expand-toggle"
+                    data-od-id="map-expand" :aria-pressed="expanded ? 'true' : 'false'"
+                    :aria-label="expanded ? $t('ui.map.aria.collapse_canvas') : $t('ui.map.aria.expand_canvas')"
+                    @click="toggleExpand">
+              <app-icon :name="expanded ? 'chevron-down' : 'arrow-up-right'"></app-icon>
+            </button>
             <div v-show="level === 'geo'" class="map-stage" data-od-id="map-geo">
               <div ref="mapCanvas" class="map-canvas" role="application"
                    :aria-label="$t('ui.map.aria.map_canvas')"></div>
@@ -1215,7 +1290,7 @@
                 <app-icon name="map-pin"></app-icon> {{ selectedPath }}
               </p>
               <div class="map-inspector__meta">
-                <span :class="statusTone(selectedAsset)">{{ selectedAsset.status }}</span>
+                <span :class="statusTone(selectedAsset)">{{ statusLabel(selectedAsset) }}</span>
                 <span v-if="selectedAsset.ip" class="mono">{{ selectedAsset.ip }}</span>
                 <span v-if="selectedAsset.assignee">{{ selectedAsset.assignee }}</span>
               </div>

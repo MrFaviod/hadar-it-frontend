@@ -297,7 +297,7 @@
 
 .graph-canvas {
   position: relative;
-  height: clamp(480px, 62vh, 720px);
+  height: clamp(560px, calc(100vh - 240px), 1180px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background-color: var(--paper);
@@ -330,6 +330,83 @@
 }
 
 /* ---------------------------------------------------------------------- nodes */
+
+/* --------------------------------------------------- full-window workspace */
+
+/* The expanded graph is the same mounted canvas: the layout object, the camera
+   and the selection survive; only the frame around them grows. */
+.graph-expand-toggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.graph-expand-toggle:hover {
+  border-color: var(--teal-700);
+  color: var(--teal-700);
+}
+
+.graph-page.is-expanded .graph-layout {
+  position: fixed;
+  inset: var(--topbar-h, 68px) 0 0;
+  z-index: 60;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.graph-page.is-expanded .graph-layout--panel {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.graph-page.is-expanded .graph-filters {
+  display: none;
+}
+
+.graph-page.is-expanded .graph-canvas-wrap {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+}
+
+.graph-page.is-expanded .graph-canvas {
+  height: 100%;
+  min-height: 0;
+}
+
+.graph-page.is-expanded .graph-inspector {
+  position: static;
+  max-height: 100%;
+}
+
+body.graph-workspace-expanded {
+  overflow: hidden;
+}
+
+/* Selected-node neighbourhood: unrelated plates and links recede, the canonical
+   relation types, direction and labels stay exactly as they are. */
+.gnode {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.gnode.is-dimmed {
+  opacity: 0.3;
+}
+
+.gedge.is-dimmed {
+  opacity: 0.14;
+}
 
 .gnode {
   cursor: grab;
@@ -869,8 +946,15 @@
   }
 
   .graph-canvas {
-    height: 58vh;
-    min-height: 420px;
+    height: 64vh;
+    min-height: 460px;
+  }
+  .graph-page.is-expanded .graph-layout,
+  .graph-page.is-expanded .graph-layout--panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .graph-page.is-expanded .graph-inspector {
+    display: none;
   }
 
   .graph-inspector {

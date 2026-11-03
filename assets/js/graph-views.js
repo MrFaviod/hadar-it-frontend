@@ -58,6 +58,9 @@
         panning: null,
         filtersOpen: false,
         announce: '',
+        // The canvas can take the whole window without leaving the route: the
+        // running simulation, the camera and the selection stay mounted.
+        expanded: false,
         ready: false
       };
     },
@@ -165,6 +168,7 @@
             label: this.shortName(asset),
             hiddenCount: this.hiddenCount(asset.id),
             selected: this.selectedId === asset.id,
+            dimmed: !this.isRelated(asset.id),
             redundancy: this.redundancyMembership[asset.id] || null,
             isFocus: this.mode === 'focus' && asset.id === this.activeFocusId,
             frame: frame
@@ -199,6 +203,7 @@
             x2: end.x,
             y2: end.y,
             highlighted: !!related,
+            dimmed: !!selected && !related,
             label: related && edge.relation ? edge.relation.label : '',
             lx: (start.x + end.x) / 2,
             ly: (start.y + end.y) / 2,
@@ -380,6 +385,9 @@
       window.removeEventListener('resize', this.handleResize);
       window.removeEventListener('pointermove', this.onDragMove);
       window.removeEventListener('pointerup', this.onDragEnd);
+      if (this.expandFrame) window.cancelAnimationFrame(this.expandFrame);
+      if (this.expandTimer) window.clearTimeout(this.expandTimer);
+      this.lockPageScroll(false);
       const canvas = this.$refs.canvas;
       if (canvas) canvas.removeEventListener('wheel', this.onWheel);
     },
@@ -401,7 +409,10 @@
         // inspector narrows the canvas) would rescale the graph under the user.
         const element = this.$refs.canvas;
         const rect = element ? element.getBoundingClientRect() : null;
-        const anchor = rect ? this.toWorld(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+        // Anchor on the world point the user was looking at: the centre of the
+        // canvas *before* this change, not the centre of the new frame. That is
+        // what keeps the camera still when the workspace expands or exits.
+        const anchor = rect ? this.toWorld(rect.left + this.size.w / 2, rect.top + this.size.h / 2) : null;
         this.measure();
         if (this.sim) {
           this.sim.reheat(0.4);
@@ -410,7 +421,9 @@
         if (anchor) {
           // Never zoom in on resize, but always zoom out enough to keep the
           // whole graph inside the new frame (narrow viewports, split layout).
-          const k = Math.min(this.view.k, this.sim ? this.fitScale() : this.view.k);
+          // Expanding or exiting keeps the user's zoom exactly; a genuine
+          // container resize may only zoom out enough to keep the whole graph.
+          const k = this.keepZoom ? this.view.k : Math.min(this.view.k, this.sim ? this.fitScale() : this.view.k);
           this.view = {
             k: k,
             x: this.size.w / 2 - anchor.x * k,
@@ -584,6 +597,52 @@
       },
       zoomBy(factor) {
         this.zoomAt(factor);
+      },
+      // ----------------------------------------------------------- expanded,
+      // Expanding only re-measures the mounted canvas. The layout object and
+      // the camera anchor survive, so nodes do not jump on enter or exit.
+      toggleExpand() {
+        this.expanded = !this.expanded;
+        this.lockPageScroll(this.expanded);
+        this.syncCanvasSize();
+      },
+      collapseExpand() {
+        if (!this.expanded) return;
+        this.expanded = false;
+        this.lockPageScroll(false);
+        this.syncCanvasSize();
+      },
+      lockPageScroll(locked) {
+        const body = typeof document !== 'undefined' ? document.body : null;
+        if (!body || !body.classList) return;
+        body.classList.toggle('graph-workspace-expanded', !!locked);
+      },
+      syncCanvasSize() {
+        // Keep the user's zoom for the whole layout settle: the observer may
+        // report the growing frame more than once, and a queued re-fit would
+        // rescale the graph the user was reading.
+        this.fitPending = false;
+        this.keepZoom = true;
+        if (this.expandTimer) window.clearTimeout(this.expandTimer);
+        this.expandTimer = window.setTimeout(() => {
+          this.expandTimer = 0;
+          this.keepZoom = false;
+        }, 320);
+        this.$nextTick(() => {
+          this.handleResize();
+          if (this.expandFrame) window.cancelAnimationFrame(this.expandFrame);
+          this.expandFrame = window.requestAnimationFrame(() => {
+            this.expandFrame = 0;
+            this.handleResize();
+          });
+        });
+      },
+      // A selection mutes what it does not relate to; the relation data itself
+      // is untouched, so every edge keeps its canonical type and direction.
+      isRelated(id) {
+        if (!this.selectedId) return true;
+        if (id === this.selectedId) return true;
+        return this.neighbourIds(this.selectedId).indexOf(id) !== -1;
       },
       onWheel(event) {
         event.preventDefault();
@@ -793,6 +852,14 @@
           return;
         }
         if (key === 'Escape') {
+          // Leaving the expanded workspace is not clearing the selection.
+          if (this.expanded) {
+            event.preventDefault();
+            this.collapseExpand();
+            const trigger = this.$refs.expandToggle;
+            if (trigger && typeof trigger.focus === 'function') trigger.focus();
+            return;
+          }
           this.selectedId = '';
         }
       },
@@ -818,15 +885,35 @@
       updatePrefs(patch) {
         Engine.updatePrefs(this.app, patch);
       },
+      // Categories are server data: use the catalog label the server exposes and
+      // only fall back to the imported prototype table (Spanish-only placeholders)
+      // for ids that predate the server catalog.
       categoryLabel(id) {
+        const category = this.categories.find((item) => item.id === id);
+        if (category && category.label) return category.label;
         return RelationsData.categoryLabel(id);
       },
       statusTone(asset) {
         return 'status-pill status--' + (asset.statusTone || 'hold');
+      },
+      // Administrative inventory state, not device availability: the server
+      // catalog owns the label so custom statuses keep their configured text and
+      // only the four built-in ids resolve through the shared catalog.
+      statusLabel(asset) {
+        const status = asset && asset.status ? String(asset.status) : '';
+        if (!status) return '';
+        const admin = (this.app && this.app.assetAdmin) || null;
+        const configured = admin && Array.isArray(admin.statuses) ? admin.statuses : [];
+        const match = configured.find((entry) => entry && (entry.id === status || entry.label === status));
+        if (match && match.label) return match.label;
+        const key = 'ui.inventory.status.' + status;
+        const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+        if (runtime && typeof runtime.te === 'function' && runtime.te(key)) return tr(key);
+        return status;
       }
     },
     template: `
-      <div class="graph-page" data-od-id="graph-explorer">
+      <div class="graph-page" :class="{ 'is-expanded': expanded }" data-od-id="graph-explorer">
         <header class="page-head graph-page__head">
           <div class="page-head__copy">
             <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.graph.explorer.eyebrow') }}</p>
@@ -952,8 +1039,15 @@
 
           <div class="graph-canvas-wrap">
             <div ref="canvas" class="graph-canvas" tabindex="0" role="group"
+                 :class="{ 'is-expanded': expanded }"
                  :aria-label="$t('ui.graph.aria.canvas', { nodes: stats.nodes, edges: stats.edges })"
                  @keydown="onKeydown">
+              <button ref="expandToggle" type="button" class="icon-button graph-expand-toggle"
+                      data-od-id="graph-expand" :aria-pressed="expanded ? 'true' : 'false'"
+                      :aria-label="expanded ? $t('ui.graph.aria.collapse_canvas') : $t('ui.graph.aria.expand_canvas')"
+                      @click="toggleExpand">
+                <app-icon :name="expanded ? 'chevron-down' : 'arrow-up-right'"></app-icon>
+              </button>
               <svg class="graph-canvas__svg" :width="size.w" :height="size.h" aria-hidden="true">
                 <defs>
                   <marker v-for="tone in ['network', 'virtual', 'physical', 'power', 'dependency', 'link']" :key="tone"
@@ -966,7 +1060,7 @@
                 <g :transform="graphTransform">
                   <g class="graph-edges">
                     <g v-for="edge in edgeViews" :key="edge.id">
-                      <line class="gedge" :class="['gedge--' + edge.tone, { 'is-active': edge.highlighted, 'gedge--dashed': !edge.directed }]"
+                      <line class="gedge" :class="['gedge--' + edge.tone, { 'is-active': edge.highlighted, 'is-dimmed': edge.dimmed, 'gedge--dashed': !edge.directed }]"
                             :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
                             :marker-end="edge.directed ? 'url(#garrow-' + edge.tone + ')' : null"></line>
                       <text v-if="edge.label" class="gedge__label" :x="edge.lx" :y="edge.ly" text-anchor="middle">{{ edge.label }}</text>
@@ -974,7 +1068,7 @@
                   </g>
                   <g class="graph-nodes">
                     <g v-for="node in nodeViews" :key="node.id" class="gnode"
-                       :class="['gnode--' + node.family, { 'is-selected': node.selected, 'is-focus': node.isFocus, 'is-level': mode === 'focus' && node.level === 0 }]"
+                       :class="['gnode--' + node.family, { 'is-selected': node.selected, 'is-focus': node.isFocus, 'is-dimmed': node.dimmed, 'is-level': mode === 'focus' && node.level === 0 }]"
                        :transform="'translate(' + node.x + ' ' + node.y + ')'"
                        role="button" tabindex="0" :aria-pressed="node.selected"
                        :aria-label="$t('ui.graph.aria.node', { name: node.asset.name, category: categoryLabel(node.asset.category), site: siteLabel(node.asset.site) })"
@@ -1086,7 +1180,7 @@
             </header>
 
             <div class="graph-inspector__meta">
-              <span :class="statusTone(selectedAsset)">{{ selectedAsset.status }}</span>
+              <span :class="statusTone(selectedAsset)">{{ statusLabel(selectedAsset) }}</span>
               <span v-if="selectedAsset.ip" class="mono graph-inspector__ip">{{ selectedAsset.ip }}</span>
             </div>
 

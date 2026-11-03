@@ -346,7 +346,7 @@ html[data-theme="dark"] .infra-tab.is-active {
 .map-tree {
   display: flex;
   flex-direction: column;
-  max-height: 720px;
+  max-height: clamp(560px, calc(100vh - 220px), 1180px);
   overflow: auto;
 }
 
@@ -543,13 +543,16 @@ html[data-theme="dark"] .infra-tab.is-active {
 /* ---------------------------------------------------------------- stage */
 
 .map-stage-wrap {
+  position: relative;
   min-width: 0;
 }
 
+/* The canvas is the workspace: it takes the window height it can, not a
+   fixed card. The expanded state below reuses the same mounted canvas. */
 .map-stage {
   position: relative;
-  min-height: 620px;
-  height: clamp(520px, calc(100vh - 300px), 760px);
+  min-height: 560px;
+  height: clamp(560px, calc(100vh - 220px), 1180px);
   background: var(--paper);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -557,7 +560,12 @@ html[data-theme="dark"] .infra-tab.is-active {
   box-shadow: var(--shadow-sm);
 }
 
-.map-canvas {
+/* MapLibre ships `.maplibregl-map { position: relative }` in its own stylesheet,
+   loaded after this file. Matching that selector here lost the cascade, so the
+   container became a zero-height block in normal flow: MapLibre measured a
+   0 px viewport, drew nothing and the stage showed its white background. The
+   stage-scoped selector outranks the vendor rule regardless of load order. */
+.map-stage > .map-canvas {
   position: absolute;
   inset: 0;
 }
@@ -570,6 +578,63 @@ html[data-theme="dark"] .infra-tab.is-active {
 .map-stage .maplibregl-ctrl-bottom-right,
 .map-stage .maplibregl-ctrl-bottom-left {
   display: none;
+}
+
+/* --------------------------------------------------- full-window workspace */
+
+/* The expanded canvas is the same mounted stage: filters, selection and the
+   MapLibre camera are untouched, only the box around it changes. */
+.map-expand-toggle {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.map-expand-toggle:hover {
+  border-color: var(--teal-700);
+  color: var(--teal-700);
+}
+
+.map-page.is-expanded .map-layout {
+  position: fixed;
+  inset: var(--topbar-h, 68px) 0 0;
+  z-index: 60;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.map-page.is-expanded .map-tree {
+  display: none;
+}
+
+.map-page.is-expanded .map-stage-wrap {
+  height: 100%;
+  min-height: 0;
+}
+
+.map-page.is-expanded .map-stage {
+  height: 100%;
+  min-height: 0;
+}
+
+.map-page.is-expanded .map-inspector {
+  max-height: 100%;
+  overflow: auto;
+}
+
+body.map-workspace-expanded {
+  overflow: hidden;
 }
 
 .map-overlay {
@@ -812,8 +877,14 @@ html[data-theme="dark"] .map-label--city {
     max-height: none;
   }
   .map-stage {
-    min-height: 460px;
-    height: 60vh;
+    min-height: 520px;
+    height: 70vh;
+  }
+  .map-page.is-expanded .map-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .map-page.is-expanded .map-inspector {
+    display: none;
   }
   .map-legend {
     position: static;
@@ -829,7 +900,7 @@ html[data-theme="dark"] .map-label--city {
     display: flex;
     flex-direction: column;
   }
-  .map-canvas {
+  .map-stage > .map-canvas {
     position: relative;
     flex: 1;
     min-height: 380px;

@@ -179,9 +179,23 @@
     return CATEGORY_FAMILY[categoryId] || 'compute';
   }
 
+  // Family ids are stable built-in enums, not server taxonomy: the legend reads
+  // them from the active catalog and keeps the authored Spanish text as the
+  // fallback. An unknown id is shown as stored instead of a built-in label.
+  const FAMILY_LABEL_KEYS = {
+    compute: 'ui.relations.family.compute',
+    server: 'ui.relations.family.server',
+    network: 'ui.relations.family.network',
+    virtual: 'ui.relations.family.virtual',
+    power: 'ui.relations.family.power'
+  };
+
   function familyLabel(familyId) {
+    const key = FAMILY_LABEL_KEYS[familyId];
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    if (key && runtime && typeof runtime.te === 'function' && runtime.te(key)) return runtime.t(key);
     const family = FAMILIES.find(function (item) { return item.id === familyId; });
-    return family ? family.label : 'Puestos y periféricos';
+    return family ? family.label : familyId;
   }
 
   function categoryLabel(categoryId) {
