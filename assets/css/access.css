@@ -77,8 +77,8 @@
 .access-stat small {
   color: var(--muted);
   font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.055em;
+  font-size: 11px;
+  letter-spacing: 0.025em;
   line-height: 1.45;
   text-transform: uppercase;
 }
@@ -545,6 +545,13 @@
   flex: none;
 }
 
+/* Access denied */
+@media (min-width: 641px) {
+  .access-denied .btn {
+    justify-self: start;
+  }
+}
+
 /* Security configuration */
 .security-layout {
   display: grid;
@@ -963,6 +970,24 @@
 @media (max-width: 640px) {
   .access-stats {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .access-users .access-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .access-users .access-stat {
+    min-height: 76px;
+    padding: 12px 8px;
+    justify-content: center;
+  }
+
+  .access-users .access-stat__icon {
+    display: none;
+  }
+
+  .access-users .access-stat small {
+    overflow-wrap: anywhere;
   }
 
   .access-stat {

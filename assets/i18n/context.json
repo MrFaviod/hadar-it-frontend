@@ -12,7 +12,7 @@
   "ui.login.username": "Label of the username field.",
   "ui.login.username_placeholder": "Placeholder of the username field.",
   "ui.login.password": "Label of the password field.",
-  "ui.login.password_placeholder": "Masked placeholder of the password field.",
+  "ui.login.password_placeholder": "Placeholder of the empty password field; a short field label, never a masked value that reads as existing input.",
   "ui.login.show_password": "Accessible name of the button that reveals the password.",
   "ui.login.hide_password": "Accessible name of the button that masks the password again.",
   "ui.login.submit": "Submit button of the sign-in form while idle.",

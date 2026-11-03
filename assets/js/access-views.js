@@ -421,7 +421,7 @@
           <button v-if="app.userSearch || app.userRoleFilter !== 'all' || app.userStateFilter !== 'all'" type="button" class="btn btn--ghost access-clear" @click="clearFilters"><app-icon name="close"></app-icon> {{ $t('ui.common.clear') }}</button>
         </div>
 
-        <div class="results-bar access-results"><span>{{ $t('ui.access.results_count', { shown: users.length, total: totalCount }) }}</span><span v-if="!canView" class="access-restricted"><app-icon name="lock"></app-icon> {{ $t('ui.access.restricted_short') }}</span></div>
+        <div class="results-bar access-results"><span>{{ $t('ui.access.results_count', { shown: users.length, total: totalCount, count: totalCount }) }}</span><span v-if="!canView" class="access-restricted"><app-icon name="lock"></app-icon> {{ $t('ui.access.restricted_short') }}</span></div>
 
         <section v-if="canView && users.length" class="access-list-panel" :aria-label="$t('ui.access.list_aria')">
           <div class="access-table-wrap">
