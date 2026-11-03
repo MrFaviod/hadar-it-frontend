@@ -612,6 +612,44 @@
   }
 }
 
+/* Narrow headers: the chat entry lane and the chrome clusters share one row,
+   so each control keeps its target instead of being squeezed, and the account
+   trigger drops its redundant chevron below 360 px. */
+@media (max-width: 520px) {
+  /* The sidebar toggle owns its box: the left cluster must not squeeze it. */
+  .topbar__left {
+    flex: 0 0 auto;
+  }
+
+  .topbar__menu {
+    flex: none;
+    min-width: 44px;
+  }
+
+  .topbar .universal-trigger {
+    min-width: 44px;
+    justify-content: center;
+  }
+
+  .topbar .notif__trigger {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .user-trigger {
+    width: 44px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  .user-trigger > .od-icon {
+    display: none;
+  }
+}
+
 @media (max-width: 390px) {
   .topbar {
     min-height: 60px;

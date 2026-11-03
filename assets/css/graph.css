@@ -1,6 +1,14 @@
 /* Relations: the navigable graph canvas, its toolbar, filters and inspector.
    Colors come exclusively from the shared tokens so the dark theme keeps working. */
 
+/* The sticky top bar is the occluder for the canvas overlays (legend, zoom,
+   notes; the map canvas shares it): a 3% transparent bar lets a scrolled legend
+   ghost through the header. Same surface in both themes, fully opaque. */
+.topbar,
+html[data-theme] .topbar {
+  background: var(--paper);
+}
+
 /* ------------------------------------------------------------ graph page head */
 
 .graph-page {

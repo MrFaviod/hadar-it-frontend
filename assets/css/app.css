@@ -1413,8 +1413,15 @@ button.text-button {
   .topbar {
     padding: 0 14px;
   }
+  /* The account keeps its accessible name: the text is hidden visually, not
+     removed from the tree, so the trigger is still announced by role. */
   .user-trigger__text {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .crumb > span:first-child,
   .crumb > .od-icon {

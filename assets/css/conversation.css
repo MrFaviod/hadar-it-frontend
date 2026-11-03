@@ -290,13 +290,76 @@
   max-width: 880px;
 }
 
+/* --------------------------------------------------------- chat entry lane
+   The conversation entry is chrome, not a floating bubble: it owns the last
+   lane of the top bar, so no page content - map canvas, graph canvas or a
+   selected inspector - is ever covered by it. The lane keeps the bar's own
+   metrics, so the control stays aligned with the other header controls. */
+
+:root {
+  --conversation-lane-inset: clamp(20px, 3vw, 36px);
+  --conversation-lane-top: 12px;
+  /* The control plus the seam the bar reserves for it. */
+  --conversation-lane-reserve: 56px;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --conversation-lane-top: 10px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --conversation-lane-inset: 14px;
+  }
+}
+
+@media (max-width: 390px) {
+  :root {
+    --conversation-lane-top: 8px;
+  }
+}
+
+/* At 320 px six 44 px targets and their seams only just fit the bar, so the
+   lane takes an 8 px inset and a 4 px seam and the two clusters sit 4 px
+   apart. Nothing shrinks below its target. */
+@media (max-width: 340px) {
+  :root {
+    --conversation-lane-inset: 8px;
+    --conversation-lane-reserve: 48px;
+  }
+
+  .topbar {
+    gap: 4px;
+  }
+}
+
+.topbar {
+  /* Reserved lane: the 44px control plus the bar's inset and seam. */
+  padding-right: calc(var(--conversation-lane-inset) + var(--conversation-lane-reserve));
+}
+
 .conversation-opener {
   position: fixed;
-  right: max(20px, env(safe-area-inset-right));
-  bottom: max(20px, env(safe-area-inset-bottom));
+  top: var(--conversation-lane-top);
+  right: var(--conversation-lane-inset);
   z-index: 35;
+  width: 44px;
+  min-width: 44px;
   min-height: 44px;
-  box-shadow: var(--shadow-md);
+  padding-inline: 0;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.conversation-opener__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .conversation-host--open .conversation-opener {
@@ -326,7 +389,8 @@
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
   bottom: max(76px, calc(env(safe-area-inset-bottom) + 60px));
-  z-index: 45;
+  /* Above an expanded map or graph workspace (60), below the search layer. */
+  z-index: 70;
   grid-template-rows: auto minmax(0, 1fr) auto;
   box-sizing: border-box;
   width: min(400px, calc(100% - 32px));
@@ -453,22 +517,6 @@
 }
 
 @media (max-width: 640px) {
-  .conversation-opener {
-    width: 44px;
-    min-width: 44px;
-    padding-inline: 0;
-    justify-content: center;
-  }
-
-  .conversation-opener__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
   .conversation__toolbar {
     grid-template-columns: minmax(0, 1fr);
   }
