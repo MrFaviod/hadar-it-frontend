@@ -7,15 +7,28 @@
     return window.ItsmI18n ? window.ItsmI18n.t(key, params) : '';
   }
   const format = value => value === null || value === undefined ? '—' : (window.ItsmI18n ? window.ItsmI18n.number(value, { maximumFractionDigits: 2 }) : String(value));
+  // The chip, the KPI label, the outages heading and the report bar all name the
+  // selected period. `24h` is a service identifier, not Spanish or English copy.
+  const PERIOD_LABEL_KEYS = { '24h': 'ui.panel.period_24h', '7d': 'ui.panel.period_7d', '30d': 'ui.panel.period_30d' };
+  function periodLabel(period) {
+    return tr(PERIOD_LABEL_KEYS[String(period || '')] || 'ui.panel.period_current');
+  }
+  // Alerts carry the service severities `critical|warning|info`; the stylesheet
+  // only defines the `critica` and `alta` dot tones, so the emphasized states are
+  // mapped and everything else keeps the neutral dot.
+  const SEVERITY_TONES = { critical: 'critica', warning: 'alta', critica: 'critica', alta: 'alta' };
+  function severityTone(severity) {
+    return SEVERITY_TONES[String(severity || '').toLowerCase()] || 'baja';
+  }
   const DashboardKpis = {
     props: ['app', 'filters', 'snapshot'],
     computed: {
       model() { return this.snapshot || window.AssetDashboardModel.build(this.app, this.filters); },
       alertTotal() { return this.model.severity.reduce((total, item) => total + item.count, 0); }
     },
-    methods: { format },
+    methods: { format, periodLabel },
     template: `<div class="noc-kpis" data-od-id="dashboard-kpis">
-      <a href="#/supervision" class="noc-kpi" data-od-id="kpi-availability"><span>{{ $t('ui.dashboard.kpi_availability', { period: filters.period }) }}</span><strong>{{ format(model.stats.availability) }}<small v-if="model.stats.availability !== null"> %</small></strong><em>{{ $t('ui.dashboard.kpi_monitored', { count: model.stats.monitored }) }}</em></a>
+      <a href="#/supervision" class="noc-kpi" data-od-id="kpi-availability"><span>{{ $t('ui.dashboard.kpi_availability', { period: periodLabel(filters.period) }) }}</span><strong>{{ format(model.stats.availability) }}<small v-if="model.stats.availability !== null"> %</small></strong><em>{{ $t('ui.dashboard.kpi_monitored', { count: model.stats.monitored }) }}</em></a>
       <a href="#/supervision/dispositivos" class="noc-kpi" data-od-id="kpi-devices"><span>{{ $t('ui.dashboard.kpi_up') }}</span><strong>{{ model.stats.up }}<small> / {{ model.stats.monitored }}</small></strong><em>{{ $t('ui.dashboard.kpi_unmonitored_note', { count: model.stats.unmonitored }) }}</em></a>
       <a href="#/supervision/dispositivos" class="noc-kpi noc-kpi--attention" data-od-id="kpi-problems"><span>{{ $t('ui.dashboard.kpi_attention') }}</span><strong>{{ model.stats.down + model.stats.degraded }}</strong><em>{{ $t('ui.dashboard.kpi_attention_detail', { down: model.stats.down, degraded: model.stats.degraded }) }}</em></a>
       <a href="#/supervision/alertas" class="noc-kpi" data-od-id="kpi-alerts"><span>{{ $t('ui.dashboard.kpi_alerts') }}</span><strong>{{ alertTotal }}</strong><em>{{ $t('ui.dashboard.kpi_alerts_detail', { critical: model.stats.criticalAlerts, unacknowledged: model.stats.unacknowledged }) }}</em></a>
@@ -34,6 +47,20 @@
     },
     methods: {
       format,
+      periodLabel,
+      severityTone,
+      warrantyLabel(days) {
+        const value = Number(days) || 0;
+        // The catalogue plural form is selected by `count`; `days` is only the
+        // interpolated number.
+        if (value < 0) return tr('ui.dashboard.warranty_expired', { days: Math.abs(value), count: Math.abs(value) });
+        return value === 0 ? tr('ui.dashboard.warranty_today') : tr('ui.dashboard.warranty_in_days', { days: value });
+      },
+      alertContext(alert) {
+        const name = this.assetName(alert);
+        const state = alert.acknowledgedAt ? tr('ui.dashboard.acknowledged_active') : tr('ui.dashboard.pending_attention');
+        return name ? name + ' · ' + state : state;
+      },
       when(value) {
         const formatted = value && window.ItsmI18n ? window.ItsmI18n.formatDate(value, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
         return formatted || tr('ui.dashboard.time_none');
@@ -54,18 +81,21 @@
           <div class="noc-chart-footer"><span>{{ $t('ui.dashboard.uptime_label') }} <b>{{ model.uptimeDays === null ? $t('ui.dashboard.no_data') : $t('ui.dashboard.uptime_days', { count: model.uptimeDays }) }}</b></span><span>{{ $t('ui.dashboard.last_check') }} <b>{{ when(model.lastCheck) }}</b></span></div>
         </div>
         <p v-else class="noc-empty">{{ $t('ui.dashboard.no_samples') }}</p>
-        <div v-if="widget === 'availability'" class="noc-outages"><h3>{{ $t('ui.dashboard.outages_title', { period: filters.period }) }}</h3><a v-for="event in model.outages.slice(0,3)" :key="event.id" :href="event.href"><span>{{ event.title }}<small>{{ event.asset.name }}</small></span><time>{{ when(event.at) }}</time></a><p v-if="!model.outages.length" class="noc-empty">{{ $t('ui.dashboard.outages_empty') }}</p></div>
+        <div v-if="widget === 'availability'" class="noc-outages"><h3>{{ $t('ui.dashboard.outages_title', { period: periodLabel(filters.period) }) }}</h3><a v-for="event in model.outages.slice(0,3)" :key="event.id" :href="event.href"><span>{{ event.title }}<small>{{ event.asset.name }}</small></span><time>{{ when(event.at) }}</time></a><p v-if="!model.outages.length" class="noc-empty">{{ $t('ui.dashboard.outages_empty') }}</p></div>
       </template>
       <template v-else-if="widget === 'alerts'">
         <div class="noc-severity"><a v-for="item in model.severity" :key="item.id" href="#/supervision/alertas" :class="'noc-severity--'+item.id"><strong>{{ item.count }}</strong><span>{{ item.label }}</span><i :style="{width:fraction(item.count,model.activeAlerts.length)}"></i></a></div>
-        <div class="noc-alert-list"><a v-for="alert in model.activeAlerts.slice().sort((a,b)=>appAlertRank(b)-appAlertRank(a)).slice(0,4)" :key="alert.id" :href="'#/supervision/alerta/'+encodeURIComponent(alert.id)" :data-od-id="'dashboard-alert-'+alert.id"><span class="noc-alert-dot" :class="'noc-alert-dot--'+alert.severity"></span><span><b>{{ alert.title || alert.description }}</b><small>{{ assetName(alert) }} · {{ alert.acknowledgedAt ? $t('ui.dashboard.acknowledged_active') : $t('ui.dashboard.pending_attention') }}</small></span><app-icon name="chevron-right"></app-icon></a></div>
+        <div class="noc-alert-list"><a v-for="alert in model.activeAlerts.slice().sort((a,b)=>appAlertRank(b)-appAlertRank(a)).slice(0,4)" :key="alert.id" :href="'#/supervision/alerta/'+encodeURIComponent(alert.id)" :data-od-id="'dashboard-alert-'+alert.id"><span class="noc-alert-dot" :class="'noc-alert-dot--'+severityTone(alert.severity)"></span><span><b>{{ alert.title || alert.description }}</b><small>{{ alertContext(alert) }}</small></span><app-icon name="chevron-right"></app-icon></a></div>
         <p v-if="!model.activeAlerts.length" class="noc-empty">{{ $t('ui.dashboard.alerts_empty') }}</p>
         <a class="noc-text-link" href="#/supervision/alertas">{{ $t('ui.dashboard.all_alerts') }} <app-icon name="arrow-right"></app-icon></a>
       </template>
       <template v-else-if="widget === 'distribution'">
-        <div class="noc-distribution" role="img" :aria-label="model.distribution.map(r=>r.label+': '+r.count).join(', ')"><span v-for="item in model.distribution.filter(r=>r.count)" :key="item.id" :class="'noc-state--'+item.id" :style="{width:fraction(item.count,model.stats.total)}"></span></div>
-        <a v-for="item in model.distribution.filter(r=>r.count || ['up','degraded','down','unmonitored'].includes(r.id))" :key="item.id" class="noc-state-row" href="#/supervision/dispositivos"><i :class="'noc-state--'+item.id"></i><span>{{ item.label }}</span><strong>{{ item.count }}</strong><small>{{ format(model.stats.total ? item.count/model.stats.total*100 : 0) }} %</small></a>
-        <p class="noc-footnote">{{ $t('ui.dashboard.distribution_note') }}</p>
+        <template v-if="model.stats.total">
+          <div class="noc-distribution" role="img" :aria-label="model.distribution.map(r=>r.label+': '+r.count).join(', ')"><span v-for="item in model.distribution.filter(r=>r.count)" :key="item.id" :class="'noc-state--'+item.id" :style="{width:fraction(item.count,model.stats.total)}"></span></div>
+          <a v-for="item in model.distribution.filter(r=>r.count || ['up','degraded','down','unmonitored'].includes(r.id))" :key="item.id" class="noc-state-row" href="#/supervision/dispositivos"><i :class="'noc-state--'+item.id"></i><span>{{ item.label }}</span><strong>{{ item.count }}</strong><small>{{ format(model.stats.total ? item.count/model.stats.total*100 : 0) }} %</small></a>
+          <p class="noc-footnote">{{ $t('ui.dashboard.distribution_note') }}</p>
+        </template>
+        <p v-else class="noc-empty">{{ $t('ui.dashboard.distribution_empty') }}</p>
       </template>
       <template v-else-if="widget === 'infrastructure'">
         <div class="noc-segment" role="group" :aria-label="$t('ui.dashboard.breakdown_aria')"><button type="button" :aria-pressed="breakdown==='category'" @click="breakdown='category'">{{ $t('ui.dashboard.by_category') }}</button><button type="button" :aria-pressed="breakdown==='site'" @click="breakdown='site'">{{ $t('ui.dashboard.by_site') }}</button></div>
@@ -81,7 +111,7 @@
         <p v-if="!model.maintenance.length" class="noc-empty">{{ $t('ui.dashboard.maintenance_empty') }}</p><a class="noc-text-link" href="#/mantenimiento">{{ $t('ui.dashboard.open_maintenance') }} <app-icon name="arrow-right"></app-icon></a>
       </template>
       <template v-else-if="widget === 'warranties'">
-        <button type="button" v-for="row in model.warranties.slice(0,5)" :key="row.asset.id" class="noc-work noc-work--button" @click="open(row.asset)"><span><b>{{ row.asset.name }}</b><small>{{ row.asset.code || row.asset.id }}</small></span><strong>{{ row.days === 0 ? $t('ui.dashboard.warranty_today') : $t('ui.dashboard.warranty_in_days', { days: row.days }) }}</strong><time>{{ day(row.until) }}</time></button>
+        <button type="button" v-for="row in model.warranties.slice(0,5)" :key="row.asset.id" class="noc-work noc-work--button" @click="open(row.asset)"><span><b>{{ row.asset.name }}</b><small>{{ row.asset.code || row.asset.id }}</small></span><strong>{{ warrantyLabel(row.days) }}</strong><time>{{ day(row.until) }}</time></button>
         <p v-if="!model.warranties.length" class="noc-empty">{{ $t('ui.dashboard.warranties_empty') }}</p><p class="noc-footnote">{{ $t('ui.dashboard.warranties_note') }}</p>
       </template>
       <template v-else-if="widget === 'inventory'">
@@ -89,12 +119,12 @@
         <div v-if="model.inventory.attention.length" class="noc-inventory-attention"><h3>{{ $t('ui.dashboard.inventory_attention') }}</h3><a v-for="item in model.inventory.attention" :key="item.assetId" :href="'#/activo/'+encodeURIComponent(item.assetId)"><span>{{ item.assetName }}<small>{{ item.assetCode || '' }} · {{ item.status }}</small></span></a></div><a class="noc-text-link" href="#/inventario">{{ $t('ui.dashboard.inventory_open') }} <app-icon name="arrow-right"></app-icon></a>
       </template>
       <template v-else-if="widget === 'incidents'">
-        <div class="noc-alert-list"><a v-for="item in model.incidents" :key="item.id" :href="'#/mantenimiento/incidente/'+encodeURIComponent(item.id)" :data-od-id="'dashboard-incident-'+item.id"><span class="noc-alert-dot" :class="'noc-alert-dot--'+item.severity"></span><span><b>{{ item.title }}</b><small>{{ item.assetName || $t('ui.dashboard.no_asset') }} · {{ item.status }}</small></span><app-icon name="chevron-right"></app-icon></a></div>
+        <div class="noc-alert-list"><a v-for="item in model.incidents" :key="item.id" :href="'#/mantenimiento/incidente/'+encodeURIComponent(item.id)" :data-od-id="'dashboard-incident-'+item.id"><span class="noc-alert-dot" :class="'noc-alert-dot--'+severityTone(item.severity)"></span><span><b>{{ item.title }}</b><small>{{ item.assetName || $t('ui.dashboard.no_asset') }} · {{ item.status }}</small></span><app-icon name="chevron-right"></app-icon></a></div>
         <p v-if="!model.incidents.length" class="noc-empty">{{ $t('ui.dashboard.incidents_empty') }}</p>
         <a class="noc-text-link" href="#/mantenimiento">{{ $t('ui.dashboard.open_maintenance') }} <app-icon name="arrow-right"></app-icon></a>
       </template>
     </div>`
   };
   DashboardWidget.methods.appAlertRank = alert => window.AssetMonitorEngine.severityRank(alert.severity);
-  window.AssetDashboardViews = { DashboardKpis, DashboardWidget };
+  window.AssetDashboardViews = { DashboardKpis, DashboardWidget, periodLabel, severityTone };
 })();
