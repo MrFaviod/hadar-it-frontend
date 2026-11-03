@@ -102,6 +102,11 @@
 .config-content {
   min-width: 0;
 }
+.config-general-stack {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
 .config-section {
   padding: 22px;
   border: 1px solid var(--border);

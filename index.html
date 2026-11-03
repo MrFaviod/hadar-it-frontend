@@ -1150,7 +1150,8 @@
                     <translation-settings v-else-if="route.section === 'idiomas'" :app="$root"></translation-settings>
                     <!-- General -->
                     <access-security v-else-if="route.section === 'seguridad'" :app="$root"></access-security>
-                    <section v-else-if="route.section === 'general'" class="config-section" aria-labelledby="config-general-title">
+                    <div v-else-if="route.section === 'general'" class="config-general-stack">
+                    <section class="config-section" aria-labelledby="config-general-title">
                       <header class="config-section__head">
                         <div>
                           <p class="eyebrow">{{ $t('ui.catalog.general.eyebrow') }}</p>
@@ -1166,9 +1167,10 @@
                       </div>
                       <p>{{ $t('ui.catalog.general.body') }}</p>
                       <a class="btn btn--secondary" href="#/configuracion/apariencia">{{ $t('ui.catalog.general.manage') }}</a>
+                    </section>
                       <search-settings :app="$root"></search-settings>
                       <dashboard-preferences :app="$root"></dashboard-preferences>
-                    </section>
+                    </div>
 
                     <agent-integrations-settings v-else-if="route.section === 'ia'" :app="$root"></agent-integrations-settings>
 
