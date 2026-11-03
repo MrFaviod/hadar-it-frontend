@@ -44,22 +44,42 @@ async function bothLocales(s, pair) {
 test('T3a chat surface renders from the catalog and switches language in place', async () => {
   const s = setup();
   s.app.route = { name: 'conversation' };
+  const canonical = s.c.fetch;
+  s.c.fetch = async (url, init) => {
+    if (String(url).replace(/^\/api\/v1/, '') === '/agent/engines') {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          instances: [{ id: 'pydantic-built-in', name: 'Pydantic AI', engine: 'pydantic', enabled: true, attachmentsSupported: true, models: [{ id: 'model-a' }], capabilities: { tools: true } }],
+          preference: { instanceId: 'pydantic-built-in', model: 'model-a' }
+        })
+      };
+    }
+    return canonical(url, init);
+  };
   const ui = s.mount('AssetConversation', { app: s.app });
   s.root = ui.root;
   await s.settle();
   await bothLocales(s, {
     es: (copy) => {
-      assert.match(copy, /Asistente de inventario/, 'Spanish eyebrow is unchanged');
       assert.match(copy, /Conversación/, 'Spanish title is unchanged');
-      assert.match(copy, /Todavía no hay mensajes/, 'Spanish empty state is unchanged');
+      assert.match(copy, /Proveedor/, 'the provider selector label is translated');
+      assert.match(copy, /Modelo/, 'the model selector label is translated');
+      assert.match(copy, /Configuración/, 'the single configuration action is translated');
+      assert.match(copy, /Adjuntos/, 'the attachment action is translated');
+      assert.doesNotMatch(copy, /Todavía no hay mensajes|Choose Files|No file chosen/,
+        'no instruction or browser file chrome is rendered');
       const input = attrs(s.root).join(' | ');
       assert.match(input, /Ej\.: Muéstrame los servidores de Matriz/, 'Spanish placeholder is unchanged');
     },
     en: (copy) => {
-      assert.match(copy, /Inventory assistant/, 'the English eyebrow is shown');
       assert.match(copy, /Conversation/, 'the English title is shown');
-      assert.match(copy, /No messages yet/, 'the English empty state is shown');
-      assert.doesNotMatch(copy, /Asistente de inventario|Conversación|Todavía no hay mensajes/,
+      assert.match(copy, /Provider/, 'the English provider label is shown');
+      assert.match(copy, /Model/, 'the English model label is shown');
+      assert.match(copy, /Settings/, 'the English configuration action is shown');
+      assert.match(copy, /Attachments/, 'the English attachment action is shown');
+      assert.doesNotMatch(copy, /Conversación|Proveedor|Modelo|Configuración|Todavía no hay mensajes|Adjuntos/,
         'no Spanish copy leaks into English');
       assert.doesNotMatch(attrs(s.root).join(' | '), /Muéstrame los servidores/, 'the placeholder is translated');
     }

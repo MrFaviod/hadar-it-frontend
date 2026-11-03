@@ -117,9 +117,7 @@
   window.AssetConversation = {
     name: 'AssetConversation',
     components: { AppIcon: window.AppIcon },
-    mixins: []
-      .concat(window.AssetAgentEngineMixin ? [window.AssetAgentEngineMixin] : [])
-      .concat(window.AssetAgentQuotaMixin ? [window.AssetAgentQuotaMixin] : []),
+    mixins: [].concat(window.AssetAgentEngineMixin ? [window.AssetAgentEngineMixin] : []),
     props: {
       app: { type: Object, required: true }
     },
@@ -209,8 +207,69 @@
           }))
         );
       },
-      agentProviderSelectorVisible() {
-        return this.agentProviderOptions.length > 1;
+      // One provider control replaces the engine, profile and provider
+      // selectors. An engine choice keeps the existing instance authority; a
+      // managed engine exposes its organization and personal providers here.
+      chatProviderChoices() {
+        const choices = [];
+        const dedupe = (label) => {
+          const index = label.indexOf(' · ');
+          if (index < 0) return label;
+          const head = label.slice(0, index);
+          const tail = label.slice(index + 3);
+          return tail.startsWith(head) ? tail : label;
+        };
+        const instances = this.agentInstanceList.filter(instance =>
+          instance && typeof instance.id === 'string' && instance.id && instance.enabled !== false);
+        const activeInstanceId = this.agentPreference && this.agentPreference.instanceId;
+        const offered = instances
+          .filter(instance => !(this.agentManagedActive && instance.id === activeInstanceId))
+          .map(instance => ({
+            instance,
+            label: dedupe(this.agentInstanceLabel(instance))
+          }));
+        const labelCounts = new Map();
+        for (const item of offered) labelCounts.set(item.label, (labelCounts.get(item.label) || 0) + 1);
+        for (const item of offered) {
+          // Only a duplicated label needs the authorized profile appended; an
+          // instance whose own name already distinguishes it stays short.
+          let label = item.label;
+          const profile = this.agentProfileLabel(item.instance);
+          if ((labelCounts.get(label) || 0) > 1 && profile && !label.includes(profile)) {
+            label += ' · ' + profile;
+          }
+          choices.push({
+            value: 'engine:' + item.instance.id,
+            kind: 'engine',
+            instanceId: item.instance.id,
+            label
+          });
+        }
+        for (const option of this.agentProviderOptions) {
+          choices.push({
+            value: 'provider:' + option.value,
+            kind: 'provider',
+            providerValue: option.value,
+            label: option.label
+          });
+        }
+        return choices;
+      },
+      chatProviderValue() {
+        if (this.agentManagedActive) return 'provider:' + (this.managedProviderId || '');
+        const instance = this.agentActiveInstance;
+        return instance && instance.id ? 'engine:' + instance.id : '';
+      },
+      chatProviderDisabled() {
+        return this.busy || this.selecting || this.resuming || this.sessionRunning ||
+          this.hasPendingAttachments || !this.chatProviderChoices.length;
+      },
+      // The configuration action stays honest: the IA section is the existing
+      // route that owns provider installation, not a new chat setting surface.
+      canConfigureChat() {
+        if (!this.authenticated) return false;
+        if (this.app && typeof this.app.canConfig === 'function') return this.app.canConfig('ia');
+        return false;
       },
       agentSelectedProvider() {
         if (!this.agentManagedActive || !this.managedProviderId) return null;
@@ -524,7 +583,6 @@
       },
       resetSurface() {
         this.epoch += 1;
-        this.resetQuota();
         this.agentEpoch += 1;
         this.agentPreferenceEpoch += 1;
         this.panelOpen = false;
@@ -578,7 +636,6 @@
         if (!this.app.authenticated || (!this.isConversationRoute && !this.panelOpen)) return false;
         const epoch = this.epoch;
         const discovery = this.loadAgentEngines();
-        void this.loadQuota();
         const loaded = await discovery;
         if (!this.isCurrent(epoch)) return false;
         if (!loaded) {
@@ -711,6 +768,10 @@
         }
         if (total > MAX_ATTACHMENT_BYTES) return tr('ui.chat.error_total_size');
         return '';
+      },
+      openAttachmentPicker() {
+        const input = this.$refs && this.$refs.attachmentInput;
+        if (input && typeof input.click === 'function') input.click();
       },
       async attachFiles(event) {
         if (!this.chatAttachmentSupport.supported) return false;
@@ -952,7 +1013,6 @@
           if (requestId === this.requestId) {
             this.busy = false;
             this.request = null;
-            if (!this.disposed) void this.loadQuota();
           }
         }
       },
@@ -1049,7 +1109,6 @@
             this.busy = false;
             this.streaming = false;
             this.request = null;
-            void this.loadQuota();
           }
         }
       },
@@ -1182,6 +1241,34 @@
         } finally {
           if (this.isCurrent(epoch)) { this.selecting = false; this.request = null; }
         }
+      },
+      // The single provider control maps its option back to the existing
+      // authority: an engine choice changes the authorized instance/profile,
+      // and a provider choice changes only the managed provider of that
+      // instance. A rejected change restores the value the server reports.
+      async changeChatProvider(event) {
+        const value = typeof event === 'string' ? event : (event && event.target ? event.target.value : '');
+        const choice = this.chatProviderChoices.find(item => item.value === value);
+        if (!choice) {
+          this.agentResetSelection(event, this.chatProviderValue);
+          return false;
+        }
+        let applied;
+        if (choice.kind === 'provider') {
+          applied = await this.changeProvider(choice.providerValue);
+        } else if (choice.instanceId) {
+          applied = await this.changeEngineChoice(choice.instanceId);
+        } else {
+          applied = false;
+        }
+        if (!applied) this.agentResetSelection(event, this.chatProviderValue);
+        return applied;
+      },
+      openChatConfig() {
+        if (!this.canConfigureChat) return false;
+        if (!this.isConversationRoute) this.closePanel();
+        this.app.setHash('#/configuracion/ia');
+        return true;
       },
       async changeSelection(instance, model) {
         if (this.busy || this.resuming || this.selecting || this.sessionRunning) return false;
@@ -1402,27 +1489,6 @@
       toolTone(status) {
         return toolTone(status);
       },
-      tokenCount(value) {
-        const runtime = window.ItsmI18n;
-        return value === null || value === undefined ? tr('ui.chat.value_unavailable')
-          : (runtime ? runtime.number(value) : String(value));
-      },
-      usagePrecisionLabel() {
-        if (!this.usage) return '';
-        if (this.usage.precision === 'measured') return tr('ui.chat.precision_measured');
-        if (this.usage.precision === 'estimated') return tr('ui.chat.precision_estimated');
-        return tr('ui.chat.value_unavailable');
-      },
-      usageSourceLabel() {
-        if (!this.usage) return '';
-        if (this.usage.source === 'provider') return tr('ui.chat.source_provider');
-        if (this.usage.source === 'engine') return tr('ui.chat.source_engine');
-        if (this.usage.source === 'estimate') return tr('ui.chat.source_estimate');
-        return tr('ui.chat.value_unavailable');
-      },
-      usageInclusionLabel(value) {
-        return value === true ? tr('ui.chat.value_yes') : (value === false ? tr('ui.chat.value_no') : tr('ui.chat.value_unavailable'));
-      },
       actionStatusLabel(status) {
         return tr(ACTION_STATUS_KEYS[status] || 'ui.chat.status_recorded');
       },
@@ -1442,44 +1508,6 @@
       resultStatus(result) {
         return tr(ASSET_STATUS_KEYS[result.status] || 'ui.chat.status_none');
       },
-      quotaPeriodText() {
-        const day = this.quotaPeriodDay || tr('ui.chat.day_not_reported');
-        const zone = this.quotaTimezone || tr('ui.chat.zone_not_reported');
-        let text = tr('ui.chat.quota_period', { day, zone });
-        if (this.quotaPendingTimezone) {
-          text += tr('ui.chat.quota_pending_change', {
-            zone: this.quotaPendingTimezone,
-            day: this.quotaPendingEffectiveDay || tr('ui.chat.quota_next_safe_limit')
-          });
-        }
-        return text;
-      },
-      // One message keeps the optional fragments inside the translated
-      // sentence instead of concatenating translated pieces.
-      usageText() {
-        const usage = this.usage;
-        if (!usage) return '';
-        let text = tr('ui.chat.usage_line', {
-          precision: this.usagePrecisionLabel(),
-          source: this.usageSourceLabel(),
-          input: this.tokenCount(usage.inputTokens),
-          output: this.tokenCount(usage.outputTokens),
-          cacheRead: this.tokenCount(usage.cacheReadTokens),
-          cacheWrite: this.tokenCount(usage.cacheWriteTokens),
-          reasoning: this.tokenCount(usage.reasoningTokens),
-          total: this.tokenCount(usage.totalTokens)
-        });
-        if (usage.totalSource) {
-          text += tr(usage.totalSource === 'provider' ? 'ui.chat.usage_total_provider' : 'ui.chat.usage_total_derived');
-        }
-        text += tr('ui.chat.usage_inclusion', {
-          cache: this.usageInclusionLabel(usage.inputIncludesCache),
-          reasoning: this.usageInclusionLabel(usage.outputIncludesReasoning)
-        });
-        if (usage.estimationMethod) text += tr('ui.chat.usage_estimation', { method: usage.estimationMethod });
-        if (usage.cost) text += tr('ui.chat.usage_cost', { cost: usage.cost });
-        return text + tr('ui.chat.usage_not_total');
-      },
       assetAttachmentsCountText() {
         let text = tr('ui.chat.asset_attachments_examined', {
           examined: this.assetAttachments.length,
@@ -1490,15 +1518,13 @@
       }
     },
     template: [
-      '<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute }">',
-      '  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon> {{ $t(\'ui.chat.title\') }}<span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
+      '<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute, \'conversation-host--open\': panelOpen }">',
+      '  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon><span id="conversation-opener-label" class="conversation-opener__label"> {{ $t(\'ui.chat.title\') }}</span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
       '<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
       '  <header class="page-head conversation__head">',
       '    <div>',
-      '      <p class="eyebrow">{{ $t(\'ui.chat.eyebrow\') }}</p>',
       '      <h1 v-if="isConversationRoute" id="conversation-title">{{ $t(\'ui.chat.title\') }}</h1>',
       '      <h2 v-else id="conversation-title">{{ $t(\'ui.chat.title\') }}</h2>',
-      '      <p v-if="isConversationRoute" class="page-sub">{{ $t(\'ui.chat.lead\') }}</p>',
       '    </div>',
       '    <div class="conversation__window-actions">',
       '      <button v-if="!isConversationRoute" id="conversation-expand" type="button" class="btn btn--ghost btn--small" @click="expandConversation">{{ $t(\'ui.chat.expand\') }}</button>',
@@ -1507,89 +1533,31 @@
       '    </div>',
       '  </header>',
       '  <div class="conversation__body">',
-      '  <div v-if="useAgentSessions" class="conversation__field">',
-      '    <label class="conversation__label" for="conversation-session">{{ $t(\'ui.chat.sessions_label\') }}</label>',
-      '    <select id="conversation-session" class="conversation__select" :value="sessionId" :disabled="busy || selecting || resuming || sessionsLoading || hasPendingAttachments" @change="resumeSession($event.target.value)">',
-      '      <option value="">{{ $t(\'ui.chat.session_new\') }}</option>',
-      '      <option v-if="sessionId && !savedSessions.some(item => item.id === sessionId)" :value="sessionId">{{ $t(\'ui.chat.session_current\') }}</option>',
-      '      <option v-for="session in savedSessions" :key="session.id" :value="session.id">{{ savedSessionLabel(session) }}</option>',
-      '    </select>',
-      '    <p v-if="sessionsLoading || resuming" class="conversation__help" role="status">{{ $t(\'ui.chat.sessions_loading\') }}</p>',
-      '    <p v-if="sessionsError" class="conversation__error" role="alert">{{ sessionsError }}</p>',
-      '    <button v-if="sessionsError" type="button" class="btn btn--ghost btn--small" @click="loadSavedSessions">{{ $t(\'ui.chat.sessions_retry\') }}</button>',
+      '  <div v-if="!legacyFallback" class="conversation__toolbar" role="group" :aria-label="$t(\'ui.chat.engine_title\')">',
+      '    <div class="conversation__field">',
+      '      <label class="conversation__label" for="conversation-provider">{{ $t(\'ui.chat.provider_label\') }}</label>',
+      '      <select id="conversation-provider" class="conversation__select" :value="chatProviderValue" :disabled="chatProviderDisabled" @change="changeChatProvider($event)">',
+      '        <option v-if="!chatProviderChoices.length" value="">{{ $t(\'ui.system.executor.unconfigured_state\') }}</option>',
+      '        <option v-for="choice in chatProviderChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
+      '      </select>',
+      '    </div>',
+      '    <div class="conversation__field">',
+      '      <label class="conversation__label" for="conversation-model">{{ $t(\'ui.chat.model_label\') }}</label>',
+      '      <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
+      '        <option v-if="!agentModels.length" value="">{{ $t(\'ui.chat.models_none\') }}</option>',
+      '        <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
+      '      </select>',
+      '    </div>',
+      '    <a v-if="canConfigureChat" id="conversation-config" class="btn btn--secondary conversation__config" href="#/configuracion/ia" :aria-label="$t(\'ui.page.settings\')" :title="$t(\'ui.page.settings\')" @click.prevent="openChatConfig"><app-icon name="sliders"></app-icon><span class="conversation__config-label">{{ $t(\'ui.page.settings\') }}</span></a>',
       '  </div>',
-      '  <section v-if="!legacyFallback" class="conversation__engine" aria-labelledby="conversation-engine-title">',
-      '    <div class="conversation__engine-head">',
-      '      <h2 id="conversation-engine-title" class="conversation__heading">{{ $t(\'ui.chat.engine_title\') }}</h2>',
-      '      <span v-if="agentEnginesLoading" class="conversation__meta" role="status">{{ $t(\'ui.chat.engines_loading\') }}</span>',
-      '    </div>',
-      '    <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
-      '    <div v-if="agentInstanceList.length" class="conversation__engine-grid">',
-      '      <div class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-engine">{{ $t(\'ui.chat.engine_label\') }}</label>',
-      '        <select id="conversation-engine" class="conversation__select" :value="agentEngineValue" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeEngineChoice($event)">',
-      '          <option v-for="choice in agentEngineChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
-      '        </select>',
-      '      </div>',
-      '      <div v-if="agentProfileSelectorVisible" class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-profile">{{ $t(\'ui.chat.profile_label\') }}</label>',
-      '        <select id="conversation-profile" class="conversation__select" aria-describedby="conversation-profile-help" :value="agentPreference.instanceId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProfile($event)">',
-      '          <option v-for="instance in agentProfileOptions" :key="instance.id" :value="instance.id" :disabled="instance.enabled === false">{{ agentProfileLabel(instance) }}{{ instance.enabled === false ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
-      '        </select>',
-      '      </div>',
-      '      <div v-if="agentProviderSelectorVisible" class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-provider">{{ $t(\'ui.chat.provider_label\') }}</label>',
-      '        <select id="conversation-provider" class="conversation__select" aria-describedby="conversation-provider-help" :value="managedProviderId" :disabled="busy || selecting || resuming || sessionRunning || hasPendingAttachments" @change="changeProvider($event)">',
-      '          <option v-for="option in agentProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>',
-      '        </select>',
-      '      </div>',
-      '      <div class="conversation__field">',
-      '        <label class="conversation__label" for="conversation-model">{{ $t(\'ui.chat.model_label\') }}</label>',
-      '        <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
-      '          <option v-if="!agentModels.length" value="">{{ $t(\'ui.chat.models_none\') }}</option>',
-      '          <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
-      '        </select>',
-      '      </div>',
-      '    </div>',
-      '    <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">{{ $t(\'ui.chat.attachment_lock\') }}</p>',
-      '    <p v-if="agentProviderSelectorVisible" id="conversation-provider-help" class="conversation__help">{{ $t(\'ui.chat.provider_help\') }}</p>',
-      '    <p v-if="agentProfileSelectorVisible" id="conversation-profile-help" class="conversation__help">{{ $t(\'ui.chat.profile_help\') }}</p>',
-      '    <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" :aria-label="$t(\'ui.chat.discovery_errors_aria\')">',
-      '      <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
-      '    </ul>',
-      '    <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
-      '    <p v-if="agentEnginesLoaded && !agentInstanceList.length" class="conversation__help" role="status">{{ $t(\'ui.chat.no_engines\') }}</p>',
-      '    <p v-else-if="agentEnginesLoaded && !agentActiveInstance" class="conversation__help" role="status">{{ $t(\'ui.chat.no_enabled_engine\') }}</p>',
-      '    <div v-if="agentCapabilityList.length" class="conversation__tags">',
-      '      <span v-for="capability in agentCapabilityList" :key="capability.key" class="chip chip--muted">{{ capability.label }}</span>',
-      '    </div>',
-      '    <p v-if="agentBudgetSummary" class="conversation__usage">{{ agentBudgetSummary }}</p>',
-      '  </section>',
-      '  <p v-else-if="agentEnginesLoaded" class="conversation__help">{{ $t(\'ui.chat.legacy_engines\') }}</p>',
-      '  <section v-if="app.authenticated" id="conversation-quota" class="conversation__quota" aria-labelledby="conversation-quota-title">',
-      '    <div class="conversation__engine-head">',
-      '      <h2 id="conversation-quota-title" class="conversation__heading">{{ $t(\'ui.chat.quota_title\') }}</h2>',
-      '      <button id="conversation-quota-refresh" type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? $t(\'ui.chat.quota_refreshing\') : $t(\'ui.chat.quota_refresh\') }}</button>',
-      '    </div>',
-      '    <p v-if="quotaLoading && !quotaHasData" class="conversation__help" role="status">{{ $t(\'ui.chat.quota_loading\') }}</p>',
-      '    <p v-if="quotaError" class="conversation__error" role="alert">{{ quotaError }}</p>',
-      '    <p v-if="quotaUnavailable" class="conversation__help" role="status">{{ $t(\'ui.chat.quota_unavailable\') }}</p>',
-      '    <template v-if="quotaHasData">',
-      '      <p class="conversation__meta">{{ quotaPeriodText() }}</p>',
-      '      <ul class="conversation__quota-list">',
-      '        <li v-for="account in quotaAccounts" :key="account.scope" class="conversation__quota-account">',
-      '          <p><strong>{{ account.label }}</strong><span v-if="account.selected" class="chip chip--muted">{{ $t(\'ui.chat.current_context\') }}</span></p>',
-      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_limit_line\', { limit: quotaLimitText(account.balance), source: quotaLimitSourceLabel(account.balance && account.balance.limitSource) }) }}</p>',
-      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_usage_line\', { consumed: quotaAmountText(account.balance && account.balance.consumed), reserved: quotaAmountText(account.balance && account.balance.reserved), available: quotaAvailableText(account.balance) }) }}</p>',
-      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_pending_line\', { pending: quotaTokenText(account.balance && account.balance.pendingCount), precision: quotaPrecisionText(account.balance) }) }}</p>',
-      '          <p class="conversation__meta">{{ $t(\'ui.chat.quota_legacy_line\', { amount: quotaAmountText(account.balance && account.balance.legacy) }) }}</p>',
-      '        </li>',
-      '      </ul>',
-      '      <p v-if="quotaSelectedNotice" class="conversation__help" role="status">{{ quotaSelectedNotice }}</p>',
-      '    </template>',
-      '  </section>',
+      '  <p v-if="agentEnginesLoading" class="conversation__meta" role="status">{{ $t(\'ui.chat.engines_loading\') }}</p>',
+      '  <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
+      '  <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">{{ $t(\'ui.chat.attachment_lock\') }}</p>',
+      '  <ul v-if="agentDiscoveryErrors.length" class="conversation__errors" role="alert" :aria-label="$t(\'ui.chat.discovery_errors_aria\')">',
+      '    <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
+      '  </ul>',
+      '  <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
       '  <div class="conversation__log" role="log" aria-live="polite" aria-relevant="additions text">',
-      '    <p v-if="!hasMessages && !busy" class="conversation__empty">{{ $t(\'ui.chat.empty\') }}</p>',
       '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
       '      <p class="conversation__role">{{ message.role === "user" ? $t(\'ui.chat.role_user\') : $t(\'ui.chat.role_agent\') }}</p>',
       '      <p class="conversation__text">{{ message.content }}<span v-if="message.streaming" class="conversation__streaming" aria-hidden="true">…</span></p>',
@@ -1603,7 +1571,7 @@
       '    <p v-if="busy && !streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.preparing\') }}</p>',
       '    <p v-if="streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.receiving\') }}</p>',
       '  </div>',
-      '  <div v-if="error" class="conversation__error-box">',
+      '  <div v-if="error" id="conversation-error" class="conversation__error-box">',
       '    <p class="conversation__error" role="alert">{{ error }}</p>',
       '    <p v-if="retryable && !busy" class="conversation__help">{{ $t(\'ui.chat.retry_help\') }}</p>',
       '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.reconnect\') }}</button>',
@@ -1612,7 +1580,6 @@
       '  <p v-if="approvalPending" class="conversation__approval" role="status">{{ $t(\'ui.chat.approval_pending\') }}</p>',
       '  <section v-if="extensionReviews.length" id="conversation-extension-reviews" class="conversation__section" aria-labelledby="conversation-extension-reviews-title">',
       '    <h2 id="conversation-extension-reviews-title" class="conversation__heading">{{ $t(\'ui.chat.reviews_title\') }}</h2>',
-      '    <p class="conversation__help">{{ $t(\'ui.chat.reviews_help\') }}</p>',
       '    <ul class="conversation__actions">',
       '      <li v-for="review in extensionReviews" :key="review.candidateId" class="conversation__action">',
       '        <a :id="\'conversation-extension-review-\' + review.candidateId" class="conversation__result-link" :href="review.href">{{ $t(\'ui.chat.review_link\', { extension: review.extensionId, version: review.version }) }}</a>',
@@ -1630,7 +1597,6 @@
       '      </li>',
       '    </ul>',
       '  </section>',
-      '  <p v-if="usage" id="conversation-usage" class="conversation__usage" role="status">{{ usageText() }}</p>',
       '  <section v-if="actions.length" class="conversation__section" aria-labelledby="conversation-actions">',
       '    <h2 id="conversation-actions" class="conversation__heading">{{ $t(\'ui.chat.actions_title\') }}</h2>',
       '    <ul class="conversation__actions">',
@@ -1658,12 +1624,10 @@
       '      <option value="">{{ $t(\'ui.chat.context_none\') }}</option>',
       '      <option v-for="asset in assetContextOptions" :key="asset.id" :value="asset.id">{{ asset.name }}<template v-if="asset.quickCode"> · {{ asset.quickCode }}</template></option>',
       '    </select>',
-      '    <p class="conversation__help">{{ $t(\'ui.chat.context_help\') }}</p>',
       '  </div>',
       '  <div v-if="canAttachFiles && contextAssetId()" class="conversation__context conversation__asset-attachments">',
       '    <label class="conversation__label" for="conversation-load-asset-attachments">{{ $t(\'ui.chat.asset_attachments_label\') }}</label>',
-      '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" aria-describedby="conversation-asset-attachments-help" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.asset_attachments_load\') }}</button>',
-      '    <p id="conversation-asset-attachments-help" class="conversation__help">{{ $t(\'ui.chat.asset_attachments_help\') }}</p>',
+      '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.asset_attachments_load\') }}</button>',
       '    <p v-if="assetAttachmentsError" class="conversation__error" role="alert">{{ assetAttachmentsError }}</p>',
       '    <p v-if="assetAttachmentsLoaded" class="conversation__meta">{{ assetAttachmentsCountText() }}</p>',
       '    <p v-if="assetAttachmentsLoaded && !assetAttachments.length" class="conversation__help" role="status">{{ $t(\'ui.chat.asset_attachments_empty\') }}</p>',
@@ -1677,28 +1641,29 @@
       '  </div>',
       '  </div>',
       '  <form id="conversation-form" class="conversation__form" @submit.prevent="send">',
-      '    <label class="conversation__label" for="conversation-input">{{ $t(\'ui.chat.message_label\') }}</label>',
-      '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" aria-describedby="conversation-help" :placeholder="$t(\'ui.chat.message_placeholder\')"></textarea>',
-      '    <p id="conversation-help" class="conversation__help">{{ $t(\'ui.chat.message_help\') }}</p>',
-      '    <div v-if="canAttachFiles" class="conversation__attachments">',
-      '      <label class="conversation__label" for="conversation-attachment">{{ $t(\'ui.chat.attachments_label\') }}</label>',
-      '      <input id="conversation-attachment" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" @change="attachFiles($event)">',
-      '      <p id="conversation-attachment-help" class="conversation__help">{{ attachmentHelp }}</p>',
-      '      <p v-if="attachmentBusy" class="conversation__help" role="status">{{ $t(\'ui.chat.attaching\') }}</p>',
-      '      <p v-if="attachmentError" class="conversation__error" role="alert">{{ attachmentError }}</p>',
-      '      <ul v-if="attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.pending_attachments_aria\')">',
-      '        <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
-      '          <span class="conversation__attachment-name">{{ item.filename }}</span>',
-      '          <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
-      '          <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="$t(\'ui.chat.remove_attachment\', { filename: item.filename })" @click="removeAttachment(item.id)">{{ $t(\'ui.chat.remove\') }}</button>',
-      '        </li>',
-      '      </ul>',
-      '      <p v-if="sessionAttachmentCount" class="conversation__meta">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
-      '    </div>',
+      '    <label class="sr-only" for="conversation-input">{{ $t(\'ui.chat.message_label\') }}</label>',
+      '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" :placeholder="$t(\'ui.chat.message_placeholder\')"></textarea>',
+      '    <p v-if="attachmentBusy" class="conversation__meta" role="status">{{ $t(\'ui.chat.attaching\') }}</p>',
+      '    <p v-if="attachmentError" class="conversation__error" role="alert">{{ attachmentError }}</p>',
+      '    <ul v-if="attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.pending_attachments_aria\')">',
+      '      <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
+      '        <span class="conversation__attachment-name">{{ item.filename }}</span>',
+      '        <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
+      '        <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="$t(\'ui.chat.remove_attachment\', { filename: item.filename })" @click="removeAttachment(item.id)">{{ $t(\'ui.chat.remove\') }}</button>',
+      '      </li>',
+      '    </ul>',
       '    <div class="conversation__form-actions">',
-      '      <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</button>',
-      '      <button v-if="canCancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</button>',
+      '      <span v-if="canAttachFiles" class="conversation__composer-tools">',
+      '        <button id="conversation-attach" type="button" class="btn btn--ghost btn--small" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" :title="attachmentHelp" @click="openAttachmentPicker"><app-icon name="upload"></app-icon>{{ $t(\'ui.chat.attachments_label\') }}</button>',
+      '        <input id="conversation-attachment" ref="attachmentInput" class="sr-only" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" tabindex="-1" aria-hidden="true" @change="attachFiles($event)">',
+      '        <span id="conversation-attachment-help" class="conversation__meta">{{ attachmentHelp }}</span>',
+      '      </span>',
+      '      <span class="conversation__form-buttons">',
+      '        <button v-if="canCancel" id="conversation-cancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</button>',
+      '        <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</button>',
+      '      </span>',
       '    </div>',
+      '    <p v-if="sessionAttachmentCount" class="conversation__meta">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
       '  </form>',
       '</section>',
       '</div>'

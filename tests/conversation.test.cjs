@@ -632,8 +632,9 @@ test('selecting an engine with no announced models keeps the choice and saves a 
   assert.equal(surface.vm.sessionId, '');
 });
 
-test('the rendered chat engine selector keeps a chosen engine with no models', async () => {
+test('the rendered provider selector keeps a chosen engine with no models', async () => {
   const payload = enginesPayload();
+  payload.instances = payload.instances.filter((instance) => instance.id !== ENGINE_ID);
   payload.instances.push({
     id: 'opencode-empty',
     name: 'OpenCode sin modelos',
@@ -656,14 +657,14 @@ test('the rendered chat engine selector keeps a chosen engine with no models', a
     return null;
   };
 
-  const select = findById(surface.mount.root, 'conversation-engine');
-  assert.ok(select, 'the rendered chat engine selector exists');
+  const select = findById(surface.mount.root, 'conversation-provider');
+  assert.ok(select, 'the rendered provider selector exists');
   const change = (select.listeners && select.listeners.change) ||
     (select.props && (select.props.onChange || select.props['onUpdate:modelValue']));
-  assert.ok(change, 'the rendered chat engine selector is wired');
+  assert.ok(change, 'the rendered provider selector is wired');
   // A real DOM Event exposes target through its prototype, not as an own field.
   // Exercise that shape so the rendered handler is not proven only by a mock.
-  select.value = 'opencode-empty';
+  select.value = 'engine:opencode-empty';
   const event = Object.create({ target: select });
   await change(event);
   await surface.settle();
@@ -965,7 +966,7 @@ test('logging out aborts the stream and a late event cannot revive the surface',
   assert.equal(surface.vm.sessionId, '');
 });
 
-test('a same-engine profile switch patches the ITSM session and keeps transcript, draft and identity', async () => {
+test('a same-engine profile switch patches the ITSM session without replaying the transcript', async () => {
   const surface = sessionSurface({ engines: hermesPayload() });
   await surface.settle();
   const vm = surface.vm;
@@ -976,25 +977,20 @@ test('a same-engine profile switch patches the ITSM session and keeps transcript
   const sessionId = vm.sessionId;
   assert.equal(sessionId, 'sess-1');
 
-  const engineSelect = findById(surface.mount.root, 'conversation-engine');
-  assert.ok(engineSelect, 'the rendered chat engine selector exists');
-  const engineOptions = optionsOf(engineSelect);
-  assert.equal(engineOptions.filter(option => option.props.value === 'hermes').length, 1,
-    'one engine choice covers every authorized Hermes profile');
-  assert.equal(engineOptions.some(option => option.props.value === 'hermes-itsm'), false);
-  assert.match(vnodeText(engineOptions.find(option => option.props.value === 'hermes')), /Hermes 0\.22\.5/);
+  const providerSelect = findById(surface.mount.root, 'conversation-provider');
+  assert.ok(providerSelect, 'the rendered provider selector exists');
+  const providerOptions = optionsOf(providerSelect);
+  const values = providerOptions.map(option => option.props.value);
+  assert.ok(values.includes('engine:hermes-itsm'), 'the active Hermes profile is selectable');
+  assert.ok(values.includes('engine:hermes-default'), 'every authorized Hermes profile is selectable');
+  const labels = providerOptions.map(option => vnodeText(option).trim());
+  assert.equal(new Set(labels).size, labels.length, 'each profile has a distinguishable label');
+  assert.match(labels.join(' | '), /Hermes ITSM/);
+  assert.match(labels.join(' | '), /Hermes personal/);
+  assert.equal(findById(surface.mount.root, 'conversation-profile'), null, 'the chat never asks for a separate profile');
 
-  const profileSelect = findById(surface.mount.root, 'conversation-profile');
-  assert.ok(profileSelect, 'the profile selector is rendered for distinct external profiles');
-  assert.deepEqual(optionsOf(profileSelect).map(option => option.props.value), ['hermes-itsm', 'hermes-default']);
-  assert.deepEqual(optionsOf(profileSelect).map(option => vnodeText(option).trim()), ['itsm', 'default']);
-  assert.equal(profileSelect.props['aria-describedby'], 'conversation-profile-help');
-  assert.ok(findById(surface.mount.root, 'conversation-profile-help'), 'the profile help target is rendered');
-
-  const change = changeHandler(profileSelect);
-  assert.ok(change, 'the profile selector is wired');
-  profileSelect.value = 'hermes-default';
-  assert.equal(await change(Object.create({ target: profileSelect })), true);
+  const change = changeHandler(providerSelect);
+  await change(Object.create({ target: { value: 'engine:hermes-default' } }));
   await surface.settle();
 
   assert.equal(vm.sessionId, sessionId);
@@ -1011,7 +1007,7 @@ test('a same-engine profile switch patches the ITSM session and keeps transcript
   assert.deepEqual(surface.state.preference, { instanceId: 'hermes-default', model: 'hermes:default' });
 });
 
-test('a rejected profile switch restores the selected profile and keeps the ITSM session intact', async () => {
+test('a rejected profile switch restores the authorized selection and keeps the ITSM session intact', async () => {
   const surface = sessionSurface({
     engines: hermesPayload(),
     patchError: { status: 503, message: 'El motor rechazó el cambio de perfil.' }
@@ -1025,13 +1021,10 @@ test('a rejected profile switch restores the selected profile and keeps the ITSM
   const preferenceWrites = () => surface.calls.filter(call => call.path === '/agent/preferences').length;
   assert.equal(preferenceWrites(), 0);
 
-  const profileSelect = findById(surface.mount.root, 'conversation-profile');
-  const change = changeHandler(profileSelect);
-  profileSelect.value = 'hermes-default';
-  assert.equal(await change(Object.create({ target: profileSelect })), false);
+  assert.equal(await vm.changeProfile('hermes-default'), false);
   await surface.settle();
 
-  assert.equal(profileSelect.value, 'hermes-itsm');
+  assert.equal(findById(surface.mount.root, 'conversation-provider').props.value, 'engine:hermes-itsm');
   assert.equal(vm.agentPreference.instanceId, 'hermes-itsm');
   assert.equal(vm.agentPreference.model, 'hermes:itsm');
   assert.equal(vm.sessionInstanceId, 'hermes-itsm');
@@ -1052,8 +1045,8 @@ test('a profile switch that resolves after logout cannot restore state or leak a
   const pending = vm.changeProfile('hermes-default');
   await surface.settle();
   assert.equal(vm.selecting, true);
-  assert.equal(findById(surface.mount.root, 'conversation-profile').props.disabled, true);
-  assert.equal(findById(surface.mount.root, 'conversation-engine').props.disabled, true);
+  assert.equal(findById(surface.mount.root, 'conversation-provider').props.disabled, true);
+  assert.equal(findById(surface.mount.root, 'conversation-model').props.disabled, true);
 
   surface.app.authenticated = false;
   await surface.settle();
@@ -1073,7 +1066,7 @@ test('a profile switch that resolves after logout cannot restore state or leak a
   assert.equal(surface.state.preference, undefined);
 });
 
-test('the profile selector is hidden without external profiles and Pydantic providers stay distinct', async () => {
+test('the profile selector is never rendered and Pydantic providers stay distinct', async () => {
   const payload = enginesPayload({
     instances: [
       { id: 'pydantic-global', name: 'Proveedor global', engine: 'pydantic', profile: '', enabled: true, capabilities: { tools: true }, version: '1.0', models: [{ id: 'global:model', name: 'Global', provider: 'pydantic', free: null }], error: null },
@@ -1085,14 +1078,14 @@ test('the profile selector is hidden without external profiles and Pydantic prov
   await surface.settle();
 
   assert.equal(findById(surface.mount.root, 'conversation-profile'), null);
-  const engineSelect = findById(surface.mount.root, 'conversation-engine');
-  assert.deepEqual(optionsOf(engineSelect).map(option => option.props.value), ['pydantic-global', 'pydantic-personal']);
+  const providerSelect = findById(surface.mount.root, 'conversation-provider');
+  assert.deepEqual(optionsOf(providerSelect).map(option => option.props.value), ['engine:pydantic-global', 'engine:pydantic-personal']);
   const rendered = vnodeText(surface.mount.root);
   assert.match(rendered, /Proveedor global/);
   assert.match(rendered, /Mi proveedor/);
 });
 
-test('a single external profile hides the selector while its engine choice stays selectable', async () => {
+test('a single external profile is selectable through the provider control', async () => {
   const payload = enginesPayload();
   payload.instances.push(hermesInstance('hermes-itsm', 'itsm', 'Hermes ITSM'));
   payload.preference = { instanceId: 'pydantic-built-in', model: 'pydantic:default' };
@@ -1101,14 +1094,14 @@ test('a single external profile hides the selector while its engine choice stays
   const vm = surface.vm;
 
   assert.equal(findById(surface.mount.root, 'conversation-profile'), null);
-  const engineSelect = findById(surface.mount.root, 'conversation-engine');
-  const option = optionsOf(engineSelect).find(item => item.props.value === 'hermes');
-  assert.ok(option, 'one Hermes engine option is rendered');
+  const providerSelect = findById(surface.mount.root, 'conversation-provider');
+  const option = optionsOf(providerSelect).find(item => item.props.value === 'engine:hermes-itsm');
+  assert.ok(option, 'one Hermes provider option is rendered');
   assert.match(vnodeText(option), /Hermes 0\.22\.5/);
 
-  const change = changeHandler(engineSelect);
-  engineSelect.value = 'hermes';
-  assert.equal(await change(Object.create({ target: engineSelect })), true);
+  const change = changeHandler(providerSelect);
+  providerSelect.value = 'engine:hermes-itsm';
+  assert.equal(await change(Object.create({ target: providerSelect })), true);
   assert.equal(vm.agentPreference.instanceId, 'hermes-itsm');
   assert.equal(vm.agentPreference.model, 'hermes:itsm');
   assert.equal(surface.calls.some(call => call.method === 'PATCH'), false);
@@ -1116,159 +1109,15 @@ test('a single external profile hides the selector while its engine choice stays
   assert.deepEqual(saved.body, { instanceId: 'hermes-itsm', model: 'hermes:itsm' });
 });
 
-test('the chat shows both quota accounts without assuming company funding', async () => {
-  const companyOnly = sessionSurface();
-  await companyOnly.settle();
-  assert.equal(companyOnly.vm.quotaSelectedFunding, '');
-  assert.match(companyOnly.vm.quotaSelectedNotice, /no informó/i);
-  assert.ok(findById(companyOnly.mount.root, 'conversation-quota'));
-  assert.match(vnodeText(companyOnly.mount.root), /Empresa/);
-  assert.match(vnodeText(companyOnly.mount.root), /Personal/);
-  assert.match(vnodeText(companyOnly.mount.root), /Reservado:\s+50/);
-
-  const engines = hermesPayload();
-  engines.instances.find(instance => instance.id === 'hermes-default').providerScope = 'personal';
-  engines.preference = { instanceId: 'hermes-default', model: 'hermes:default' };
-  const personal = sessionSurface({
-    engines,
-    usage: usagePayload({
-      funding: {
-        company: quotaBalance({ consumedTokens: 111 }),
-        personal: quotaBalance({ consumedTokens: 999, limitTokens: null, availableTokens: null, limitSource: 'record_only' })
-      }
-    })
-  });
-  await personal.settle();
-  assert.equal(personal.vm.quotaSelectedFunding, 'personal');
-  assert.equal(personal.vm.quotaSelectedBalance.consumed, 999);
-  assert.equal(personal.vm.quotaSelectedBalance.limit, null);
-  assert.equal(personal.vm.quotaLimitText(personal.vm.quotaSelectedBalance), 'Sin límite diario');
-  assert.match(personal.vm.quotaSelectedNotice, /tu propia clave/i);
-  const text = vnodeText(personal.mount.root);
-  assert.match(text, /Contexto actual/);
-  assert.match(text, /999/);
-});
-
-test('quota zero, unlimited, unknown and missing availability stay distinct', async () => {
-  const denied = sessionSurface({
-    usage: usagePayload({
-      funding: {
-        company: quotaBalance({ limitTokens: 0, consumedTokens: 0, availableTokens: 0, reservedTokens: 0 }),
-        personal: quotaBalance({ limitTokens: null, availableTokens: null, pendingCount: null })
-      }
-    })
-  });
-  await denied.settle();
-  assert.equal(denied.vm.quotaLimitText(denied.vm.quotaCompany), '0 tokens · sin admisión');
-  assert.equal(denied.vm.quotaLimitText(denied.vm.quotaPersonal), 'Ilimitado');
-  assert.match(vnodeText(denied.mount.root), /sin admisión/);
-  assert.match(vnodeText(denied.mount.root), /Ilimitado/);
-
-  const missingAvailability = sessionSurface({
-    usage: usagePayload({ funding: { company: quotaBalance({ availableTokens: undefined }), personal: null } })
-  });
-  await missingAvailability.settle();
-  assert.equal(missingAvailability.vm.quotaPersonal, null);
-  assert.equal(missingAvailability.vm.quotaAvailableText(missingAvailability.vm.quotaCompany), 'No disponible');
-  assert.match(vnodeText(missingAvailability.mount.root), /Personal/);
-  assert.match(vnodeText(missingAvailability.mount.root), /No disponible/);
-
-  const unknown = sessionSurface({ usage: {} });
-  await unknown.settle();
-  assert.equal(unknown.vm.quotaHasData, false);
-  assert.equal(unknown.vm.quotaUnavailable, true);
-  assert.doesNotMatch(vnodeText(unknown.mount.root), /Consumido: 0/);
-  assert.match(vnodeText(unknown.mount.root), /no está disponible/i);
-});
-
-test('the own quota refreshes explicitly and after stream finish, cancellation and error', async () => {
+test('the conversation never renders or requests routine quota, budget or usage dashboards', async () => {
   const surface = sessionSurface();
   await surface.settle();
-  const usageCalls = () => surface.calls.filter((call) => call.path === '/agent/usage/me').length;
-  const initial = usageCalls();
-  assert.ok(initial >= 1);
-
-  surface.vm.draft = 'Busca servidores';
-  assert.equal(await surface.vm.send(), true);
-  await surface.settle();
-  assert.equal(usageCalls(), initial + 1);
-
-  surface.state.messageResponse = jsonResponse({ error: { code: 'unavailable', message: 'motor caído' } }, 503);
-  surface.vm.draft = 'Otra consulta';
-  assert.equal(await surface.vm.send(), false);
-  await surface.settle();
-  assert.equal(usageCalls(), initial + 2);
-
-  let release = () => {};
-  surface.state.messageResponse = {
-    ok: true,
-    status: 200,
-    body: {
-      getReader() {
-        return {
-          read() {
-            return new Promise((resolve) => {
-              release = () => resolve({ value: new TextEncoder().encode('data: {"type":"done","cancelled":true}\n\n'), done: false });
-            });
-          },
-          releaseLock() {}
-        };
-      }
-    }
-  };
-  surface.state.cancelResult = { cancelled: true };
-  surface.vm.draft = 'Ejecuta algo largo';
-  const pending = surface.vm.send();
-  await surface.settle();
-  assert.equal(await surface.vm.cancelRun(), true);
-  release();
-  await pending;
-  await surface.settle();
-  assert.equal(usageCalls(), initial + 3);
-
-  const refresh = findById(surface.mount.root, 'conversation-quota-refresh');
-  assert.ok(refresh, 'the explicit quota refresh button is rendered');
-  const click = (refresh.listeners && refresh.listeners.click) || (refresh.props && refresh.props.onClick);
-  assert.ok(click);
-  await click({ preventDefault() {} });
-  await surface.settle();
-  assert.equal(usageCalls(), initial + 4);
-});
-
-test('an expired session clears the own quota without leaving a loading state', async () => {
-  const surface = sessionSurface();
-  await surface.settle();
-  assert.ok(surface.vm.quotaSnapshot);
-  surface.state.usageError = { status: 401, code: 'unauthenticated' };
-  assert.equal(await surface.vm.loadQuota(), false);
-  await surface.settle();
-  assert.equal(surface.vm.quotaSnapshot, null);
-  assert.equal(surface.vm.quotaLoaded, false);
-  assert.equal(surface.vm.quotaLoading, false);
-  assert.equal(surface.vm.quotaOwner, '');
-  assert.doesNotMatch(vnodeText(surface.mount.root), /Consumido:/);
-});
-
-test('a late own-quota response cannot revive a signed-out account', async () => {
-  const surface = sessionSurface();
-  await surface.settle();
-  surface.vm.draft = 'Hola';
-  await surface.vm.send();
-  await surface.settle();
-  assert.ok(surface.vm.quotaSnapshot);
-
-  surface.state.deferUsage = true;
-  const stale = surface.vm.loadQuota();
-  await Promise.resolve();
-  surface.app.authenticated = false;
-  await surface.settle();
-  surface.state.deferUsage = false;
-  surface.state.releaseUsage();
-  assert.equal(await stale, false);
-  await surface.settle();
-  assert.equal(surface.vm.quotaSnapshot, null);
-  assert.equal(surface.vm.quotaLoaded, false);
-  assert.equal(surface.vm.quotaLoading, false);
+  assert.equal(surface.calls.filter(call => call.path === '/agent/usage/me').length, 0, 'no routine quota traffic');
+  const rendered = vnodeText(surface.mount.root);
+  assert.doesNotMatch(rendered, /Tu cuota diaria de IA|Consumido:|Reservado:|Límite diario|Presupuesto diario/);
+  assert.equal(findById(surface.mount.root, 'conversation-quota'), null);
+  assert.equal(findById(surface.mount.root, 'conversation-usage'), null);
+  assert.equal(surface.vm.usage, null);
 });
 
 test('live usage keeps measured provider evidence separate and never adds included cache or reasoning twice', async () => {
@@ -1292,12 +1141,7 @@ test('live usage keeps measured provider evidence separate and never adds includ
   assert.equal(surface.vm.usage.reasoningTokens, 4);
   assert.equal(surface.vm.usage.inputIncludesCache, true);
   assert.equal(surface.vm.usage.outputIncludesReasoning, true);
-  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
-  for (const value of ['30', '10', '20', '3', '4', '40']) assert.match(evidence, new RegExp('\\b' + value + '\\b'));
-  assert.match(evidence, /medido/i);
-  assert.match(evidence, /proveedor/i);
-  assert.match(evidence, /última llamada/i);
-  assert.doesNotMatch(evidence, /sin clasificar|\b67\b/i);
+  assert.equal(findById(surface.mount.root, 'conversation-usage'), null, 'technical usage stays out of the transcript');
 });
 
 test('live usage replaces only the last call and preserves unavailable components rather than inventing zero', async () => {
@@ -1320,11 +1164,7 @@ test('live usage replaces only the last call and preserves unavailable component
   assert.equal(surface.vm.usage.precision, 'unavailable');
   assert.equal(surface.vm.usage.inputIncludesCache, false);
   assert.equal(surface.vm.usage.outputIncludesReasoning, null);
-  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
-  assert.match(evidence, /última llamada/i);
-  assert.match(evidence, /no disponible/i);
-  assert.match(evidence, /motor/i);
-  assert.doesNotMatch(evidence, /\b0\b|\b40\b|sin clasificar/i);
+  assert.equal(findById(surface.mount.root, 'conversation-usage'), null);
 });
 
 test('live estimated usage displays its server method and explicit zero separately from null cache evidence', async () => {
@@ -1342,11 +1182,7 @@ test('live estimated usage displays its server method and explicit zero separate
   assert.equal(surface.vm.usage.inputTokens, 0);
   assert.equal(surface.vm.usage.cacheReadTokens, null);
   assert.equal(surface.vm.usage.estimationMethod, 'utf8-bytes/4');
-  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
-  assert.match(evidence, /estimado/i);
-  assert.match(evidence, /utf8-bytes\/4/);
-  assert.match(evidence, /\b0\b/);
-  assert.match(evidence, /no disponible/i);
+  assert.equal(findById(surface.mount.root, 'conversation-usage'), null);
 });
 
 test('a submitted extension offers human review without treating its candidate as an asset', async () => {
@@ -1396,23 +1232,26 @@ test('a managed engine can switch between the global provider and the user own k
   await surface.settle();
   const options = surface.vm.agentProviderOptions.map(option => option.value);
   assert.equal(JSON.stringify(options), JSON.stringify(['', PERSONAL]), 'only the instance global provider and the user enabled personal providers');
+  const providerSelect = findById(surface.mount.root, 'conversation-provider');
+  assert.deepEqual(optionsOf(providerSelect).map(option => option.props.value), ['engine:pydantic-built-in', 'provider:', 'provider:' + PERSONAL]);
 
-  assert.equal(await surface.vm.changeProvider(PERSONAL), true);
+  assert.equal(await surface.vm.changeChatProvider('provider:' + PERSONAL), true);
+  assert.equal(surface.vm.managedProviderId, PERSONAL);
   assert.equal(JSON.stringify(surface.vm.agentModels.map(model => model.id)), '["personal-model"]');
   surface.vm.draft = 'Hola';
   assert.equal(await surface.vm.send(), true);
   const created = surface.calls.find(call => call.path === '/agent/sessions' && call.method === 'POST');
   assert.equal(JSON.stringify(created.body), JSON.stringify({ instanceId: ENGINE_ID, model: 'personal-model', providerId: PERSONAL }));
-  assert.equal(surface.vm.quotaSelectedFunding, 'personal');
   await surface.settle();
+  assert.equal(findById(surface.mount.root, 'conversation-provider').props.value, 'provider:' + PERSONAL);
 
-  assert.equal(await surface.vm.changeProvider(''), true);
+  assert.equal(await surface.vm.changeChatProvider('provider:'), true);
   const patch = surface.calls.filter(call => /^\/agent\/sessions\/[^/]+$/.test(call.path) && call.method === 'PATCH').pop();
   assert.equal(JSON.stringify(patch.body), '{"providerId":null}');
   assert.equal(surface.vm.sessionProviderId, '');
-  assert.equal(surface.vm.quotaSelectedFunding, 'company');
   assert.equal(surface.vm.agentPreference.model, 'opencode/free-a');
-  assert.match(vnodeText(surface.mount.root), /Tu clave no consume el presupuesto de la empresa/);
+  assert.equal(findById(surface.mount.root, 'conversation-provider').props.value, 'provider:');
+  assert.equal(findById(surface.mount.root, 'conversation-model').props.value, 'opencode/free-a');
 });
 
 // ---------------------------------------------------------------------------
@@ -1736,18 +1575,19 @@ test('an upload that resolves after unmount is discarded without touching the ol
   assert.equal(surface.vm.attachments.length, 0);
 });
 
-test('pending attachments lock the session, engine, provider and model selectors', async () => {
+test('pending attachments lock the provider and model selectors', async () => {
   const surface = sessionSurface({ engines: attachmentPayload() });
   await surface.settle();
   const vm = surface.vm;
   assert.equal(await vm.attachFiles({ target: { files: [chatFile('datos.csv')], value: '' } }), true);
   await surface.settle();
 
-  for (const id of ['conversation-engine', 'conversation-model', 'conversation-session']) {
+  for (const id of ['conversation-provider', 'conversation-model']) {
     const control = findById(surface.mount.root, id);
     assert.ok(control, id + ' is rendered');
     assert.equal(control.props.disabled, true, id + ' is locked while attachments are pending');
   }
+  assert.equal(vm.chatProviderDisabled, true);
   assert.equal(await vm.changeEngine('pydantic-built-in'), false);
   assert.equal(surface.calls.filter((call) => call.method === 'PATCH').length, 0);
   assert.match(vnodeText(surface.mount.root), /Quita los adjuntos/i);

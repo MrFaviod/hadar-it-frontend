@@ -201,8 +201,7 @@ test('logout and unmount each abort a compact stream and cannot revive private d
 test('saved own sessions resume server transcript without resending or overwriting user preference', async () => {
   const ui = surface();
   await open(ui);
-  const picker = control(ui, 'conversation-session');
-  await picker.props.onChange({ target: { value: 'saved-own' } });
+  assert.equal(await ui.vm.resumeSession('saved-own'), true);
   await ui.settle();
   assert.equal(ui.vm.sessionId, 'saved-own');
   assert.equal(ui.vm.messages.map(item => item.content).join('|'), 'Consulta guardada|Respuesta guardada');
@@ -215,7 +214,7 @@ test('saved own sessions resume server transcript without resending or overwriti
 test('resumed session keeps its engine and draft through close, reopen and full expansion independently of saved preference', async () => {
   const ui = surface();
   await open(ui);
-  await control(ui, 'conversation-session').props.onChange({ target: { value: 'saved-own' } });
+  assert.equal(await ui.vm.resumeSession('saved-own'), true);
   ui.vm.draft = 'Borrador guardado';
   ui.vm.closePanel();
   await open(ui);
@@ -234,7 +233,7 @@ test('resumed session keeps its engine and draft through close, reopen and full 
 test('an unavailable resumed model never heals or overwrites the independent saved preference', async () => {
   const ui = surface();
   await open(ui);
-  await control(ui, 'conversation-session').props.onChange({ target: { value: 'saved-own' } });
+  assert.equal(await ui.vm.resumeSession('saved-own'), true);
   ui.state.instances = ui.state.instances.filter(instance => instance.id !== 'external');
   ui.vm.closePanel();
   await open(ui);
@@ -249,9 +248,9 @@ test('an unavailable resumed model never heals or overwrites the independent sav
 test('starting a new conversation uses the independently saved preference after a resume', async () => {
   const ui = surface();
   await open(ui);
-  await control(ui, 'conversation-session').props.onChange({ target: { value: 'saved-own' } });
+  assert.equal(await ui.vm.resumeSession('saved-own'), true);
   await ui.settle();
-  await control(ui, 'conversation-session').props.onChange({ target: { value: '' } });
+  assert.equal(await ui.vm.resumeSession(''), true);
   assert.equal(ui.vm.sessionId, '');
   assert.equal(ui.vm.messages.length, 0);
   assert.equal(ui.vm.draft, '');
@@ -267,7 +266,7 @@ test('engine transition patches the same ITSM session and preserves transcript w
   ui.vm.draft = 'Primera consulta';
   await ui.vm.send();
   const before = plain(ui.vm.messages);
-  await control(ui, 'conversation-engine').props.onChange({ target: { value: 'external' } });
+  await control(ui, 'conversation-provider').props.onChange({ target: { value: 'engine:external' } });
   assert.equal(ui.vm.sessionId, 'active-own');
   assert.deepEqual(plain(ui.vm.messages), before);
   const patch = ui.calls.find(call => call.method === 'PATCH');
