@@ -6533,5 +6533,13 @@
   "ui.reports.block_move_up_aria": "Move {name} up",
   "ui.reports.block_move_down_aria": "Move {name} down",
   "ui.reports.block_remove_aria": "Remove {name}",
-  "ui.reports.block_text_aria": "Text for {name}"
+  "ui.reports.block_text_aria": "Text for {name}",
+  "ui.infra.monitor.title": "Monitoring",
+  "ui.infra.monitor.uptime": "Uptime",
+  "ui.infra.monitor.latency": "Latency",
+  "ui.infra.monitor.unknown": "No reading",
+  "ui.infra.monitor.coverage": "Monitoring {examined} of {total}",
+  "ui.infra.monitor.updated": "Updated {time}",
+  "ui.infra.monitor.not_loaded": "No reading for this asset",
+  "ui.infra.monitor.error": "Monitoring could not be read."
 }

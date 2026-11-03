@@ -6533,5 +6533,13 @@
   "ui.reports.block_move_up_aria": "Accessible name of the button that moves one report block earlier, naming the block.",
   "ui.reports.block_move_down_aria": "Accessible name of the button that moves one report block later, naming the block.",
   "ui.reports.block_remove_aria": "Accessible name of the button that removes one report block, naming the block.",
-  "ui.reports.block_text_aria": "Accessible name of the text field of one report block, naming the block."
+  "ui.reports.block_text_aria": "Accessible name of the text field of one report block, naming the block.",
+  "ui.infra.monitor.title": "Heading of the measured availability block in the map and graph inspectors.",
+  "ui.infra.monitor.uptime": "Label of the measured availability percentage published by the monitoring API.",
+  "ui.infra.monitor.latency": "Label of the last measured response time in milliseconds.",
+  "ui.infra.monitor.unknown": "Status pill shown when the bounded monitoring read did not include this asset.",
+  "ui.infra.monitor.coverage": "Discloses how many devices the bounded monitoring read examined out of the server total.",
+  "ui.infra.monitor.updated": "Freshness stamp of the last successful monitoring read, with the local time.",
+  "ui.infra.monitor.not_loaded": "Says this particular asset has no measured reading in the loaded monitoring page.",
+  "ui.infra.monitor.error": "Error shown when the monitoring read failed; the last observation is kept visible."
 }

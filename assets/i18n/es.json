@@ -6533,5 +6533,13 @@
   "ui.reports.block_move_up_aria": "Subir {name}",
   "ui.reports.block_move_down_aria": "Bajar {name}",
   "ui.reports.block_remove_aria": "Quitar {name}",
-  "ui.reports.block_text_aria": "Texto de {name}"
+  "ui.reports.block_text_aria": "Texto de {name}",
+  "ui.infra.monitor.title": "Supervisión",
+  "ui.infra.monitor.uptime": "Disponibilidad",
+  "ui.infra.monitor.latency": "Latencia",
+  "ui.infra.monitor.unknown": "Sin lectura",
+  "ui.infra.monitor.coverage": "Supervisión de {examined} de {total}",
+  "ui.infra.monitor.updated": "Actualizado {time}",
+  "ui.infra.monitor.not_loaded": "Sin lectura de este activo",
+  "ui.infra.monitor.error": "No se pudo leer la supervisión."
 }

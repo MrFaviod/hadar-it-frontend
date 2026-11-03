@@ -33,6 +33,9 @@
       app: { type: Object, required: true },
       focusId: { type: String, default: '' }
     },
+    // Measured availability comes from the shared monitoring join, never from
+    // the administrative inventory status rendered beside it.
+    mixins: [window.AssetInfrastructureMonitoring],
     data() {
       const shared = (this.app && this.app.explorerFilters) || {};
       return {
@@ -49,6 +52,10 @@
         openSiteId: '',
         openBuildingId: '',
         selectedId: (this.app && this.app.explorerSelection) || '',
+        // A deep-link focus stays pending until the asset exists; once it is
+        // applied the person owns the selection and an inventory refresh must
+        // not take it back.
+        focusPending: '',
         selectedRoom: '',
         floorZoom: 1,
         filtersOpen: false,
@@ -268,14 +275,22 @@
         this.loadFloorPlan(value);
       },
       focusId(value) {
-        if (!value) return;
-        const asset = (this.source.assets || []).find((item) => item.id === value);
-        if (!asset) return;
-        this.selectedId = asset.id;
-        const floorId = Engine.floorOfAsset(this.source, asset);
-        if (floorId) this.openFloor(floorId, { keepSelection: true });
+        this.focusPending = value || '';
+        this.applyFocus(value);
+      },
+      // The inventory can land after the route: a cold deep link would
+      // otherwise find no asset, drop the focus and open the inspector with
+      // nothing selected. Only the unresolved focus is retried, so a later
+      // inventory refresh never overrides what the person selected.
+      'source.assets'() {
+        if (this.focusPending) this.applyFocus(this.focusPending);
       },
       selectedId(value) {
+        // Opening another asset, or closing the inspector, is an explicit
+        // choice: it cancels the route intent, so the deep link cannot reopen
+        // its asset when the inventory finally contains it. A close with no
+        // selection is already the empty case and needs nothing here.
+        if (this.focusPending && value !== this.focusPending) this.focusPending = '';
         this.app.explorerSelection = value || '';
         this.loadAssetDetail(value);
       }
@@ -283,9 +298,11 @@
     mounted() {
       this.reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
       const initial = this.focusId || this.selectedId;
+      this.focusPending = this.focusId || '';
       if (initial) {
         const asset = (this.source.assets || []).find((item) => item.id === initial);
         if (asset) {
+          this.focusPending = '';
           this.selectedId = initial;
           const floorId = Engine.floorOfAsset(this.source, asset);
           if (floorId) this.openFloor(floorId, { keepSelection: true, silent: true });
@@ -598,6 +615,20 @@
         const asset = (this.source.assets || []).find((item) => item.id === id);
         if (asset) this.app.openAsset(asset);
       },
+      applyFocus(value) {
+        if (!value || this.selectedId === value) {
+          this.focusPending = '';
+          return false;
+        }
+        const asset = (this.source.assets || []).find((item) => item.id === value);
+        if (!asset) return false;
+        this.focusPending = '';
+        this.selectedId = asset.id;
+        const floorId = Engine.floorOfAsset(this.source, asset);
+        if (floorId) this.openFloor(floorId, { keepSelection: true });
+        return true;
+      },
+
       selectAsset(id) {
         const asset = (this.source.assets || []).find((item) => item.id === id);
         if (!asset) return;
@@ -610,6 +641,7 @@
         }
         const category = this.app.categories.find((item) => item.id === asset.category);
         this.announce = asset.name + ', ' + (category ? category.label : asset.category) + ', ' + (this.app.sites.find((item) => item.id === asset.site) || {}).label + '.';
+        this.infraMonitorSelect(id);
       },
       openGraph() {
         this.app.setHash(this.graphHref);
@@ -1294,6 +1326,36 @@
                 <span v-if="selectedAsset.ip" class="mono">{{ selectedAsset.ip }}</span>
                 <span v-if="selectedAsset.assignee">{{ selectedAsset.assignee }}</span>
               </div>
+
+              <section class="infra-monitor" data-od-id="map-monitor" :aria-label="$t('ui.infra.monitor.title')">
+                <header class="infra-monitor__head">
+                  <h3 class="infra-monitor__title">{{ $t('ui.infra.monitor.title') }}</h3>
+                  <button type="button" class="btn btn--ghost btn--small" data-od-id="map-monitor-refresh"
+                          :disabled="infraMonitorPane.loading" :aria-busy="infraMonitorPane.loading ? 'true' : 'false'"
+                          @click="refreshSelectedMonitoring">
+                    <app-icon name="refresh" :class="{ 'infra-monitor__spin': infraMonitorPane.loading }"></app-icon>
+                    {{ infraMonitorPane.loading ? $t('ui.monitoring.action.refreshing') : $t('ui.monitoring.action.refresh') }}
+                  </button>
+                </header>
+                <p class="infra-monitor__state">
+                  <span class="status-pill" :class="'status--' + infraMonitorPane.tone">{{ infraMonitorPane.known ? infraMonitorPane.statusLabel : $t('ui.infra.monitor.unknown') }}</span>
+                  <span v-if="infraMonitorPane.known && infraMonitorPane.reasonLabel" class="infra-monitor__reason">{{ infraMonitorPane.reasonLabel }}</span>
+                </p>
+                <p v-if="infraMonitorPane.error" class="infra-monitor__error" role="alert">{{ infraMonitorPane.error }}</p>
+                <dl v-if="infraMonitorPane.values.length" class="infra-monitor__values">
+                  <div v-for="fact in infraMonitorPane.values" :key="fact.key" class="infra-monitor__fact">
+                    <dt>{{ fact.label }}</dt>
+                    <dd class="mono">{{ fact.value }}</dd>
+                  </div>
+                </dl>
+                <ul v-if="infraMonitorPane.recent.length" class="infra-monitor__alerts" :aria-label="$t('ui.monitoring.center.active_alerts')">
+                  <li v-for="alert in infraMonitorPane.recent" :key="alert.id" class="infra-monitor__alert">
+                    <app-icon name="alert"></app-icon>
+                    <span>{{ alert.label }}</span>
+                  </li>
+                </ul>
+                <p class="infra-monitor__note">{{ infraMonitorPane.note }}</p>
+              </section>
 
               <section v-if="camera" class="map-camera" data-od-id="map-camera-fov">
                 <header class="map-camera__head">

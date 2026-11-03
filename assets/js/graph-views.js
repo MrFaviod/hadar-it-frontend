@@ -32,6 +32,9 @@
   window.AssetGraphView = {
     name: 'GraphExplorer',
     components: { AppIcon: window.AppIcon },
+    // Measured availability is joined from the existing monitoring reads; the
+    // administrative inventory status rendered in the inspector stays apart.
+    mixins: [window.AssetInfrastructureMonitoring],
     props: {
       app: { type: Object, required: true },
       focusId: { type: String, default: '' }
@@ -170,6 +173,7 @@
             selected: this.selectedId === asset.id,
             dimmed: !this.isRelated(asset.id),
             redundancy: this.redundancyMembership[asset.id] || null,
+            monitoring: this.infraMonitorStatus(asset.id),
             isFocus: this.mode === 'focus' && asset.id === this.activeFocusId,
             frame: frame
           };
@@ -676,6 +680,7 @@
       selectNode(id, options) {
         if (!id) return;
         this.selectedId = id;
+        this.infraMonitorSelect(id);
         const asset = Engine.assetById(this.source, id);
         const options2 = options || {};
         this.announce = asset
@@ -1071,7 +1076,7 @@
                        :class="['gnode--' + node.family, { 'is-selected': node.selected, 'is-focus': node.isFocus, 'is-dimmed': node.dimmed, 'is-level': mode === 'focus' && node.level === 0 }]"
                        :transform="'translate(' + node.x + ' ' + node.y + ')'"
                        role="button" tabindex="0" :aria-pressed="node.selected"
-                       :aria-label="$t('ui.graph.aria.node', { name: node.asset.name, category: categoryLabel(node.asset.category), site: siteLabel(node.asset.site) })"
+                       :aria-label="$t('ui.graph.aria.node', { name: node.asset.name, category: categoryLabel(node.asset.category), site: siteLabel(node.asset.site) }) + (node.monitoring ? ' — ' + $t('ui.infra.monitor.title') + ': ' + node.monitoring.label : '')"
                        @pointerdown="startDrag(node, $event)" @click.stop="selectNode(node.id)"
                        @keydown.enter.prevent="selectNode(node.id)" @keydown.space.prevent="selectNode(node.id)">
                       <circle class="gnode__halo" r="32"></circle>
@@ -1088,6 +1093,11 @@
                          @pointerdown.stop @click.stop="expandNode(node.id)" @keydown.enter.prevent.stop="expandNode(node.id)">
                         <circle r="11" cx="20" cy="-20"></circle>
                         <text x="20" y="-20" text-anchor="middle" dominant-baseline="central">+{{ node.hiddenCount }}</text>
+                      </g>
+                      <g v-if="node.monitoring" class="gnode__state"
+                         :class="'gnode__state--' + node.monitoring.tone" aria-hidden="true">
+                        <circle r="7" cx="17" cy="17"></circle>
+                        <text x="17" y="17" text-anchor="middle" dominant-baseline="central">{{ node.monitoring.alerts ? node.monitoring.alerts : '!' }}</text>
                       </g>
                       <text v-if="view.k >= 0.8" class="gnode__code" y="46" text-anchor="middle">{{ node.asset.code }}</text>
                       <text v-if="showLabels && view.k >= 0.8" class="gnode__label" y="63" text-anchor="middle">{{ node.label }}</text>
@@ -1183,6 +1193,36 @@
               <span :class="statusTone(selectedAsset)">{{ statusLabel(selectedAsset) }}</span>
               <span v-if="selectedAsset.ip" class="mono graph-inspector__ip">{{ selectedAsset.ip }}</span>
             </div>
+
+            <section class="infra-monitor" data-od-id="graph-monitor" :aria-label="$t('ui.infra.monitor.title')">
+              <header class="infra-monitor__head">
+                <h3 class="infra-monitor__title">{{ $t('ui.infra.monitor.title') }}</h3>
+                <button type="button" class="btn btn--ghost btn--small" data-od-id="graph-monitor-refresh"
+                        :disabled="infraMonitorPane.loading" :aria-busy="infraMonitorPane.loading ? 'true' : 'false'"
+                        @click="refreshSelectedMonitoring">
+                  <app-icon name="refresh" :class="{ 'infra-monitor__spin': infraMonitorPane.loading }"></app-icon>
+                  {{ infraMonitorPane.loading ? $t('ui.monitoring.action.refreshing') : $t('ui.monitoring.action.refresh') }}
+                </button>
+              </header>
+              <p class="infra-monitor__state">
+                <span class="status-pill" :class="'status--' + infraMonitorPane.tone">{{ infraMonitorPane.known ? infraMonitorPane.statusLabel : $t('ui.infra.monitor.unknown') }}</span>
+                <span v-if="infraMonitorPane.known && infraMonitorPane.reasonLabel" class="infra-monitor__reason">{{ infraMonitorPane.reasonLabel }}</span>
+              </p>
+              <p v-if="infraMonitorPane.error" class="infra-monitor__error" role="alert">{{ infraMonitorPane.error }}</p>
+              <dl v-if="infraMonitorPane.values.length" class="infra-monitor__values">
+                <div v-for="fact in infraMonitorPane.values" :key="fact.key" class="infra-monitor__fact">
+                  <dt>{{ fact.label }}</dt>
+                  <dd class="mono">{{ fact.value }}</dd>
+                </div>
+              </dl>
+              <ul v-if="infraMonitorPane.recent.length" class="infra-monitor__alerts" :aria-label="$t('ui.monitoring.center.active_alerts')">
+                <li v-for="alert in infraMonitorPane.recent" :key="alert.id" class="infra-monitor__alert">
+                  <app-icon name="alert"></app-icon>
+                  <span>{{ alert.label }}</span>
+                </li>
+              </ul>
+              <p class="infra-monitor__note">{{ infraMonitorPane.note }}</p>
+            </section>
 
             <div class="graph-inspector__actions">
               <button type="button" class="btn btn--primary btn--small" @click="openAsset(selectedAsset.id)">

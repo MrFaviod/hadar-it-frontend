@@ -512,6 +512,33 @@ body.graph-workspace-expanded {
   stroke-width: 2;
 }
 
+/* Measured device state, joined from monitoring by canonical asset id. It sits
+   opposite the relation badge so the two never collide on one node, and it only
+   exists for an actionable state: healthy and unread devices stay unmarked. */
+.gnode__state {
+  pointer-events: none;
+}
+
+.gnode__state circle {
+  stroke: var(--paper);
+  stroke-width: 2;
+}
+
+.gnode__state text {
+  fill: var(--white);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.gnode__state--down circle {
+  fill: var(--danger-700);
+}
+
+.gnode__state--warn circle {
+  fill: var(--amber-800);
+}
+
 /* ---------------------------------------------------------------------- edges */
 
 .graph-edges {
@@ -788,6 +815,121 @@ body.graph-workspace-expanded {
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* ------------------------------------------------- measured device state */
+/* One availability block, shared by the graph and the map inspectors: both
+   stylesheets load on every route, so it is defined once and reads the same in
+   either column. Flat section with a hairline separator, no nested card. */
+
+.infra-monitor {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.infra-monitor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.infra-monitor__title {
+  margin: 0;
+  color: var(--slate-500);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.infra-monitor__head .btn {
+  flex: none;
+}
+
+.infra-monitor__spin {
+  animation: infra-monitor-spin 900ms linear infinite;
+}
+
+@keyframes infra-monitor-spin {
+  to { transform: rotate(360deg); }
+}
+
+.infra-monitor__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.infra-monitor__reason {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.infra-monitor__values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.infra-monitor__fact dt {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.infra-monitor__fact dd {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.infra-monitor__alerts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.infra-monitor__alert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger-700);
+  font-size: 11.5px;
+}
+
+.infra-monitor__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.infra-monitor__error {
+  margin: 0;
+  color: var(--danger-700);
+  font-size: 11.5px;
+}
+
+/* `neutral` is the honest tone for "no reading"; the shared pill only defines
+   ok, hold, warn and down. */
+.infra-monitor .status--neutral {
+  background: var(--slate-050);
+  color: var(--slate-700);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .infra-monitor__spin {
+    animation: none;
+  }
 }
 
 .graph-inspector__subhead .mono {
