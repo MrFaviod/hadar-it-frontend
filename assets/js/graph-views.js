@@ -821,8 +821,22 @@
         });
         if (best) this.selectNode(best, { center: true });
       },
+      // A focused control inside the canvas owns Enter and Space: the browser
+      // turns them into a click on that control. The canvas must not also act on
+      // the same keystroke and open the selected asset behind it.
+      eventFromControl(event) {
+        let node = event && event.target;
+        while (node) {
+          const tag = String(node.tagName || node.tag || '').toLowerCase();
+          const role = (typeof node.getAttribute === 'function' && node.getAttribute('role')) || (node.props && node.props.role) || '';
+          if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'summary' || role === 'button') return true;
+          node = node.parentNode || node.parent;
+        }
+        return false;
+      },
       onKeydown(event) {
         const key = event.key;
+        if ((key === 'Enter' || key === ' ' || key === 'Spacebar') && this.eventFromControl(event)) return;
         if (key === 'ArrowRight' || key === 'ArrowLeft' || key === 'ArrowUp' || key === 'ArrowDown') {
           event.preventDefault();
           this.moveSelection(key === 'ArrowRight' ? 'right' : key === 'ArrowLeft' ? 'left' : key === 'ArrowDown' ? 'down' : 'up');

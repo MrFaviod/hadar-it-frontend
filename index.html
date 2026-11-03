@@ -562,6 +562,12 @@
                   </div>
                 </header>
 
+                <div v-if="workspaceInventoryChips.length" class="universal-filter-strip universal-filter-strip--inventory" data-od-id="inventory-restored-filters">
+                  <div class="universal-filter-strip__chips" :aria-label="$t('ui.shell.filter_chips_aria')">
+                    <button v-for="chip in workspaceInventoryChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.shell.filter_remove',{label:chip.label})" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button>
+                    <button type="button" class="text-button" @click="resetWorkspaceFilters">{{ $t('ui.shell.filter_reset') }}</button>
+                  </div>
+                </div>
                 <div class="toolbar toolbar--inventory" :aria-label="$t('ui.inventory.toolbar_aria')">
                   <div class="search-field">
                     <app-icon name="search"></app-icon>
