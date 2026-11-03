@@ -11,6 +11,16 @@
   const statusTones = { up: 'ok', degraded: 'warn', down: 'down', unmonitored: 'hold', unknown: 'hold' };
   const severityIds = { critical: 'critica', warning: 'alta', info: 'media', critica: 'critica', alta: 'alta', media: 'media', baja: 'baja' };
   const SEVERITY_KEYS = { critica: 'ui.dashboard.severity_critical', alta: 'ui.dashboard.severity_high', media: 'ui.dashboard.severity_medium', baja: 'ui.dashboard.severity_low' };
+  // Maintenance planning tokens are service identifiers. Known ones resolve the
+  // shipped catalog label; an unmapped identifier keeps the service value so it
+  // stays visible instead of being silently rewritten.
+  const MAINTENANCE_STATUS_KEYS = { overdue: 'ui.maintenance.status.overdue', upcoming: 'ui.maintenance.filter.upcoming', pending: 'ui.dashboard.pending_default' };
+  const MAINTENANCE_TONES = { danger: 'down', warn: 'warn', normal: 'hold', ok: 'ok', down: 'down', hold: 'hold' };
+  function maintenanceMeta(status, tone) {
+    const id = status || '';
+    const label = id ? (MAINTENANCE_STATUS_KEYS[id] ? tr(MAINTENANCE_STATUS_KEYS[id]) : id) : tr('ui.dashboard.pending_default');
+    return { id, label, tone: MAINTENANCE_TONES[tone] || tone || 'hold' };
+  }
   const number = value => value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
   const list = value => Array.isArray(value) ? value : [];
   const zeroStats = () => ({ total: 0, monitored: 0, up: 0, degraded: 0, down: 0, unmonitored: 0, unknown: 0, criticalAlerts: 0, unacknowledged: 0, activeIncidents: 0, availability: null });
@@ -69,16 +79,23 @@
     const maintenance = list(raw.maintenance).map(row => ({
       planId: row.planId, assetId: row.assetId, asset: assetFor(row.assetId, row.assetName, row.assetCode),
       label: row.label || tr('ui.dashboard.preventive_default'), template: { label: row.label || tr('ui.dashboard.preventive_default') },
-      status: row.status || '', statusMeta: { label: row.status || tr('ui.dashboard.pending_default'), tone: row.statusTone || 'hold' }, dueAt: row.dueAt || ''
+      status: row.status || '', statusMeta: maintenanceMeta(row.status, row.statusTone), dueAt: row.dueAt || ''
     }));
     const warranties = list(raw.warranties).map(row => ({
       asset: assetFor(row.assetId, row.assetName, row.assetCode), assetId: row.assetId, until: row.until || '',
       days: Number(row.days) || 0, coverage: row.coverage || 'expiring'
     }));
-    const distribution = list(raw.distribution).map(item => ({ id: item.id, label: item.label || (STATUS_KEYS[item.id] ? tr(STATUS_KEYS[item.id]) : item.id), count: Number(item.count) || 0 }));
+    // Device states are known system enumerations. The service also sends its own
+    // display label, already localized in Spanish, so trusting it would leave Spanish
+    // rows in an English UI. A known identifier always renders the selected catalog;
+    // an identifier the catalog does not know keeps the server label untouched.
+    const distribution = list(raw.distribution).map(item => ({ id: item.id, label: STATUS_KEYS[item.id] ? (tr(STATUS_KEYS[item.id]) || item.label || item.id) : (item.label || item.id), count: Number(item.count) || 0 }));
     const severity = ['critica', 'alta', 'media', 'baja'].map(id => {
       const item = list(raw.severity).find(entry => (severityIds[entry.id] || entry.id) === id);
-      return { id, label: (item && item.label) || tr(SEVERITY_KEYS[id]), count: Number(item && item.count) || 0 };
+      // Severity is the same kind of known enumeration: the catalog owns the label
+      // for the four shipped levels, the service label is only a fallback when no
+      // catalog is installed.
+      return { id, label: tr(SEVERITY_KEYS[id]) || (item && item.label) || id, count: Number(item && item.count) || 0 };
     });
     const outages = activity.filter(event => event.kind === 'recovery' || (event.kind === 'alert' && /caída|sin respuesta|conectividad|fuera de línea|recuper/i.test(event.title + ' ' + event.detail)));
     const inventorySource = raw.inventory || {};
