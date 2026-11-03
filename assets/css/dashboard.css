@@ -2,7 +2,6 @@
 .noc { gap: 20px; }
 .noc * { box-sizing: border-box; }
 .noc-header { gap: 18px; align-items: flex-start; }
-.noc-header h1 { font-size: clamp(25px, 2.6vw, 34px); }
 .noc-header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .noc-context { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding-bottom:16px; border-bottom:1px solid var(--border); color:var(--muted); font-size:12px; }
 .noc-context > span { display:flex; gap:8px; align-items:center; }

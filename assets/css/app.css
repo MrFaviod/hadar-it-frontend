@@ -59,6 +59,7 @@
   --font-display: 'Space Grotesk', 'Trebuchet MS', sans-serif;
   --font-body: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --page-title-size: 36px;
 
   --ink-950: #071923;
   --ink-900: #0b2331;
@@ -414,6 +415,10 @@ h3 {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+}
+/* Action buttons read as controls; meaningful anchors keep their underline. */
+button.text-button {
+  text-decoration: none;
 }
 .text-button:hover {
   color: var(--teal-800);
@@ -1273,10 +1278,17 @@ h3 {
 .page-head__copy {
   max-width: 760px;
 }
+/* One page-title role for every operational route family. */
+.page-head h1,
+.noc-header h1,
+.mon-head__copy h1,
+.maint-head h1 {
+  font-size: var(--page-title-size);
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
 .page-head h1 {
   margin-top: 9px;
-  font-size: clamp(30px, 3.2vw, 42px);
-  letter-spacing: -0.04em;
 }
 .page-sub {
   max-width: 68ch;
@@ -1413,9 +1425,6 @@ h3 {
   }
   .page {
     gap: 18px;
-  }
-  .page-head h1 {
-    font-size: 30px;
   }
   .page-sub {
     font-size: 14px;

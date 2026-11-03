@@ -312,10 +312,6 @@
     gap: 12px;
   }
 
-  .page-head h1 {
-    font-size: clamp(28px, 8vw, 32px);
-  }
-
   .page-head__meta {
     white-space: normal;
   }
@@ -625,10 +621,6 @@
     padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
   }
 
-  .page-head h1 {
-    font-size: 28px;
-  }
-
   .stats-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -733,5 +725,12 @@
 
   .text-button {
     justify-content: center;
+  }
+}
+
+/* A page title has one visual role across operational route families. */
+@media (max-width: 768px) {
+  :root {
+    --page-title-size: 28px;
   }
 }

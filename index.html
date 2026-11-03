@@ -514,13 +514,12 @@
 
         <main id="main-content" class="main" tabindex="-1">
           <workspace-shortcuts :app="$root"></workspace-shortcuts>
-          <section v-if="workspaceCanSave && route.name !== 'panel'" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
+          <section v-if="workspaceCanSave && route.name !== 'panel' && route.name !== 'inventory'" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
             <div class="universal-filter-strip__controls">
               <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">{{ $t('ui.shell.filter_category') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_categories') }}</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
               <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-site">{{ $t('ui.shell.filter_site') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-site" :value="workspaceFilters.site" @change="setWorkspaceFilter('site',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_sites') }}</option><option v-for="s in sites" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label v-if="route.name !== 'inventory'" class="sr-only" for="shared-status">{{ $t('ui.shell.filter_status') }}</label><select v-if="route.name !== 'inventory'" id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
-              <label v-if="route.name !== 'inventory'" class="sr-only" for="shared-location">{{ $t('ui.shell.filter_location') }}</label><select v-if="route.name !== 'inventory'" id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
-              <details v-if="route.name==='inventory'&&prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.shell.filter_column_model')},{id:'location',label:$t('ui.shell.filter_column_location')},{id:'assignee',label:$t('ui.shell.filter_column_assignee')},{id:'ip',label:$t('ui.shell.filter_column_ip')},{id:'remote',label:$t('ui.shell.filter_column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
+              <label class="sr-only" for="shared-status">{{ $t('ui.shell.filter_status') }}</label><select id="shared-status" :value="workspaceFilters.status" @change="setWorkspaceFilter('status',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_statuses') }}</option><option v-for="s in assetAdmin.statuses" :key="s.id" :value="s.id">{{s.label}}</option></select>
+              <label class="sr-only" for="shared-location">{{ $t('ui.shell.filter_location') }}</label><select id="shared-location" :value="workspaceFilters.location" @change="setWorkspaceFilter('location',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_locations') }}</option><option v-for="l in workspaceLocations.filter(l=>workspaceFilters.site==='all'||l.siteId===workspaceFilters.site)" :key="l.siteId+':'+l.id" :value="l.id">{{l.fullLabel}}</option></select>
             </div>
             <div v-if="workspaceChips.length" class="universal-filter-strip__chips" :aria-label="$t('ui.shell.filter_chips_aria')"><button v-for="chip in workspaceChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.shell.filter_remove', { label: chip.label })" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button><button type="button" class="text-button" @click="resetWorkspaceFilters">{{ $t('ui.shell.filter_reset') }}</button></div>
           </section>
@@ -547,10 +546,6 @@
                     <h1 id="inventory-title">{{ $t('ui.inventory.title') }}</h1>
                   </div>
                   <div class="page-head__side">
-                    <div class="page-head__meta" :aria-label="$t('ui.inventory.summary_aria')">
-                      <span class="mono">{{ $t('ui.inventory.page_of', { shown: inventoryItems.length, total: inventoryTotal }) }}</span>
-                      <span>{{ $t('ui.inventory.server_assets') }}</span>
-                    </div>
                     <button v-if="can('assets.edit')" type="button" class="btn btn--secondary" data-od-id="inventory-bulk-open" :disabled="inventory.loading || !inventoryItems.length" @click="bulk.ids = inventoryItems.map(item => item.id); openBulkEditor()">
                       <app-icon name="edit"></app-icon>
                       <span>{{ $t('ui.inventory.bulk_edit') }}</span>
@@ -567,26 +562,7 @@
                   </div>
                 </header>
 
-                <div class="stats-strip" role="list" :aria-label="$t('ui.inventory.stats_aria')">
-                  <div class="stat" role="listitem">
-                    <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryTotal }}</span><span class="stat__label">{{ $t('ui.inventory.stat_total') }}</span></div>
-                  </div>
-                  <div class="stat" role="listitem">
-                    <span class="stat__icon"><app-icon name="search"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryItems.length }}</span><span class="stat__label">{{ $t('ui.inventory.stat_page') }}</span></div>
-                  </div>
-                  <div class="stat" role="listitem">
-                    <span class="stat__icon"><app-icon name="file-text"></app-icon></span>
-                    <div><span class="stat__value">{{ inventoryPageLabel }}</span><span class="stat__label">{{ $t('ui.inventory.stat_pagination') }}</span></div>
-                  </div>
-                  <div class="stat" role="listitem">
-                    <span class="stat__icon"><app-icon name="refresh"></app-icon></span>
-                    <div><span class="stat__value">{{ inventory.loading ? $t('ui.inventory.query_loading') : (inventory.error ? $t('ui.inventory.query_error') : $t('ui.inventory.query_synced')) }}</span><span class="stat__label">{{ $t('ui.inventory.stat_query') }}</span></div>
-                  </div>
-                </div>
-
-                <div class="toolbar" :aria-label="$t('ui.inventory.toolbar_aria')">
+                <div class="toolbar toolbar--inventory" :aria-label="$t('ui.inventory.toolbar_aria')">
                   <div class="search-field">
                     <app-icon name="search"></app-icon>
                     <label class="sr-only" for="inventory-search">{{ $t('ui.inventory.search_label') }}</label>
@@ -611,6 +587,7 @@
                     <span>{{ $t('ui.inventory.refresh') }}</span>
                   </button>
 
+                  <details v-if="prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.shell.filter_column_model')},{id:'location',label:$t('ui.shell.filter_column_location')},{id:'assignee',label:$t('ui.shell.filter_column_assignee')},{id:'ip',label:$t('ui.shell.filter_column_ip')},{id:'remote',label:$t('ui.shell.filter_column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
                   <div class="view-switch" role="group" :aria-label="$t('ui.inventory.view_aria')">
                     <button type="button" :class="{ 'is-active': prefs.view === 'table' }" :aria-pressed="prefs.view === 'table'" @click="setView('table')">
                       <app-icon name="table"></app-icon><span>{{ $t('ui.inventory.view_table') }}</span>
@@ -634,7 +611,7 @@
                 </div>
 
                 <div class="results-bar" aria-live="polite">
-                  <p><strong>{{ inventoryTotal }}</strong> {{ $t('ui.inventory.results', { count: inventoryTotal }) }} <span>· {{ inventoryPageLabel }}</span></p>
+                  <p>{{ $t('ui.inventory.results', { count: inventoryTotal }) }} <span>· {{ inventoryPageLabel }}</span></p>
                   <button v-if="inventoryFiltersActive" type="button" class="text-button text-button--quiet" @click="clearInventoryFilters">
                     {{ $t('ui.inventory.clear_filters') }}
                   </button>

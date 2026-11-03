@@ -48,7 +48,7 @@ def drive(browser, base, label, username, password, marked, shots):
         print('PASS inventory: one canonical status control; search preserved', flush=True)
 
         # Functional summary labels remain readable at desktop and mobile sizes.
-        for selector in ['.sidebar__label', '.stat__label']:
+        for selector in ['.sidebar__label', '.results-bar p']:
             sizes = page.locator(selector).evaluate_all(
                 '(nodes) => nodes.map(n => parseFloat(getComputedStyle(n).fontSize))'
             )
@@ -104,20 +104,13 @@ def drive(browser, base, label, username, password, marked, shots):
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 page.screenshot(path=str(shots / f'ux-{label}-settings-{width}-{theme}.png'), full_page=True)
                 visit(page, base, 'inventario', 'Inventario de activos')
-                label_sizes = page.locator('.stat__label').evaluate_all(
+                label_sizes = page.locator('.results-bar p').evaluate_all(
                     '(nodes) => nodes.map(n => parseFloat(getComputedStyle(n).fontSize))'
                 )
                 assert min(label_sizes) >= 11, label_sizes
                 if width <= 390:
-                    boxes = page.locator('.stats-strip .stat').evaluate_all(
-                        '(nodes) => nodes.map(n => ({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y}))'
-                    )
-                    assert boxes[0]['y'] == boxes[1]['y'] and boxes[0]['x'] < boxes[1]['x'], boxes
+                    expect(page.locator('.stats-strip')).to_have_count(0)
                     assert page.locator('#inventory-search').bounding_box()['y'] < height, 'search requires scrolling past summary'
-                    clipped = page.locator('.stats-strip .stat__value').evaluate_all(
-                        '(nodes) => nodes.filter(n => n.scrollWidth > n.clientWidth + 1).map(n => n.textContent)'
-                    )
-                    assert not clipped, f'Unreadable summary values: {clipped}'
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 page.screenshot(path=str(shots / f'ux-{label}-inventory-{width}-{theme}.png'), full_page=True)
         assert not errors, errors

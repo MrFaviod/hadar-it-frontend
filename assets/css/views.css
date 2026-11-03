@@ -64,6 +64,17 @@
   align-items: center;
   gap: 10px;
 }
+/* Inventory keeps its column disclosure on the toolbar row when space allows. */
+@media (min-width: 1241px) {
+  .toolbar--inventory {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 200px) minmax(150px, 180px) auto auto;
+  }
+}
+@media (max-width: 1240px) {
+  .toolbar--inventory .view-switch {
+    grid-column: 1 / -1;
+  }
+}
 .search-field {
   display: flex;
   align-items: center;
