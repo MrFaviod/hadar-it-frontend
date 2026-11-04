@@ -22,6 +22,98 @@
     return runtime ? runtime.t(key, params) : '';
   }
 
+  // Device reasons arrive as stable server codes. Every code the backend emits
+  // owns a catalog sentence; an unknown code is withheld instead of painted raw.
+  const REASON_KEYS = {
+    target_missing: 'ui.monitoring.reason.target_missing',
+    prometheus_unavailable: 'ui.monitoring.reason.prometheus_unavailable',
+    prometheus_not_configured: 'ui.monitoring.reason.prometheus_not_configured'
+  };
+
+  // Category labels belong to the server-owned inventory catalog. Prototype
+  // configuration (`app.categories`) only applies while the installation has no
+  // server at all; the owner itself returns the bounded fallback ([] when a
+  // server-driven catalog is not loaded), so a stale local entry never wins and
+  // no name is guessed.
+  function categoryEntries(app) {
+    if (!app || typeof app.inventoryConfigCategories !== 'function') return [];
+    const list = app.inventoryConfigCategories();
+    return (Array.isArray(list) ? list : [])
+      .map((category) => ({
+        id: String((category && category.id) || ''),
+        label: String((category && (category.label || category.name)) || '').trim()
+      }))
+      .filter((category) => category.id);
+  }
+
+  // Asking the catalog owner to load is the only canonical way to obtain the
+  // labels; it is idempotent and guarded by the owner's own availability check.
+  function ensureCategoryCatalog(app) {
+    if (!app || app.inventoryCatalogReady) return null;
+    if (typeof app.inventoryAvailable !== 'function' || !app.inventoryAvailable()) return null;
+    if (typeof app.loadInventoryCatalog !== 'function') return null;
+    return app.loadInventoryCatalog();
+  }
+
+  // Server categories arrive as ids. A category the catalog does not translate
+  // is still printed as a readable sentence instead of a slug.
+  function fallbackLabel(id) {
+    const parts = String(id || '').split(/[-_\s]+/).filter(Boolean);
+    if (!parts.length) return '';
+    return parts
+      .map((part) => (part.length > 3 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+      .join(' ');
+  }
+
+  // Override keys come from the API payload; each one owns a catalog label so
+  // the panel never prints snake_case identifiers.
+  const OVERRIDE_LABELS = {
+    enabled: 'ui.monitoring.config.enabled',
+    checkType: 'ui.monitoring.config.check',
+    target: 'ui.monitoring.config.target',
+    intervalSeconds: 'ui.monitoring.config.interval',
+    minimumDurationSeconds: 'ui.monitoring.config.min_duration',
+    exporterId: 'ui.monitoring.config.exporter',
+    snmpModule: 'ui.monitoring.config.snmp_module',
+    snmpAuthRef: 'ui.monitoring.config.snmp_credential',
+    metrics: 'ui.monitoring.settings.field.metrics',
+    thresholds: 'ui.monitoring.config.thresholds'
+  };
+
+  // The mapper localises event labels once, at map time; the timeline resolves
+  // them again so a language switch is not frozen in the fetched copy.
+  const EVENT_LABEL_KEYS = {
+    opened: 'ui.monitoring.event.opened',
+    fired: 'ui.monitoring.event.fired',
+    acknowledged: 'ui.monitoring.event.acknowledged',
+    resolved: 'ui.monitoring.event.resolved',
+    silenced: 'ui.monitoring.event.silenced',
+    unsilenced: 'ui.monitoring.event.unsilenced',
+    incident_linked: 'ui.monitoring.event.incident_linked',
+    incident_created: 'ui.monitoring.event.incident_created',
+    maintenance_prepared: 'ui.monitoring.event.maintenance_prepared'
+  };
+
+  function reasonCopy(reason) {
+    if (!reason) return '';
+    const key = REASON_KEYS[reason];
+    return key ? tr(key) : '';
+  }
+
+  // A linked incident carries the canonical lifecycle code; the catalog owns
+  // its label so the metric hint never paints a snake_case status.
+  const INCIDENT_STATE_KEYS = {
+    open: 'ui.incidents.state.open',
+    in_progress: 'ui.incidents.state.in_progress',
+    resolved: 'ui.incidents.state.resolved',
+    closed: 'ui.incidents.state.closed'
+  };
+
+  function incidentStateCopy(status) {
+    const key = INCIDENT_STATE_KEYS[status];
+    return key ? tr(key) : '';
+  }
+
   function fmtDay(iso) {
     if (!iso) return '—';
     return window.ItsmI18n.formatDate(iso, { day: '2-digit', month: 'short' });
@@ -118,6 +210,9 @@
         const height = this.height;
         const top = 12;
         const bottom = 20;
+        // Y tick labels are drawn at the left edge; the series starts after them
+        // so a minimum reading is never crossed by its own axis label.
+        const left = 54;
         if (points.length < 2) return null;
         const values = points.map((point) => point.value);
         let low = Number.isFinite(this.min) ? this.min : Math.min.apply(null, values);
@@ -125,26 +220,26 @@
         if (this.zeroBase) low = 0;
         if (high - low < 0.5) high = low + 0.5;
         const spanY = height - top - bottom;
-        const stepX = width / (points.length - 1);
+        const stepX = (width - left) / (points.length - 1);
         const coords = points.map((point, index) => ({
-          x: index * stepX,
+          x: left + index * stepX,
           y: top + clamp(1 - (point.value - low) / (high - low), 0, 1) * spanY,
           value: point.value,
           label: point.label
         }));
         const line = coords.map((coord, index) => (index ? 'L' : 'M') + coord.x.toFixed(1) + ' ' + coord.y.toFixed(1)).join(' ');
-        const area = line + ' L' + width + ' ' + (height - bottom) + ' L0 ' + (height - bottom) + ' Z';
+        const area = line + ' L' + width.toFixed(1) + ' ' + (height - bottom) + ' L' + left + ' ' + (height - bottom) + ' Z';
         const last = coords[coords.length - 1];
         const midIndex = Math.round((coords.length - 1) / 2);
         return {
-          width, height, line, area, low, high, last,
+          width, height, left, line, area, low, high, last,
           ticks: [
             { y: top, value: high },
             { y: top + spanY / 2, value: (high + low) / 2 },
             { y: top + spanY, value: low }
           ],
           xLabels: [
-            { x: 0, label: coords[0].label, anchor: 'start' },
+            { x: left, label: coords[0].label, anchor: 'start' },
             { x: coords[midIndex].x, label: coords[midIndex].label, anchor: 'middle' },
             { x: last.x, label: last.label, anchor: 'end' }
           ]
@@ -192,7 +287,7 @@
             </linearGradient>
           </defs>
           <line v-for="tick in geometry.ticks" :key="'g' + tick.y" class="mon-chart__grid"
-                x1="0" :y1="tick.y" :x2="geometry.width" :y2="tick.y"></line>
+                :x1="geometry.left" :y1="tick.y" :x2="geometry.width" :y2="tick.y"></line>
           <path class="mon-chart__area" :d="geometry.area" :fill="'url(#' + uid + ')'"></path>
           <path class="mon-chart__line" :d="geometry.line"></path>
           <circle class="mon-chart__dot" :cx="geometry.last.x" :cy="geometry.last.y" r="3.4"></circle>
@@ -314,7 +409,7 @@
     },
     template: `
       <modal-shell :open="open" :title="$t('ui.monitoring.silence.title')" :eyebrow="$t('ui.monitoring.silence.eyebrow')" size="normal" @close="$emit('close')">
-        <div class="form-stack">
+        <div class="form-stack mon-dialog">
           <p class="form-intro">{{ $t('ui.monitoring.silence.intro') }}</p>
           <label class="field">
             <span class="field__label">{{ $t('ui.monitoring.silence.duration') }}</span>
@@ -416,7 +511,7 @@
     },
     template: `
       <modal-shell :open="open" :title="$t('ui.monitoring.convert.title')" :eyebrow="$t('ui.monitoring.convert.incident')" size="normal" @close="$emit('close')">
-        <div class="form-stack">
+        <div class="form-stack mon-dialog">
           <p class="form-intro">{{ $t('ui.monitoring.convert.intro') }}</p>
           <label class="field">
             <span class="field__label">{{ $t('ui.monitoring.convert.incident') }}</span>
@@ -484,6 +579,12 @@
         alertLoading: false
       };
     },
+    async mounted() {
+      // Figure labels come from the inventory catalog the server owns; asking
+      // its owner to load keeps a single canonical source for them.
+      const task = ensureCategoryCatalog(this.app);
+      if (task) await task;
+    },
     computed: {
       monitoring() { return this.app.monitoring; },
       rows() { return this.app.monitoringDevices; },
@@ -505,13 +606,36 @@
       alertsError() { return this.app.monitoringAlertsError; },
       truncated() { return this.app.monitoringDevicesTruncated; },
       alertsTruncated() { return this.app.monitoringApi.alerts.total > this.monitoringAlerts.length; },
+      // The KPI cards count every loaded device; the list below may narrow them.
+      // Both numbers are disclosed so a filtered row is never mistaken for the
+      // population the counters describe, and a page read is never presented as
+      // the whole server.
+      populationNote() {
+        const loaded = this.rows.length;
+        const visible = this.deviceRows.length;
+        const total = this.stats.total;
+        if (this.truncated) return tr('ui.monitoring.center.counts_loaded', { loaded, visible, total });
+        if (visible !== loaded) return tr('ui.monitoring.center.counts_visible', { loaded, visible });
+        return '';
+      },
       monitoringAlerts() { return this.app.monitoringAlerts; },
+      // "No devices match these filters" is a false claim on an installation
+      // that has no assets at all and no filter applied.
+      devicesEmptyKey() {
+        // 'all' is the absence of a filter, not a filter value: an installation
+        // with no inventoried asset must not claim that a filter emptied it.
+        const narrowed = (value) => !!value && value !== 'all';
+        const filters = this.deviceFilters;
+        const filtered = !!filters.query.trim()
+          || narrowed(filters.status) || narrowed(filters.category) || narrowed(filters.site);
+        return filtered || this.stats.total > 0 ? 'ui.monitoring.devices.empty' : 'ui.monitoring.devices.empty_install';
+      },
       deviceRows() {
         const filters = this.deviceFilters;
         return this.rows
           .filter((row) => filters.status === 'all' ? true : row.status === filters.status)
           .filter((row) => filters.category === 'all' ? true : row.asset.category === filters.category)
-          .filter((row) => filters.site === 'all' ? true : row.asset.site === filters.site)
+          .filter((row) => filters.site === 'all' ? true : row.asset.siteId === filters.site)
           .filter((row) => {
             const term = filters.query.trim().toLocaleLowerCase();
             if (!term) return true;
@@ -548,8 +672,30 @@
       activeAlertRows() {
         return this.alertRows.filter((alert) => alert.state === 'firing' || alert.state === 'pending').slice(0, 4);
       },
-      categories() { return this.app.categories || []; },
-      sites() { return this.app.sites || []; },
+      // Labels come from the canonical inventory catalog by id. Categories the
+      // catalog does not list stay visible when loaded rows reference them, with
+      // the bounded sentence-case fallback instead of a guessed name.
+      categories() {
+        const entries = categoryEntries(this.app);
+        const names = new Map(entries.map((category) => [category.id, category.label]));
+        this.rows.forEach((row) => {
+          const id = String((row.asset && row.asset.category) || '');
+          if (id && !names.has(id)) names.set(id, fallbackLabel(id));
+        });
+        return Array.from(names, ([id, name]) => ({ id, name: name || id }));
+      },
+      categoryName(id) {
+        const key = String(id || '');
+        if (!key) return '—';
+        const found = this.categories.find((category) => category.id === key);
+        return found && found.name ? found.name : (fallbackLabel(key) || '—');
+      },
+      // Configuration sites carry {id, label}; the server directory carries
+      // {id, label} as well, so the option label is resolved here instead of
+      // relying on a `name` field the shipped data never had.
+      sites() {
+        return (this.app.sites || []).map((site) => ({ id: site.id, name: site.name || site.label || site.id }));
+      },
       assetOptions() { return this.rows.map((row) => row.asset); },
       ranges() {
         const presets = this.app.monitoringPresets.periods;
@@ -561,6 +707,8 @@
       canIncident() { return this.app.monitoringEditable; },
       provenance() { return this.app.monitoringProvenance; },
       provenanceNote() {
+        if (this.error) return tr('ui.monitoring.center.provenance_error');
+        if (this.loading && !this.deviceRows.length) return tr('ui.monitoring.center.provenance_error');
         const configured = this.provenance.prometheusConfigured;
         const base = tr('ui.monitoring.center.provenance', { period: this.rangeLabel, total: this.stats.total });
         if (configured === false) return base + tr('ui.monitoring.center.provenance_unconfigured');
@@ -594,7 +742,7 @@
       severityMeta: Mapping.severityMeta,
       alertStateMeta: Mapping.alertStateMeta,
       checkMeta: Mapping.checkMeta,
-      reasonLabel: Mapping.reasonLabel,
+      reasonLabel: reasonCopy,
       setTab(tab) {
         this.tab = tab;
         if (this.app.setHash) this.app.setHash({ name: 'monitoring', section: tab });
@@ -662,7 +810,8 @@
           <div class="mon-head__copy">
             <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.monitoring.center.eyebrow') }}</p>
             <h1 id="mon-title">{{ $t('ui.monitoring.center.title') }}</h1>
-            <p class="page-sub">{{ $t('ui.monitoring.center.sub') }}{{ provenanceNote }}</p>
+            <p class="page-sub">{{ $t('ui.monitoring.center.sub') }}</p>
+            <p class="mon-panel__sub">{{ provenanceNote }}</p>
           </div>
           <div class="mon-head__actions">
             <div class="mon-range" role="group" :aria-label="$t('ui.monitoring.center.range_aria')">
@@ -680,9 +829,12 @@
         <div v-if="error" class="mon-notice" role="alert">
           <strong class="mon-notice__title">{{ $t('ui.monitoring.center.error_title') }}</strong>
           <span class="mon-notice__text">{{ error }}</span>
+          <div class="mon-notice__actions">
+            <button type="button" class="btn btn--secondary" @click="refresh">{{ $t('ui.common.retry') }}</button>
+          </div>
         </div>
 
-        <div class="mon-kpis">
+        <div v-if="!error && !(loading && !deviceRows.length)" class="mon-kpis">
           <button v-for="card in statusCards" :key="card.id" type="button" class="mon-kpi" :class="'mon-kpi--' + card.tone"
                   @click="filterStatus(card.id)">
             <span class="mon-kpi__icon"><app-icon :name="card.icon"></app-icon></span>
@@ -691,6 +843,8 @@
             <span class="mon-kpi__hint">{{ card.hint }}</span>
           </button>
         </div>
+
+          <p v-if="populationNote" class="mon-panel__sub">{{ populationNote }}</p>
 
         <div class="mon-tabs" role="tablist" :aria-label="$t('ui.monitoring.center.tabs_aria')">
           <button type="button" class="mon-tab" role="tab" :aria-selected="tab === 'estado'" :class="{ 'is-active': tab === 'estado' }" @click="setTab('estado')">{{ $t('ui.monitoring.field.state') }}</button>
@@ -718,7 +872,7 @@
               <li v-for="row in attention" :key="row.assetId" class="mon-attention__item">
                 <div class="mon-attention__main">
                   <span class="mon-attention__name">{{ row.asset.name }}</span>
-                  <span class="mon-attention__meta mono">{{ row.asset.quickCode }} · {{ row.reasonLabel || row.statusLabel }}</span>
+                  <span class="mon-attention__meta mono">{{ row.asset.quickCode }} · {{ reasonLabel(row.reason) || statusMeta(row.status).label }}</span>
                 </div>
                 <span class="mon-attention__meta">{{ rel(row.lastCheckAt) }}</span>
                 <div class="mon-attention__actions">
@@ -741,8 +895,8 @@
                 <div class="mon-alert__body">
                   <div class="mon-alert__head">
                     <button type="button" class="mon-alert__title" @click="openAlert(alert.id)">{{ alert.alertName }}</button>
-                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
-                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ severityMeta(alert.severity).label }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alertStateMeta(alert.state).label }}</span>
                     <span v-if="alert.acknowledged" class="mon-tag">{{ $t('ui.monitoring.tag.acknowledged') }}</span>
                     <span v-if="alert.silenced" class="mon-tag">{{ $t('ui.monitoring.tag.silenced') }}</span>
                   </div>
@@ -772,7 +926,7 @@
                   <span class="mon-unmonitored__name">{{ row.asset.name }}</span>
                   <span class="mon-unmonitored__meta mono">{{ row.asset.quickCode }}</span>
                 </div>
-                <span class="mon-unmonitored__state">{{ row.reasonLabel || row.statusLabel }}</span>
+                <span class="mon-unmonitored__state">{{ reasonLabel(row.reason) || statusMeta(row.status).label }}</span>
               </li>
             </ul>
             <p class="mon-panel__sub">{{ $t('ui.monitoring.unmonitored.sub') }}</p>
@@ -823,8 +977,7 @@
           </div>
 
           <p v-if="loading" class="mon-panel__sub" role="status">{{ $t('ui.monitoring.devices.loading') }}</p>
-          <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
-          <div v-else class="mon-table-wrap">
+          <div v-else-if="!error" class="mon-table-wrap" role="region" tabindex="0" :aria-label="$t('ui.monitoring.devices.caption')">
             <table class="mon-table">
               <caption class="sr-only">{{ $t('ui.monitoring.devices.caption') }}</caption>
               <thead>
@@ -849,7 +1002,7 @@
                   </td>
                   <td>
                     <mon-status-pill :status="row.status"></mon-status-pill>
-                    <span v-if="row.reasonLabel" class="mon-table__meta">{{ row.reasonLabel }}</span>
+                    <span v-if="reasonLabel(row.reason)" class="mon-table__meta">{{ reasonLabel(row.reason) }}</span>
                   </td>
                   <td>
                     <span>{{ checkMeta(row.checkType).label || '—' }}</span>
@@ -865,7 +1018,7 @@
                 </tr>
               </tbody>
             </table>
-            <p v-if="!deviceRows.length" class="empty-state">{{ $t('ui.monitoring.devices.empty') }}</p>
+            <p v-if="!deviceRows.length" class="empty-state">{{ $t(devicesEmptyKey) }}</p>
           </div>
           <div v-if="truncated" class="mon-settings__actions">
             <button type="button" class="btn btn--secondary" :disabled="loading" @click="openMoreDevices">{{ $t('ui.monitoring.action.load_more_devices') }}</button>
@@ -922,7 +1075,7 @@
               <span class="field__label">{{ $t('ui.monitoring.field.silence') }}</span>
               <span class="select-field">
                 <select v-model="filters.silenced">
-                  <option value="all">{{ $t('ui.monitoring.filter.all') }}</option>
+                  <option value="all">{{ $t('ui.monitoring.filter.all_f') }}</option>
                   <option value="silenced">{{ $t('ui.monitoring.filter.silenced') }}</option>
                   <option value="active">{{ $t('ui.monitoring.filter.not_silenced') }}</option>
                 </select>
@@ -931,15 +1084,20 @@
           </div>
 
           <p v-if="alertsLoading" class="mon-panel__sub" role="status">{{ $t('ui.monitoring.center.alerts_loading') }}</p>
-          <div v-else-if="alertsError" class="mon-notice" role="alert"><span class="mon-notice__text">{{ alertsError }}</span></div>
+          <div v-else-if="alertsError" class="mon-notice" role="alert">
+            <span class="mon-notice__text">{{ alertsError }}</span>
+            <div class="mon-notice__actions">
+              <button type="button" class="btn btn--secondary" @click="refresh">{{ $t('ui.common.retry') }}</button>
+            </div>
+          </div>
           <ul v-else-if="alertRows.length" class="mon-alert-list">
             <li v-for="alert in alertRows" :key="alert.id" class="mon-alert" :class="'mon-alert--' + alert.severityTone">
               <div class="mon-alert__rail"></div>
               <div class="mon-alert__body">
                 <div class="mon-alert__head">
                   <button type="button" class="mon-alert__title" @click="openAlert(alert.id)">{{ alert.alertName }}</button>
-                  <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
-                  <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                  <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ severityMeta(alert.severity).label }}</span>
+                  <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alertStateMeta(alert.state).label }}</span>
                   <span v-if="alert.acknowledged" class="mon-tag mon-tag--ok">{{ $t('ui.monitoring.tag.acknowledged') }}</span>
                   <span v-if="alert.silenced" class="mon-tag">{{ $t('ui.monitoring.tag.silenced') }}</span>
                   <span v-if="alert.incident" class="mon-tag">{{ $t('ui.monitoring.tag.incident') }}</span>
@@ -974,7 +1132,7 @@
     components: { AppIcon: window.AppIcon, MonChart: Views.MonChart, MonSpark: Views.MonSpark, MonStatusPill: Views.MonStatusPill, MonMetric: Views.MonMetric, MonSilenceDialog: Views.MonSilenceDialog, MonConvertDialog: Views.MonConvertDialog },
     props: { app: { type: Object, required: true } },
     data() {
-      return { metric: 'latency', dialogs: { silence: false, convert: false }, activeAlert: null };
+      return { metric: 'latency', dialogs: { silence: false, convert: false }, activeAlert: null, thumbMissing: false };
     },
     computed: {
       record() { return this.app.monitoringDeviceRecord; },
@@ -1030,9 +1188,9 @@
         ];
       },
       overriddenLabel() {
-        return this.config && this.config.overridden && this.config.overridden.length
-          ? this.config.overridden.join(', ')
-          : tr('ui.monitoring.device.no_overrides');
+        const keys = (this.config && this.config.overridden) || [];
+        const labels = keys.map((key) => OVERRIDE_LABELS[key]).filter(Boolean).map((key) => tr(key));
+        return labels.length ? labels.join(', ') : tr('ui.monitoring.device.no_overrides');
       },
       metrics() {
         return [
@@ -1043,8 +1201,15 @@
         ];
       }
     },
+    async mounted() {
+      // The profile category label is a catalog value; the device page asks the
+      // canonical owner for it instead of printing a slug or a local guess.
+      const task = ensureCategoryCatalog(this.app);
+      if (task) await task;
+    },
     watch: {
       'app.route.assetId'(id) {
+        this.thumbMissing = false;
         if (id) this.app.loadMonitoringDevice(id, this.period);
       },
       metric(value) {
@@ -1094,6 +1259,17 @@
       },
       askSilence(alert) { this.activeAlert = alert; this.dialogs.silence = true; },
       askConvert(alert) { this.activeAlert = alert; this.dialogs.convert = true; },
+      reasonLabel: reasonCopy,
+      thumb() {
+        if (this.thumbMissing || !this.asset || !this.asset.image) return '';
+        return /\/other\.svg$/.test(this.asset.image) ? '' : this.asset.image;
+      },
+      categoryName(id) {
+        const key = String(id || '');
+        if (!key) return '—';
+        const found = categoryEntries(this.app).find((category) => category.id === key);
+        return found && found.label ? found.label : (fallbackLabel(key) || '—');
+      },
       checkTone(state) { return state === 'up' ? 'ok' : (state === 'down' ? 'down' : 'neutral'); }
     },
     template: `
@@ -1104,13 +1280,14 @@
           <span>{{ asset.name }}</span>
         </nav>
 
-        <header class="mon-device__head">
+        <h1 v-if="!record" id="mon-device-title" class="sr-only">{{ $t('ui.monitoring.device.eyebrow') }}</h1>
+        <header v-if="record" class="mon-device__head">
           <div class="mon-device__identity">
-            <img v-if="asset.image" class="mon-device__thumb" :src="asset.image" alt="" aria-hidden="true">
+            <img v-if="thumb()" class="mon-device__thumb" :src="thumb()" alt="" aria-hidden="true" @error="thumbMissing = true">
             <div>
               <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.monitoring.device.eyebrow') }}</p>
               <h1 id="mon-device-title">{{ asset.name }}</h1>
-              <p class="page-sub mono">{{ asset.quickCode || asset.id }} · {{ asset.category || $t('ui.monitoring.device.no_category') }} · {{ asset.site || $t('ui.monitoring.device.no_site') }}</p>
+              <p class="page-sub mono">{{ asset.quickCode || asset.id }} · {{ categoryName(asset.category) || $t('ui.monitoring.device.no_category') }} · {{ asset.site || $t('ui.monitoring.device.no_site') }}</p>
             </div>
           </div>
           <div class="mon-head__actions">
@@ -1129,12 +1306,17 @@
         <p v-if="loading" class="mon-progress__text" role="status">{{ $t('ui.monitoring.device.loading') }}</p>
         <div v-else-if="missing" class="mon-notice" role="alert">
           <strong class="mon-notice__title">{{ $t('ui.monitoring.device.missing') }}</strong>
-          <span class="mon-notice__text">{{ error }}</span>
+          <span class="mon-notice__text">{{ $t('ui.monitoring.error.record_missing') }}</span>
         </div>
-        <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
+        <div v-else-if="error" class="mon-notice" role="alert">
+          <span class="mon-notice__text">{{ error }}</span>
+          <div class="mon-notice__actions">
+            <button type="button" class="btn btn--secondary" @click="refresh">{{ $t('ui.common.retry') }}</button>
+          </div>
+        </div>
 
         <template v-if="record">
-          <p v-if="record.reasonLabel" class="mon-panel__sub">{{ record.reasonLabel }}</p>
+          <p v-if="reasonLabel(record.reason)" class="mon-panel__sub">{{ reasonLabel(record.reason) }}</p>
           <div class="mon-metrics">
             <mon-metric v-for="metric in metrics" :key="metric.label" :label="metric.label" :value="metric.value"
                         :hint="metric.hint" :icon="metric.icon" :tone="metric.tone"></mon-metric>
@@ -1177,7 +1359,7 @@
             <div class="mon-panel">
               <header class="mon-panel__head">
                 <h2 class="mon-panel__title">{{ $t('ui.monitoring.device.effective_config') }}</h2>
-                <span class="mon-panel__sub">{{ $t('ui.monitoring.device.profile', { category: config.profileCategory || '—' }) }}</span>
+                <span class="mon-panel__sub">{{ $t('ui.monitoring.device.profile', { category: categoryName(config.profileCategory) }) }}</span>
               </header>
               <dl class="mon-facts">
                 <div v-for="row in configRows" :key="row.label" class="mon-facts__row">
@@ -1191,7 +1373,7 @@
           <div class="mon-panel">
             <header class="mon-panel__head">
               <h2 class="mon-panel__title">{{ $t('ui.monitoring.device.series') }}</h2>
-              <label class="field mon-input">
+              <label v-if="metricOptions.length" class="field mon-series-select">
                 <span class="sr-only">{{ $t('ui.monitoring.device.metric_aria') }}</span>
                 <span class="select-field">
                   <select v-model="metric">
@@ -1200,7 +1382,7 @@
                 </span>
               </label>
             </header>
-            <mon-chart :label="chartLabel" :points="chartPoints" :unit="chartUnit" :zero-base="activeSeries.metric !== 'latency'" :tone="activeSeries.metric === 'latency' ? 'teal' : 'warn'"></mon-chart>
+            <mon-chart v-if="activeSeries.points.length" :label="chartLabel" :points="chartPoints" :unit="chartUnit" :zero-base="activeSeries.metric !== 'latency'" :tone="activeSeries.metric === 'latency' ? 'teal' : 'warn'"></mon-chart>
             <p v-if="!metricOptions.length" class="mon-panel__sub">{{ $t('ui.monitoring.device.no_series') }}</p>
           </div>
 
@@ -1215,8 +1397,8 @@
                 <div class="mon-alert__body">
                   <div class="mon-alert__head">
                     <button type="button" class="mon-alert__title" @click="openAlert(alert)">{{ alert.alertName }}</button>
-                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
-                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alert.stateLabel }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ severityMeta(alert.severity).label }}</span>
+                    <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ alertStateMeta(alert.state).label }}</span>
                     <span v-if="alert.acknowledged" class="mon-tag">{{ $t('ui.monitoring.tag.acknowledged') }}</span>
                   </div>
                   <p class="mon-alert__message">{{ alert.message }}</p>
@@ -1253,7 +1435,8 @@
       events() {
         return this.app.monitoringAlertEvents
           .slice()
-          .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0));
+          .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0))
+          .map((event) => Object.assign({}, event, { display: this.eventText(event) }));
       },
       metrics() {
         const alert = this.alert;
@@ -1262,13 +1445,13 @@
           { label: tr('ui.monitoring.alert.start'), value: fmtDateTime(alert.startsAt), hint: rel(alert.startsAt), icon: 'clock', tone: 'neutral' },
           { label: tr('ui.monitoring.alert.last_signal'), value: fmtDateTime(alert.lastSeenAt), hint: rel(alert.lastSeenAt), icon: 'activity', tone: 'neutral' },
           { label: tr('ui.monitoring.alert.source'), value: alert.source || '—', hint: alert.groupKey ? tr('ui.monitoring.alert.group', { key: alert.groupKey.slice(0, 28) }) : '', icon: 'server', tone: 'neutral' },
-          { label: tr('ui.monitoring.convert.incident'), value: alert.incident ? alert.incident.id : tr('ui.monitoring.alert.unlinked'), hint: alert.incident ? alert.incident.status : tr('ui.monitoring.alert.link_hint'), icon: 'link', tone: 'neutral' }
+          { label: tr('ui.monitoring.convert.incident'), value: alert.incident ? alert.incident.id : tr('ui.monitoring.alert.unlinked'), hint: alert.incident ? (incidentStateCopy(alert.incident.status) || tr('ui.monitoring.alert.link_hint')) : tr('ui.monitoring.alert.link_hint'), icon: 'link', tone: 'neutral' }
         ];
       },
       silence() { return this.alert ? this.alert.silences.find((item) => item.active) || null : null; },
       stateLabel() {
         if (!this.alert) return '—';
-        return this.alert.state === 'resolved' ? tr('ui.monitoring.alert.recovered') : this.alert.stateLabel;
+        return this.alert.state === 'resolved' ? tr('ui.monitoring.alert.recovered') : this.alertStateMeta(this.alert.state).label;
       },
       suggestedClose() { return !!(this.alert && this.alert.incident && this.alert.incident.suggestedClose); }
     },
@@ -1300,6 +1483,21 @@
           : tr('ui.monitoring.alert.toast_window_prepared'));
         if (this.app.setHash) this.app.setHash('#/configuracion/alertas');
       },
+      // The mapped text mixes a raw catalog key with a Spanish connector; the
+      // timeline composes the sentence from the localized label and parts.
+      eventText(event) {
+        const label = EVENT_LABEL_KEYS[event.action] ? tr(EVENT_LABEL_KEYS[event.action]) : (event.label || event.action);
+        const from = event.fromState ? this.alertStateMeta(event.fromState).label : '';
+        const to = event.toState ? this.alertStateMeta(event.toState).label : '';
+        const transition = from && to && event.fromState !== event.toState
+          ? from + ' → ' + to
+          : (to || from);
+        const parts = [label];
+        if (transition) parts.push(transition);
+        if (event.note) parts.push(event.note);
+        if (event.actor) parts.push(tr('ui.monitoring.alert.by', { actor: event.actor }));
+        return parts.filter(Boolean).join(' · ');
+      },
       eventTone(event) {
         if (event.action === 'resolved') return 'ok';
         if (event.action === 'acknowledged') return 'hold';
@@ -1319,9 +1517,14 @@
         <p v-if="loading" class="mon-progress__text" role="status">{{ $t('ui.monitoring.alert.loading') }}</p>
         <div v-else-if="missing" class="mon-notice" role="alert">
           <strong class="mon-notice__title">{{ $t('ui.monitoring.alert.missing') }}</strong>
-          <span class="mon-notice__text">{{ error }}</span>
+          <span class="mon-notice__text">{{ $t('ui.monitoring.error.record_missing') }}</span>
         </div>
-        <div v-else-if="error" class="mon-notice" role="alert"><span class="mon-notice__text">{{ error }}</span></div>
+        <div v-else-if="error" class="mon-notice" role="alert">
+          <span class="mon-notice__text">{{ error }}</span>
+          <div class="mon-notice__actions">
+            <button type="button" class="btn btn--secondary" @click="refresh">{{ $t('ui.common.retry') }}</button>
+          </div>
+        </div>
 
         <template v-if="alert">
           <header class="mon-alert-head" :class="'mon-alert-head--' + alert.severityTone">
@@ -1331,7 +1534,7 @@
               <p class="page-sub">{{ alert.assetName }} · {{ alert.quickCode }} · {{ alert.message }}</p>
             </div>
             <div class="mon-alert-head__tags">
-              <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ alert.severityLabel }}</span>
+              <span class="mon-tag" :class="'mon-tag--' + alert.severityTone">{{ severityMeta(alert.severity).label }}</span>
               <span class="mon-tag" :class="'mon-tag--' + alert.stateTone">{{ stateLabel }}</span>
               <span v-if="alert.acknowledged" class="mon-tag mon-tag--ok">{{ $t('ui.monitoring.tag.acknowledged') }}</span>
               <span v-if="alert.silenced" class="mon-tag">{{ $t('ui.monitoring.tag.silenced') }}</span>
@@ -1365,7 +1568,7 @@
                 <li v-for="event in events" :key="event.id" class="mon-timeline__item">
                   <span class="mon-timeline__icon" :class="'mon-check-dot--' + eventTone(event)"></span>
                   <div class="mon-timeline__body">
-                    <p class="mon-timeline__text">{{ event.text }}</p>
+                    <p class="mon-timeline__text">{{ event.display }}</p>
                     <p class="mon-timeline__time mono">{{ fmtDateTime(event.at) }} · {{ event.source || $t('ui.monitoring.alert.server') }}</p>
                   </div>
                 </li>
@@ -1519,6 +1722,9 @@
           { id: 'unread', label: tr('ui.notifications.filter.unread'), count: this.app.monitoringUnreadCount }
         ];
       },
+      inboxEmptyKey() {
+        return this.filter === 'unread' || this.notifications.length ? 'ui.notifications.empty' : 'ui.notifications.empty_install';
+      },
       list() {
         return this.notifications.filter((item) => this.filter === 'unread' ? item.unread : true);
       }
@@ -1558,7 +1764,7 @@
         <div class="mon-pills" role="group" :aria-label="$t('ui.notifications.filters_aria')">
           <button v-for="item in filters" :key="item.id" type="button" class="mon-pill-button"
                   :class="{ 'is-active': filter === item.id }" :aria-pressed="filter === item.id" @click="filter = item.id">
-            {{ item.label }} <span class="mono">{{ item.count }}</span>
+            {{ item.label }} <span v-if="!error || notifications.length" class="mono">{{ item.count }}</span>
           </button>
         </div>
 
@@ -1583,7 +1789,7 @@
             </div>
           </li>
         </ul>
-        <p v-else class="empty-state">{{ $t('ui.notifications.empty') }}</p>
+        <p v-else class="empty-state">{{ $t(inboxEmptyKey) }}</p>
         <div v-if="truncated" class="mon-settings__actions">
           <button type="button" class="btn btn--secondary" :disabled="loading" @click="loadMore">{{ $t('ui.notifications.load_more') }}</button>
           <span class="mon-panel__sub">{{ $t('ui.monitoring.count_of', { shown: notifications.length, total: app.monitoringInboxTotal }) }}</span>

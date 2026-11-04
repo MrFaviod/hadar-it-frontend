@@ -4,6 +4,39 @@
   const Mapping = window.AssetMonitoringApiMapping;
   const Views = window.Views = window.Views || {};
   // Catalog access for copy assembled in JavaScript; templates use $t.
+  // Category labels are owned by the server inventory catalog; this helper is
+  // only the bounded fallback for an id the catalog does not translate, so no
+  // name is guessed for a category the server does know.
+  function categoryLabel(id) {
+    const parts = String(id || '').split(/[-_\s]+/).filter(Boolean);
+    if (!parts.length) return '';
+    return parts
+      .map((part) => (part.length > 3 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
+      .join(' ');
+  }
+
+  // Canonical labels, matched by id only. The inventory owner returns its own
+  // bounded fallback (prototype categories without a server, [] when a
+  // server-driven catalog is not loaded), so `app.categories` is never consulted
+  // and a stale local entry cannot overwrite a canonical label.
+  function canonicalCategories(app) {
+    if (!app || typeof app.inventoryConfigCategories !== 'function') return [];
+    const list = app.inventoryConfigCategories();
+    return (Array.isArray(list) ? list : [])
+      .map((category) => ({
+        id: String((category && category.id) || ''),
+        label: String((category && (category.label || category.name)) || '').trim()
+      }))
+      .filter((category) => category.id);
+  }
+
+  function ensureCategoryCatalog(app) {
+    if (!app || app.inventoryCatalogReady) return null;
+    if (typeof app.inventoryAvailable !== 'function' || !app.inventoryAvailable()) return null;
+    if (typeof app.loadInventoryCatalog !== 'function') return null;
+    return app.loadInventoryCatalog();
+  }
+
   function tr(key, params) {
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
     return runtime ? runtime.t(key, params) : '';
@@ -156,7 +189,15 @@
         return this.presets.minimumDurations && this.presets.minimumDurations.length ? this.presets.minimumDurations : [0, 60, 300, 900];
       },
       categories() {
-        return (this.app.categories || []).map((category) => ({ id: category.id, name: category.name }));
+        // Canonical labels first, matched by id. Profiles can reference a
+        // category the catalog does not list; those keep the bounded fallback so
+        // the picker and the profile titles stay usable without inventing names.
+        const names = new Map(canonicalCategories(this.app).map((category) => [category.id, category.label]));
+        (this.profiles || []).forEach((profile) => {
+          const id = String(profile.category || '');
+          if (id && !names.has(id)) names.set(id, categoryLabel(id));
+        });
+        return Array.from(names, ([id, name]) => ({ id, name: name || categoryLabel(id) }));
       },
       assets() {
         return this.app.monitoringAssets.map((asset) => ({
@@ -180,10 +221,19 @@
       }
     },
     async mounted() {
-      if (this.app.monitoringAvailable) await Promise.all([this.app.loadMonitoringConfig(), this.app.loadMonitoringAssetDirectory()]);
+      if (this.app.monitoringAvailable) {
+        const tasks = [this.app.loadMonitoringConfig(), this.app.loadMonitoringAssetDirectory()];
+        const catalog = ensureCategoryCatalog(this.app);
+        if (catalog) tasks.push(catalog);
+        await Promise.all(tasks);
+      }
       if (this.profiles.length && !this.selectedCategory) this.selectProfile(this.profiles[0].category);
     },
     methods: {
+      categoryName(id) {
+        const found = this.categories.find((category) => category.id === id);
+        return found ? found.name : (id || '—');
+      },
       fmtValue(value, unit) {
         if (value === null || value === undefined || value === '') return '—';
         return String(value) + (unit ? ' ' + unit : '');
@@ -199,6 +249,10 @@
         this.notice = '';
       },
       metricLabel(id) { return METRIC_KEYS[id] ? tr(METRIC_KEYS[id]) : id; },
+      checkLabel(id) {
+        const found = this.checkTypes.find((check) => check.id === id);
+        return found && found.label ? found.label : Mapping.checkMeta(id).label;
+      },
       toggleProfileMetric(id) {
         const index = this.profile.metrics.indexOf(id);
         if (index === -1) this.profile.metrics.push(id);
@@ -236,7 +290,7 @@
         else {
           this.app.showToast(tr('ui.monitoring.settings.toast.profile_saved'));
           this.selectProfile(this.profile.category);
-          this.notice = tr('ui.monitoring.settings.notice.profile_saved', { category: this.profile.category });
+          this.notice = tr('ui.monitoring.settings.notice.profile_saved', { category: this.categoryName(this.profile.category) });
         }
       },
       async saveOverride() {
@@ -340,10 +394,10 @@
                 <div>
                   <button type="button" class="mon-settings-table__name" :class="{ 'is-active': profile.category === selectedCategory }"
                           @click="selectProfile(profile.category)">
-                    {{ profile.category }}
+                    {{ categoryName(profile.category) }}
                     <span class="mon-tag" :class="profile.enabled ? 'mon-tag--ok' : 'mon-tag--neutral'">{{ profile.enabled ? $t('ui.monitoring.settings.tag.active') : $t('ui.monitoring.settings.tag.inactive') }}</span>
                   </button>
-                  <span class="mon-settings-table__hint mono">{{ $t('ui.monitoring.settings.profile_meta', { check: profile.checkType || $t('ui.monitoring.settings.no_type'), interval: profile.intervalSeconds || '—', metrics: (profile.metrics || []).join(', ') || $t('ui.monitoring.settings.no_metrics') }) }}</span>
+                  <span class="mon-settings-table__hint mono">{{ $t('ui.monitoring.settings.profile_meta', { check: profile.checkType ? checkLabel(profile.checkType) : $t('ui.monitoring.settings.no_type'), interval: profile.intervalSeconds || '—', metrics: (profile.metrics || []).map(id => metricLabel(id)).join(', ') || $t('ui.monitoring.settings.no_metrics') }) }}</span>
                 </div>
               </li>
             </ul>
@@ -352,7 +406,7 @@
 
           <form class="mon-panel mon-settings__block" @submit.prevent="saveProfile">
             <header class="mon-panel__head">
-              <h2 class="mon-panel__title">{{ profile.category ? $t('ui.monitoring.settings.profile_title', { category: profile.category }) : $t('ui.monitoring.settings.profile_uncategorized') }}</h2>
+              <h2 class="mon-panel__title">{{ profile.category ? $t('ui.monitoring.settings.profile_title', { category: categoryName(profile.category) }) : $t('ui.monitoring.settings.profile_uncategorized') }}</h2>
             </header>
             <label class="field">
               <span class="field__label">{{ $t('ui.monitoring.field.category') }}</span>
@@ -748,7 +802,7 @@
               <span class="field__label">{{ $t('ui.common.name') }}</span>
               <input v-model="window.name" type="text" maxlength="80" :disabled="!canEdit" required>
             </label>
-            <fieldset class="field">
+            <fieldset class="field mon-window-form__assets">
               <legend class="field__label">{{ $t('ui.alerts.window.assets') }}</legend>
               <div class="mon-toggle-group">
                 <label v-for="asset in assets" :key="asset.id" class="mon-toggle">
@@ -756,10 +810,10 @@
                   <span>{{ asset.label }}</span>
                 </label>
               </div>
-              <input v-model="window.assetIdsText" type="text" class="mon-input" :placeholder="$t('ui.alerts.window.assets_placeholder')"
+              <input v-model="window.assetIdsText" type="text" class="mon-input mon-input--wide" :placeholder="$t('ui.alerts.window.assets_placeholder')"
                      :disabled="!canEdit" @change="window.assetIds = Array.from(new Set(window.assetIds.concat(window.assetIdsText.split(/[\\s,]+/).filter(Boolean))))">
             </fieldset>
-            <fieldset class="field">
+            <fieldset class="field mon-window-form__days">
               <legend class="field__label">{{ $t('ui.alerts.window.days') }}</legend>
               <div class="mon-toggle-group">
                 <label v-for="day in days" :key="day.id" class="mon-toggle mon-toggle--day">
@@ -900,6 +954,7 @@
     },
     methods: {
       channelKindLabel(kind) { return (this.channelKinds.find((item) => item.id === kind) || {}).label || kind; },
+      severityLabel(id) { return (this.severities.find((item) => item.id === id) || {}).label || id; },
       channelState(channel) {
         if (!channel.enabled) return tr('ui.notifications.settings.state.inactive');
         return channel.configured ? tr('ui.notifications.settings.state.configured') : tr('ui.notifications.settings.state.missing_credential');
@@ -1116,7 +1171,7 @@
                 <div>
                   <span class="mon-settings-table__name">{{ item.name }} <span v-if="item.builtIn" class="mon-tag">{{ $t('ui.notifications.settings.builtin') }}</span></span>
                   <span class="mon-settings-table__hint">
-                    {{ $t('ui.notifications.settings.rule_meta', { severity: item.minimumSeverity, channels: item.channelIds.length, ack: item.acknowledgeAfterSeconds, retry: item.retryIntervalSeconds }) }}
+                    {{ $t('ui.notifications.settings.rule_meta', { severity: severityLabel(item.minimumSeverity), channels: item.channelIds.length, ack: item.acknowledgeAfterSeconds, retry: item.retryIntervalSeconds }) }}
                   </span>
                   <span class="mon-settings-table__hint mono">
                     {{ $t('ui.notifications.settings.rule_recipients', { recipients: item.recipientIds.length ? item.recipientIds.join(', ') : $t('ui.notifications.settings.all_identities') }) }}

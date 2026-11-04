@@ -326,6 +326,7 @@
   grid-area: hint;
   font-size: 0.74rem;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .mon-metric--down .mon-metric__value { color: var(--danger-700); }
@@ -631,6 +632,13 @@
   box-shadow: var(--shadow-sm);
 }
 
+.mon-panel > .btn {
+  /* A bare action inside a panel is a grid item: without this it stretches the
+     full width and centres its label, unlike every other action row. */
+  justify-self: start;
+  width: fit-content;
+}
+
 .mon-panel__head {
   display: flex;
   flex-wrap: wrap;
@@ -645,6 +653,16 @@
   font-size: 0.98rem;
   font-weight: 600;
   color: var(--ink-900);
+}
+
+/* A bordered empty card inside a bordered panel is a card in a card; inside the
+   monitoring surfaces the empty copy sits on the panel itself. */
+.mon-panel .empty-state,
+.mon-settings .empty-state {
+  padding: 18px 12px;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .mon-panel__sub {
@@ -873,6 +891,14 @@
 .mon-unmonitored__item:last-child {
   border-bottom: 0;
 }
+/* Name and quick code are two inline spans: without a flex row they collide. */
+.mon-unmonitored__item > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
 
 .mon-unmonitored__name {
   font-size: 0.84rem;
@@ -886,8 +912,11 @@
 }
 
 .mon-unmonitored__state {
+  min-width: 0;
   font-size: 0.72rem;
   color: var(--slate-500);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 /* ---- tables -------------------------------------------------------------- */
@@ -934,6 +963,12 @@
   padding: 10px 12px;
   vertical-align: middle;
 }
+/* The device column carries name plus code, category and site: it needs room
+   at every width instead of wrapping into three lines. */
+.mon-table thead th:first-child,
+.mon-table__row td:first-child {
+  min-width: 200px;
+}
 
 .mon-table__name {
   display: grid;
@@ -977,6 +1012,12 @@
   font-size: 0.7rem;
   color: var(--muted);
 }
+/* Status, check label, target and reason are separate spans: stacked so the
+   label never runs into its target ("Node exporterbackend:8000"). */
+.mon-table__row td > .mon-table__meta {
+  display: block;
+  margin-top: 2px;
+}
 
 .mon-table__time {
   font-family: var(--font-mono);
@@ -1013,12 +1054,17 @@
   min-width: 0;
 }
 
+/* Category illustrations are wide canvases around a small centred drawing; a
+   contained 58 px box shrinks it into an empty-looking tile, so the drawing is
+   cropped to its centre instead. */
 .mon-device__thumb {
   display: grid;
   place-items: center;
   width: 58px;
   height: 58px;
-  padding: 8px;
+  padding: 0;
+  object-fit: cover;
+  object-position: center;
   background: var(--slate-050);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1037,10 +1083,16 @@
   gap: 8px;
 }
 
-.mon-device-mini {
-  display: flex;
+/* The panel head, the asset text and the action were three flex siblings, so
+   the label sat between them and squeezed the text on a phone. */
+.mon-panel.mon-device-mini {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 6px 12px;
+}
+.mon-panel.mon-device-mini > .mon-panel__head {
+  grid-column: 1 / -1;
 }
 
 .mon-device-mini__thumb {
@@ -1397,7 +1449,10 @@
   color: var(--muted);
 }
 
+/* Inside the grid panel the list could not shrink below its content, so the
+   panel clipped the last rows instead of scrolling them. */
 .notif__list {
+  min-height: 0;
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -1552,12 +1607,18 @@
 
 .mon-inbox__body {
   display: grid;
+  /* Without an explicit track the implicit column is sized by the widest
+     child (a nowrap meta row or a long alert name), so on a phone the body
+     painted 31 px past the card edge. Pin the track to the body box. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   min-width: 0;
 }
 
 .mon-inbox__title {
   flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   padding: 0;
   text-align: left;
@@ -1578,9 +1639,29 @@
 
 .mon-inbox__text {
   margin: 0;
+  overflow-wrap: anywhere;
   font-size: 0.79rem;
   line-height: 1.45;
   color: var(--ink-700);
+}
+
+/* Without a delimiter the timestamp, the read state and the asset read as one
+   sentence; the incumbent meta rows separate items with a middot. The date and
+   the relative time stay unbroken; the canonical asset id is the token that has
+   to give way, so it may wrap inside the card instead of past its edge. */
+.mon-inbox__meta > span {
+  white-space: nowrap;
+}
+
+.mon-inbox__meta > span.mono:last-child:not(:only-child) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mon-inbox__meta > span + span::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--muted);
 }
 
 .mon-inbox__meta {
@@ -1629,6 +1710,47 @@
 .mon-settings {
   display: grid;
   gap: 22px;
+}
+
+/* The monitoring forms predate the shared input shells: without this rule their
+ * text/number/select controls fall back to browser defaults, which look boxed
+ * and square next to the compact `.mon-input` thresholds inside the same form. */
+.mon-settings .field input:not([type="checkbox"]):not([type="radio"]):not(.mon-input),
+.mon-settings .field select,
+.mon-settings .field textarea,
+.mon-dialog .field input:not([type="checkbox"]):not([type="radio"]):not(.mon-input),
+.mon-dialog .field select,
+.mon-dialog .field textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink-900);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.mon-settings .field input:not([type="checkbox"]):not([type="radio"]):not(.mon-input):focus-visible,
+.mon-settings .field select:focus-visible,
+.mon-settings .field textarea:focus-visible,
+.mon-dialog .field input:focus-visible,
+.mon-dialog .field select:focus-visible,
+.mon-dialog .field textarea:focus-visible {
+  border-color: var(--teal-600);
+  outline: 2px solid var(--teal-600);
+  outline-offset: 1px;
+}
+
+.mon-settings .field input:disabled,
+.mon-settings .field select:disabled,
+.mon-settings .field textarea:disabled,
+.mon-dialog .field input:disabled,
+.mon-dialog .field select:disabled,
+.mon-dialog .field textarea:disabled {
+  color: var(--muted);
+  background: var(--slate-050);
 }
 
 .mon-settings__block {
@@ -1713,10 +1835,17 @@
 
 .mon-thresholds {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 82px 82px;
+  grid-template-columns: minmax(0, 1fr) 72px 72px;
   align-items: center;
   gap: 6px 8px;
   max-width: 100%;
+}
+
+/* Metric ids such as "Almacenamiento" are single long words: the label must be
+ * allowed to wrap instead of sliding under the value inputs. */
+.mon-thresholds .mon-settings-table__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mon-thresholds .mon-input {
@@ -1825,6 +1954,9 @@
 }
 
 .mon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 9px;
   font-size: 0.72rem;
   color: var(--muted);
@@ -1852,7 +1984,8 @@
 }
 
 .mon-toggle--day {
-  min-width: 28px;
+  justify-content: center;
+  min-width: 34px;
   text-align: center;
   font-family: var(--font-mono);
 }
@@ -1888,6 +2021,17 @@
 .mon-input:disabled {
   color: var(--muted);
   background: var(--slate-050);
+}
+
+/* The series metric picker is a labelled select, not a compact threshold box:
+ * a fixed 82px width clipped the option label to "Laten…". */
+.mon-series-select {
+  width: auto;
+  max-width: 240px;
+}
+
+.mon-series-select .select-field {
+  width: 100%;
 }
 
 .mon-switch {
@@ -1949,10 +2093,13 @@
   max-width: 560px;
 }
 
+/* The two settings forms are columns of paired fields. The window form also
+   holds a 16-asset toggle group, which auto-fit turned into a narrow column
+   that overflowed its panel; the wide rows span both columns on a desktop. */
 .mon-exception-form,
 .mon-window-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
   gap: 12px;
   padding: 14px;
@@ -1961,12 +2108,9 @@
   border-radius: var(--radius-sm);
 }
 
-.mon-window-form {
-  grid-template-columns: minmax(180px, 1.2fr) minmax(120px, auto) minmax(150px, 1fr);
-}
-
 .mon-window-form__times {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr) minmax(180px, 1.4fr);
   gap: 10px;
 }
 
@@ -1974,13 +2118,46 @@
   width: 96px;
 }
 
+/* The asset reference field holds a UUID, not a compact threshold value. */
+.mon-input--wide {
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .mon-window-form__times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .mon-window-form > .btn {
   justify-self: start;
 }
 
-.mon-exception-form .field input:not(.mon-input),
+/* The exception form is one column of paired fields; auto-fit scattered the
+   single fields into extra columns and broke the reading order. */
+.mon-exception-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mon-window-form > .mon-panel__head,
+.mon-window-form > .mon-window-form__assets,
+.mon-window-form > .mon-window-form__days,
+.mon-window-form > .mon-settings__actions {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 721px) {
+  .mon-window-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mon-window-form__times {
+    grid-column: 1 / -1;
+  }
+}
+
+.mon-exception-form .field input:not(.mon-input):not([type="checkbox"]):not([type="radio"]),
 .mon-exception-form .field select,
-.mon-window-form .field input:not(.mon-input),
+.mon-window-form .field input:not(.mon-input):not([type="checkbox"]):not([type="radio"]),
 .mon-window-form .field select {
   width: 100%;
   min-width: 0;
@@ -2005,6 +2182,13 @@
   flex: 0 0 auto;
 }
 
+@media (max-width: 720px) {
+  .mon-exception-form--silence > .field,
+  .mon-exception-form--silence > .mon-hours {
+    flex: 1 1 100%;
+  }
+}
+
 .mon-hours {
   display: flex;
   flex-wrap: wrap;
@@ -2015,10 +2199,6 @@
 .mon-hours__field {
   display: grid;
   gap: 3px;
-  font-size: 0.7rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 
 .mon-channel {
@@ -2146,12 +2326,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .mon-window-form {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 720px) {
+  /* Eight columns in 760px squeezed names to one word per line. */
+  .mon-table {
+    min-width: 900px;
+  }
+
+  .mon-table thead th:first-child,
+  .mon-table__row td:first-child {
+    min-width: 220px;
+  }
+
   .mon-head {
     align-items: flex-start;
   }
@@ -2196,6 +2383,14 @@
 
   .mon-kpi__hint {
     display: none;
+  }
+
+  .mon-panel.mon-device-mini {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mon-device-mini__actions .btn {
+    width: 100%;
   }
 
   .mon-inbox__item {
