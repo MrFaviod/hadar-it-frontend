@@ -8,6 +8,15 @@
   max-width: 880px;
 }
 
+.conversation__context {
+  display: grid;
+  gap: 6px;
+}
+
+.conversation__context .btn {
+  justify-self: start;
+}
+
 .conversation__context,
 .conversation__select {
   min-width: 0;
@@ -30,6 +39,7 @@
 
 .conversation__log {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 12px;
   padding: 18px;
@@ -73,6 +83,8 @@
 .conversation__meta,
 .conversation__help {
   margin: 0;
+  /* Server values (extension digests, filenames) arrive as single long tokens. */
+  overflow-wrap: anywhere;
   color: var(--muted);
 }
 
@@ -95,6 +107,7 @@
 
 .conversation__section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -116,6 +129,7 @@
 .conversation__result {
   display: flex;
   flex-wrap: wrap;
+  min-width: 0;
   gap: 8px 12px;
   align-items: center;
   padding: 10px 12px;
@@ -368,6 +382,7 @@
 
 .conversation__body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 16px;
 }
@@ -513,6 +528,12 @@
 @media (prefers-reduced-motion: no-preference) {
   .conversation__turn {
     transition: opacity var(--dur-fast) var(--ease-out);
+  }
+}
+
+@media (max-width: 700px) {
+  .conversation .btn--small {
+    min-height: 44px;
   }
 }
 

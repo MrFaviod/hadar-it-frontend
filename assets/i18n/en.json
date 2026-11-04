@@ -936,7 +936,7 @@
   "ui.chat.provider_label": "Provider",
   "ui.chat.model_label": "Model",
   "ui.chat.models_none": "No models announced",
-  "ui.chat.attachment_lock": "Remove the pending attachments or send them before changing the conversation, engine, provider or model.",
+  "ui.chat.attachment_lock": "Remove the pending attachments or send them before changing the engine, provider or model.",
   "ui.chat.provider_help": "The organization provider uses the company's daily budget. Your key does not spend the company budget: its usage is recorded separately.",
   "ui.chat.profile_help": "Changing profile keeps this conversation's ITSM messages and only restarts the engine's native session. It does not change the global Hermes profile.",
   "ui.chat.discovery_errors_aria": "Engine discovery errors",

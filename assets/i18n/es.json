@@ -936,7 +936,7 @@
   "ui.chat.provider_label": "Proveedor",
   "ui.chat.model_label": "Modelo",
   "ui.chat.models_none": "Sin modelos anunciados",
-  "ui.chat.attachment_lock": "Quita los adjuntos pendientes o envíalos para cambiar de conversación, motor, proveedor o modelo.",
+  "ui.chat.attachment_lock": "Quita los adjuntos pendientes o envíalos antes de cambiar de motor, proveedor o modelo.",
   "ui.chat.provider_help": "El proveedor de la organización usa el presupuesto diario de la empresa. Tu clave no consume el presupuesto de la empresa: su consumo se registra aparte.",
   "ui.chat.profile_help": "Cambiar de perfil conserva los mensajes ITSM de esta conversación y reinicia solo la sesión nativa del motor. No cambia el perfil global de Hermes.",
   "ui.chat.discovery_errors_aria": "Errores de descubrimiento de motores",
