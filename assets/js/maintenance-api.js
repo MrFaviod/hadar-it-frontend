@@ -58,11 +58,11 @@
   }
 
   function page() {
-    return { items: [], total: 0, limit: DEFAULT_LIMIT, offset: 0, loaded: false, loading: false, error: '', epoch: nextEpoch(), controller: null };
+    return { items: [], total: 0, limit: DEFAULT_LIMIT, offset: 0, loaded: false, loading: false, error: '', errorKey: '', epoch: nextEpoch(), controller: null };
   }
 
   function single() {
-    return { id: '', record: null, loaded: false, loading: false, error: '', missing: false, epoch: nextEpoch(), controller: null, prepare: null };
+    return { id: '', record: null, loaded: false, loading: false, error: '', errorKey: '', errorStatus: 0, retryable: false, missing: false, epoch: nextEpoch(), controller: null, prepare: null };
   }
 
   function createState() {
@@ -87,6 +87,7 @@
         loading: false,
         loaded: false,
         error: '',
+        errorKey: '',
         epoch: nextEpoch(),
         controller: null,
         overdue: null,
@@ -427,8 +428,33 @@
     });
   }
 
+  /* Server text is never painted as-is: the envelope may carry an English domain
+   * message even when it names a translation key. Known statuses map to the
+   * catalogue, and anything unrecognised falls back to the maintenance copy. */
+  const STATUS_MESSAGE_KEYS = {
+    401: 'ui.errors.unauthorized',
+    403: 'ui.errors.forbidden',
+    404: 'ui.errors.not_found',
+    409: 'ui.errors.conflict',
+    422: 'ui.errors.validation_error',
+    429: 'ui.errors.too_many_requests',
+    503: 'ui.errors.unavailable'
+  };
+  function errorStatus(error) {
+    const value = Number(error && error.status);
+    return Number.isFinite(value) ? value : 0;
+  }
+  function errorRetryable(status) {
+    return status === 0 || status === 408 || status === 425 || status === 429 || status >= 500;
+  }
   function errorMessage(error) {
-    return (error && (error.message || error.detail)) || T('ui.maintenance.error.fallback');
+    const key = statusMessageKey(errorStatus(error));
+    return (key && T(key)) || T('ui.maintenance.error.fallback');
+  }
+  /* The catalogue key for a known status, so a surface that has to survive a
+   * locale switch (the incident detail) can store the key instead of a sentence. */
+  function statusMessageKey(status) {
+    return STATUS_MESSAGE_KEYS[status] || '';
   }
 
   window.AssetMaintenanceApi = {
@@ -476,6 +502,12 @@
             interventions: api.interventions ? api.interventions.error : '',
             incidents: api.incidents ? api.incidents.error : ''
           },
+          errorKeys: {
+            templates: api.templates ? api.templates.errorKey : '',
+            plans: api.plans ? api.plans.errorKey : '',
+            interventions: api.interventions ? api.interventions.errorKey : '',
+            incidents: api.incidents ? api.incidents.errorKey : ''
+          },
           totals: {
             templates: api.templates ? api.templates.total : 0,
             plans: api.plans ? api.plans.total : 0,
@@ -521,7 +553,7 @@
       maintenanceVersion() {
         return this.maintenanceApi ? this.maintenanceApi.writeVersion : 0;
       },
-      async maintenanceRead(target, path, options, apply) {
+      async maintenanceRead(target, path, options, apply, onFailure) {
         if (!this.maintenanceAvailable) return false;
         const token = this.maintenanceToken();
         const epoch = nextEpoch();
@@ -532,6 +564,7 @@
         target.controller = controller;
         target.loading = true;
         target.error = '';
+        target.errorKey = '';
         try {
           const payload = await window.AssetAccess.request(this, path, Object.assign({}, options || {}, { signal: controller ? controller.signal : undefined }));
           if (epoch !== target.epoch || version !== this.maintenanceVersion() || !this.maintenanceOwns(target, token)) return false;
@@ -544,7 +577,13 @@
             this.clearMaintenanceState();
             return false;
           }
+          target.errorStatus = errorStatus(error);
+          target.retryable = errorRetryable(target.errorStatus);
           target.error = errorMessage(error);
+          // The strip resolves this key on render, so an alert already on screen
+          // follows a language switch instead of keeping the failed read's locale.
+          target.errorKey = statusMessageKey(target.errorStatus) || 'ui.maintenance.error.fallback';
+          if (onFailure) onFailure(error, target.errorStatus);
           return false;
         } finally {
           if (epoch === target.epoch && this.maintenanceTokenOpen(token) && target.controller === controller) {
@@ -638,6 +677,7 @@
         overview.controller = controller;
         overview.loading = true;
         overview.error = '';
+        overview.errorKey = '';
         const signal = controller ? controller.signal : undefined;
         const requests = [
           ['overdue', '/maintenance/plans?state=overdue&limit=1'],
@@ -660,6 +700,20 @@
             if (result.status !== 'fulfilled') return;
             overview[requests[index][0]] = count(result.value && result.value.total, 0);
           });
+          const failed = results.filter((result) => result.status !== 'fulfilled');
+          // A facet that never arrived stays unknown and is reported: the cards must
+          // not pass the filtered list off as an estate count, and the surface has to
+          // say the counts are unavailable instead of quietly keeping a gap.
+          if (failed.length) {
+            // The sentence is stored as its catalogue key, not as a translated
+            // string, so an alert already on screen follows a locale switch
+            // instead of keeping the language the failing read happened in.
+            overview.errorKey = statusMessageKey(errorStatus(failed[0].reason)) || 'ui.maintenance.error.fallback';
+            overview.loaded = false;
+            return false;
+          }
+          overview.error = '';
+          overview.errorKey = '';
           overview.loaded = true;
           return true;
         } finally {
@@ -813,12 +867,55 @@
         const incidentId = text(id);
         if (!incidentId) return false;
         const target = this.maintenanceApi.incidentDetail;
-        return this.maintenanceRead(target, '/incidents/' + encodeURIComponent(incidentId), {}, (payload) => {
+        // The routed id owns the panel. A different id starts a new read, so the
+        // previous record, its resolution token and its failure notes must go before
+        // the request leaves: nothing of the old incident may paint under the new id.
+        const sameId = target.id === incidentId;
+        if (!sameId) {
           target.id = incidentId;
+          target.record = null;
+          target.loaded = false;
+          target.prepare = null;
+        }
+        // Every read owns its own outcome. A previous failure classification must not
+        // survive a fresh one, or a 404 followed by a 500 keeps claiming the record is
+        // missing while painting the retryable message. A same-id reload keeps the
+        // record already shown (stale-while-failed) until this read replaces it.
+        target.missing = false;
+        target.error = '';
+        target.errorKey = '';
+        target.errorStatus = 0;
+        target.retryable = false;
+        return this.maintenanceRead(target, '/incidents/' + encodeURIComponent(incidentId), {}, (payload) => {
           target.record = mapIncident(payload);
           target.loaded = true;
           target.missing = false;
+          target.error = '';
+          target.errorKey = '';
+          target.errorStatus = 0;
+          target.retryable = false;
           target.prepare = null;
+        }, (error, status) => {
+          if (status === 400 || status === 404 || status === 422) {
+            // The request names one incident and nothing else, so a rejected or
+            // unknown id cannot be retried into existence: this is a missing record.
+            target.record = null;
+            target.loaded = false;
+            target.missing = true;
+            target.prepare = null;
+            target.error = '';
+            target.errorKey = '';
+            target.retryable = false;
+            return;
+          }
+          // The sentence is stored as a catalog key, not a translated string, so it
+          // follows a locale switch made while it is on screen. A retryable failure
+          // says the read can be retried; any other known status keeps its own
+          // explanation (a denied or conflicting read is not a missing record).
+          target.error = '';
+          target.errorKey = target.retryable
+            ? 'ui.incidents.detail.error_retryable'
+            : (statusMessageKey(status) || 'ui.maintenance.error.fallback');
         });
       },
       async createMaintenanceIncident(payload) {

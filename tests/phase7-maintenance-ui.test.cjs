@@ -57,7 +57,7 @@ test('phase7 adapter exposes no prototype maintenance data before authorization'
   assert.equal(app.maintenancePlanning.incidents.length, 0, 'no incident fallback while signed out');
 });
 
-test('phase7 plan, intervention and incident lists are canonical server DTOs and preserve server errors', async () => {
+test('phase7 plan, intervention and incident lists are canonical server DTOs and describe failures without raw server text', async () => {
   const { app, c } = setup();
   const calls = server(app, c);
   assert.equal(await app.loadMaintenancePlans({ reset: true }), true);
@@ -121,7 +121,8 @@ test('phase7 plan, intervention and incident lists are canonical server DTOs and
 
   c.AssetAccess.request = async () => { throw Object.assign(new Error('Servidor no disponible'), { status: 500 }); };
   assert.equal(await app.loadMaintenancePlans({ reset: true }), false);
-  assert.equal(app.maintenanceApi.plans.error, 'Servidor no disponible');
+  assert.equal(app.maintenanceApi.plans.error, c.ItsmI18n.t('ui.maintenance.error.fallback'));
+  assert.notEqual(app.maintenanceApi.plans.error, 'Servidor no disponible', 'raw server text is not painted');
   assert.equal(app.maintenancePlanning.plans.length, 1, 'a failed reload keeps the last canonical page');
 });
 

@@ -6543,5 +6543,6 @@
   "ui.infra.monitor.coverage": "Discloses how many devices the bounded monitoring read examined out of the server total.",
   "ui.infra.monitor.updated": "Freshness stamp of the last successful monitoring read, with the local time.",
   "ui.infra.monitor.not_loaded": "Says this particular asset has no measured reading in the loaded monitoring page.",
-  "ui.infra.monitor.error": "Error shown when the monitoring read failed; the last observation is kept visible."
+  "ui.infra.monitor.error": "Error shown when the monitoring read failed; the last observation is kept visible.",
+  "ui.incidents.detail.error_retryable": "Maintenance and incidents copy: No se pudo cargar el incidente. Vuelve a intentarlo."
 }

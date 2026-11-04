@@ -113,6 +113,17 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Dialogs opt into the two-column grid explicitly. Below the admin form
+ * breakpoint that grid must stack like `.form-grid` does, otherwise the
+ * technician picker and its placeholder are squeezed into a 165px column on a
+ * phone and the dialog keeps two unreadable halves. Scoped to the modal: page
+ * forms keep their own layout. */
+@media (max-width: 720px) {
+  .modal .form-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .input-shell--plain {
   display: flex;
   align-items: center;

@@ -113,6 +113,7 @@
         },
         dialogs: { intervention: false, complete: false, incident: false, postpone: false },
         active: { assetId: '', interventionId: '', planId: '', planLabel: '', incidentAsset: '' },
+        pendingState: '',
         reloadTimer: null
       };
     },
@@ -159,13 +160,28 @@
       stats() {
         return Engine.stats(this.maintenance, this.assets, today());
       },
+      // Estate counts come from the overview counts (the same source as the nav
+      // badge) so a view filter cannot rewrite what the whole installation holds;
+      // the client stats stay as the fallback until the first overview read lands.
       kpis() {
+        const overview = this.overview || {};
         const stats = this.stats;
+        // The cards describe the whole estate, so an estate count that never
+        // arrived is unknown. Substituting the counts of the filtered list this
+        // view happens to hold would invent a number the server never sent.
+        const estate = (key) => (Number.isFinite(overview[key]) ? overview[key] : null);
+        const show = (value) => (value === null ? '—' : String(value).padStart(2, '0'));
+        const tone = (value, active) => (value === null ? 'neutral' : (value ? active : 'ok'));
+        const overdue = estate('overdue');
+        const soon = estate('upcoming');
+        const inProgress = estate('inProgress');
+        const openIncidents = estate('openIncidents');
+        const criticalIncidents = Number.isFinite(overview.criticalIncidents) ? overview.criticalIncidents : 0;
         return [
-          { id: 'overdue', label: T('ui.maintenance.kpi.overdue'), value: stats.overdue, hint: T('ui.maintenance.kpi.overdue_hint'), tone: stats.overdue ? 'down' : 'ok' },
-          { id: 'soon', label: T('ui.maintenance.kpi.soon'), value: stats.soon, hint: T('ui.maintenance.kpi.soon_hint'), tone: stats.soon ? 'warn' : 'ok' },
-          { id: 'progress', label: T('ui.maintenance.kpi.progress'), value: stats.inProgress, hint: T('ui.maintenance.kpi.progress_hint', { count: stats.planned }), tone: 'neutral' },
-          { id: 'incidents', label: T('ui.maintenance.kpi.incidents'), value: stats.openIncidents, hint: stats.criticalIncidents ? T('ui.maintenance.kpi.incidents_hint', { count: stats.criticalIncidents }) : T('ui.maintenance.kpi.incidents_none'), tone: stats.criticalIncidents ? 'down' : 'neutral' }
+          { id: 'overdue', label: T('ui.maintenance.kpi.overdue'), value: overdue, display: show(overdue), hint: T('ui.maintenance.kpi.overdue_hint'), tone: tone(overdue, 'down') },
+          { id: 'soon', label: T('ui.maintenance.kpi.soon'), value: soon, display: show(soon), hint: T('ui.maintenance.kpi.soon_hint'), tone: tone(soon, 'warn') },
+          { id: 'progress', label: T('ui.maintenance.kpi.progress'), value: inProgress, display: show(inProgress), hint: T('ui.maintenance.kpi.progress_hint', { count: stats.planned }), tone: tone(inProgress, 'neutral') },
+          { id: 'incidents', label: T('ui.maintenance.kpi.incidents'), value: openIncidents, display: show(openIncidents), hint: criticalIncidents ? T('ui.maintenance.kpi.incidents_hint', { count: criticalIncidents }) : T('ui.maintenance.kpi.incidents_none'), tone: tone(openIncidents, 'down') }
         ];
       },
       agendaRows() {
@@ -231,9 +247,24 @@
       loading() {
         return !!((this.plansPage && this.plansPage.loading) || (this.interventionsPage && this.interventionsPage.loading) || (this.incidentsPage && this.incidentsPage.loading));
       },
-      error() {
+      listError() {
+        // A failed list read is why a panel has nothing to show; a failed estate
+        // count only leaves the KPI cards unknown, so it must not hide the list.
+        const incidents = [
+          (this.planning.errorKeys || {}).plans,
+          (this.planning.errorKeys || {}).interventions,
+          (this.planning.errorKeys || {}).incidents
+        ].find((key) => !!key);
+        if (incidents) return T(incidents);
         const errors = this.planning.errors || {};
-        return errors.plans || errors.interventions || errors.incidents || (this.overview && this.overview.error) || '';
+        return errors.plans || errors.interventions || errors.incidents || '';
+      },
+      error() {
+        // The estate alert keeps its catalogue key, so it is resolved on render:
+        // a language switch repaints it instead of leaving the failed read's locale.
+        const overview = this.overview || {};
+        const estate = overview.errorKey ? T(overview.errorKey) : (overview.error || '');
+        return this.listError || estate || '';
       },
       filterCount() {
         return ['query', 'from', 'to'].filter((key) => this.filters[key]).length +
@@ -249,11 +280,30 @@
       openPlan() {
         const detail = this.app.maintenanceApi && this.app.maintenanceApi.planDetail;
         return detail && detail.record ? detail.record : null;
+      },
+      activeKpi() {
+        const state = this.filters.state;
+        if (!state) return '';
+        if (this.view === 'agenda' && state === 'overdue') return 'overdue';
+        if (this.view === 'agenda' && state === 'upcoming') return 'soon';
+        if (this.view === 'interventions' && state === 'in_progress') return 'progress';
+        if (this.view === 'incidents' && state === 'open') return 'incidents';
+        return '';
+      },
+      pagerVisible() {
+        if (this.view === 'alerts' || this.loading || this.listError) return false;
+        if (this.view === 'agenda') return this.groups.length > 0;
+        if (this.view === 'interventions') return this.interventions.length > 0;
+        return this.incidents.length > 0;
       }
     },
     watch: {
       view(value) {
-        this.filters.state = '';
+        // A KPI click switches the view and applies its own due/status filter.
+        // The reset belongs to the user switching tabs, not to that filter.
+        const pending = this.pendingState;
+        this.pendingState = '';
+        this.filters.state = pending;
         this.filters.type = '';
         this.filters.priority = '';
         const prefs = Object.assign({}, this.maintenance.prefs, { defaultView: value });
@@ -347,7 +397,14 @@
       loadView() {
         if (!this.app.authenticated) return Promise.resolve(false);
         if (this.view === 'agenda') return this.app.loadMaintenancePlans({ reset: true, filters: this.planFilterParams() });
-        if (this.view === 'interventions') return this.app.loadMaintenanceInterventions({ reset: true, filters: this.interventionFilterParams() });
+        if (this.view === 'interventions') {
+          // The accumulated cost belongs to this view, so it loads with it and
+          // follows the same filters instead of waiting for a hidden refresh.
+          return Promise.all([
+            this.app.loadMaintenanceInterventions({ reset: true, filters: this.interventionFilterParams() }),
+            this.app.loadMaintenanceCosts({ filters: this.interventionFilterParams() })
+          ]).then((results) => results[0]);
+        }
         if (this.view === 'incidents') return this.app.loadMaintenanceIncidents({ reset: true, filters: this.incidentFilterParams() });
         return Promise.resolve(true);
       },
@@ -406,23 +463,18 @@
       },
       filterByKpi(kpi) {
         this.filters.query = '';
-        if (kpi.id === 'overdue') {
-          this.view = 'agenda';
-          this.filters.state = 'overdue';
+        if (kpi.id === 'overdue') return this.applyKpi('agenda', 'overdue');
+        if (kpi.id === 'soon') return this.applyKpi('agenda', 'upcoming');
+        if (kpi.id === 'progress') return this.applyKpi('interventions', 'in_progress');
+        return this.applyKpi('incidents', 'open');
+      },
+      applyKpi(view, state) {
+        if (this.view === view) {
+          this.filters.state = state;
           return;
         }
-        if (kpi.id === 'soon') {
-          this.view = 'agenda';
-          this.filters.state = 'upcoming';
-          return;
-        }
-        if (kpi.id === 'progress') {
-          this.view = 'interventions';
-          this.filters.state = 'in_progress';
-          return;
-        }
-        this.view = 'incidents';
-        this.filters.state = 'open';
+        this.pendingState = state;
+        this.view = view;
       },
       openAsset(id) {
         this.app.setHash('#/activo/' + encodeURIComponent(id));
@@ -523,9 +575,9 @@
         </header>
 
         <div class="maint-kpis" data-od-id="maint-kpis">
-          <button v-for="kpi in kpis" :key="kpi.id" type="button" class="maint-kpi" :class="'maint-kpi--' + kpi.tone" @click="filterByKpi(kpi)">
+          <button v-for="kpi in kpis" :key="kpi.id" type="button" class="maint-kpi" :class="['maint-kpi--' + kpi.tone, { 'is-active': activeKpi === kpi.id }]" :aria-pressed="activeKpi === kpi.id" @click="filterByKpi(kpi)">
             <span class="maint-kpi__label">{{ kpi.label }}</span>
-            <span class="maint-kpi__value mono">{{ String(kpi.value).padStart(2, '0') }}</span>
+            <span class="maint-kpi__value mono">{{ kpi.display }}</span>
             <span class="maint-kpi__hint">{{ kpi.hint }}</span>
           </button>
         </div>
@@ -538,6 +590,8 @@
         </div>
 
         <div v-if="error" class="form-alert" role="alert">{{ error }}</div>
+
+        <div v-if="loading" class="maint-loading" role="status">{{ $t('ui.maintenance.loading') }}</div>
 
         <div class="maint-toolbar" data-od-id="maint-filters">
           <div class="maint-toolbar__row">
@@ -623,7 +677,7 @@
           </div>
         </div>
 
-        <div v-if="view === 'agenda'" class="maint-body" data-od-id="maint-agenda" role="tabpanel">
+        <div v-if="view === 'agenda'" class="maint-body" data-od-id="maint-agenda" role="tabpanel" :aria-busy="loading ? 'true' : 'false'">
           <div v-for="group in groups" :key="group.id" class="maint-group">
             <header class="maint-group__head">
               <h2 class="maint-group__title">{{ group.label }} <span class="mono">{{ String(group.rows.length).padStart(2, '0') }}</span></h2>
@@ -652,14 +706,14 @@
               </article>
             </div>
           </div>
-          <div v-if="!groups.length && !loading && !error" class="empty-state maint-empty">
-            <span class="maint-empty__icon"><app-icon name="refresh"></app-icon></span>
+          <div v-if="!groups.length && !loading && !listError" class="empty-state maint-empty">
+            <span class="maint-empty__icon"><app-icon name="clock"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
             <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.show_agenda') }}</button>
           </div>
         </div>
 
-        <div v-if="view === 'interventions'" class="maint-body" data-od-id="maint-interventions" role="tabpanel">
+        <div v-if="view === 'interventions'" class="maint-body" data-od-id="maint-interventions" role="tabpanel" :aria-busy="loading ? 'true' : 'false'">
           <div class="maint-cost-strip" v-if="costs">
             <span>{{ $t('ui.maintenance.costs.total') }} <strong class="mono">{{ money(costs.total) }}</strong></span>
             <span class="cell-muted">{{ $t('ui.maintenance.costs.count', { count: costs.count || 0 }) }}</span>
@@ -686,14 +740,14 @@
               </div>
             </article>
           </div>
-          <div v-if="!interventions.length && !loading && !error" class="empty-state maint-empty">
+          <div v-if="!interventions.length && !loading && !listError" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="activity"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
             <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.remove_filters') }}</button>
           </div>
         </div>
 
-        <div v-if="view === 'incidents'" class="maint-body" data-od-id="maint-incidents" role="tabpanel">
+        <div v-if="view === 'incidents'" class="maint-body" data-od-id="maint-incidents" role="tabpanel" :aria-busy="loading ? 'true' : 'false'">
           <div class="maint-list maint-list--cards">
             <article v-for="item in incidents" :key="item.id" class="maint-incident" :data-maint-incident="item.id">
               <header class="maint-incident__head">
@@ -702,7 +756,7 @@
                 <span class="mono">{{ item.id }}</span>
               </header>
               <button type="button" class="maint-incident__title text-button" data-maint-action="open" @click="openIncident(item.id)">{{ item.title }}</button>
-              <p class="maint-incident__description">{{ item.description }}</p>
+              <p v-if="item.description && item.description !== item.title" class="maint-incident__description">{{ item.description }}</p>
               <dl class="maint-incident__meta">
                 <dt>{{ $t('ui.maintenance.incident.primary_asset') }}</dt><dd>{{ item.primaryAssetQuickCode || item.primaryAssetId }} · {{ item.primaryAssetName }}</dd>
                 <dt>{{ $t('ui.maintenance.field.responsible') }}</dt><dd>{{ personLabel(item.responsiblePersonId, item.responsibleName) }}</dd>
@@ -715,14 +769,14 @@
               </footer>
             </article>
           </div>
-          <div v-if="!incidents.length && !loading && !error" class="empty-state maint-empty">
+          <div v-if="!incidents.length && !loading && !listError" class="empty-state maint-empty">
             <span class="maint-empty__icon"><app-icon name="alert"></app-icon></span>
             <h3>{{ emptyMessage }}</h3>
             <button v-if="filterCount" type="button" class="text-button" @click="clearFilters">{{ $t('ui.maintenance.empty.remove_filters') }}</button>
           </div>
         </div>
 
-        <div v-if="view === 'alerts'" class="maint-body" data-od-id="maint-alerts" data-maint-alerts-demo role="tabpanel">
+        <div v-if="view === 'alerts'" class="maint-body" data-od-id="maint-alerts" data-maint-alerts-demo role="tabpanel" :aria-busy="loading ? 'true' : 'false'">
           <div class="maint-note maint-note--preview">
             <app-icon name="info"></app-icon>
             <p><strong>{{ $t('ui.maintenance.alerts.preview_title') }}</strong> {{ $t('ui.maintenance.alerts.preview_body') }}</p>
@@ -754,7 +808,7 @@
           </div>
         </div>
 
-        <div v-if="view !== 'alerts'" class="maint-pager">
+        <div v-if="pagerVisible" class="maint-pager">
           <span class="cell-muted">{{ $t('ui.maintenance.pager.range', { loaded: currentPage() ? currentPage().items.length : 0, total: currentPage() ? currentPage().total : 0 }) }}</span>
           <button v-if="view === 'agenda' && hasMore()" type="button" class="btn btn--ghost btn--small" data-maint-more="plans" :disabled="loading" @click="loadMore">
             <app-icon name="chevron-right"></app-icon> {{ $t('ui.maintenance.load_more') }}
@@ -794,16 +848,32 @@
     computed: {
       incident() {
         const detail = this.app.maintenanceDetail;
-        return (detail && detail.record) || null;
+        const record = (detail && detail.record) || null;
+        if (!record) return null;
+        // Never paint a record that does not belong to the routed id: a rejected
+        // id must show the unavailable state, not the previous incident.
+        const routeId = (this.app.route && this.app.route.incidentId) || '';
+        if (routeId && detail.id && detail.id !== routeId) return null;
+        return record;
       },
       loading() {
         return !!(this.app.maintenanceDetail && this.app.maintenanceDetail.loading);
       },
       missing() {
-        return !!(this.app.maintenanceDetail && this.app.maintenanceDetail.missing);
+        const detail = this.app.maintenanceDetail;
+        return !!(detail && detail.missing);
+      },
+      retryable() {
+        const detail = this.app.maintenanceDetail;
+        return !!(detail && detail.retryable) && !this.incident;
       },
       error() {
-        return (this.app.maintenanceDetail && this.app.maintenanceDetail.error) || '';
+        const detail = this.app.maintenanceDetail;
+        if (!detail) return '';
+        // A failed read may carry a catalog key so the message follows the locale
+        // the page is painted in, not the one that was active when it failed.
+        if (detail.errorKey) return T(detail.errorKey);
+        return detail.error || '';
       },
       preparedState() {
         const detail = this.app.maintenanceDetail;
@@ -849,6 +919,12 @@
       priorityMeta,
       back() {
         this.app.setHash('#/mantenimiento');
+      },
+      retry() {
+        const id = (this.app.route && this.app.route.incidentId) || '';
+        if (!id || this.loading) return false;
+        this.actionError = '';
+        return this.app.loadMaintenanceIncident(id);
       },
       openAsset(id) {
         this.app.setHash('#/activo/' + encodeURIComponent(id));
@@ -917,7 +993,7 @@
           <div class="maint-head__copy">
             <div class="eyebrow"><span class="maint-badge" :class="'is-' + priorityMeta(incident.priority).tone">{{ priorityMeta(incident.priority).label }}</span> <span class="maint-status" :class="'is-' + incidentStateMeta(incident.status).tone">{{ incidentStateMeta(incident.status).label }}</span> <span class="mono">{{ incident.id }}</span></div>
             <h1 id="incident-title">{{ incident.title }}</h1>
-            <p class="page-sub">{{ incident.description }}</p>
+            <p v-if="incident.description && incident.description !== incident.title" class="page-sub">{{ incident.description }}</p>
             <dl class="maint-incident__head_meta">
               <div><dt>{{ $t('ui.maintenance.incident.primary_asset') }}</dt><dd><button type="button" class="maint-link" @click="openAsset(primary.id)">{{ primary.quickCode || primary.id }} · {{ primary.name }}</button></dd></div>
               <div><dt>{{ $t('ui.maintenance.field.responsible') }}</dt><dd>{{ technicianLabel(incident.responsiblePersonId, incident.responsibleName) }}</dd></div>
@@ -929,7 +1005,7 @@
           <div class="maint-head__actions">
             <button v-if="canEdit && open" type="button" class="btn btn--primary" data-od-id="incident-new-intervention" @click="dialog = true"><app-icon name="plus"></app-icon> {{ $t('ui.maintenance.action.new_intervention') }}</button>
             <button v-if="canEdit && open && incident.status === 'open'" type="button" class="btn btn--secondary" data-maint-action="acknowledge" :disabled="busy" @click="command('acknowledge')">{{ $t('ui.incidents.detail.acknowledge') }}</button>
-            <button v-if="canEdit && canClose" type="button" class="btn btn--secondary" data-maint-action="close" :disabled="busy" @click="command('close')">{{ $t('ui.incidents.detail.close') }}</button>
+            <button v-if="canEdit && canClose" type="button" :class="['btn', open ? 'btn--secondary' : 'btn--primary']" data-maint-action="close" :disabled="busy" @click="command('close')">{{ $t('ui.incidents.detail.close') }}</button>
             <button type="button" class="btn btn--ghost" @click="back"><app-icon name="arrow-left"></app-icon> {{ $t('ui.incidents.detail.back') }}</button>
           </div>
         </header>
@@ -968,7 +1044,7 @@
                 <div>
                   <strong>{{ event.label }}</strong>
                   <span class="mono cell-muted">{{ fmtDateTime(event.at) }}<template v-if="event.actor"> · {{ event.actor }}</template></span>
-                  <p v-if="event.text">{{ event.text }}</p>
+                  <p v-if="event.text && !event.text.startsWith(event.label)">{{ event.text }}</p>
                 </div>
               </li>
             </ol>
@@ -1021,8 +1097,11 @@
         <div v-if="loading" class="loading-state" role="status">{{ $t('ui.incidents.detail.loading') }}</div>
         <div v-else class="empty-state">
           <h3>{{ missing ? $t('ui.incidents.detail.missing_title') : $t('ui.incidents.detail.title') }}</h3>
-          <p>{{ error || $t('ui.incidents.detail.missing_body') }}</p>
-          <button type="button" class="btn btn--secondary" @click="back">{{ $t('ui.incidents.detail.back_to_maintenance') }}</button>
+          <p>{{ retryable ? error : (missing || !error ? $t('ui.incidents.detail.missing_body') : error) }}</p>
+          <div class="maint-panel__actions">
+            <button v-if="retryable" type="button" class="btn btn--primary" data-maint-action="retry" :disabled="loading" @click="retry">{{ $t('ui.common.retry') }}</button>
+            <button type="button" class="btn btn--secondary" @click="back">{{ $t('ui.incidents.detail.back_to_maintenance') }}</button>
+          </div>
         </div>
       </section>
     `

@@ -6543,5 +6543,6 @@
   "ui.infra.monitor.coverage": "Monitoring {examined} of {total}",
   "ui.infra.monitor.updated": "Updated {time}",
   "ui.infra.monitor.not_loaded": "No reading for this asset",
-  "ui.infra.monitor.error": "Monitoring could not be read."
+  "ui.infra.monitor.error": "Monitoring could not be read.",
+  "ui.incidents.detail.error_retryable": "The incident could not be loaded. Try again."
 }

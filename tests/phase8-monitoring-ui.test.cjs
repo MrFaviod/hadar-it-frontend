@@ -653,7 +653,8 @@ test('the incident chooser distinguishes loading, failure and retry', async () =
   await new Promise((resolve) => setTimeout(resolve, 0));
   await c.Vue.nextTick();
   assert.equal(instance.incidentsLoading, false);
-  assert.equal(instance.incidentsError, 'No se pudo consultar mantenimiento.');
+  assert.equal(instance.incidentsError, c.ItsmI18n.t('ui.maintenance.error.fallback'),
+    'the failure is described by a catalog message, not by raw server text');
   assert.equal(instance.incidents.length, 0, 'a failed load never pretends the canonical list is empty');
   fail = false;
   await instance.retryIncidents();

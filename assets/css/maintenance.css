@@ -160,6 +160,7 @@
   border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--slate-300) 40%, transparent);
   color: var(--slate-700);
+  white-space: nowrap;
 }
 
 .maint-tab.is-active .maint-tab__count {
@@ -225,6 +226,17 @@
 .maint-summary {
   font-size: 0.74rem;
   color: var(--muted);
+}
+
+/* --------------------------------------------------------------- loading */
+
+.maint-loading {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 /* ------------------------------------------------------------------ rows */
@@ -602,6 +614,14 @@
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+/* The record id is support metadata, not the card title. */
+.maint-incident__head > .mono {
+  margin-left: auto;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
 }
 
 .maint-incident__title {
@@ -1878,16 +1898,20 @@
 
 @media (max-width: 860px) {
   .maint-row {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 12px;
+    /* The record body keeps the flexible column; a min-content first column
+       squeezed every plan name into one character per line on phones. */
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
   }
 
   .maint-row__due {
     grid-column: 2 / 3;
+    align-items: flex-end;
+    text-align: right;
   }
 
   .maint-row__actions {
-    grid-column: 2 / 3;
+    grid-column: 1 / -1;
     grid-row: auto;
     flex-direction: row;
     justify-content: flex-start;
@@ -1944,7 +1968,20 @@
   }
 
   .maint-kpis {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .maint-kpi {
+    padding: 12px 14px 11px;
+  }
+
+  .maint-kpi__value {
+    font-size: 1.6rem;
+  }
+
+  .maint-kpi__label {
+    font-size: 0.64rem;
   }
 
   .maint-toolbar__row {
@@ -2007,6 +2044,46 @@
 
   .maint-interventions__side {
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 700px) {
+  /* Phone targets stay 44px even for the small row/tab controls. */
+  .maint-page .maint-row__actions .btn,
+  .maint-page .maint-incident__foot .btn,
+  .maint-page .maint-tab {
+    min-height: 44px;
+  }
+
+  /* A phone row stacks: the record, then its due date, then its actions. */
+  .maint-page .maint-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Four tabs must be readable, not hidden behind a clipped scroller. */
+  .maint-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    overflow-x: visible;
+    border-radius: var(--radius-md);
+  }
+
+  .maint-tab {
+    justify-content: center;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .maint-page .maint-row__due {
+    grid-column: 1 / 2;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+    padding-left: 0;
+    border-left: 0;
+    text-align: left;
   }
 }
 
