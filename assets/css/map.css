@@ -788,8 +788,11 @@ html[data-theme="dark"] .map-label--city {
   color: var(--muted);
 }
 
+/* The legend is a reading aid: it must never intercept clicks meant for the
+ * floor groups or controls it can overlap. */
 .map-legend {
   position: absolute;
+  pointer-events: none;
   right: 16px;
   bottom: 16px;
   z-index: 3;
@@ -996,10 +999,14 @@ html[data-theme="dark"] .map-label--city {
   white-space: nowrap;
 }
 
+/* The site entry is a list row, not a shrink-wrapped chip: it must fill the
+ * column so long location names ellipsize instead of scrolling the panel. */
 .loc-tree__site {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
   min-width: 0;
-  flex: 1;
+}
+
+.loc-tree__row,
+.loc-tree__label {
+  min-width: 0;
 }

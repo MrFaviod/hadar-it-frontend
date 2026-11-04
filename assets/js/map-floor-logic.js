@@ -11,6 +11,17 @@
   const Engine = window.AssetMapEngine;
   const Data = window.AssetMapData;
 
+  /** No filter is active: used to tell an empty floor from a filtered-out one. */
+  const EMPTY_FILTERS = { categories: [], sites: [], states: [], locations: [], search: '' };
+
+  /** Plan-space centre of a room, or null when the room authors no geometry. */
+  function planRoomCentre(room) {
+    if (!room) return null;
+    const numbers = [room.x, room.y, room.w, room.h];
+    if (!numbers.every((value) => Number.isFinite(Number(value)))) return null;
+    return { x: Number(room.x) + Number(room.w) / 2, y: Number(room.y) + Number(room.h) / 2 };
+  }
+
   /** Floor interior logic: plan geometry, room chips, markers and positioning. */
   window.AssetMapFloorLogic = {
     computed: {
@@ -31,6 +42,12 @@
       },
       plan() {
         return this.floorView ? this.floorView.plan : null;
+      },
+      /** Only blame the filters when a filter is what hides the floor's assets. */
+      floorEmptyMessage() {
+        if (!this.activeFloorId) return 'ui.map.floor.no_match';
+        const unfiltered = Engine.floorView(this.source, EMPTY_FILTERS, this.activeFloorId);
+        return unfiltered && unfiltered.count ? 'ui.map.floor.no_match' : 'ui.map.floor.empty';
       },
       floorContext() {
         if (!this.floorView) return { siteName: '', buildingName: '', floorName: '', origin: '' };
@@ -72,13 +89,21 @@
       },
       roomChips() {
         if (!this.floorView) return [];
-        return this.floorView.rooms.filter((room) => room.count > 0).map((room) => ({
-          id: room.id,
-          name: room.name,
-          count: room.count,
-          x: room.x + room.w / 2,
-          y: room.y + room.h / 2
-        }));
+        // A chip needs an authored position on the plan. Directory rooms are
+        // canonical locations without plan geometry, so drawing them at an
+        // undefined centre piles every chip on the origin and hides the room
+        // from the loose panel below. Those rooms keep their assets in
+        // `floorLooseGroups` instead.
+        return this.floorView.rooms
+          .map((room) => ({ room: room, centre: planRoomCentre(room) }))
+          .filter((entry) => entry.room.count > 0 && entry.centre)
+          .map((entry) => ({
+            id: entry.room.id,
+            name: entry.room.name,
+            count: entry.room.count,
+            x: entry.centre.x,
+            y: entry.centre.y
+          }));
       },
       selectedRoomData() {
         if (!this.selectedRoom || !this.floorView) return null;
@@ -149,13 +174,26 @@
         if (event.button !== undefined && event.button !== 0) return;
         const paper = this.$refs.paper;
         if (!paper) return;
-        this.drag = { id: marker.asset.id };
+        // A press only becomes a reposition once the pointer travels: a plain
+        // click selects the device and must not write a position to the server.
+        this.drag = {
+          id: marker.asset.id,
+          startX: Number(event.clientX),
+          startY: Number(event.clientY),
+          moved: false
+        };
         window.addEventListener('pointermove', this.onMarkerMove);
         window.addEventListener('pointerup', this.onMarkerUp);
         event.preventDefault();
       },
       onMarkerMove(event) {
         if (!this.drag || !this.$refs.paper) return;
+        if (!this.drag.moved) {
+          const dx = Number(event.clientX) - this.drag.startX;
+          const dy = Number(event.clientY) - this.drag.startY;
+          if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) + Math.abs(dy) < 3) return;
+          this.drag.moved = true;
+        }
         let x;
         let y;
         if (this.serverMapMode && this._floorMap && this.$refs.floorCanvas) {
@@ -171,7 +209,7 @@
         Engine.setPosition(this.source, this.drag.id, this.activeFloorId, x, y);
       },
       onMarkerUp() {
-        if (this.drag) {
+        if (this.drag && this.drag.moved) {
           const asset = (this.source.assets || []).find((item) => item.id === this.drag.id);
           this.announce = tr('ui.map.announce.position_updated', { name: asset ? asset.name : '' });
           this.persistServerPosition(this.drag.id, this.activeFloorId);
@@ -188,7 +226,7 @@
         }
       },
       persistServerPosition(assetId, floorId) {
-        if (!this.app.serverMapMode) return;
+        if (!this.app.serverMapMode || !this.canEdit) return;
         const position = this.maps.positions[assetId];
         if (!position) return;
         this.app.saveOrganizationPosition(assetId, floorId || position.floor, position.x, position.y);

@@ -7,13 +7,27 @@
   flex-direction: column;
 }
 
+/* The stage's expand control sits over the top-right corner (44px wide, 14px
+   inset), so the head keeps its text clear of it and truncates long location
+   names instead of running them under the control. */
 .floor-head {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 12px 74px 12px 16px;
   border-bottom: 1px solid var(--border);
+}
+
+.floor-head > div {
+  min-width: 0;
+}
+
+/* A long location line wraps inside the reserved column instead of running
+   under the control or being clipped at the frame edge. */
+.floor-head .eyebrow {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .floor-head h2 {
@@ -28,8 +42,19 @@
   color: var(--muted);
 }
 
+/* Scroll area plus its floating controls and legend. The panel below the body
+   keeps its own row, so nothing floats over the loose-group rows. */
+.floor-stage-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .floor-scroll {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 18px;
   background: var(--slate-050);
@@ -217,11 +242,28 @@ html[data-theme="dark"] .floor-noplan {
 .floor-marker--link { background: var(--slate-700); }
 .floor-marker--network { background: var(--teal-700); }
 
+/* Controls and legend share the row under the plan. Because the row is in the
+   flow of the stage body, neither can cover the loose-group panel below it. */
+.floor-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  padding: 12px 16px;
+  background: var(--slate-050);
+}
+
+.floor-stage-body .map-legend {
+  position: static;
+  flex: 1 1 260px;
+  max-width: 100%;
+  margin: 0;
+  backdrop-filter: none;
+}
+
 .floor-controls {
-  position: absolute;
-  left: 16px;
-  bottom: 16px;
-  z-index: 4;
+  position: static;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -262,8 +304,7 @@ html[data-theme="dark"] .floor-noplan {
   flex: none;
   max-height: 190px;
   overflow: auto;
-  margin-bottom: 54px;
-  padding: 10px 16px 4px;
+  padding: 10px 16px 8px;
   background: var(--paper);
   border-top: 1px solid var(--border);
 }

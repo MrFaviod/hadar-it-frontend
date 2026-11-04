@@ -119,13 +119,31 @@
         return this.app.sites || [];
       },
       statuses() {
-        return Engine.statusOptions(this.source);
+        // The filter list shows the same administrative label as the inspector,
+        // so a configured status keeps its own text instead of the stored code.
+        const seen = [];
+        Engine.statusOptions(this.source).forEach((status) => {
+          const label = this.statusLabel({ status: status });
+          if (label && seen.indexOf(label) === -1) seen.push(label);
+        });
+        return seen;
       },
       canEdit() {
         return typeof this.app.can === 'function' ? this.app.can('assets.edit') : true;
       },
       counts() {
         return Engine.counts(this.source, this.filters);
+      },
+      // Every count carries its own plural form so a single asset reads
+      // "1 activo" and not "1 activos" in the page summary.
+      metaSegments() {
+        const counts = this.counts;
+        return [
+          counts.assets + ' ' + tr('ui.map.meta.assets', counts.assets),
+          counts.sites + ' ' + tr('ui.map.meta.sites', counts.sites),
+          counts.floors + ' ' + tr('ui.map.meta.floors', counts.floors),
+          counts.plans + ' ' + tr('ui.map.meta.plans', counts.plans)
+        ].join(' · ');
       },
       tree() {
         return Engine.tree(this.source, this.filters);
@@ -846,6 +864,10 @@
       floorTop(value) {
         return this.percentY(Number(value) || 0);
       },
+      floorMeta(count, placed) {
+        return count + ' ' + tr('ui.map.meta.assets', count) + ' · ' +
+          placed + ' ' + tr('ui.map.meta.positioned', placed);
+      },
       togglePlan(plan) {
         if (!this.serverMapMode) {
           FloorLogic.methods.togglePlan.call(this, plan);
@@ -959,7 +981,7 @@
             <p class="eyebrow">{{ $t('ui.map.explorer.eyebrow') }}</p>
             <h1 id="infra-title">{{ $t('ui.map.explorer.title') }}</h1>
             <p class="map-page__meta mono">
-              {{ $t('ui.map.explorer.meta', { assets: counts.assets, sites: counts.sites, floors: counts.floors, plans: counts.plans }) }}
+              {{ metaSegments }}
             </p>
           </div>
           <nav class="infra-tabs" :aria-label="$t('ui.map.aria.view_mode')">
@@ -1188,7 +1210,7 @@
                   <app-icon name="layers"></app-icon>
                 </button>
               </div>
-              <p class="map-legend" :aria-label="$t('ui.map.aria.legend')">
+              <p v-if="legend.length" class="map-legend" :aria-label="$t('ui.map.aria.legend')">
                 <span v-for="item in legend" :key="item.id" class="map-legend__item">
                   <span class="graph-swatch" :class="'graph-swatch--' + item.id" aria-hidden="true"></span>{{ item.label }}
                 </span>
@@ -1207,9 +1229,12 @@
                   <h2>{{ floorContext.floorName }}</h2>
                 </div>
                 <p class="mono floor-head__meta">
-                  {{ $t('ui.map.floor.meta', { assets: floorView ? floorView.count : 0, placed: floorView ? floorView.placedCount : 0 }) }}
+                  {{ floorMeta(floorView ? floorView.count : 0, floorView ? floorView.placedCount : 0) }}
                 </p>
               </header>
+              <!-- The stage body owns the floating controls and legend, so they
+                   can never sit over the loose-group panel below them. -->
+              <div class="floor-stage-body">
               <div class="floor-scroll">
                 <div ref="paper" class="floor-paper" :style="floorPaperStyle">
                   <template v-if="serverMapMode">
@@ -1256,31 +1281,12 @@
                       <span v-else class="floor-marker__code mono">{{ marker.asset.code }}</span>
                     </button>
                     <p v-if="floorView && !floorView.count" class="floor-empty">
-                      {{ $t('ui.map.floor.no_match') }}
+                      {{ $t(floorEmptyMessage) }}
                     </p>
                   </div>
                 </div>
               </div>
-              <section v-if="floorLooseGroups.length" class="floor-groups" :aria-label="$t('ui.map.aria.loose')">
-                <header class="floor-groups__head">
-                  <h3>{{ $t('ui.map.floor.loose_title') }}</h3>
-                  <p>{{ $t('ui.map.floor.loose_note') }}</p>
-                </header>
-                <details v-for="group in floorLooseGroups" :key="group.id" class="floor-group">
-                  <summary class="floor-group__summary">
-                    <span>{{ group.name }}</span>
-                    <span class="mono">{{ group.assets.length }}</span>
-                  </summary>
-                  <ul class="floor-group__list">
-                    <li v-for="asset in group.assets" :key="asset.id">
-                      <button type="button" class="floor-group__asset" @click="selectAsset(asset.id)">
-                        <span>{{ asset.name }}</span>
-                        <span class="mono">{{ asset.code }}</span>
-                      </button>
-                    </li>
-                  </ul>
-                </details>
-              </section>
+              <div class="floor-bottom">
               <div class="floor-controls" role="group" :aria-label="$t('ui.map.aria.floor_controls')">
                 <button type="button" class="icon-button" :aria-label="$t('ui.map.aria.zoom_floor_in')" @click="zoomFloor(1.25)">
                   <app-icon name="plus"></app-icon>
@@ -1303,6 +1309,28 @@
                 </span>
                 <span class="map-legend__hint">{{ $t('ui.map.floor.drag_hint') }}</span>
               </p>
+              </div>
+              </div>
+              <section v-if="floorLooseGroups.length" class="floor-groups" :aria-label="$t('ui.map.aria.loose')">
+                <header class="floor-groups__head">
+                  <h3>{{ $t('ui.map.floor.loose_title') }}</h3>
+                  <p>{{ $t('ui.map.floor.loose_note') }}</p>
+                </header>
+                <details v-for="group in floorLooseGroups" :key="group.id" class="floor-group">
+                  <summary class="floor-group__summary">
+                    <span>{{ group.name }}</span>
+                    <span class="mono">{{ group.assets.length }}</span>
+                  </summary>
+                  <ul class="floor-group__list">
+                    <li v-for="asset in group.assets" :key="asset.id">
+                      <button type="button" class="floor-group__asset" @click="selectAsset(asset.id)">
+                        <span>{{ asset.name }}</span>
+                        <span class="mono">{{ asset.code }}</span>
+                      </button>
+                    </li>
+                  </ul>
+                </details>
+              </section>
             </div>
           </div>
 
@@ -1432,7 +1460,7 @@
               <div class="map-metrics">
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.count : 0 }}</span>
-                  <span>{{ $t('ui.map.metric.filtered') }}</span>
+                  <span>{{ $t('ui.map.metric.filtered', activeSiteStats ? activeSiteStats.count : 0) }}</span>
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.total : 0 }}</span>
@@ -1440,11 +1468,11 @@
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.floors : 0 }}</span>
-                  <span>{{ $t('ui.map.metric.floors') }}</span>
+                  <span>{{ $t('ui.map.metric.floors', activeSiteStats ? activeSiteStats.floors : 0) }}</span>
                 </div>
                 <div class="map-metrics__item">
                   <span class="mono">{{ activeSiteStats ? activeSiteStats.cameras : 0 }}</span>
-                  <span>{{ $t('ui.map.metric.cameras') }}</span>
+                  <span>{{ $t('ui.map.metric.cameras', activeSiteStats ? activeSiteStats.cameras : 0) }}</span>
                 </div>
               </div>
               <h3 class="map-inspector__subhead">{{ $t('ui.map.site.plans_title') }}</h3>
@@ -1452,7 +1480,7 @@
                 <li v-for="floor in activeSiteFloors"
                     :key="floor.id" class="map-plan-list__row">
                   <span class="map-plan-list__name">{{ floor.name }}</span>
-                  <span class="mono map-plan-list__floor">{{ $t('ui.map.floor.asset_count', { count: floor.count }) }}</span>
+                  <span class="mono map-plan-list__floor">{{ floor.count }} {{ $t('ui.map.floor.asset_count', floor.count) }}</span>
                   <button type="button" class="text-button" @click="openFloor(floor.id)">{{ $t('ui.map.action.open') }}</button>
                 </li>
               </ul>

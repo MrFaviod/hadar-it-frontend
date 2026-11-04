@@ -71,6 +71,12 @@
       prefs() {
         return this.app.graphPrefs || {};
       },
+      /** Only blame the filters when assets exist but the filters hide them. */
+      emptyMessage() {
+        const source = this.source || {};
+        const assets = Array.isArray(source.assets) ? source.assets : [];
+        return assets.length ? 'ui.graph.empty.no_match' : 'ui.graph.empty.no_assets';
+      },
       source() {
         const app = this.app;
         if (!app || !app.serverGraphMode) return app;
@@ -117,6 +123,14 @@
       },
       depth() {
         return this.prefs.depth || 2;
+      },
+      filterHint() {
+        // The canonical global payload is derived from relationship edges, so it
+        // cannot contain an asset without relationships. Say where that boundary
+        // is instead of implying the toggle reaches the whole inventory.
+        return this.app && this.app.serverGraphMode
+          ? 'ui.graph.filter.hint_server'
+          : 'ui.graph.filter.hint';
       },
       baseData() {
         const engineFilters = {
@@ -940,9 +954,8 @@
             <p class="page-sub">{{ $t('ui.graph.explorer.lead') }}</p>
           </div>
           <div class="page-head__meta">
-            <span class="mono">{{ totalRelations.links }}</span>
+            <!-- The plural messages already carry the count, so no bare number is printed next to them. -->
             <span>{{ $t('ui.graph.status.edges', { count: totalRelations.links }) }}</span>
-            <span class="mono">{{ totalRelations.isolatedAssets }}</span>
             <span>{{ $t('ui.graph.status.isolated', { count: totalRelations.isolatedAssets }) }}</span>
           </div>
         </header>
@@ -1053,7 +1066,7 @@
               <span>{{ $t('ui.graph.filter.include_isolated') }}</span>
             </label>
 
-            <p class="graph-filters__hint"><app-icon name="info"></app-icon> {{ $t('ui.graph.filter.hint') }}</p>
+            <p class="graph-filters__hint"><app-icon name="info"></app-icon> {{ $t(filterHint) }}</p>
           </aside>
 
           <div class="graph-canvas-wrap">
@@ -1127,7 +1140,7 @@
                 <button type="button" class="icon-button" :aria-label="$t('ui.graph.aria.center')" @click="fit(true)"><app-icon name="grid"></app-icon></button>
               </div>
 
-              <p class="graph-legend" :aria-label="$t('ui.graph.aria.legend')">
+              <p v-if="legend.length" class="graph-legend" :aria-label="$t('ui.graph.aria.legend')">
                 <span v-for="item in legend" :key="item.id" class="graph-legend__item">
                   <span class="graph-swatch" :class="'graph-swatch--' + item.id" aria-hidden="true"></span>{{ item.label }}
                 </span>
@@ -1135,8 +1148,8 @@
 
               <p v-if="!nodeViews.length" class="graph-empty">
                 <app-icon name="search"></app-icon>
-                <span>{{ $t('ui.graph.empty.no_match') }}</span>
-                <button type="button" class="text-button" @click="clearFilters">{{ $t('ui.graph.empty.clear') }}</button>
+                <span>{{ $t(emptyMessage) }}</span>
+                <button v-if="emptyMessage === 'ui.graph.empty.no_match'" type="button" class="text-button" @click="clearFilters">{{ $t('ui.graph.empty.clear') }}</button>
               </p>
 
               <p v-if="stats.hidden" class="graph-hidden-note">
@@ -1147,10 +1160,10 @@
             </div>
 
             <div class="graph-status">
-              <span class="mono">{{ stats.nodes }} / {{ stats.total }}</span>
+              <!-- The count lives inside the plural message, so no number is repeated. -->
+              <span v-if="stats.total !== stats.nodes" class="mono">{{ stats.nodes }} / {{ stats.total }}</span>
               <span>{{ $t('ui.graph.status.nodes', { count: stats.nodes }) }}</span>
               <span class="graph-status__sep" aria-hidden="true">·</span>
-              <span class="mono">{{ stats.edges }}</span>
               <span>{{ $t('ui.graph.status.edges', { count: stats.edges }) }}</span>
               <span class="graph-status__hint">{{ $t('ui.graph.keys_hint') }}</span>
             </div>

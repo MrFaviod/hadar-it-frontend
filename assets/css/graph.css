@@ -1143,6 +1143,12 @@ body.graph-workspace-expanded {
   .graph-status {
     font-size: 11.5px;
   }
+
+  /* Leave the corner free for the expand/collapse control instead of running
+     the legend chips underneath it. */
+  .graph-legend {
+    max-width: calc(100% - 68px);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
