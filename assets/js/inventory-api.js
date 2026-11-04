@@ -598,7 +598,10 @@
         const query = text(filters.query);
         if (query) url.searchParams.set('query', query);
         if (filters.category && filters.category !== 'all') {
-          url.searchParams.set('category', this.inventoryCategoryText(filters.category));
+          // The search route compares the raw stored column, while the catalog resolves
+          // ids and any locale's label. Send the stable id; an unknown or legacy value
+          // is forwarded unchanged so older saved views keep their previous meaning.
+          url.searchParams.set('category', this.inventoryCategoryId(filters.category) || text(filters.category));
         }
         if (filters.status && filters.status !== 'all') url.searchParams.set('status', filters.status);
         url.searchParams.set('limit', String(this.inventory.limit));

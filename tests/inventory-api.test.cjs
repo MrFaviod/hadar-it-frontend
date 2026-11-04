@@ -133,8 +133,19 @@ test('search asks the server for the query and filters of the whole collection',
 
   const search = calls.find((call) => call.url.indexOf('/api/v1/assets/search') === 0);
   assert.match(search.url, /query=matriz/);
-  assert.match(search.url, /category=Servidores/);
+  // The search route compares the raw stored column, so the client must send the
+  // catalog id, not the display label, or accented/renamed categories match nothing.
+  assert.match(search.url, /category=servidores/);
+  assert.doesNotMatch(search.url, /category=Servidores/);
   assert.match(search.url, /status=in_storage/);
+
+  // Older saved views and legacy inbound values can still carry a label; the
+  // catalog resolves it to the stored id before the request leaves the client.
+  app.inventoryFilters.category = 'Servidores';
+  await app.loadInventory();
+  const legacy = calls.filter((call) => call.url.indexOf('/api/v1/assets/search') === 0).pop();
+  assert.match(legacy.url, /category=servidores/);
+  assert.doesNotMatch(legacy.url, /category=Servidores/);
 });
 
 test('pagination is bounded and asks for the next server offset', async () => {

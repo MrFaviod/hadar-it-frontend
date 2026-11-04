@@ -334,6 +334,34 @@
 .results-surface {
   min-width: 0;
 }
+
+/* Loading keeps the shape of the list it replaces: static blocks, no motion,
+   so the page never collapses into a bare sentence while the read is in
+   flight. */
+.skeleton-table {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 4px;
+}
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+}
+.skeleton-block {
+  height: 11px;
+  border-radius: var(--radius-xs);
+  background: var(--slate-150);
+}
+.skeleton-block--thumb {
+  width: 56px;
+  height: 35px;
+}
 .table-panel {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -352,9 +380,9 @@
   background: var(--slate-050);
   color: var(--slate-500);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   line-height: 1.4;
   text-align: left;
   text-transform: uppercase;
@@ -432,22 +460,38 @@
 .asset-table .type-tag {
   min-height: 20px;
   padding: 2px 6px;
-  font-size: 9px;
+  font-size: 11px;
 }
 .asset-code {
   overflow: hidden;
   color: var(--slate-500);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.asset-code .asset-code__id {
+  font-size: 11px;
+}
+.asset-table .asset-code__id {
+  display: block;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.asset-table .asset-code__id::before {
+  content: none;
+}
+.asset-table tbody td .cell-strong {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .cell-note {
   display: block;
   margin-top: 2px;
   overflow: hidden;
   color: var(--slate-500);
-  font-size: 10.5px;
+  font-size: 11px;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -487,7 +531,7 @@
   border-radius: var(--radius-xs);
   background: var(--paper);
   color: var(--slate-700);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   white-space: nowrap;
@@ -556,7 +600,7 @@
   min-height: 24px;
   padding: 3px 8px;
   border-radius: var(--radius-pill);
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   box-shadow: 0 1px 4px rgba(7, 25, 35, 0.1);
@@ -573,7 +617,7 @@
   background: rgba(11, 35, 49, 0.9);
   color: var(--teal-200);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.06em;
   line-height: 1.2;
@@ -594,18 +638,20 @@
   min-width: 0;
 }
 .asset-card__title h2 {
+  display: -webkit-box;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
 }
 .asset-card__title span {
   flex: none;
   color: var(--slate-500);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 .asset-card__model {
   overflow: hidden;
@@ -1577,7 +1623,7 @@
     content: attr(data-label);
     color: var(--slate-500);
     font-family: var(--font-mono);
-    font-size: 8.5px;
+    font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.06em;
     line-height: 1.4;
@@ -1587,7 +1633,7 @@
     grid-column: 1 / -1;
     padding-top: 0;
   }
-  .asset-table td[data-label="Activo"]::before {
+  .asset-table td:first-child::before {
     display: none;
   }
   .asset-table td[data-label="Acceso remoto"] {

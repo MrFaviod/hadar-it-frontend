@@ -234,7 +234,7 @@ test('the count follows the retained inventory filters and labels the filtered s
   assert.ok(search, 'the Data entry reads the canonical inventory');
   const params = new URL(search.url, 'http://localhost').searchParams;
   assert.equal(params.get('query'), 'router', 'the retained text filter is part of the canonical read');
-  assert.equal(params.get('category'), 'Redes', 'the retained category filter is part of the canonical read');
+  assert.equal(params.get('category'), 'network', 'the retained category filter sends the stored id, not the label');
   assert.equal(params.get('status'), 'active', 'the retained status filter is part of the canonical read');
   assert.deepEqual(plain(app.inventoryFilters), { query: 'router', category: 'network', status: 'active' },
     'entering the Data route does not reset the inventory filters');

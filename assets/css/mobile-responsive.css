@@ -149,6 +149,23 @@
     overflow-wrap: anywhere;
   }
 
+  /* The code and the permanent id share one line on desktop. Stacked cards
+     cannot hold both, so the id wraps on its own line and the separator dot
+     that would start that line is dropped. */
+  .asset-table .asset-code {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .asset-table .asset-code__id {
+    display: block;
+  }
+
+  .asset-table .asset-code__id::before {
+    content: none;
+  }
+
   .quick-actions {
     width: 100%;
   }
@@ -770,5 +787,18 @@
 @media (max-width: 768px) {
   :root {
     --page-title-size: 28px;
+  }
+}
+
+/* Selected-record identity must wrap instead of clipping the immutable id. */
+.delete-identity .mono {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* The asset editor identity strip holds long server-side hints: one cell per row. */
+@media (max-width: 640px) {
+  .editor-ident {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

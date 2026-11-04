@@ -345,7 +345,7 @@
                    :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="inventory"></app-icon>
                   <span>{{ $t('ui.nav.inventory') }}</span>
-                  <span class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
+                  <span v-if="!serverInventory || !inventoryFiltersActive" class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.conversation" :permitted="can('assets.view')">
@@ -593,7 +593,7 @@
                     <span>{{ $t('ui.inventory.refresh') }}</span>
                   </button>
 
-                  <details v-if="prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.shell.filter_column_model')},{id:'location',label:$t('ui.shell.filter_column_location')},{id:'assignee',label:$t('ui.shell.filter_column_assignee')},{id:'ip',label:$t('ui.shell.filter_column_ip')},{id:'remote',label:$t('ui.shell.filter_column_remote')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
+                  <details v-if="prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.inventory.column_model')},{id:'location',label:$t('ui.inventory.column_location')},{id:'assignee',label:$t('ui.inventory.column_assignee')},{id:'ip',label:$t('ui.inventory.column_ip')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
                   <div class="view-switch" role="group" :aria-label="$t('ui.inventory.view_aria')">
                     <button type="button" :class="{ 'is-active': prefs.view === 'table' }" :aria-pressed="prefs.view === 'table'" @click="setView('table')">
                       <app-icon name="table"></app-icon><span>{{ $t('ui.inventory.view_table') }}</span>
@@ -616,9 +616,9 @@
                   </button>
                 </div>
 
-                <div class="results-bar" aria-live="polite">
+                <div v-if="!inventory.error" class="results-bar" aria-live="polite">
                   <p>{{ $t('ui.inventory.results', { count: inventoryTotal }) }} <span>· {{ inventoryPageLabel }}</span></p>
-                  <button v-if="inventoryFiltersActive" type="button" class="text-button text-button--quiet" @click="clearInventoryFilters">
+                  <button v-if="inventoryFiltersActive && inventoryItems.length" type="button" class="text-button text-button--quiet" @click="clearInventoryFilters">
                     {{ $t('ui.inventory.clear_filters') }}
                   </button>
                 </div>
@@ -644,7 +644,7 @@
                                 <span class="asset-thumb"><img :src="assetImage(asset)" width="640" height="400" :alt="asset.name + ', ' + asset.type" loading="lazy"></span>
                                 <span class="asset-cell__text">
                                   <a :href="'#/activo/' + asset.id" class="asset-name" @click.stop="recordInventoryScroll">{{ asset.name }}</a>
-                                  <span class="asset-code mono">{{ asset.code }}<span class="asset-code__id">{{ asset.id }}</span></span>
+                                  <span class="asset-code mono">{{ asset.code }}<span class="asset-code__id" :title="asset.id">{{ asset.id }}</span></span>
                                 </span>
                               </div>
                             </td>
@@ -700,6 +700,14 @@
 
                 <div v-if="inventory.loading" class="results-surface" aria-busy="true" role="status">
                   <p class="cell-muted">{{ $t('ui.inventory.loading') }}</p>
+                  <div class="skeleton-table" aria-hidden="true">
+                    <span v-for="n in 4" :key="n" class="skeleton-row">
+                      <span class="skeleton-block skeleton-block--thumb"></span>
+                      <span class="skeleton-block"></span>
+                      <span class="skeleton-block"></span>
+                      <span class="skeleton-block"></span>
+                    </span>
+                  </div>
                 </div>
 
                 <div v-else-if="inventory.error" class="empty-state" role="alert">
@@ -1665,7 +1673,7 @@
                 <nav class="breadcrumbs" :aria-label="$t('ui.asset.detail.breadcrumb_aria')">
                   <a href="#/inventario" @click.prevent="backToInventory">{{ $t('ui.asset.detail.breadcrumb_inventory') }}</a>
                   <app-icon name="chevron-right"></app-icon>
-                  <span aria-current="page">{{ currentAsset.id }}</span>
+                  <span aria-current="page">{{ currentAsset.name }}</span>
                 </nav>
 
                 <button type="button" class="back-link" @click="backToInventory">
@@ -1704,7 +1712,7 @@
                     <composition-slot :app="$root" target="asset.action.transfer" :permitted="can('assets.edit') && !!currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && currentAsset.serverAsset && !currentAsset.retired && !currentAsset.archived" type="button" class="btn btn--secondary" data-od-id="transfer-asset" @click="openOrganizationTransfer(currentAsset)">
                       <app-icon name="arrow-right"></app-icon> {{ $t('ui.asset.detail.transfer') }}
                     </button></composition-slot>
-                    <composition-slot :app="$root" target="asset.action.ask" :permitted="!!currentAsset.serverAsset" :context="{ asset: currentAsset }"><a v-if="currentAsset.serverAsset" class="btn btn--ghost" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
+                    <composition-slot :app="$root" target="asset.action.ask" :permitted="!!currentAsset.serverAsset" :context="{ asset: currentAsset }"><a v-if="currentAsset.serverAsset" class="btn btn--secondary" data-od-id="ask-asset" :href="'#/conversacion/activo/' + encodeURIComponent(currentAsset.id)" @click.prevent="setHash('#/conversacion/activo/' + currentAsset.id)">
                       <app-icon name="send"></app-icon> {{ $t('ui.asset.detail.ask') }}
                     </a></composition-slot>
                     <!-- Duplicar y restaurar existen dos veces (servidor y prototipo).
@@ -1722,13 +1730,13 @@
                     <composition-slot :app="$root" target="asset.action.duplicate" :permitted="can('assets.edit') && serverAssetMode" :context="{ asset: currentAsset }"><button v-if="can('assets.edit') && serverAssetMode" type="button" class="btn btn--secondary" data-od-id="duplicate-asset" @click="cloneInventoryAsset(currentAsset)">
                       <app-icon name="copy"></app-icon> {{ $t('ui.asset.detail.duplicate') }}
                     </button></composition-slot>
-                    <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--ghost" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
+                    <composition-slot :app="$root" target="asset.action.archive" :permitted="!inventoryLifecycleAllowed('archive', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('archive', currentAsset)" type="button" class="btn btn--secondary" data-od-id="archive-asset" @click="openInventoryLifecycle(currentAsset, 'archive')">
                       <app-icon name="package"></app-icon> {{ $t('ui.asset.detail.archive') }}
                     </button></composition-slot>
                     <composition-slot :app="$root" target="asset.action.restore" :permitted="!inventoryLifecycleAllowed('restore', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('restore', currentAsset)" type="button" class="btn btn--secondary" data-od-id="restore-asset" @click="openInventoryLifecycle(currentAsset, 'restore')">
                       <app-icon name="restore"></app-icon> {{ $t('ui.asset.detail.restore') }}
                     </button></composition-slot>
-                    <composition-slot :app="$root" target="asset.action.retire" :permitted="!inventoryLifecycleAllowed('retire', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--ghost" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
+                    <composition-slot :app="$root" target="asset.action.retire" :permitted="!inventoryLifecycleAllowed('retire', currentAsset)" :context="{ asset: currentAsset }"><button v-if="!inventoryLifecycleAllowed('retire', currentAsset)" type="button" class="btn btn--secondary" data-od-id="retire-asset" @click="openInventoryLifecycle(currentAsset, 'retire')">
                       <app-icon name="archive"></app-icon> {{ $t('ui.asset.detail.retire') }}
                     </button></composition-slot>
                   </div>
@@ -2793,7 +2801,7 @@
         <div v-if="inventoryLifecycle.asset" class="delete-identity">
           <span class="eyebrow">{{ $t('ui.asset.delete_dialog.selected') }}</span>
           <strong>{{ inventoryLifecycle.asset.name }}</strong>
-          <span class="mono">{{ inventoryLifecycle.asset.id }} · {{ inventoryLifecycle.asset.quickCode || '' }}</span>
+          <span class="mono">{{ inventoryLifecycle.asset.id }}<template v-if="inventoryLifecycle.asset.quickCode"> · {{ inventoryLifecycle.asset.quickCode }}</template></span>
         </div>
         <template v-if="inventoryLifecycle.kind === 'purge' && inventoryPurgePolicy() && inventoryPurgePolicy().typedIdRequired">
           <div class="field">
