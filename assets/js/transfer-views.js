@@ -271,7 +271,11 @@
           : tr('ui.transfer.step.lead_review');
       },
       footNote() {
-        if (this.step === 1) return this.selectedRowCount ? tr('ui.transfer.steps_selected_rows', { count: this.selectedRowCount }) : tr('ui.transfer.foot.select_sheet');
+        if (this.step === 1) {
+          // Sin archivo no hay hojas que elegir: el paso pendiente es el archivo.
+          if (!this.file) return tr('ui.transfer.foot.choose_file');
+          return this.selectedRowCount ? tr('ui.transfer.steps_selected_rows', { count: this.selectedRowCount }) : tr('ui.transfer.foot.select_sheet');
+        }
         if (this.step === 2) return tr('ui.transfer.foot.empty_kept');
         if (this.step === 3) return tr('ui.transfer.foot.analysed', { count: this.rows.length, pending: this.rowCounts.pending });
         if (this.step === 4) return tr('ui.transfer.foot.updates');
@@ -762,7 +766,7 @@
                     <span role="columnheader">{{ $t('ui.transfer.column.asset_field') }}</span>
                     <span role="columnheader">{{ $t('ui.transfer.column.detection') }}</span>
                   </div>
-                  <div v-for="(column, index) in sheet.columns" :key="column" class="tx-map__row" role="row">
+                  <div v-for="(column, index) in sheet.columns" :key="column" class="tx-map__entry" role="row">
                     <span class="tx-map__column" role="cell">
                       <strong>{{ column }}</strong>
                       <small>{{ mappedLabel(sheet, index) }}</small>
@@ -935,9 +939,6 @@
                     <h3 id="tx-conflict-title">{{ $t('ui.transfer.conflicts.title') }}</h3>
                     <p>{{ $t('ui.transfer.conflicts.lead') }}</p>
                   </div>
-                  <button v-if="conflicts.length" type="button" class="btn btn--secondary btn--small" @click="resolveAllConflicts">
-                    {{ $t('ui.transfer.conflicts.resolve_all') }}
-                  </button>
                 </header>
 
                 <div v-if="!conflicts.length" class="tx-empty tx-empty--ok">
@@ -1130,7 +1131,8 @@
                       <li v-for="item in applied.result.updated" :key="item.assetId">
                         <span class="mono">{{ item.assetId }}</span>
                         <span>{{ item.name }}</span>
-                        <small>{{ item.fields.length ? item.fields.join(', ') : $t('ui.transfer.result.no_value_changes') }}</small>
+                        <small v-if="item.fields && item.fields.length">{{ item.fields.join(', ') }}</small>
+                        <small v-else-if="item.fields">{{ $t('ui.transfer.result.no_value_changes') }}</small>
                       </li>
                     </ul>
                     <p v-else class="tx-muted">{{ $t('ui.transfer.result.no_updated') }}</p>
@@ -1226,17 +1228,6 @@
             </button>
           </div>
 
-          <div class="tx-rail__card">
-            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.history.title') }}</h3></header>
-            <ul v-if="history.length" class="tx-rail-list">
-              <li v-for="entry in history" :key="entry.id">
-                <strong>{{ entry.fileName }}</strong>
-                <span class="mono">{{ $t('ui.transfer.history.counts', { created: entry.counts.created, updated: entry.counts.updated }) }}</span>
-                <small>{{ entry.profile }} · {{ formatTransferDate(entry.at) }}</small>
-              </li>
-            </ul>
-            <p v-else class="tx-muted">{{ $t('ui.transfer.history.empty') }}</p>
-          </div>
         </aside>
 
         <transfer-profile-dialog :open="profilesOpen" kind="import" @close="profilesOpen = false"

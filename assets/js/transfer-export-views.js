@@ -154,17 +154,44 @@
           count: option.id === 'selection' ? this.selectedIds.length : '—'
         }));
       },
+      // El inventario canónico es la única fuente de activos que el servidor
+      // exporta: el catálogo prototipo (`app.assets`) nunca representa lo que
+      // el endpoint devuelve. Un anfitrión sin adaptador de inventario declara
+      // sus activos en ese catálogo y se sigue respetando.
+      // `serverInventory` is the application's own declaration that this session reads
+      // the server inventory (assets/js/inventory-api.js). In that mode the export
+      // lists only the canonical page, even while it is loading, failed or empty; a
+      // host that does not declare it keeps the catalogue it declares itself.
+      serverMode() {
+        const declared = this.app ? this.app.serverInventory : false;
+        if (typeof declared === 'function') return declared.call(this.app) === true;
+        return declared === true;
+      },
+      canonicalAssets() {
+        if (!this.serverMode) return Array.isArray(this.app.assets) ? this.app.assets : [];
+        if (Array.isArray(this.app.inventoryItems)) return this.app.inventoryItems;
+        const inventory = this.app.inventory;
+        return inventory && Array.isArray(inventory.items) ? inventory.items : [];
+      },
       scopeAssets() {
-        if (this.scope === 'all') return this.app.assets.slice();
-        if (this.scope === 'selection') {
-          return this.app.assets.filter((asset) => this.selectedIds.indexOf(asset.id) !== -1);
+        if (!this.serverMode && this.scope === 'filters') {
+          return Array.isArray(this.app.filteredAssets) ? this.app.filteredAssets.slice() : [];
         }
-        return this.app.filteredAssets.slice();
+        if (this.scope === 'selection') {
+          return this.canonicalAssets.filter((asset) => this.selectedIds.indexOf(asset.id) !== -1);
+        }
+        if (this.serverMode && this.scope === 'filters') {
+          const location = text(this.app.workspaceInventory && this.app.workspaceInventory.location);
+          if (location && location !== 'all') {
+            return this.canonicalAssets.filter((asset) => text(asset.locationId) === location);
+          }
+        }
+        return this.canonicalAssets.slice();
       },
       filteredAssets() {
         const term = Data.norm(this.assetSearch);
-        if (!term) return this.app.assets;
-        return this.app.assets.filter((asset) => Data.norm(asset.name + ' ' + asset.id + ' ' + asset.serial).indexOf(term) !== -1);
+        if (!term) return this.canonicalAssets;
+        return this.canonicalAssets.filter((asset) => Data.norm(asset.name + ' ' + asset.id + ' ' + asset.serial).indexOf(term) !== -1);
       },
       selectedCount() {
         return this.selectedIds.length;
@@ -182,6 +209,11 @@
       },
       previewAssets() {
         return this.scopeAssets.slice(0, 3);
+      },
+      // An install with no assets is not the same state as a scope that selects
+      // none of them; the placeholder has to name the real cause.
+      inventoryEmpty() {
+        return this.canonicalAssets.length === 0;
       },
       previewRows() {
         return this.previewAssets.map((asset) => this.previewFields.map((key) => this.previewValue(asset, key)));
@@ -566,9 +598,11 @@
                 <h2 id="tx-export-fields">{{ $t('ui.transfer.export.step2_title') }}</h2>
                 <p>{{ $t('ui.transfer.export.step2_lead') }}</p>
               </div>
-              <button type="button" class="btn btn--ghost btn--small" @click="profilesOpen = true">
-                <app-icon name="sliders"></app-icon> {{ $t('ui.transfer.export.profiles') }}
-              </button>
+              <div class="tx-panel__tools">
+                <button type="button" class="btn btn--ghost btn--small" @click="profilesOpen = true">
+                  <app-icon name="sliders"></app-icon> {{ $t('ui.transfer.export.profiles') }}
+                </button>
+              </div>
             </header>
 
             <div class="tx-profile-row">
@@ -655,11 +689,6 @@
               </button>
             </div>
 
-            <p class="form-note">
-              <app-icon name="info"></app-icon>
-              {{ $t('ui.transfer.export.format_note') }}
-            </p>
-
             <div class="tx-options">
               <label class="check-row">
                 <input v-model="options.headerRow" type="checkbox">
@@ -729,7 +758,7 @@
                 </tbody>
               </table>
             </div>
-            <p v-else class="tx-muted">{{ $t('ui.transfer.export.preview_empty') }}</p>
+            <p v-else class="tx-muted">{{ inventoryEmpty ? $t('ui.transfer.export.preview_empty_inventory') : $t('ui.transfer.export.preview_empty_scope') }}</p>
           </div>
 
           <div v-if="generating" class="tx-rail__card" role="status" aria-live="polite">
@@ -752,11 +781,6 @@
               </button>
               <button type="button" class="text-button" @click="clearResult">{{ $t('ui.transfer.export.discard') }}</button>
             </div>
-          </div>
-
-          <div class="tx-rail__card">
-            <header class="tx-rail__head"><h3>{{ $t('ui.transfer.export.recent') }}</h3></header>
-            <p class="tx-muted">{{ $t('ui.transfer.export.recent_note') }}</p>
           </div>
         </aside>
 

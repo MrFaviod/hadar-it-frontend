@@ -57,7 +57,9 @@ async function reportsFixture() {
 async function transferFixture() {
   const s = harness.setup();
   s.c.options.components.TransferExport = s.c.AssetTransferViews.TransferExport;
-  s.app.assets = [
+  // The picker lists what the endpoint would export: the canonical server page,
+  // not the prototype catalogue the browser demo used to paint.
+  s.app.inventory.items = [
     { id: '5a1e0c10-0001-4f10-9a10-000000000001', name: 'Nodo sin sede', site: '', serial: '' }
   ];
   const mounted = s.mount('TransferExport', { app: s.app });
