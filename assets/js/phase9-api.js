@@ -865,6 +865,13 @@
         report.token = value;
         report.loading = true;
         report.error = '';
+        // This projection belongs to exactly one capability. Clearing it before
+        // the read (and on every failure) is what keeps a revoked, missing or
+        // failed capability from painting the previous record on screen.
+        report.asset = null;
+        report.fields = [];
+        report.expiresAt = '';
+        report.loaded = false;
         if (!value) {
           report.loading = false;
           report.error = tr('ui.reports.public_link_invalid');
@@ -885,6 +892,12 @@
         }).catch((error) => {
           if (epoch !== report.epoch || !this.phase9 || this.phase9.publicReport !== report) return false;
           if (error && error.name === 'AbortError') return false;
+          // A failed read leaves nothing readable behind: the page shows the
+          // unavailable state instead of a record the capability no longer covers.
+          report.asset = null;
+          report.fields = [];
+          report.expiresAt = '';
+          report.loaded = false;
           report.error = text(error && error.message) || tr('ui.reports.public_link_unavailable');
           return false;
         }).finally(() => {

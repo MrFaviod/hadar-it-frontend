@@ -18,6 +18,64 @@
   };
   const OUTPUT_LABELS = { pdf: 'PDF', csv: 'CSV', xlsx: 'Excel' };
 
+  // Height of the preview window, in CSS pixels, before the page is fitted. It
+  // matches the fixed preview height used before the fit existed.
+  const PREVIEW_VIEWPORT_PX = 640;
+  const MM_PER_INCH = 25.4;
+  // The generated report declares its own physical page. Fit the document that
+  // is painted, never the draft or the template record: those change before a
+  // new document exists, and fitting by them would scale the wrong page.
+  const PAGE_RULE = /@page[^{}]*\{[^}]*?\bsize\s*:\s*([^;}]+)/i;
+  // Page sizes a generated document can name, as short and long side in mm.
+  const PAGE_SIZES_MM = {
+    a3: [297, 420],
+    a4: [210, 297],
+    a5: [148, 210],
+    b4: [250, 353],
+    b5: [176, 250],
+    letter: [215.9, 279.4],
+    legal: [215.9, 355.6],
+    ledger: [279.4, 431.8]
+  };
+  const LENGTH_MM = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96 };
+  const LENGTH_TOKEN = /^([0-9]*\.?[0-9]+)(mm|cm|in|pt|pc|px)$/;
+
+  function lengthMm(token) {
+    const match = LENGTH_TOKEN.exec(token || '');
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    return Number.isFinite(value) && value > 0 ? value * LENGTH_MM[match[2]] : 0;
+  }
+
+  /* Width in millimetres of the page a document declares, or 0 when it does
+   * not declare a readable one. The grammar is the bounded CSS page-size form:
+   * a named size with an optional orientation keyword in either order, or one
+   * or two lengths that carry their own unit. Anything else stays unreadable so
+   * the preview keeps the document at its natural width instead of guessing. */
+  function renderedPageMm(html) {
+    const match = PAGE_RULE.exec(String(html || ''));
+    if (!match) return 0;
+    const tokens = match[1].trim().toLowerCase().split(/\s+/);
+    let landscape = false;
+    const rest = [];
+    tokens.forEach((token) => {
+      if (token === 'portrait' || token === 'landscape') landscape = token === 'landscape';
+      else if (token) rest.push(token);
+    });
+    if (rest.length === 1) {
+      const named = PAGE_SIZES_MM[rest[0]];
+      if (named) return landscape ? named[1] : named[0];
+      // One length is a square page, so orientation cannot change its width.
+      return lengthMm(rest[0]);
+    }
+    if (rest.length === 2) {
+      // A length pair states the width directly; a name cannot be mixed with it.
+      if (PAGE_SIZES_MM[rest[0]] || PAGE_SIZES_MM[rest[1]]) return 0;
+      return lengthMm(rest[0]);
+    }
+    return 0;
+  }
+
   function formatDate(value) {
     if (!value) return '—';
     const date = new Date(value);
@@ -99,7 +157,11 @@
         addType: 'text',
         error: '',
         notice: '',
-        previewStale: true
+        previewStale: true,
+        previewScale: 1,
+        previewFrameHeight: PREVIEW_VIEWPORT_PX,
+        previewObserver: null,
+        previewDisposed: false
       };
     },
     computed: {
@@ -117,6 +179,21 @@
       },
       previewState() {
         return this.state.preview;
+      },
+      previewPageMm() {
+        return renderedPageMm(this.previewState.html);
+      },
+      previewPageWidth() {
+        return this.previewPageMm
+          ? Math.round(this.previewPageMm * (96 / MM_PER_INCH) * 100) / 100
+          : 0;
+      },
+      previewSheetStyle() {
+        return {
+          '--doc-scale': String(this.previewScale),
+          '--doc-sheet-width': this.previewPageWidth ? this.previewPageWidth + 'px' : '100%',
+          '--doc-frame-height': this.previewFrameHeight + 'px'
+        };
       },
       jobs() {
         return this.state.jobs.items;
@@ -188,10 +265,78 @@
         return this.activeJob ? this.activeJob.documents : [];
       }
     },
+    watch: {
+      'previewState.html'() {
+        this.$nextTick(this.observePreview);
+      }
+    },
     created() {
       this.initialize();
     },
+    mounted() {
+      this.$nextTick(this.observePreview);
+    },
+    beforeUnmount() {
+      // A queued nextTick observation and a resize callback already handed to
+      // the browser can run after this point: both must find a disposed
+      // component instead of re-observing a torn-down preview.
+      this.previewDisposed = true;
+      if (this.previewObserver) this.previewObserver.disconnect();
+      this.previewObserver = null;
+    },
     methods: {
+      /* The report keeps its printed page layout: the document is composed for
+       * a fixed page width, so a narrower preview viewport reflows the print
+       * table and pushes its right-hand columns out of reach. Fit the page that
+       * was generated to the column instead of reflowing it. */
+      previewHost() {
+        if (this.previewDisposed) return null;
+        const root = this.$el;
+        if (!root || typeof root.querySelector !== 'function') return null;
+        if (root.isConnected === false) return null;
+        return root.querySelector('.doc-pages');
+      },
+      fitPreview() {
+        if (this.previewDisposed) return;
+        const page = this.previewPageWidth;
+        if (!(page > 0)) {
+          // A document without a readable page size is not fitted, and it must
+          // not inherit the scale and frame height of the document before it.
+          this.previewScale = 1;
+          this.previewFrameHeight = PREVIEW_VIEWPORT_PX;
+          return;
+        }
+        const pages = this.previewHost();
+        if (!pages) return;
+        const style = window.getComputedStyle(pages);
+        const available = pages.clientWidth
+          - (parseFloat(style.paddingLeft) || 0)
+          - (parseFloat(style.paddingRight) || 0);
+        if (!(available > 0)) return;
+        // Floor the ratio so the fitted page can never overflow its column.
+        const ratio = Math.min(1, Math.floor((available / page) * 10000) / 10000);
+        this.previewScale = ratio;
+        this.previewFrameHeight = Math.round(PREVIEW_VIEWPORT_PX / ratio);
+      },
+      observePreview() {
+        if (this.previewDisposed) return;
+        const pages = this.previewHost();
+        if (!pages) {
+          this.fitPreview();
+          return;
+        }
+        if (typeof ResizeObserver === 'function') {
+          if (!this.previewObserver) {
+            this.previewObserver = new ResizeObserver(() => {
+              if (this.previewDisposed) return;
+              this.fitPreview();
+            });
+          }
+          this.previewObserver.disconnect();
+          this.previewObserver.observe(pages);
+        }
+        this.fitPreview();
+      },
       jobLabel(value) {
         const key = JOB_LABEL_KEYS[value];
         if (key) return tr(key);
@@ -657,7 +802,9 @@
               </div>
 
               <div v-if="previewState.html" class="doc-pages">
-                <iframe :srcdoc="previewState.html" sandbox="" :title="$t('ui.reports.preview_title')" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
+                <div class="doc-sheet" :style="previewSheetStyle">
+                  <iframe class="doc-sheet__frame" :srcdoc="previewState.html" sandbox="" :title="$t('ui.reports.preview_title')"></iframe>
+                </div>
                 <p v-if="previewState.truncated" class="doc-help" role="status">{{ $t('ui.reports.over_limit') }}</p>
                 <p v-if="previewStale" class="doc-help" role="status">{{ $t('ui.reports.stale_preview') }}</p>
               </div>

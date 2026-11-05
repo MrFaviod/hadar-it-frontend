@@ -10,6 +10,31 @@
     return runtime ? runtime.t(key, params) : '';
   }
 
+  // Height of the preview window, in CSS pixels, before the sheet is fitted to
+  // the column. It matches the previous fixed preview height.
+  const PREVIEW_VIEWPORT_PX = 640;
+  const MM_PER_INCH = 25.4;
+  // The generated label document declares its own physical page width. The
+  // preview is fitted to the document that is on screen, never to the draft:
+  // `label.pageWidthMm` changes before a new document exists, so fitting by the
+  // draft would scale the old sheet to the new page width.
+  const SHEET_WIDTH = /\.label-page\s*\{[^}]*?\bwidth:\s*([0-9]*\.?[0-9]+)mm/;
+
+  // A closed vocabulary prints its catalog label, never the server enum. A
+  // value outside the catalog is shown as received instead of guessed.
+  function statusLabel(value) {
+    const key = String(value || '').toLowerCase();
+    const options = (window.AssetInventory && window.AssetInventory.STATUS_OPTIONS) || [];
+    const option = options.find((entry) => entry.value === key);
+    return option ? option.label : value;
+  }
+
+  function renderedSheetMm(html) {
+    const match = SHEET_WIDTH.exec(String(html || ''));
+    const value = match ? parseFloat(match[1]) : 0;
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
+
   const JOB_LABELS = {
     queued: 'ui.labels.job.queued',
     running: 'ui.labels.job.running',
@@ -22,8 +47,10 @@
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return String(value);
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
-    if (runtime && typeof runtime.datetime === 'function') {
-      return runtime.datetime(date, { dateStyle: 'medium', timeStyle: 'short' });
+    // Exact options: the day/month/year presets cannot also carry dateStyle and
+    // timeStyle, and mixing them throws in Intl.DateTimeFormat.
+    if (runtime && typeof runtime.formatDate === 'function') {
+      return runtime.formatDate(date, { dateStyle: 'medium', timeStyle: 'short' });
     }
     return date.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' });
   }
@@ -263,6 +290,9 @@
     methods: {
       async load() {
         if (this.publicMode) {
+          // The capability projection is owned by `phase9LoadPublicReport`,
+          // which clears it before every read so a swapped or revoked token can
+          // never keep the previous record on screen.
           if (this.token) await this.app.phase9LoadPublicReport(this.token);
           return;
         }
@@ -274,7 +304,8 @@
         const asset = this.asset;
         if (!asset) return '—';
         const value = asset[key];
-        return value === undefined || value === null || value === '' ? '—' : value;
+        if (value === undefined || value === null || value === '') return '—';
+        return key === 'status' ? statusLabel(value) : value;
       },
       date(value) {
         return formatDate(value);
@@ -343,7 +374,11 @@
         explicit: !!(context.ids && context.ids.length),
         ids: context.ids ? context.ids.slice() : [],
         error: '',
-        notice: ''
+        notice: '',
+        previewScale: 1,
+        previewFrameHeight: PREVIEW_VIEWPORT_PX,
+        previewObserver: null,
+        previewDisposed: false
       };
     },
     computed: {
@@ -406,12 +441,95 @@
       },
       activeJobDocuments() {
         return this.activeJob ? this.activeJob.documents : [];
+      },
+      previewSheetMm() {
+        return renderedSheetMm(this.previewState.html);
+      },
+      previewSheetWidth() {
+        return this.previewSheetMm
+          ? Math.round(this.previewSheetMm * (96 / MM_PER_INCH) * 100) / 100
+          : 0;
+      },
+      previewSheetStyle() {
+        return {
+          '--doc-scale': String(this.previewScale),
+          '--doc-sheet-width': this.previewSheetWidth ? this.previewSheetWidth + 'px' : '100%',
+          '--doc-frame-height': this.previewFrameHeight + 'px'
+        };
+      }
+    },
+    watch: {
+      'previewState.html'() {
+        this.$nextTick(this.observePreview);
       }
     },
     created() {
       this.initialize();
     },
+    mounted() {
+      this.$nextTick(this.observePreview);
+    },
+    beforeUnmount() {
+      // A queued nextTick observation and a resize callback already handed to
+      // the browser can run after this point: both must find a disposed
+      // component instead of re-observing a torn-down preview.
+      this.previewDisposed = true;
+      if (this.previewObserver) this.previewObserver.disconnect();
+      this.previewObserver = null;
+    },
     methods: {
+      /* The label sheet keeps its real page width in millimetres, so a preview
+       * column narrower than the page used to hide its right-hand labels. Fit
+       * the sheet that was generated, not the current draft, to the column. */
+      previewHost() {
+        if (this.previewDisposed) return null;
+        // Mounted hosts and harness stubs differ: never assume a DOM element.
+        const root = this.$el;
+        if (!root || typeof root.querySelector !== 'function') return null;
+        if (root.isConnected === false) return null;
+        return root.querySelector('.doc-pages');
+      },
+      fitPreview() {
+        if (this.previewDisposed) return;
+        const sheet = this.previewSheetWidth;
+        if (!(sheet > 0)) {
+          // A document without a readable sheet width is not fitted, and it
+          // must not inherit the scale and frame of the sheet before it.
+          this.previewScale = 1;
+          this.previewFrameHeight = PREVIEW_VIEWPORT_PX;
+          return;
+        }
+        const pages = this.previewHost();
+        if (!pages) return;
+        const style = window.getComputedStyle(pages);
+        const available = pages.clientWidth
+          - (parseFloat(style.paddingLeft) || 0)
+          - (parseFloat(style.paddingRight) || 0);
+        if (!(available > 0)) return;
+        // Floor the ratio so the fitted sheet can never overflow by rounding.
+        const ratio = Math.min(1, Math.floor((available / sheet) * 10000) / 10000);
+        this.previewScale = ratio;
+        this.previewFrameHeight = Math.round(PREVIEW_VIEWPORT_PX / ratio);
+      },
+      observePreview() {
+        if (this.previewDisposed) return;
+        const pages = this.previewHost();
+        if (!pages) {
+          this.fitPreview();
+          return;
+        }
+        if (typeof ResizeObserver === 'function') {
+          if (!this.previewObserver) {
+            this.previewObserver = new ResizeObserver(() => {
+              if (this.previewDisposed) return;
+              this.fitPreview();
+            });
+          }
+          this.previewObserver.disconnect();
+          this.previewObserver.observe(pages);
+        }
+        this.fitPreview();
+      },
       async initialize() {
         await this.app.phase9LoadSettings();
         this.resetLabel();
@@ -641,7 +759,9 @@
               </button>
             </header>
             <div v-if="previewState.html" class="doc-pages">
-              <iframe :srcdoc="previewState.html" sandbox="" :title="$t('ui.labels.preview.frame_title')" style="width:100%;min-height:640px;border:0;background:#fff"></iframe>
+              <div class="doc-sheet" :style="previewSheetStyle">
+                <iframe class="doc-sheet__frame" :srcdoc="previewState.html" sandbox="" :title="$t('ui.labels.preview.frame_title')"></iframe>
+              </div>
             </div>
             <div v-else class="doc-empty">
               <app-icon name="printer"></app-icon>
