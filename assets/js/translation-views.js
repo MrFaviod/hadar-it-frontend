@@ -145,8 +145,11 @@
         namespace: '',
         missingLocale: '',
         missing: { loading: false, error: '', total: 0, limit: PAGE_SIZE, offset: 0, items: [] },
-        sourceNote: '',
-        sourceError: '',
+        // A semantic flag plus a message id keep the notice translatable: a
+        // resolved string would freeze the language it failed in.
+        sourceFailed: false,
+        sourceNotice: '',
+        sourceNoticeParams: { keys: 0, revision: 0 },
         exportForm: { locale: '', format: 'json', namespace: '' },
         exportBusy: false,
         exportError: '',
@@ -155,7 +158,9 @@
         importError: '',
         report: null,
         confirm: { open: false, kind: '', locale: '', key: '', title: '', message: '', busy: false, error: '' },
-        result: { text: '' }
+        // The live region keeps either a resolved sentence or a message id with
+        // its parameters; only the id survives a locale switch.
+        result: { text: '', notice: '', params: {} }
       };
     },
     computed: {
@@ -284,10 +289,18 @@
         this.coverageError = '';
         this.importError = '';
         this.exportError = '';
-        this.sourceNote = '';
-        this.sourceError = '';
-        this.result = { text: '' };
+        this.sourceFailed = false;
+        this.sourceNotice = '';
+        this.sourceNoticeParams = { keys: 0, revision: 0 };
+        this.result = { text: '', notice: '', params: {} };
         this.confirm = { open: false, kind: '', locale: '', key: '', title: '', message: '', busy: false, error: '' };
+      },
+      // Announce an already resolved sentence; it replaces any semantic notice
+      // so the live region always describes the latest outcome.
+      announce(value) {
+        this.result.notice = '';
+        this.result.params = {};
+        this.result.text = text(value);
       },
       reset() {
         if (this.lifecycle) this.lifecycle.abort();
@@ -339,7 +352,7 @@
         const cache = registrationCache(api);
         const pending = cache.get(signature);
         if (pending) return pending;
-        const request = window.AssetAccess.request(this, '/i18n/sources/ui', Object.assign({
+        const request = window.AssetAccess.request(this.app, '/i18n/sources/ui', Object.assign({
           method: 'PUT',
           body: { catalogs: catalogs, context: context }
         }, this.requestOptions()));
@@ -347,18 +360,23 @@
           const value = object(payload);
           cache.set(signature, Promise.resolve(value));
           if (!this.disposed) {
-            this.sourceError = '';
-            this.sourceNote = value.changed === false
-              ? T('ui.translations.source.unchanged')
-              : T('ui.translations.source.registered', { keys: number(integer(value.keys)), revision: integer(value.revision) });
-            this.result.text = this.sourceNote;
+            this.sourceFailed = false;
+            this.sourceNotice = value.changed === false
+              ? 'ui.translations.source.unchanged'
+              : 'ui.translations.source.registered';
+            this.sourceNoticeParams = { keys: number(integer(value.keys)), revision: integer(value.revision) };
+            // The live region keeps the message id too, so the announcement
+            // follows the active locale instead of the one it happened in.
+            this.result.notice = this.sourceNotice;
+            this.result.params = this.sourceNoticeParams;
+            this.result.text = '';
           }
           return value;
         }).catch(() => {
           cache.delete(signature);
           if (!this.disposed) {
-            this.sourceNote = '';
-            this.sourceError = T('ui.translations.source.failed');
+            this.sourceNotice = '';
+            this.sourceFailed = true;
           }
           return null;
         });
@@ -371,7 +389,7 @@
         query.set('limit', '1');
         let payload = null;
         try {
-          payload = await window.AssetAccess.request(this, '/i18n/coverage?' + query.toString(), this.requestOptions());
+          payload = await window.AssetAccess.request(this.app, '/i18n/coverage?' + query.toString(), this.requestOptions());
         } catch (error) {
           if (!this.isCurrent(epoch)) return;
           this.coverage = null;
@@ -415,7 +433,7 @@
         this.missing.error = '';
         let payload = null;
         try {
-          payload = await window.AssetAccess.request(this, '/i18n/coverage?' + query.toString(), this.requestOptions());
+          payload = await window.AssetAccess.request(this.app, '/i18n/coverage?' + query.toString(), this.requestOptions());
         } catch (error) {
           if (!this.isCurrent(epoch)) return;
           this.missing.loading = false;
@@ -471,7 +489,7 @@
         this.exportBusy = true;
         this.exportError = '';
         try {
-          const blob = await window.AssetAccess.request(this, '/i18n/export?' + query.toString(), Object.assign({ responseType: 'blob' }, this.requestOptions()));
+          const blob = await window.AssetAccess.request(this.app, '/i18n/export?' + query.toString(), Object.assign({ responseType: 'blob' }, this.requestOptions()));
           if (this.disposed) return;
           const file = (namespace ? locale + '.' + namespace : locale) + '.' + format;
           this.saveBlob(blob, file);
@@ -499,7 +517,7 @@
         setTimeout(() => {
           try { URL.revokeObjectURL(url); } catch (error) { /* the download already owns the bytes */ }
         }, 0);
-        this.result.text = T('ui.translations.export.ready', { file: file });
+        this.announce(T('ui.translations.export.ready', { file: file }));
         return true;
       },
       readImportFile(event) {
@@ -522,14 +540,14 @@
         this.report = value;
         const locale = text(value.locale, this.importForm.locale);
         if (mode === 'import') {
-          this.result.text = integer(value.applied)
+          this.announce(integer(value.applied)
             ? T('ui.translations.import.done', { locale: locale })
-            : T('ui.translations.import.applied_none');
+            : T('ui.translations.import.applied_none'));
           return;
         }
-        this.result.text = value.valid === true
+        this.announce(value.valid === true
           ? T('ui.translations.import.result_valid', { count: integer(value.entries) })
-          : T('ui.translations.import.result_invalid', { count: list(value.problems).length });
+          : T('ui.translations.import.result_invalid', { count: list(value.problems).length }));
       },
       importBody() {
         return { locale: text(this.importForm.locale), format: this.importFormat, content: String(this.importForm.content || '') };
@@ -544,7 +562,7 @@
         this.importBusy = true;
         this.importError = '';
         try {
-          const report = await window.AssetAccess.request(this, '/i18n/validate', Object.assign({ method: 'POST', body: body }, this.requestOptions()));
+          const report = await window.AssetAccess.request(this.app, '/i18n/validate', Object.assign({ method: 'POST', body: body }, this.requestOptions()));
           if (this.disposed) return;
           this.applyReport(report, 'validate');
         } catch (error) {
@@ -565,7 +583,7 @@
         this.importBusy = true;
         this.importError = '';
         try {
-          const report = await window.AssetAccess.request(this, '/i18n/import', Object.assign({ method: 'POST', body: body }, this.requestOptions()));
+          const report = await window.AssetAccess.request(this.app, '/i18n/import', Object.assign({ method: 'POST', body: body }, this.requestOptions()));
           if (this.disposed) return;
           this.applyReport(report, 'import');
           await this.reloadBundle(text(object(report).locale, body.locale));
@@ -633,13 +651,13 @@
         this.confirm.busy = true;
         this.confirm.error = '';
         try {
-          const payload = await window.AssetAccess.request(this, path, Object.assign({ method: 'DELETE' }, this.requestOptions()));
+          const payload = await window.AssetAccess.request(this.app, path, Object.assign({ method: 'DELETE' }, this.requestOptions()));
           if (this.disposed) return;
           const value = object(payload);
           this.confirm.open = false;
-          this.result.text = kind === 'delete'
+          this.announce(kind === 'delete'
             ? T('ui.translations.custom.deleted', { key: key })
-            : T('ui.translations.custom.reset_done', { count: integer(value.deleted), locale: locale });
+            : T('ui.translations.custom.reset_done', { count: integer(value.deleted), locale: locale }));
           await this.reloadBundle(locale);
           if (this.disposed) return;
           await this.reload();
@@ -669,7 +687,7 @@
 
         <template v-else>
           <p v-if="!canConfigure" class="agent-note">{{ $t('ui.translations.read_only') }}</p>
-          <p class="agent-note translation-result" role="status" aria-live="polite">{{ result.text }}</p>
+          <p class="agent-note translation-result" role="status" aria-live="polite">{{ result.notice ? $t(result.notice, result.params) : result.text }}</p>
 
           <section class="agent-panel" aria-labelledby="translations-coverage-title">
             <div class="agent-panel__head">
@@ -700,8 +718,8 @@
               <div><dt>{{ $t('ui.translations.coverage.source') }}</dt><dd>{{ sourceSummary }}</dd></div>
             </dl>
 
-            <p v-if="sourceError" class="agent-note agent-note--error" role="alert">{{ sourceError }}</p>
-            <p v-else-if="sourceNote" class="agent-note">{{ sourceNote }}</p>
+            <p v-if="sourceFailed" class="agent-note agent-note--error" role="alert">{{ $t('ui.translations.source.failed') }}</p>
+            <p v-else-if="sourceNotice" class="agent-note">{{ $t(sourceNotice, sourceNoticeParams) }}</p>
             <p v-if="loading" class="agent-note" role="status">{{ $t('ui.translations.coverage.loading') }}</p>
             <p v-else-if="coverageError" class="agent-note agent-note--error" role="alert">{{ coverageError }}</p>
             <p v-else-if="!rows.length" class="agent-note">{{ $t('ui.translations.coverage.empty') }}</p>

@@ -205,7 +205,10 @@ function stubFetch(s, table) {
     const target = String(url).replace(/^\/api\/v1/, '');
     const [path, query = ''] = target.split('?');
     const method = init.method || 'GET';
-    const entry = { method, path, params: new URLSearchParams(query), body: parseBody(init.body) };
+    // The transport boundary is where the browser decides the session headers,
+    // so the recorded entry keeps them: a mutation without the root CSRF token
+    // is a real defect and must be assertable from a mounted component.
+    const entry = { method, path, params: new URLSearchParams(query), body: parseBody(init.body), headers: init.headers || {}, credentials: init.credentials || '' };
     s.server.calls.push(entry);
     const handler = table[method + ' ' + path];
     if (typeof handler === 'function') return handler(entry);
@@ -583,4 +586,181 @@ test('T7 the canonical config table grants idiomas with system.view and nothing 
   assert.ok(!sections.includes('categorias'), 'no other section is widened');
 
   assert.deepEqual(s.errors, []);
+});
+
+// ------------------------------------------------- request seam and notices
+//
+// The languages section is a child component: it receives the root app as a
+// prop. Every request must therefore identify the root session, because the
+// bootstrap CSRF token lives only on the mounted root, and a rejected session
+// belongs to that same root. The following cases pin the seam at the real
+// transport boundary instead of trusting the call site.
+
+async function importCatalog(s, ui) {
+  setValue(findById(ui.root, 'translations-import-locale'), 'pt-br');
+  await s.settle();
+  setValue(findById(ui.root, 'translations-import-content'), '{"api.assets.restore": "Restaurar ativo"}');
+  await s.settle();
+  await click(buttonByText(ui.root, 'Importar'));
+  await s.settle();
+  await s.settle();
+}
+
+test('T7 languages requests carry the root session token and same-origin credentials', async () => {
+  const s = setup();
+  s.app.csrfToken = 'csrf-languages';
+  stubFetch(s, routes());
+  const ui = await mountSection(s);
+
+  const registrations = callsTo(s, 'PUT', '/i18n/sources/ui');
+  assert.equal(registrations.length, 1, 'the shipped catalog is registered once');
+  assert.equal(registrations[0].headers['X-CSRF-Token'], 'csrf-languages', 'the registration uses the root bootstrapped token');
+  assert.equal(registrations[0].credentials, 'same-origin', 'the registration keeps the session cookie boundary');
+
+  await importCatalog(s, ui);
+  const imports = callsTo(s, 'POST', '/i18n/import');
+  assert.equal(imports.length, 1, 'the import is sent');
+  assert.equal(imports[0].headers['X-CSRF-Token'], 'csrf-languages', 'the import uses the same root token');
+  assert.equal(imports[0].credentials, 'same-origin', 'the import keeps the session cookie boundary');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+test('T7 languages requests never invent a CSRF token the root does not hold', async () => {
+  const s = setup();
+  s.app.csrfToken = '';
+  stubFetch(s, routes());
+  const ui = await mountSection(s);
+
+  const registrations = callsTo(s, 'PUT', '/i18n/sources/ui');
+  assert.equal(registrations.length, 1, 'the shipped catalog registration is still attempted');
+  assert.equal(registrations[0].headers['X-CSRF-Token'], undefined, 'no header is fabricated without a session token');
+  assert.equal(registrations[0].credentials, 'same-origin', 'the request stays same-origin');
+
+  // The registration fails without a token in the real server; here the fake
+  // transport accepts it, so the notice may report success. The seam assertion
+  // is the header and the identity the request used, not a fabricated write.
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+test('T7 a 401 from a languages request clears the root session, not the section', async () => {
+  const s = setup();
+  s.app.csrfToken = 'csrf-languages';
+  const table = routes();
+  table['GET /i18n/coverage'] = () => respond({ error: { code: 'unauthenticated', key: 'api.auth.required', message: 'Sesión requerida.' }, details: [] }, 401);
+  stubFetch(s, table);
+  const ui = await mountSection(s);
+  await s.settle();
+
+  assert.equal(s.app.authenticated, false, 'the root session is signed out');
+  assert.equal(s.app.activeUserId, null, 'the root identity is cleared');
+  assert.equal(s.app.csrfToken, '', 'the stale token is dropped from the root');
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+test('T7 a denied import reports the denial and writes nothing', async () => {
+  const s = setup();
+  s.app.csrfToken = 'csrf-languages';
+  const table = routes();
+  table['POST /i18n/import'] = () => respond({ error: { code: 'forbidden', key: 'api.identity.permission_denied', message: 'Permiso denegado por el servidor.' }, details: [] }, 403);
+  stubFetch(s, table);
+  const ui = await mountSection(s);
+
+  await importCatalog(s, ui);
+
+  assert.equal(callsTo(s, 'POST', '/i18n/import').length, 1, 'the denied import is not retried');
+  assert.equal(s.server.calls.filter((call) => call.path === '/i18n/bundle' && call.params.get('locale') === 'pt-br').length, 0, 'nothing is reloaded after the denial');
+  assert.equal(callsTo(s, 'DELETE', '/i18n/custom/pt-br').length, 0, 'no custom layer write follows the denial');
+  const copy = textContent(ui.root);
+  assert.match(copy, /No tienes permiso para esta acción\./, 'the denial is localized for the account');
+  assert.ok(!/Importación guardada/.test(copy), 'the denial never claims success');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+test('T7 the registration notice follows the active locale and clears after a successful retry', async () => {
+  const s = setup();
+  s.app.csrfToken = 'csrf-languages';
+  const table = routes();
+  let registration = () => respond({ error: { code: 'forbidden', key: 'api.auth.csrf_invalid', message: 'CSRF inválido.' }, details: [] }, 403);
+  table['PUT /i18n/sources/ui'] = (call) => registration(call);
+  stubFetch(s, table);
+  const ui = await mountSection(s);
+
+  assert.match(textContent(ui.root), /No se pudo registrar el catálogo de la interfaz/, 'the failure is reported in Spanish');
+
+  s.c.ItsmI18n.setLocale('en');
+  await s.settle();
+  await s.settle();
+  const english = textContent(ui.root);
+  assert.match(english, /The interface catalog could not be registered/, 'the notice is retranslated with the active locale');
+  assert.ok(!/No se pudo registrar/.test(english), 'the stored Spanish sentence is not kept');
+
+  registration = () => respond({ source: 'ui', changed: false, digest: 'a'.repeat(64), revision: 12, locales: ['es', 'en'], keys: 5735 });
+  await ui.instance.registerSource();
+  await s.settle();
+  const recovered = textContent(ui.root);
+  assert.match(recovered, /The interface catalog was already registered/, 'a successful retry clears the failure');
+  assert.ok(!/could not be registered/.test(recovered), 'no stale failure survives the retry');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+function translationResult(node) {
+  return findAll(node, (current) => current.tag === 'p'
+    && String((current.props && current.props.class) || '').split(/\s+/).includes('translation-result'))[0] || null;
+}
+
+test('T7 the announced registration follows the active locale after a locale switch', async () => {
+  const s = setup();
+  stubFetch(s, routes());
+  const ui = await mountSection(s);
+
+  const live = translationResult(ui.root);
+  assert.ok(live, 'the outcome is announced through the live status region');
+  assert.equal(live.props.role, 'status', 'the region is a status live region');
+  assert.equal(live.props['aria-live'], 'polite', 'the announcement is polite');
+  assert.match(textContent(live), /Catálogo de la interfaz registrado/, 'the outcome is announced in the mount locale');
+
+  s.c.ItsmI18n.setLocale('en');
+  await s.settle();
+  await s.settle();
+  const english = textContent(translationResult(ui.root));
+  assert.match(english, /Interface catalog registered/, 'the announcement follows the active locale');
+  assert.ok(!/Catálogo de la interfaz/.test(english), 'the stored Spanish sentence is not kept');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
+});
+
+test('T7 an already registered catalog is announced in the active locale, and a failure leaves no stale copy', async () => {
+  const s = setup();
+  const table = routes();
+  let registration = () => respond({ error: { code: 'forbidden', key: 'api.auth.csrf_invalid', message: 'CSRF inválido.' }, details: [] }, 403);
+  table['PUT /i18n/sources/ui'] = (call) => registration(call);
+  stubFetch(s, table);
+  const ui = await mountSection(s);
+
+  assert.equal(textContent(translationResult(ui.root)), '', 'a failed registration leaves no stale announcement');
+  assert.match(textContent(ui.root), /No se pudo registrar el catálogo de la interfaz/, 'the failure is reported through its own alert');
+
+  s.c.ItsmI18n.setLocale('en');
+  await s.settle();
+  await s.settle();
+  assert.match(textContent(ui.root), /The interface catalog could not be registered/, 'the failure follows the active locale');
+  assert.ok(!/Catálogo de la interfaz/.test(textContent(translationResult(ui.root))), 'the failure leaves no stale success copy');
+
+  registration = () => respond({ source: 'ui', changed: false, digest: 'a'.repeat(64), revision: 12, locales: ['es', 'en'], keys: 5735 });
+  await ui.instance.registerSource();
+  await s.settle();
+  assert.match(textContent(translationResult(ui.root)), /The interface catalog was already registered/, 'the retry announces its outcome in the active locale');
+  assert.ok(!/could not be registered/.test(textContent(translationResult(ui.root))), 'no stale failure survives the retry');
+
+  assert.deepEqual(s.errors, []);
+  ui.unmount();
 });
