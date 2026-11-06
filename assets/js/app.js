@@ -609,7 +609,7 @@
         if (this.route.name === 'monitorDevice') return this.route.assetId || tr('ui.page.device');
         if (this.route.name === 'monitorAlert') return this.route.alertId || tr('ui.page.alert');
         if (this.route.name === 'notifications') return tr('ui.page.notifications');
-        if (this.route.name === 'person' && this.currentPerson) return this.currentPerson.name;
+        if (this.route.name === 'person') return this.currentPerson ? this.currentPerson.name : tr('ui.page.people');
         if (this.route.name === 'users') return tr('ui.page.users');
         if (this.route.name === 'user') return this.currentAccount ? this.currentAccount.name : tr('ui.page.user');
         if (this.route.name === 'denied') return tr('ui.page.denied');

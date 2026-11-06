@@ -1121,7 +1121,7 @@
                 <section class="panel config-empty">
                   <span class="config-empty__icon"><app-icon name="alert"></app-icon></span>
                   <h1 id="person-missing-title">{{ organization.personDetail.loading ? $t('ui.people.missing_loading') : (organizationDenied ? $t('ui.people.missing_denied') : $t('ui.people.missing_unavailable')) }}</h1>
-                  <p>{{ organizationDenied ? $t('ui.people.missing_denied_body') : (organization.personDetail.error || $t('ui.people.missing_no_person')) }}</p>
+                  <p>{{ organizationDenied ? $t('ui.people.missing_denied_body') : (organization.personDetail.errorKey ? $t(organization.personDetail.errorKey) : (organization.personDetail.error || $t('ui.people.missing_no_person'))) }}</p>
                 </section>
               </section>
 

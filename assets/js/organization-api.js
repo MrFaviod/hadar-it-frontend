@@ -1240,7 +1240,8 @@
           detail.id = personId;
           detail.record = null;
           detail.loading = false;
-          detail.error = tr('ui.organization.error.person_read_forbidden');
+          detail.errorKey = 'ui.organization.error.person_read_forbidden';
+          detail.error = tr(detail.errorKey);
           return false;
         }
         const detail = this.organization.personDetail;
@@ -1253,6 +1254,7 @@
           record: cached,
           loading: true,
           error: '',
+          errorKey: '',
           epoch,
           controller
         };
@@ -1269,6 +1271,8 @@
           if (epoch !== this.organization.personDetail.epoch) return false;
           if (error && error.name === 'AbortError') return false;
           this.organization.personDetail.record = error && error.status === 404 ? null : this.organization.personDetail.record;
+          this.organization.personDetail.errorKey = error && error.status === 404
+            ? 'ui.organization.error.person_unavailable' : '';
           this.organization.personDetail.error = error && error.status === 404
             ? tr('ui.organization.error.person_unavailable')
             : (error && error.message) || tr('ui.organization.error.person_load_failed');
