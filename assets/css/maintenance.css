@@ -1468,7 +1468,10 @@
 .maint-config-table__head,
 .maint-config-table__row {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 110px 80px 110px 190px;
+  /* One track per real child: name, category, interval, state, actions. The
+     category keeps a floor wide enough for its longest stored label and the
+     actions keep the space their three buttons need. */
+  grid-template-columns: minmax(0, 1.6fr) minmax(96px, 1fr) 110px 80px 190px;
   gap: 12px;
   align-items: center;
   padding: 10px 14px;
@@ -1476,7 +1479,8 @@
 
 .maint-config-table--types .maint-config-table__head,
 .maint-config-table--types .maint-config-table__row {
-  grid-template-columns: minmax(0, 2fr) 150px 130px 150px;
+  /* Type, usage and effect: three children, three tracks. */
+  grid-template-columns: minmax(0, 2fr) 150px 130px;
 }
 
 .maint-config-table__head {
