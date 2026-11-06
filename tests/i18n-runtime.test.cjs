@@ -206,3 +206,70 @@ test('people directory stat labels agree with the count they describe', async ()
   }
   I.setLocale('es');
 });
+
+// S3: the role line in Security composes two independent counts. Each count
+// selects its own plural form from the shipped catalog, so 0/1/2 permissions
+// and 0/1/2 accounts must agree with the number they describe in both locales.
+const { setup: setupViews } = require('./universal-harness.cjs');
+
+function roleRowLines(root) {
+  const lines = [];
+  const walk = (node) => {
+    if (!node) return;
+    const classes = node.props && node.props.class ? String(node.props.class).split(' ') : [];
+    if (classes.includes('role-row__copy')) {
+      const small = (node.children || []).find((child) => child.tag === 'small');
+      lines.push(small ? String(small.text || '').trim() : null);
+    }
+    for (const child of node.children || []) walk(child);
+  };
+  walk(root);
+  return lines;
+}
+
+test('S3 the Security role line pluralizes permission and account counts independently', async () => {
+  const pairs = [[0, 0], [0, 2], [1, 0], [1, 1], [2, 1], [2, 2]];
+  const expected = {
+    es: [
+      '0 permisos · 0 cuentas',
+      '0 permisos · 2 cuentas',
+      '1 permiso · 0 cuentas',
+      '1 permiso · 1 cuenta',
+      '2 permisos · 1 cuenta',
+      '2 permisos · 2 cuentas'
+    ],
+    en: [
+      '0 permissions · 0 accounts',
+      '0 permissions · 2 accounts',
+      '1 permission · 0 accounts',
+      '1 permission · 1 account',
+      '2 permissions · 1 account',
+      '2 permissions · 2 accounts'
+    ]
+  };
+  const s = setupViews();
+  await s.c.ItsmI18n.ready;
+  s.app.security.roles = pairs.map(([permissions], index) => ({
+    id: 'role-' + index,
+    name: 'Role ' + index,
+    permissions: Array.from({ length: permissions }, (unused, slot) => 'probe.' + slot),
+    builtIn: false
+  }));
+  const users = [];
+  pairs.forEach(([, accounts], index) => {
+    for (let slot = 0; slot < accounts; slot += 1) {
+      users.push({ id: 'user-' + index + '-' + slot, name: 'User', roleId: 'role-' + index });
+    }
+  });
+  s.app.security.users = users;
+  const mounted = s.mount('AccessSecurity', { app: s.app });
+  try {
+    for (const locale of ['es', 'en']) {
+      await s.c.ItsmI18n.setLocale(locale);
+      await s.settle();
+      assert.deepEqual(roleRowLines(mounted.root), expected[locale], locale + ' role lines');
+    }
+  } finally {
+    mounted.unmount();
+  }
+});

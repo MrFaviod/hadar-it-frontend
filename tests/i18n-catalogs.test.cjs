@@ -93,3 +93,48 @@ test('D5 keys are never assembled at runtime', () => {
   }
   assert.deepEqual(offenders, [], 'use a literal key per branch instead of concatenating catalog keys');
 });
+
+// S3: the languages section keeps the catalog's tú convention, and the role
+// line keeps its layout while both counts select their own plural form.
+test('S3 the languages section copy uses the tú forms of the shipped Spanish catalog', () => {
+  const expected = {
+    'ui.translations.lead': 'Consulta la cobertura por idioma, exporta o importa catálogos y revisa las traducciones personalizadas.',
+    'ui.translations.no_view': 'Necesitas el permiso system.view para ver las traducciones.',
+    'ui.translations.missing.choose_locale': 'Elige un idioma para ver sus claves faltantes.',
+    'ui.translations.import.lead': 'Pega o elige un catálogo JSON o PO. Validar no escribe nada; importar guarda en la capa personalizada, que una actualización del núcleo no borra.',
+    'ui.translations.import.required': 'Elige un idioma y pega un catálogo.'
+  };
+  const voseo = /(?<![\wáéíóúñ])(Consultá|consultá|exportá|importá|Revisá|revisá|Necesitás|necesitás|Elegí|elegí|Pegá|pegá|Descargá|descargá|Podés|podés|Tenés|tenés|querés)(?![\wáéíóúñ])/;
+  for (const key of Object.keys(expected)) {
+    assert.equal(es[key], expected[key], key + ' keeps the tú form');
+    assert.doesNotMatch(es[key], voseo, key + ' must not use voseo');
+  }
+});
+
+// S3: the remaining languages keys that still described their limits and
+// actions in voseo keep their full meaning in the catalog's tú forms.
+test('S3 the remaining languages keys use the tú forms without losing their meaning', () => {
+  const expected = {
+    'ui.translations.read_only': 'Puedes consultar la cobertura y validar catálogos. Para importar, eliminar o restablecer hace falta system.configure.',
+    'ui.translations.permission_denied': 'No tienes permiso para esta acción.',
+    'ui.translations.export.lead': 'Descarga las traducciones existentes de un idioma.',
+    'ui.translations.custom.orphaned_lead': 'Claves personalizadas que una actualización del núcleo dejó de servir; se conservan y puedes eliminarlas.'
+  };
+  const voseo = /(?<![\wáéíóúñ])(Consultá|consultá|exportá|importá|Revisá|revisá|Necesitás|necesitás|Elegí|elegí|Pegá|pegá|Descargá|descargá|Podés|podés|Tenés|tenés|querés)(?![\wáéíóúñ])/;
+  for (const key of Object.keys(expected)) {
+    assert.equal(es[key], expected[key], key + ' keeps the tú form');
+    assert.doesNotMatch(es[key], voseo, key + ' must not use voseo');
+  }
+  assert.deepEqual(parameters(es['ui.translations.read_only']), [], 'the read-only limit keeps its bare permission name');
+  assert.ok(es['ui.translations.read_only'].includes('system.configure'), 'the read-only limit still names the required permission');
+  assert.deepEqual(parameters(es['ui.translations.custom.orphaned_lead']), [], 'the orphaned explanation declares no interpolation');
+});
+
+test('S3 the role line keeps its layout and both counts keep their own plural forms', () => {
+  assert.equal(es['ui.access.role_meta'], '{permissions} · {accounts}');
+  assert.equal(en['ui.access.role_meta'], '{permissions} · {accounts}');
+  assert.deepEqual(parameters(es['ui.access.role_meta']), ['accounts', 'permissions']);
+  assert.equal(es['ui.access.role_accounts'], '{count} cuenta | {count} cuentas');
+  assert.equal(en['ui.access.role_accounts'], '{count} account | {count} accounts');
+  assert.ok(context['ui.access.role_accounts'], 'context.json documents the account count');
+});
