@@ -573,6 +573,7 @@
         this.app.phase9LoadJob(job.id);
       },
       async download(documentRef) {
+        this.error = '';
         const result = await this.app.phase9DownloadDocument(documentRef);
         if (!result.ok) this.error = result.error || '';
       }
@@ -830,6 +831,7 @@
         </template>
 
         <template v-else>
+          <p v-if="error" class="doc-error doc-job-alert" role="alert">{{ error }}</p>
           <div v-if="activeJob" class="doc-preview-area" data-od-id="active-report-job">
             <header class="doc-preview-toolbar">
               <div>
@@ -856,6 +858,7 @@
                 </tbody>
               </table>
               <p v-else-if="activeJob.status === 'completed'" class="doc-help">{{ $t('ui.reports.no_documents') }}</p>
+              <p v-else-if="activeJob.status === 'failed'" class="doc-error" role="alert">{{ $t('ui.reports.job_failed_state') }}</p>
               <p v-else class="doc-help">{{ $t('ui.reports.document_pending') }}</p>
             </div>
           </div>
@@ -908,7 +911,11 @@
         draft: { baseUrl: '', branding: { name: '', primary: '', accent: '', header: '', footer: '', logoAttachmentId: '' } },
         error: '',
         fieldErrors: {},
-        saved: false
+        saved: false,
+        loading: false,
+        loadError: '',
+        dirty: false,
+        owned: false
       };
     },
     computed: {
@@ -920,19 +927,47 @@
       }
     },
     created() {
+      this.owned = true;
       this.load();
     },
+    beforeUnmount() {
+      this.owned = false;
+    },
     methods: {
-      async load() {
-        await this.app.phase9LoadSettings();
-        this.reset();
+      ownerToken() {
+        const user = this.app.currentUser || {};
+        const phase9 = this.app.phase9 || {};
+        return String(user.id || '') + '|' + String(phase9.sessionEpoch || '');
       },
-      reset() {
+      copyRetained() {
         const settings = this.app.phase9.settings;
         this.draft = {
           baseUrl: settings.baseUrl,
           branding: Object.assign({}, settings.branding)
         };
+      },
+      async load() {
+        const owner = this.ownerToken();
+        this.loading = true;
+        this.loadError = '';
+        // Retained server values stay visible while the refresh runs, so a
+        // refused refresh never turns a configured editor into a blank form.
+        if (!this.dirty) this.copyRetained();
+        const loaded = await this.app.phase9LoadSettings();
+        if (!this.owned || this.ownerToken() !== owner) return;
+        this.loading = false;
+        if (!loaded) {
+          if (this.canSave && !this.state.loaded) this.loadError = tr('ui.reports.settings_load_error');
+          return;
+        }
+        // Intent is read after the await: an edit typed while the read was in
+        // flight outranks the response, so the draft and its dirty flag stay.
+        if (this.dirty) return;
+        this.reset();
+        this.dirty = false;
+      },
+      reset() {
+        this.copyRetained();
         this.saved = false;
       },
       validColor(value) {
@@ -957,9 +992,13 @@
       async save() {
         if (!this.canSave) {
           this.error = tr('ui.reports.error_forbidden');
-          return;
+          return { ok: false };
         }
-        if (!this.validate()) return;
+        // The handler is the guard: a disabled button is not a contract.
+        if (this.loading || !this.state.loaded || this.loadError || this.state.saving) {
+          return { ok: false, error: this.loadError };
+        }
+        if (!this.validate()) return { ok: false };
         const result = await this.app.phase9SaveSettings({
           baseUrl: this.draft.baseUrl,
           branding: this.draft.branding,
@@ -968,10 +1007,11 @@
         if (!result.ok) {
           this.error = result.error;
           this.fieldErrors = result.fieldErrors || {};
+          this.saved = false;
           return;
         }
-        this.saved = true;
         this.reset();
+        this.dirty = false;
         this.saved = true;
         this.app.showToast(tr('ui.reports.saved_toast'));
       }
@@ -983,23 +1023,27 @@
           <h2>{{ $t('ui.reports.settings_title') }}</h2>
           <p>{{ $t('ui.reports.settings_lead') }}</p>
         </header>
-        <form class="qr-settings-form" @submit.prevent="save">
+        <form class="qr-settings-form" @submit.prevent="save" @input="saved = false; dirty = true" :aria-busy="state.saving ? 'true' : 'false'">
+          <p v-if="loading" class="doc-help" role="status">{{ $t('ui.common.loading') }}</p>
+          <p v-else-if="loadError" class="doc-error" role="alert">{{ loadError }}</p>
           <label class="doc-field">{{ $t('ui.reports.field_base_url') }}
-            <input type="url" v-model="draft.baseUrl" maxlength="400" placeholder="https://activos.organizacion.example/">
-            <small v-if="fieldErrors.baseUrl" class="doc-error">{{ fieldErrors.baseUrl }}</small>
+            <input type="url" v-model="draft.baseUrl" maxlength="400" placeholder="https://activos.organizacion.example/"
+                   :aria-invalid="fieldErrors.baseUrl ? 'true' : 'false'"
+                   :aria-describedby="fieldErrors.baseUrl ? 'report-base-url-error' : null">
+            <small v-if="fieldErrors.baseUrl" id="report-base-url-error" class="doc-error">{{ fieldErrors.baseUrl }}</small>
           </label>
           <div class="doc-form-grid">
             <label class="doc-field">{{ $t('ui.reports.org_name') }}<input v-model="draft.branding.name" maxlength="120"></label>
             <label class="doc-field">{{ $t('ui.reports.logo_attachment') }}<input v-model="draft.branding.logoAttachmentId" maxlength="120" :placeholder="$t('ui.reports.logo_attachment_placeholder')"></label>
-            <label class="doc-field">{{ $t('ui.reports.color_primary') }}<input v-model="draft.branding.primary" maxlength="7" placeholder="#0d766e"><small v-if="fieldErrors.primary" class="doc-error">{{ fieldErrors.primary }}</small></label>
-            <label class="doc-field">{{ $t('ui.reports.color_accent') }}<input v-model="draft.branding.accent" maxlength="7" placeholder="#147c73"><small v-if="fieldErrors.accent" class="doc-error">{{ fieldErrors.accent }}</small></label>
+            <label class="doc-field">{{ $t('ui.reports.color_primary') }}<input v-model="draft.branding.primary" maxlength="7" placeholder="#0d766e" :aria-invalid="fieldErrors.primary ? 'true' : 'false'" :aria-describedby="fieldErrors.primary ? 'report-color-primary-error' : null"><small v-if="fieldErrors.primary" id="report-color-primary-error" class="doc-error">{{ fieldErrors.primary }}</small></label>
+            <label class="doc-field">{{ $t('ui.reports.color_accent') }}<input v-model="draft.branding.accent" maxlength="7" placeholder="#147c73" :aria-invalid="fieldErrors.accent ? 'true' : 'false'" :aria-describedby="fieldErrors.accent ? 'report-color-accent-error' : null"><small v-if="fieldErrors.accent" id="report-color-accent-error" class="doc-error">{{ fieldErrors.accent }}</small></label>
           </div>
           <label class="doc-field">{{ $t('ui.reports.header_field') }}<textarea v-model="draft.branding.header" maxlength="300" rows="3"></textarea></label>
           <label class="doc-field">{{ $t('ui.reports.footer_field') }}<textarea v-model="draft.branding.footer" maxlength="300" rows="3"></textarea></label>
           <p class="doc-help">{{ $t('ui.reports.logo_note') }}</p>
           <p v-if="!canSave" class="doc-help">{{ $t('ui.reports.need_config') }}</p>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || state.saving">{{ state.saving ? $t('ui.common.saving') : (saved ? $t('ui.reports.saved') : $t('ui.reports.save_config')) }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || state.saving || loading || !state.loaded || !!loadError">{{ state.saving ? $t('ui.common.saving') : (saved ? $t('ui.reports.saved') : $t('ui.reports.save_config')) }}</button>
         </form>
       </section>
     `

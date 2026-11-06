@@ -796,7 +796,8 @@
     name: 'Phase9QrSettings',
     props: { app: { type: Object, required: true } },
     data() {
-      return { baseUrl: '', error: '', saved: false };
+      return { baseUrl: '', error: '', saved: false, loading: false, loadError: '',
+        urlError: '', dirty: false, owned: false };
     },
     computed: {
       settings() {
@@ -817,33 +818,64 @@
       }
     },
     created() {
+      this.owned = true;
       this.load();
     },
+    beforeUnmount() {
+      this.owned = false;
+    },
     methods: {
+      ownerToken() {
+        const user = this.app.currentUser || {};
+        const phase9 = this.app.phase9 || {};
+        return String(user.id || '') + '|' + String(phase9.sessionEpoch || '');
+      },
       async load() {
-        await this.app.phase9LoadSettings();
+        const owner = this.ownerToken();
+        this.loading = true;
+        this.loadError = '';
+        // The retained base URL stays visible while the refresh runs.
+        if (!this.dirty) this.baseUrl = this.settings.baseUrl;
+        const loaded = await this.app.phase9LoadSettings();
+        if (!this.owned || this.ownerToken() !== owner) return;
+        this.loading = false;
+        if (!loaded) {
+          if (this.canSave && !this.settings.loaded) this.loadError = tr('ui.qr.settings.load_error');
+          return;
+        }
+        // An edit typed during the read wins over the response.
+        if (this.dirty) return;
         this.baseUrl = this.settings.baseUrl;
+        this.dirty = false;
+        this.saved = false;
       },
       async save() {
         this.error = '';
+        this.urlError = '';
+        this.saved = false;
+        // The handler is the guard: a disabled button is not a contract.
+        if (this.loading || !this.settings.loaded || this.loadError || this.settings.saving) {
+          return { ok: false, error: this.loadError };
+        }
+        if (!this.canSave) {
+          this.error = tr('ui.labels.error.permission');
+          return { ok: false };
+        }
         if (this.baseUrl) {
           try {
             const url = new URL(this.baseUrl);
             if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol');
           } catch (_) {
-            this.error = tr('ui.qr.settings.error_url');
-            return;
+            this.urlError = tr('ui.qr.settings.error_url');
+            return { ok: false };
           }
-        }
-        if (!this.canSave) {
-          this.error = tr('ui.labels.error.permission');
-          return;
         }
         const result = await this.app.phase9SaveSettings({ baseUrl: this.baseUrl });
         if (!result.ok) {
           this.error = result.error;
           return;
         }
+        this.dirty = false;
         this.saved = true;
         this.app.showToast(tr('ui.qr.settings.toast_saved'));
       }
@@ -855,10 +887,15 @@
           <h2>{{ $t('ui.qr.settings.title') }}</h2>
           <p>{{ $t('ui.qr.settings.lead') }}</p>
         </header>
-        <form class="qr-settings-form" @submit.prevent="save">
+        <form class="qr-settings-form" @submit.prevent="save" @input="saved = false; dirty = true" :aria-busy="settings.saving ? 'true' : 'false'">
+          <p v-if="loading" class="doc-help" role="status">{{ $t('ui.common.loading') }}</p>
+          <p v-else-if="loadError" class="doc-error" role="alert">{{ loadError }}</p>
           <label class="doc-field">{{ $t('ui.qr.settings.base_url') }}
-            <input type="url" v-model="baseUrl" maxlength="400" :placeholder="$t('ui.qr.settings.base_url_placeholder')">
+            <input type="url" v-model="baseUrl" maxlength="400" :placeholder="$t('ui.qr.settings.base_url_placeholder')"
+                   :aria-invalid="urlError ? 'true' : 'false'"
+                   :aria-describedby="urlError ? 'qr-base-url-error' : null">
           </label>
+          <p v-if="urlError" id="qr-base-url-error" class="doc-error">{{ urlError }}</p>
           <p class="doc-help">{{ $t('ui.qr.settings.private_prefix') }} <code>{{ privatePath }}</code>. {{ $t('ui.qr.settings.private_note') }}</p>
           <div v-if="example" class="qr-example">
             <div><strong>{{ $t('ui.qr.settings.example') }}</strong><code>{{ example }}</code></div>
@@ -868,7 +905,7 @@
             <div><strong>{{ $t('ui.qr.settings.access_title') }}</strong><p>{{ $t('ui.qr.settings.access_lead') }}</p></div>
           </div>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.qr.settings.saved') : $t('ui.qr.settings.save')) }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving || loading || !settings.loaded || !!loadError">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.qr.settings.saved') : $t('ui.qr.settings.save')) }}</button>
         </form>
       </section>
     `
@@ -878,7 +915,8 @@
     name: 'Phase9LabelSettings',
     props: { app: { type: Object, required: true } },
     data() {
-      return { label: LABEL.defaultLabelOptions({}), error: '', saved: false };
+      return { label: LABEL.defaultLabelOptions({}), error: '', saved: false, loading: false,
+        loadError: '', dirty: false, owned: false };
     },
     computed: {
       formats() {
@@ -895,12 +933,39 @@
       }
     },
     created() {
+      this.owned = true;
       this.load();
     },
+    beforeUnmount() {
+      this.owned = false;
+    },
     methods: {
-      async load() {
-        await this.app.phase9LoadSettings();
+      ownerToken() {
+        const user = this.app.currentUser || {};
+        const phase9 = this.app.phase9 || {};
+        return String(user.id || '') + '|' + String(phase9.sessionEpoch || '');
+      },
+      copyRetained() {
         this.label = LABEL.defaultLabelOptions(this.settings.labelDefaults);
+      },
+      async load() {
+        const owner = this.ownerToken();
+        this.loading = true;
+        this.loadError = '';
+        // The retained geometry stays visible while the refresh runs.
+        if (!this.dirty) this.copyRetained();
+        const loaded = await this.app.phase9LoadSettings();
+        if (!this.owned || this.ownerToken() !== owner) return;
+        this.loading = false;
+        if (!loaded) {
+          if (this.canSave && !this.settings.loaded) this.loadError = tr('ui.labels.settings.load_error');
+          return;
+        }
+        // An edit typed during the read wins over the response.
+        if (this.dirty) return;
+        this.copyRetained();
+        this.dirty = false;
+        this.saved = false;
       },
       applyFormat() {
         const format = LABEL.formatOf(this.label.formatId);
@@ -920,16 +985,22 @@
         this.label.gapYmm = format.gapYmm;
       },
       async save() {
+        this.error = '';
+        this.saved = false;
+        // The handler is the guard: a disabled button is not a contract.
+        if (this.loading || !this.settings.loaded || this.loadError || this.settings.saving) {
+          return { ok: false, error: this.loadError };
+        }
         if (!this.canSave) {
           this.error = tr('ui.labels.error.permission');
-          return;
+          return { ok: false };
         }
-        this.error = '';
         const result = await this.app.phase9SaveSettings({ labelDefaults: this.label });
         if (!result.ok) {
           this.error = result.error;
           return;
         }
+        this.dirty = false;
         this.saved = true;
         this.app.showToast(tr('ui.labels.settings.toast_saved'));
       }
@@ -941,9 +1012,11 @@
           <h2>{{ $t('ui.labels.settings.title') }}</h2>
           <p>{{ $t('ui.labels.settings.lead') }}</p>
         </header>
-        <form class="qr-settings-form" @submit.prevent="save">
+        <form class="qr-settings-form" @submit.prevent="save" @input="saved = false; dirty = true" @change="saved = false" :aria-busy="settings.saving ? 'true' : 'false'">
+          <p v-if="loading" class="doc-help" role="status">{{ $t('ui.common.loading') }}</p>
+          <p v-else-if="loadError" class="doc-error" role="alert">{{ loadError }}</p>
           <label class="doc-field">{{ $t('ui.labels.settings.format_label') }}
-            <select v-model="label.formatId" @change="applyFormat">
+            <select v-model="label.formatId" @change="applyFormat(); dirty = true">
               <option v-for="format in formats" :key="format.id" :value="format.id">{{ format.label }} · {{ format.detail }}</option>
             </select>
           </label>
@@ -968,7 +1041,7 @@
             </label>
           </fieldset>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.labels.settings.saved') : $t('ui.labels.settings.save')) }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canSave || settings.saving || loading || !settings.loaded || !!loadError">{{ settings.saving ? $t('ui.common.saving') : (saved ? $t('ui.labels.settings.saved') : $t('ui.labels.settings.save')) }}</button>
         </form>
       </section>
     `

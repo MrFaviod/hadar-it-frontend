@@ -658,7 +658,7 @@
   const WarrantySettings = {
     props: { app: Object },
     data() {
-      return { days: '', busy: false, saved: false, error: '', message: '' };
+      return { days: '', busy: false, saved: false, error: '', message: '', loading: true, dirty: false, owned: true };
     },
     computed: {
       state() {
@@ -683,20 +683,29 @@
     created() {
       this.load();
     },
+    beforeUnmount() { this.owned = false; },
     methods: {
       t,
+      ownerToken() { return String(this.app.currentUser && this.app.currentUser.id || '') + ':' + String(this.app.sessionEpoch || 0); },
       async load() {
+        const owner = this.ownerToken();
+        this.loading = true;
         this.saved = false;
+        if (this.state.loaded && !this.dirty) this.days = this.state.expiringDays;
         if (!this.canView) {
           this.error = t('ui.warranty.error_settings_view');
+          this.loading = false;
           return false;
         }
         const ok = await this.app.loadWarrantyPreferences();
-        this.days = this.app.phase6.warrantyPrefs.expiringDays;
-        this.error = ok ? '' : this.app.phase6.warrantyPrefs.error || '';
+        if (!this.owned || owner !== this.ownerToken()) return false;
+        this.loading = false;
+        this.error = ok || this.state.loaded ? '' : this.state.error || t('ui.warranty.error_settings');
+        if (ok && !this.dirty) this.days = this.state.expiringDays;
         return ok;
       },
       async save() {
+        if (!this.owned || this.loading || !this.state.loaded || this.busy) return false;
         this.saved = false;
         const value = Number(this.days);
         if (!Number.isInteger(value) || value < 1 || value > 365) {
@@ -717,6 +726,7 @@
         this.days = this.app.phase6.warrantyPrefs.expiringDays;
         this.saved = true;
         this.error = '';
+        this.dirty = false;
         this.message = t('ui.warranty.settings_stored');
         if (this.app.showToast) this.app.showToast(t('ui.warranty.settings_toast'));
         return true;
@@ -725,7 +735,7 @@
     template: `
       <section class="config-section doc-settings" data-od-id="warranty-settings">
         <header class="config-section-head"><p class="eyebrow">{{ t('ui.warranty.eyebrow') }}</p><h2>{{ t('ui.warranty.settings_title') }}</h2><p>{{ t('ui.warranty.settings_lead') }}</p></header>
-        <form class="warranty-settings-form" @submit.prevent="save">
+        <form class="warranty-settings-form" @submit.prevent="save" @input="dirty=true;saved=false" @change="dirty=true;saved=false">
           <label class="doc-field">{{ t('ui.warranty.settings_window') }}<select v-model.number="days" :disabled="!canEdit"><option v-for="option in dayOptions" :key="option" :value="option">{{ t('ui.warranty.settings_window_option', { count: option }) }}</option></select><small class="doc-help">{{ t('ui.warranty.settings_window_hint') }}</small></label>
           <div class="doc-form-grid">
             <label class="doc-field">{{ t('ui.warranty.settings_site') }}<select v-model="app.warrantyPrefs.site"><option value="all">{{ t('ui.warranty.settings_all') }}</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
@@ -736,7 +746,7 @@
           <p class="doc-help">{{ t('ui.warranty.settings_server_note') }}</p>
           <p v-if="message" class="config-note" role="status">{{ message }}</p>
           <p v-if="error" class="doc-error" role="alert">{{ error }}</p>
-          <button class="btn btn--primary" type="submit" :disabled="!canEdit || busy">{{ saved ? t('ui.warranty.settings_saved') : t('ui.warranty.settings_save') }}</button>
+          <button class="btn btn--primary" type="submit" :disabled="!canEdit || busy || loading || !state.loaded">{{ saved ? t('ui.warranty.settings_saved') : t('ui.warranty.settings_save') }}</button>
         </form>
       </section>
     `

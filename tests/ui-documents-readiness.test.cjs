@@ -676,3 +676,512 @@ test('a label preview without a readable sheet width drops the previous fit', as
   assert.equal(label.previewFrameHeight, 726, 'an unmounted label preview must not touch its frame');
   assert.deepEqual(s.errors, []);
 });
+
+function nodesOf(node, out = []) {
+  if (node && typeof node === 'object') {
+    out.push(node);
+    for (const child of node.children || []) nodesOf(child, out);
+  }
+  return out;
+}
+
+function findByTag(root, tag, match = () => true) {
+  return nodesOf(root).filter((node) => node.tag === tag && match(node));
+}
+
+// A mounted editor loads its stored values in a promise chain that resolves
+// after the first render tick, so the assertions wait for that chain too.
+async function settled(s) {
+  for (let round = 0; round < 3; round += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    await s.tick();
+  }
+}
+
+test('a failed document download reports in the jobs tab that triggered it', async () => {
+  const s = setup();
+  appSet(s);
+  s.app.phase9LoadTemplates = async () => false;
+  s.app.phase9LoadJobs = async () => false;
+  s.app.phase9DownloadDocument = async () => ({ ok: false, error: 'No se pudo descargar el documento.' });
+  const view = s.mount('ReportsCenter');
+  const reports = view.instance;
+  reports.tab = 'jobs';
+  const document = {
+    id: 'doc-1', name: 'Inventario.pdf', mime: 'application/pdf', size: 2048,
+    jobId: 'job-1', jobCreatedAt: '2030-01-01T00:00:00Z'
+  };
+  s.app.phase9.documents.items = [document];
+  await s.tick();
+  await reports.download(document);
+  await s.tick();
+  const text = rendered(view.root).replace(/\s+/g, ' ');
+  assert.match(text, /No se pudo descargar el documento\./);
+  const alert = findByTag(view.root, 'p', (node) => node.props.role === 'alert' && /No se pudo descargar/.test(rendered(node)));
+  assert.equal(alert.length, 1, 'the download failure is announced once');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('a failed job states its outcome instead of claiming the document is pending', async () => {
+  const s = setup();
+  appSet(s);
+  s.app.phase9LoadTemplates = async () => false;
+  s.app.phase9LoadJobs = async () => false;
+  const view = s.mount('ReportsCenter');
+  const reports = view.instance;
+  reports.tab = 'jobs';
+  s.app.phase9.activeJob.job = {
+    id: 'job-1', status: 'failed', processed: 2, total: 2, errors: [],
+    createdAt: '2030-01-01T00:00:00Z', documents: []
+  };
+  await s.tick();
+  const text = rendered(view.root).replace(/\s+/g, ' ');
+  assert.doesNotMatch(text, /El documento aparecerá cuando el trabajo termine\./);
+  assert.match(text, /El trabajo terminó con errores\./);
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('report settings refuse to save over settings that never loaded', async () => {
+  const s = setup();
+  appSet(s);
+  s.app.effectivePermissions = ['config.general'];
+  s.app.phase9.settings.loaded = false;
+  const view = s.mount('ReportSettings');
+  const settings = view.instance;
+  await settled(s);
+  const text = rendered(view.root).replace(/\s+/g, ' ');
+  assert.match(text, /No se pudieron cargar los ajustes de reportes\./);
+  const submit = findByTag(view.root, 'button', (node) => node.props.type === 'submit');
+  assert.equal(submit.length, 1);
+  assert.equal(submit[0].props.disabled, true, 'save stays disabled until the stored settings loaded');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('an invalid report colour is announced through its own field', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => false;
+  const view = s.mount('ReportSettings');
+  const settings = view.instance;
+  await settled(s);
+  settings.draft.branding.primary = 'teal';
+  await settings.save();
+  await s.tick();
+  const input = findByTag(view.root, 'input', (node) => node.props.placeholder === '#0d766e');
+  assert.equal(input.length, 1);
+  assert.equal(input[0].props['aria-invalid'], 'true');
+  const described = input[0].props['aria-describedby'];
+  assert.equal(described, 'report-color-primary-error');
+  const message = nodesOf(view.root).filter((node) => node.props && node.props.id === described);
+  assert.equal(message.length, 1, 'the described element exists');
+  assert.match(rendered(message[0]), /Usa un color hexadecimal de seis dígitos\./);
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('the QR settings editor reports a load failure and links its URL error', async () => {
+  const s = setup();
+  appSet(s);
+  s.app.effectivePermissions = ['config.general'];
+  s.app.phase9.selection.items = [];
+  const view = s.mount('QrSettings');
+  const qr = view.instance;
+  await settled(s);
+  assert.match(rendered(view.root), /No se pudieron cargar los ajustes de QR\./);
+  const submit = findByTag(view.root, 'button', (node) => node.props.type === 'submit');
+  assert.equal(submit[0].props.disabled, true, 'save stays disabled until the stored settings loaded');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('the label settings editor reports a load failure without blocking its defaults', async () => {
+  const s = setup();
+  appSet(s);
+  s.app.effectivePermissions = ['config.general'];
+  const view = s.mount('LabelSettings');
+  const label = view.instance;
+  await settled(s);
+  assert.match(rendered(view.root), /No se pudieron cargar los ajustes de etiquetas\./);
+  const submit = findByTag(view.root, 'button', (node) => node.props.type === 'submit');
+  assert.equal(submit[0].props.disabled, true, 'save stays disabled until the stored settings loaded');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+function deferredValue() {
+  let resolve;
+  const promise = new Promise((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function retained(s, patch = {}) {
+  Object.assign(s.app.phase9.settings, {
+    baseUrl: 'https://retained.example/', loaded: true, loading: false,
+    saving: false, error: '', epoch: 4, controller: null
+  }, patch);
+  s.app.phase9.settings.branding = {
+    name: 'Organización retenida', primary: '#0d766e', accent: '#147c73',
+    header: 'Encabezado retenido', footer: 'Pie retenido', logoAttachmentId: ''
+  };
+  s.app.phase9.settings.labelDefaults.widthMm = 120;
+  s.app.effectivePermissions = ['config.general'];
+}
+
+test('a refused refresh keeps the retained report settings in a new editor', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => false;
+  const view = s.mount('ReportSettings');
+  const editor = view.instance;
+  await settled(s);
+  assert.equal(editor.draft.baseUrl, 'https://retained.example/');
+  assert.equal(editor.draft.branding.name, 'Organización retenida');
+  assert.equal(editor.loadError, '', 'retained settings are not a load failure');
+  const submit = findByTag(view.root, 'button', (node) => node.props.type === 'submit');
+  assert.equal(submit[0].props.disabled, false, 'retained settings stay savable');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('a refused refresh keeps the retained base URL in a new QR editor', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => false;
+  const view = s.mount('QrSettings');
+  const editor = view.instance;
+  await settled(s);
+  assert.equal(editor.baseUrl, 'https://retained.example/');
+  assert.equal(editor.loadError, '', 'retained settings are not a load failure');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('a refused refresh keeps the retained geometry in a new label editor', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => false;
+  const view = s.mount('LabelSettings');
+  const editor = view.instance;
+  await settled(s);
+  assert.equal(editor.label.widthMm, 120);
+  assert.equal(editor.loadError, '', 'retained settings are not a load failure');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+const SETTINGS_SAVE_GUARDS = [
+  ['ReportSettings', 'loading'],
+  ['ReportSettings', 'unloaded'],
+  ['ReportSettings', 'loadError'],
+  ['ReportSettings', 'saving'],
+  ['ReportSettings', 'denied'],
+  ['QrSettings', 'loading'],
+  ['QrSettings', 'unloaded'],
+  ['QrSettings', 'loadError'],
+  ['QrSettings', 'saving'],
+  ['QrSettings', 'denied'],
+  ['LabelSettings', 'loading'],
+  ['LabelSettings', 'unloaded'],
+  ['LabelSettings', 'loadError'],
+  ['LabelSettings', 'saving'],
+  ['LabelSettings', 'denied']
+];
+
+for (const [component, state] of SETTINGS_SAVE_GUARDS) {
+  test(`${component} refuses to save while ${state} and never writes the shared settings`, async () => {
+    const s = setup();
+    appSet(s);
+    retained(s);
+    s.app.phase9LoadSettings = async () => true;
+    const calls = [];
+    s.app.phase9SaveSettings = async (patch) => {
+      calls.push(patch);
+      return { ok: true };
+    };
+    const view = s.mount(component);
+    const editor = view.instance;
+    await settled(s);
+    if (state === 'loading') editor.loading = true;
+    if (state === 'unloaded') s.app.phase9.settings.loaded = false;
+    if (state === 'loadError') editor.loadError = 'No se pudieron cargar los ajustes.';
+    if (state === 'saving') s.app.phase9.settings.saving = true;
+    if (state === 'denied') s.app.effectivePermissions = [];
+    const before = JSON.stringify(s.app.phase9.settings);
+    await editor.save();
+    await settled(s);
+    assert.equal(calls.length, 0, `${component} called phase9SaveSettings while ${state}`);
+    assert.equal(JSON.stringify(s.app.phase9.settings), before,
+      `${component} changed shared settings while ${state}`);
+    assert.deepEqual(s.errors, []);
+    view.unmount();
+  });
+}
+
+test('a settings response that lands after unmount does not write the report editor', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  const pending = deferredValue();
+  s.app.phase9LoadSettings = () => pending.promise;
+  const view = s.mount('ReportSettings');
+  const editor = view.instance;
+  await settled(s);
+  const draft = JSON.stringify(editor.draft);
+  s.app.phase9.settings.baseUrl = 'https://late.example/';
+  view.unmount();
+  pending.resolve(true);
+  await settled(s);
+  assert.equal(JSON.stringify(editor.draft), draft, 'an unmounted editor took the late values');
+  assert.deepEqual(s.errors, []);
+});
+
+test('a settings response for another identity does not replace the report draft', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  const pending = deferredValue();
+  s.app.phase9LoadSettings = () => pending.promise;
+  const view = s.mount('ReportSettings');
+  const editor = view.instance;
+  await settled(s);
+  assert.equal(editor.draft.baseUrl, 'https://retained.example/');
+  s.app.currentUser = { id: 'someone-else', active: true };
+  s.app.phase9.settings.baseUrl = 'https://other-identity.example/';
+  pending.resolve(true);
+  await settled(s);
+  assert.equal(editor.draft.baseUrl, 'https://retained.example/');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('a server-refused settings read keeps the retained values through the real adapter', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.effectivePermissions = ['config.general', 'assets.view'];
+  const requests = [];
+  s.c.fetch = async (url, init) => {
+    requests.push({ url: String(url), method: (init && init.method) || 'GET' });
+    return {
+      ok: false, status: 503, headers: { get: () => 'application/json' },
+      json: async () => ({ error: 'Servicio no disponible' })
+    };
+  };
+  s.app.phase9LoadSettings = s.c.options.methods.phase9LoadSettings.bind(s.app);
+  const view = s.mount('ReportSettings');
+  const editor = view.instance;
+  await settled(s);
+  assert.deepEqual(requests.map((item) => item.method + ' ' + item.url),
+    ['GET /api/v1/reports/settings']);
+  assert.equal(editor.draft.baseUrl, 'https://retained.example/');
+  assert.equal(editor.loadError, '', 'loaded settings survive a refused refresh');
+  assert.equal(s.app.phase9.settings.error, s.c.ItsmI18n.t('ui.errors.request_failed'));
+  const submit = findByTag(view.root, 'button', (node) => node.props.type === 'submit');
+  assert.equal(submit[0].props.disabled, false, 'retained settings stay savable');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('a completed refresh does not overwrite edits made before it started', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => true;
+  const view = s.mount('ReportSettings');
+  const editor = view.instance;
+  await settled(s);
+  editor.draft.baseUrl = 'https://edited.example/';
+  editor.dirty = true;
+  s.app.phase9.settings.baseUrl = 'https://server-update.example/';
+  await editor.load();
+  await settled(s);
+  assert.equal(editor.draft.baseUrl, 'https://edited.example/');
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+test('the QR editor ties URL accessibility to the URL error only', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  s.app.phase9LoadSettings = async () => true;
+  const view = s.mount('QrSettings');
+  const editor = view.instance;
+  await settled(s);
+  editor.error = 'La solicitud falló.';
+  await s.tick();
+  let input = findByTag(view.root, 'input', (node) => node.props.type === 'url')[0];
+  assert.notEqual(input.props['aria-invalid'], 'true');
+  assert.equal(input.props['aria-describedby'] || null, null);
+  editor.baseUrl = 'no-es-url';
+  await editor.save();
+  await settled(s);
+  input = findByTag(view.root, 'input', (node) => node.props.type === 'url')[0];
+  assert.equal(input.props['aria-invalid'], 'true');
+  assert.equal(input.props['aria-describedby'], 'qr-base-url-error');
+  const expected = s.c.ItsmI18n.t('ui.qr.settings.error_url');
+  assert.match(rendered(view.root), new RegExp(expected.slice(0, 24)));
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+async function pendingEditor(s, component) {
+  const pending = deferredValue();
+  const calls = [];
+  s.app.phase9LoadSettings = () => pending.promise;
+  s.app.phase9SaveSettings = async (patch) => {
+    calls.push(patch);
+    return { ok: true };
+  };
+  const view = s.mount(component);
+  await settled(s);
+  return { view, pending, calls, editor: view.instance };
+}
+
+test('an edit typed during a pending report load survives the response', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  const pending = await pendingEditor(s, 'ReportSettings');
+  pending.editor.draft.baseUrl = 'https://typed.example/';
+  pending.editor.dirty = true;
+  s.app.phase9.settings.baseUrl = 'https://server-update.example/';
+  pending.pending.resolve(true);
+  await settled(s);
+  assert.equal(pending.editor.draft.baseUrl, 'https://typed.example/',
+    'the pending response replaced the value typed while it was in flight');
+  assert.equal(pending.editor.dirty, true, 'the editor forgot the pending edit');
+  assert.equal(pending.editor.loading, false);
+  assert.equal(pending.calls.length, 0);
+  assert.deepEqual(s.errors, []);
+  pending.view.unmount();
+});
+
+test('an edit typed during a pending QR load survives the response', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  const pending = await pendingEditor(s, 'QrSettings');
+  pending.editor.baseUrl = 'https://typed.example/';
+  pending.editor.dirty = true;
+  s.app.phase9.settings.baseUrl = 'https://server-update.example/';
+  pending.pending.resolve(true);
+  await settled(s);
+  assert.equal(pending.editor.baseUrl, 'https://typed.example/',
+    'the pending response replaced the value typed while it was in flight');
+  assert.equal(pending.editor.dirty, true, 'the editor forgot the pending edit');
+  assert.equal(pending.editor.loading, false);
+  assert.equal(pending.calls.length, 0);
+  assert.deepEqual(s.errors, []);
+  pending.view.unmount();
+});
+
+test('an edit typed during a pending label load survives the response', async () => {
+  const s = setup();
+  appSet(s);
+  retained(s);
+  const pending = await pendingEditor(s, 'LabelSettings');
+  pending.editor.label.widthMm = 133;
+  pending.editor.dirty = true;
+  s.app.phase9.settings.labelDefaults.widthMm = 150;
+  pending.pending.resolve(true);
+  await settled(s);
+  assert.equal(pending.editor.label.widthMm, 133,
+    'the pending response replaced the value typed while it was in flight');
+  assert.equal(pending.editor.dirty, true, 'the editor forgot the pending edit');
+  assert.equal(pending.editor.loading, false);
+  assert.equal(pending.calls.length, 0);
+  assert.deepEqual(s.errors, []);
+  pending.view.unmount();
+});
+
+function warrantySetup() {
+  const s = setup();
+  appSet(s);
+  s.app.effectivePermissions = ['config.general', 'assets.view', 'assets.edit'];
+  Object.defineProperty(s.app, 'phase6CanView', { get: () => true, configurable: true });
+  s.app.phase6.warrantyPrefs.loaded = false;
+  return s;
+}
+for (const outcome of ['pending', 'failed']) {
+  test('warranty settings refuse direct save when first read is ' + outcome, async () => {
+    const s = warrantySetup();
+    const pending = deferredValue();
+    s.app.loadWarrantyPreferences = () => pending.promise;
+    let writes = 0;
+    s.app.saveWarrantyPreferences = async () => { writes++; return { ok: true }; };
+    const before = JSON.stringify(s.app.phase6.warrantyPrefs);
+    const view = s.mount('WarrantySettings');
+    await settled(s);
+    if (outcome === 'failed') { pending.resolve(false); await settled(s); }
+    view.instance.days = 90;
+    const result = await view.instance.save();
+    assert.equal(writes, 0, 'unsafe settings save reached the adapter');
+    assert.equal(result, false);
+    assert.equal(JSON.stringify(s.app.phase6.warrantyPrefs), before);
+    assert.equal(findByTag(view.root, 'button', n => n.props.type === 'submit')[0].props.disabled, true);
+    if (outcome === 'pending') { pending.resolve(false); await settled(s); }
+    assert.deepEqual(s.errors, []);
+    view.unmount();
+  });
+}
+test('warranty settings preserve retained preferences on refused refresh', async () => {
+  const s = warrantySetup();
+  s.app.phase6.warrantyPrefs.loaded = true;
+  s.app.phase6.warrantyPrefs.expiringDays = 60;
+  s.app.loadWarrantyPreferences = async () => false;
+  const view = s.mount('WarrantySettings');
+  await settled(s);
+  assert.equal(view.instance.days, 60);
+  assert.equal(findByTag(view.root, 'button', n => n.props.type === 'submit')[0].props.disabled, false);
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+test('warranty settings preserve edits made during a successful refresh', async () => {
+  const s = warrantySetup();
+  s.app.phase6.warrantyPrefs.loaded = true;
+  s.app.phase6.warrantyPrefs.expiringDays = 60;
+  const pending = deferredValue();
+  s.app.loadWarrantyPreferences = () => pending.promise;
+  const view = s.mount('WarrantySettings');
+  await settled(s);
+  view.instance.days = 90;
+  view.instance.dirty = true;
+  s.app.phase6.warrantyPrefs.expiringDays = 180;
+  pending.resolve(true);
+  await settled(s);
+  assert.equal(view.instance.days, 90);
+  assert.equal(view.instance.dirty, true);
+  assert.deepEqual(s.errors, []);
+  view.unmount();
+});
+
+for (const allowed of [true, false]) {
+  test('loaded warranty settings ' + (allowed ? 'save selected days' : 'deny saving without permission'), async () => {
+    const s = warrantySetup();
+    s.app.phase6.warrantyPrefs.loaded = true;
+    s.app.phase6.warrantyPrefs.expiringDays = 60;
+    s.app.loadWarrantyPreferences = async () => true;
+    const calls = [];
+    s.app.saveWarrantyPreferences = async value => {
+      calls.push(value); s.app.phase6.warrantyPrefs.expiringDays = value; return { ok: true };
+    };
+    const view = s.mount('WarrantySettings');
+    await settled(s);
+    view.instance.days = 90;
+    if (!allowed) s.app.effectivePermissions = [];
+    const result = await view.instance.save();
+    assert.equal(result, allowed);
+    assert.deepEqual(calls, allowed ? [90] : []);
+    assert.equal(s.app.phase6.warrantyPrefs.expiringDays, allowed ? 90 : 60);
+    assert.deepEqual(s.errors, []);
+    view.unmount();
+  });
+}
