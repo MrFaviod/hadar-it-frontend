@@ -28,14 +28,22 @@
       };
     },
     computed: {
+      installed() {
+        return Boolean(this.app.serverOrganizationMode);
+      },
+      source() {
+        return this.installed ? this.app.organizationMapSource : this.app;
+      },
       maps() {
-        return Engine.mapsOf(this.app);
+        const maps = Engine.mapsOf(this.source);
+        if (!this.app.serverOrganizationMode || maps.prefs) return maps;
+        return Object.assign({}, maps, { prefs: Engine.mapsOf(this.app).prefs });
       },
       prefs() {
         return this.maps.prefs;
       },
       sites() {
-        return this.app.sites || [];
+        return this.source.sites || [];
       },
       floors() {
         return this.maps.floors || [];
@@ -47,23 +55,25 @@
         return this.maps.plans || [];
       },
       assets() {
-        return this.app.assets || [];
+        return this.source.assets || [];
       },
       positionedCount() {
         return Object.keys(this.maps.positions || {}).length;
       },
       planPresets() {
         const seen = [];
-        (Data.plans || []).forEach((plan) => {
-          if (seen.indexOf(plan.src) === -1) seen.push(plan.src);
-        });
+        if (!this.installed) {
+          (Data.plans || []).forEach((plan) => {
+            if (seen.indexOf(plan.src) === -1) seen.push(plan.src);
+          });
+        }
         this.plans.forEach((plan) => {
           if (seen.indexOf(plan.src) === -1) seen.push(plan.src);
         });
         return seen;
       },
       stats() {
-        return Engine.counts(this.app, {});
+        return Engine.counts(this.source, {});
       }
     },
     watch: {
@@ -81,7 +91,7 @@
       hydrateGeo() {
         const draft = {};
         this.sites.forEach((site) => {
-          const geo = Engine.siteGeo(this.app, site.id) || { lat: 0, lng: 0, address: '' };
+          const geo = Engine.siteGeo(this.source, site.id) || { lat: 0, lng: 0, address: '' };
           draft[site.id] = {
             lat: String(geo.lat),
             lng: String(geo.lng),
@@ -91,6 +101,7 @@
         this.geoDraft = draft;
       },
       saveSite(siteId) {
+        if (this.installed) return;
         const draft = this.geoDraft[siteId] || {};
         const lat = Number(draft.lat);
         const lng = Number(draft.lng);
@@ -112,6 +123,7 @@
         }, 2600);
       },
       resetSite(siteId) {
+        if (this.installed) return;
         const base = Data.sites[siteId];
         if (!base) return;
         Engine.setGeo(this.app, siteId, { lat: base.lat, lng: base.lng, address: base.address });
@@ -130,15 +142,18 @@
         return (site ? site.label : '') + ' · ' + (building ? building.name : '') + ' · ' + floor.name;
       },
       togglePlan(plan) {
+        if (this.installed) return;
         Engine.setPlan(this.app, plan.id, { visible: !plan.visible });
       },
       setPlanOpacity(plan, value) {
+        if (this.installed) return;
         Engine.setPlan(this.app, plan.id, { opacity: Math.max(0.2, Math.min(1, Number(value))) });
       },
       setPref(key, value) {
         Engine.setPrefs(this.app, { [key]: value });
       },
       openPlanDialog() {
+        if (this.installed) return;
         this.planDialog = {
           open: true,
           name: '',
@@ -153,6 +168,7 @@
         this.planDialog.open = false;
       },
       pickPlanFile(event) {
+        if (this.installed) return;
         const file = event.target.files && event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
@@ -163,6 +179,7 @@
         reader.readAsDataURL(file);
       },
       createPlan() {
+        if (this.installed) return;
         const dialog = this.planDialog;
         if (!dialog.name.trim()) {
           dialog.error = tr('ui.map.error.plan_name');
@@ -191,9 +208,11 @@
         this.app.showToast(tr('ui.map.toast.plan_added'), 'success');
       },
       askRemovePlan(planId) {
+        if (this.installed) return;
         this.confirmPlanId = planId;
       },
       removePlan(planId) {
+        if (this.installed) return;
         if (Engine.removePlan(this.app, planId)) {
           this.notice = tr('ui.map.notice.plan_removed');
           this.app.showToast(tr('ui.map.toast.plan_removed'), 'success');
@@ -201,6 +220,7 @@
         this.confirmPlanId = '';
       },
       clearPositions() {
+        if (this.installed) return;
         if (!this.confirmPositions) {
           this.confirmPositions = true;
           return;
@@ -230,6 +250,10 @@
         </header>
 
         <p v-if="notice" class="map-config__notice" role="status">{{ notice }}</p>
+        <p v-if="installed" class="map-config__hint" data-od-id="map-settings-server-notice">
+          <app-icon name="info"></app-icon>
+          {{ $t('ui.organization.config.map_notice') }}
+        </p>
 
         <section class="map-config__card" data-od-id="map-settings-sites">
           <header class="map-config__card-head">
@@ -240,6 +264,10 @@
             <form v-for="site in sites" :key="site.id" class="map-site-form" @submit.prevent="saveSite(site.id)">
               <h3>{{ site.label }}</h3>
               <p class="map-site-form__hint mono">{{ site.geo ? site.geo.city + ' · ' + site.geo.region : '' }}</p>
+              <p v-if="installed" class="map-site-form__readonly mono">
+                {{ geoDraft[site.id].lat }} · {{ geoDraft[site.id].lng }} · {{ geoDraft[site.id].address }}
+              </p>
+              <template v-if="!installed">
               <label class="map-field">
                 <span>{{ $t('ui.map.field.latitude') }}</span>
                 <input v-model="geoDraft[site.id].lat" type="text" inputmode="decimal" autocomplete="off">
@@ -258,6 +286,7 @@
                 <button type="button" class="btn btn--ghost btn--small" @click="resetSite(site.id)">{{ $t('ui.map.action.reset') }}</button>
                 <span v-if="geoSaved[site.id]" class="map-config__saved mono">{{ $t('ui.map.state.saved') }}</span>
               </div>
+              </template>
             </form>
           </div>
         </section>
@@ -268,7 +297,7 @@
               <h2>{{ $t('ui.map.settings.plans_title') }}</h2>
               <p>{{ $t('ui.map.settings.plans_lead') }}</p>
             </div>
-            <button type="button" class="btn btn--primary btn--small" data-od-id="map-settings-add-plan" @click="openPlanDialog">
+            <button v-if="!installed" type="button" class="btn btn--primary btn--small" data-od-id="map-settings-add-plan" @click="openPlanDialog">
               <app-icon name="plus"></app-icon> {{ $t('ui.map.action.add_plan') }}
             </button>
           </header>
@@ -291,18 +320,20 @@
                   </td>
                   <td>{{ floorLabel(plan.floor) }}</td>
                   <td>
-                    <label class="map-check map-check--inline">
+                    <span v-if="installed">{{ plan.visible ? $t('ui.map.plan.visible') : $t('ui.map.plan.hidden') }}</span>
+                    <label v-else class="map-check map-check--inline">
                       <input type="checkbox" :checked="plan.visible" @change="togglePlan(plan)"
                              :aria-label="$t('ui.map.plan.show_aria', { name: plan.name })">
                       <span>{{ plan.visible ? $t('ui.map.plan.visible') : $t('ui.map.plan.hidden') }}</span>
                     </label>
                   </td>
                   <td>
-                    <input type="range" min="0.2" max="1" step="0.05" :value="plan.opacity"
+                    <span v-if="installed" class="mono">{{ plan.opacity }}</span>
+                    <input v-else type="range" min="0.2" max="1" step="0.05" :value="plan.opacity"
                            class="map-plan-table__range" :aria-label="$t('ui.map.plan.opacity_aria', { name: plan.name })"
                            @input="setPlanOpacity(plan, $event.target.value)">
                   </td>
-                  <td class="map-plan-table__actions">
+                  <td v-if="!installed" class="map-plan-table__actions">
                     <template v-if="confirmPlanId === plan.id">
                       <button type="button" class="text-button text-button--danger" @click="removePlan(plan.id)">{{ $t('ui.map.action.confirm') }}</button>
                       <button type="button" class="text-button" @click="confirmPlanId = ''">{{ $t('ui.common.cancel') }}</button>
@@ -376,16 +407,16 @@
             </p>
           </header>
           <div class="map-config__actions">
-            <button type="button" class="btn btn--ghost btn--small" @click="clearPositions">
+            <button v-if="!installed" type="button" class="btn btn--ghost btn--small" @click="clearPositions">
               <app-icon name="restore"></app-icon>
               {{ confirmPositions ? $t('ui.map.settings.clear_positions_confirm') : $t('ui.map.settings.clear_positions') }}
             </button>
-            <button v-if="confirmPositions" type="button" class="text-button" @click="confirmPositions = false">{{ $t('ui.common.cancel') }}</button>
+            <button v-if="!installed && confirmPositions" type="button" class="text-button" @click="confirmPositions = false">{{ $t('ui.common.cancel') }}</button>
             <span class="map-config__hint-inline">{{ $t('ui.map.settings.positions_hint') }}</span>
           </div>
         </section>
 
-        <div v-if="planDialog.open" class="map-dialog" role="dialog" aria-modal="true" aria-labelledby="map-plan-dialog-title">
+        <div v-if="!installed && planDialog.open" class="map-dialog" role="dialog" aria-modal="true" aria-labelledby="map-plan-dialog-title">
           <form class="map-dialog__panel" @submit.prevent="createPlan">
             <header class="map-dialog__head">
               <h2 id="map-plan-dialog-title">{{ $t('ui.map.action.add_plan') }}</h2>

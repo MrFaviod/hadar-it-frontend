@@ -2750,7 +2750,10 @@
           const tasks = [];
           if (this.can('people.view')) tasks.push(this.loadOrganizationDepartments());
           if (this.can('assets.view')) tasks.push(this.loadOrganizationLocations());
-          if (next.section === 'mapas' && this.can('assets.view')) tasks.push(this.loadOrganizationTree({ depth: 4 }));
+          if (next.section === 'mapas' && this.can('assets.view')) {
+            tasks.push(this.loadOrganizationTree({ depth: 4 }));
+            tasks.push(this.loadOrganizationMap({ siteId: '' }));
+          }
           if (next.section === 'relaciones' && this.can('assets.view')) tasks.push(this.loadOrganizationRelationTypes({ includeInactive: true }));
           return Promise.all(tasks);
         }
