@@ -201,6 +201,49 @@ test('person detail, assets and history use the canonical UUID paths', async () 
   assert.equal(calls.length, 3);
 });
 
+test('a loaded person history keeps its semantic title key across locale changes', async () => {
+  const { c, app } = serverApp(['people.view']);
+  app.route = { name: 'person', personId: PERSON_ID, assetId: '', section: '', focusId: '' };
+  stub(c, (call) => {
+    if (call.url.indexOf('/api/v1/people/' + PERSON_ID + '/history') === 0) {
+      return json({
+        items: [
+          { id: 'h1', action: 'created', actorUsername: 'maria', source: 'rest', createdAt: '2026-01-02T10:00:00Z', notes: 'Alta manual' },
+          { id: 'h2', action: 'rotated', actorUsername: 'maria', source: 'rest', createdAt: '2026-01-02T11:00:00Z' }
+        ],
+        total: 2,
+        limit: 25,
+        offset: 0
+      });
+    }
+    return json({}, 404);
+  });
+
+  assert.equal(await app.loadOrganizationPersonHistory(PERSON_ID), true);
+  const created = app.organization.personHistory.items[0];
+  const unknown = app.organization.personHistory.items[1];
+
+  // The semantic key is the authority; the eager title stays for consumers that
+  // read the mapped record instead of the catalog.
+  assert.equal(created.titleKey, 'ui.organization.history.person_created');
+  assert.equal(unknown.titleKey, 'ui.organization.history.fallback');
+  assert.equal(created.title, 'Persona creada');
+  assert.equal(unknown.title, 'Cambio registrado');
+
+  c.ItsmI18n.setLocale('en');
+  assert.equal(c.ItsmI18n.t(created.titleKey), 'Person created');
+  assert.equal(c.ItsmI18n.t(unknown.titleKey), 'Change recorded');
+  assert.equal(created.action, 'created');
+  assert.equal(created.id, 'h1');
+  assert.equal(created.notes, 'Alta manual');
+  assert.equal(created.actorUsername, 'maria');
+  assert.equal(created.source, 'rest');
+
+  c.ItsmI18n.setLocale('es');
+  assert.equal(c.ItsmI18n.t(created.titleKey), 'Persona creada');
+  assert.equal(c.ItsmI18n.t(unknown.titleKey), 'Cambio registrado');
+});
+
 test('editing a person sends backend field names and reports the server record', async () => {
   const { c, app } = serverApp(['people.view', 'people.edit']);
   const calls = stub(c, (call) => {

@@ -180,3 +180,29 @@ test('existing Spanish number, date and collation behavior is unchanged', async 
   assert.equal(I.collator({ sensitivity: 'base' }).compare('Ávila', 'avila'), 0);
   assert.equal(I.amount(null), '—');
 });
+
+test('people directory stat labels agree with the count they describe', async () => {
+  const { ItsmI18n: I } = setup();
+  await I.ready;
+  const expected = {
+    es: {
+      'ui.people.stat_total': ['Personas registradas', 'Persona registrada', 'Personas registradas'],
+      'ui.people.stat_active': ['Personas activas', 'Persona activa', 'Personas activas']
+    },
+    en: {
+      'ui.people.stat_total': ['Registered people', 'Registered person', 'Registered people'],
+      'ui.people.stat_active': ['Active people', 'Active person', 'Active people']
+    }
+  };
+  for (const locale of ['es', 'en']) {
+    I.setLocale(locale);
+    for (const key of Object.keys(expected[locale])) {
+      [0, 1, 2].forEach((count) => {
+        const message = I.t(key, { count });
+        assert.equal(message, expected[locale][key][count], locale + ' ' + key + ' for count ' + count);
+        assert.ok(!/\d/.test(message), locale + ' ' + key + ' must not repeat the number');
+      });
+    }
+  }
+  I.setLocale('es');
+});

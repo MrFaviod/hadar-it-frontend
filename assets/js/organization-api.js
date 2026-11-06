@@ -408,13 +408,19 @@
 
   function mapHistoryItem(payload) {
     if (!payload || typeof payload !== 'object') return null;
+    const action = text(payload.action);
+    // The semantic key is resolved again by the mounted template, so a locale
+    // change re-renders the label. `title` keeps the load-time string for
+    // consumers that read the mapped record directly.
+    const titleKey = HISTORY_TITLES[action] || 'ui.organization.history.fallback';
     return {
       id: text(payload.id),
       entityType: text(payload.entityType) || 'asset',
       entityId: text(payload.entityId),
       assetId: text(payload.assetId),
-      action: text(payload.action),
-      title: (HISTORY_TITLES[text(payload.action)] ? tr(HISTORY_TITLES[text(payload.action)]) : tr('ui.organization.history.fallback')),
+      action: action,
+      titleKey: titleKey,
+      title: tr(titleKey),
       actorId: text(payload.actorId),
       actorUsername: text(payload.actorUsername),
       source: text(payload.source),

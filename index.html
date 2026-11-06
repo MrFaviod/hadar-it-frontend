@@ -750,11 +750,11 @@
                 <div class="stats-strip" role="list" :aria-label="$t('ui.people.stats_aria')">
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="user"></app-icon></span>
-                    <div><span class="stat__value">{{ serverOrganizationMode ? organization.people.total : people.length }}</span><span class="stat__label">{{ $t('ui.people.stat_total') }}</span></div>
+                    <div><span class="stat__value">{{ serverOrganizationMode ? organization.people.total : people.length }}</span><span class="stat__label">{{ $t('ui.people.stat_total', { count: serverOrganizationMode ? organization.people.total : people.length }) }}</span></div>
                   </div>
                   <div class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="check"></app-icon></span>
-                    <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">{{ $t('ui.people.stat_active') }}</span></div>
+                    <div><span class="stat__value">{{ activePeopleCount() }}</span><span class="stat__label">{{ $t('ui.people.stat_active', { count: activePeopleCount() }) }}</span></div>
                   </div>
                   <div v-if="!serverOrganizationMode" class="stat" role="listitem">
                     <span class="stat__icon"><app-icon name="inventory"></app-icon></span>
@@ -1068,7 +1068,7 @@
                   <ol v-if="organization.personHistory.items.length" class="history-list">
                     <li v-for="item in organization.personHistory.items" :key="item.id" class="history-list__item">
                       <div>
-                        <strong>{{ item.title }}</strong>
+                        <strong>{{ item.titleKey ? $t(item.titleKey) : item.title }}</strong>
                         <span class="cell-note">{{ item.actorUsername || $t('ui.people.system_actor') }} · {{ item.source }} · {{ formatServerTimestamp(item.recordedAt) }}</span>
                         <span v-if="item.effectiveAt" class="cell-note">{{ $t('ui.people.effective', { date: formatServerTimestamp(item.effectiveAt) }) }}</span>
                         <p v-if="item.reason" class="cell-note">{{ $t('ui.people.reason', { reason: item.reason }) }}</p>
@@ -1094,7 +1094,7 @@
                   <ol v-else-if="organization.personAssetHistory.items.length" class="history-list">
                     <li v-for="entry in organization.personAssetHistory.items" :key="entry.id" class="history-list__item">
                       <div>
-                        <strong>{{ entry.title }}</strong>
+                        <strong>{{ entry.titleKey ? $t(entry.titleKey) : entry.title }}</strong>
                         <span class="cell-note">
                           <a :href="'#/activo/' + entry.assetId">{{ entry.assetName || entry.assetId }}</a>
                           <template v-if="entry.quickCode"> · <span class="mono">{{ entry.quickCode }}</span></template>
