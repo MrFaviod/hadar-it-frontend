@@ -763,6 +763,10 @@
           }).catch((error) => {
             if (!this.phase9TokenOpen(token)) return { ok: false, cancelled: true };
             const result = this.phase9Result(error);
+            // Native fetch failures have no server status or actionable field copy.
+            if (error && error.name === 'TypeError' && !error.status) {
+              result.error = tr('ui.errors.request_failed');
+            }
             this.phase9.download.error = result.error;
             return result;
           }).finally(() => {
