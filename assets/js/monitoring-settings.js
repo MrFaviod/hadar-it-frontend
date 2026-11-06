@@ -146,7 +146,10 @@
 
   function metricOptions(presets) {
     return (presets && presets.metrics && presets.metrics.length)
-      ? presets.metrics
+      ? presets.metrics.map((metric) => ({
+        ...metric,
+        label: METRIC_KEYS[metric.id] ? tr(METRIC_KEYS[metric.id]) : metric.label
+      }))
       : Object.keys(METRIC_KEYS).map((id) => ({ id, label: tr(METRIC_KEYS[id]), unit: '' }));
   }
 
