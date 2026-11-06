@@ -421,3 +421,30 @@ test('the responsible field stays read-only without assets.assign', async () => 
   assert.equal(app.assetFieldLocked('responsible'), false);
   assert.equal(app.inventoryPayload(app.assetEditor.draft).responsible, 'Ana Benítez');
 });
+
+test('common field labels come from frontend copy and unknown keys stay raw', async () => {
+  const { c, app } = setup();
+  const config = JSON.parse(JSON.stringify(CONFIG));
+  config.commonFields = config.commonFields.concat(['destinationId']);
+  stubFetch(c, (call) => (
+    call.url === '/api/v1/inventory/config'
+      ? json(config)
+      : json({ items: [], total: 0, limit: 25, offset: 0 })
+  ));
+  await openCatalog(app);
+
+  const labels = Object.fromEntries(
+    app.inventoryCommonFieldOptions().map((field) => [field.key, field.label])
+  );
+  assert.equal(labels.name, 'Nombre');
+  assert.equal(labels.locationId, 'Ubicación');
+  assert.equal(labels.assigneeId, 'Responsable');
+  assert.equal(labels.statusId, 'Estado');
+  assert.equal(labels.description, 'Descripción');
+  assert.equal(labels.destinationId, 'destinationId', 'unknown server keys are preserved');
+  assert.deepEqual(
+    app.inventoryCommonFieldOptions().map((field) => field.key),
+    config.commonFields.filter((key) => ['category', 'image', 'warranty'].indexOf(key) === -1),
+    'the server keys are not rewritten'
+  );
+});

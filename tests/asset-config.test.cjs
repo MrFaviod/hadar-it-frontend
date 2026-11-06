@@ -72,6 +72,19 @@ test('the forms panel opens a server category and saves its bucket layout', asyn
   assert.equal(app.formDraft, null, 'the draft closes after a saved form');
 });
 
+test('the forms panel prefix hint does not promise a fixed code order', async () => {
+  const { c, app, mount } = setup();
+  stubFetch(c, configAware(() => json({})));
+  await ready(app);
+  const mounted = mount('AssetFormsPanel', { app });
+  assert.equal(await app.openFormDraft('notebooks'), true);
+  const text = panelText(mounted);
+
+  assert.doesNotMatch(text, /CEN-001/, 'no hardcoded type-first sample: ' + text);
+  assert.doesNotMatch(text, /(por ejemplo|for example)/i, 'no sample that implies a fixed order: ' + text);
+  assert.match(text, /(orden configurado|configured order)/i, 'the hint defers to the configured order: ' + text);
+});
+
 test('the identity panel shows server rules and never exposes the environment switch', async () => {
   const { c, app, mount } = setup();
   stubFetch(c, configAware(() => json({})));
@@ -90,6 +103,49 @@ test('the identity panel shows server rules and never exposes the environment sw
   assert.equal(app.setOperationsMode(before === 'production' ? 'development' : 'production'), false);
   assert.match(app.lastToast, /servidor/i);
   assert.equal(app.assetAdmin.operations.mode, before, 'the local demo mode is not rewritten');
+});
+
+function nodeText(node) {
+  return (node.text || '') + (node.children || []).map(nodeText).join(' ');
+}
+
+function panelText(mounted) {
+  return nodeText(mounted.root).replace(/\s+/g, ' ');
+}
+
+test('the identity panel states the server environment heading once', async () => {
+  const { c, app, mount } = setup();
+  stubFetch(c, configAware(() => json({})));
+  await ready(app);
+  const text = panelText(mount('AssetIdentityPanel', { app }));
+
+  assert.equal(
+    (text.match(/Entorno del servidor/g) || []).length,
+    1,
+    'the section heading is not repeated as a definition label',
+  );
+});
+
+test('the quick code example caption does not promise a fixed order', async () => {
+  const { c, app, mount } = setup();
+  stubFetch(c, configAware(() => json({})));
+  await ready(app);
+  const text = panelText(mount('AssetIdentityPanel', { app }));
+
+  assert.match(text, /Prefijo, sede y correlativo/);
+  assert.equal(text.includes('Tipo \u00b7 sede'), false, 'the caption states no fixed order');
+});
+
+test('the quick code example follows the unsaved order draft without writing', async () => {
+  const { c, app } = setup();
+  const calls = stubFetch(c, configAware(() => json({})));
+  await ready(app);
+
+  assert.equal(app.assetQuickPreview(), 'CEN-NB-001');
+  app.inventoryRulesDraft().order = 'type-site';
+  assert.equal(app.assetQuickPreview(), 'NB-CEN-001');
+  assert.equal(app.inventoryRules().order, 'site-type', 'saved rules are not mutated');
+  assert.equal(calls.some((call) => call.init.method === 'PUT'), false, 'no rule write happens');
 });
 
 test('saving the identification rules sends only server rule keys', async () => {

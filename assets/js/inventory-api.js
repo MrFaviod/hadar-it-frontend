@@ -70,6 +70,15 @@
   // Server catalog keys kept for common fields; the editor draft uses the display
   // names the views already have.
   const COMMON_KEY_ALIASES = { locationId: 'location', assigneeId: 'responsible', statusId: 'status' };
+  // Frontend-owned captions for the server common-field keys. The server sends
+  // keys only; a key without a caption keeps its raw name instead of inventing
+  // a label.
+  const COMMON_LABEL_KEYS = {
+    locationId: 'ui.asset.common.location',
+    assigneeId: 'ui.asset.common.responsible',
+    statusId: 'ui.asset.common.status',
+    description: 'ui.asset.common.description'
+  };
   const EDITOR_COMMON_KEYS = ['name', 'type', 'brand', 'model', 'serial', 'ip', 'site', 'location', 'responsible', 'status', 'description', 'cost', 'quickCode', 'image', 'category'];
 
   // Monotonic response epoch. Clearing the session must invalidate in-flight
@@ -1504,8 +1513,10 @@
           .filter((key) => ['category', 'image', 'warranty'].indexOf(key) === -1)
           .map((key) => {
             const aliased = COMMON_KEY_ALIASES[key] || key;
-            const meta = window.AssetAdminMethods.assetCommonField.call(this, aliased);
-            return { key: key, label: meta ? meta.label : key };
+            const meta = window.AssetAdminMethods.assetCommonField.call(this, key)
+              || window.AssetAdminMethods.assetCommonField.call(this, aliased);
+            const caption = meta ? meta.label : (COMMON_LABEL_KEYS[key] ? tr(COMMON_LABEL_KEYS[key]) : '');
+            return { key: key, label: caption || key };
           });
       },
       inventoryRules() {
@@ -1551,7 +1562,9 @@
       },
       assetQuickPreview() {
         if (!this.inventoryCatalogReady) return this.inventoryPrototypeMode() ? window.AssetAdminMethods.assetQuickPreview.call(this) : '';
-        const rules = this.inventoryRules();
+        // The example follows the local draft so the code reflects edits before
+        // the save; computing it never persists anything.
+        const rules = Object.assign({}, this.inventoryRules(), this.inventoryRulesDraft());
         const category = this.inventoryCategoryChoices[0];
         const prefix = category ? category.prefix : 'TIPO';
         const pad = Number(rules.quickPad) || 2;

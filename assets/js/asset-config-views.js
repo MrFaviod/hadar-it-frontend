@@ -315,6 +315,11 @@
     name: 'AssetIdentityPanel',
     components: { AppIcon: window.AppIcon },
     props: { app: { type: Object, required: true } },
+    data() {
+      // The server rule draft is a plain object outside Vue's reactive data;
+      // this local tick re-renders the example after a field edit.
+      return { draftVersion: 0 };
+    },
     computed: {
       real() {
         return this.app.inventoryCatalogReady;
@@ -329,6 +334,7 @@
         return window.AssetSchema.nextPermanentId(this.app.assets, this.app.assetAdmin);
       },
       quickPreview() {
+        void this.draftVersion;
         return this.app.assetQuickPreview();
       },
       mode() {
@@ -370,7 +376,7 @@
           </div>
         </div>
 
-        <div class="config-form-grid">
+        <div class="config-form-grid" @change="draftVersion += 1">
           <div v-if="!real" class="field" :class="{ 'field--invalid': !!errors.permanentPrefix }">
             <label for="rules-permanent-prefix">{{ $t('ui.catalog.identity.prefix') }}</label>
             <span class="input-shell">
@@ -465,7 +471,7 @@
           <p class="identity-lead">{{ $t('ui.catalog.identity.environment_lead') }}</p>
           <dl class="identity-policy">
             <div>
-              <dt>{{ $t('ui.catalog.identity.environment') }}</dt>
+              <dt>{{ $t('ui.catalog.identity.environment_value') }}</dt>
               <dd class="mono">{{ app.inventoryEnvironmentLabel() }}</dd>
             </div>
             <div>
