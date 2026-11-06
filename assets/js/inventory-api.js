@@ -30,6 +30,25 @@
   const QUICK_CODE_MAX = 32;
   const HISTORY_LIMIT = 50;
   const HISTORY_MAX = 200;
+  // One canonical action map: the eager title and the additive `titleKey` share
+  // it, so a locale change can re-render the mounted row without a reload.
+  const HISTORY_TITLES = {
+    created: 'ui.inventory.history.created',
+    updated: 'ui.inventory.history.updated',
+    cloned: 'ui.inventory.history.cloned',
+    archived: 'ui.inventory.history.archived',
+    restored: 'ui.inventory.history.restored',
+    retired: 'ui.inventory.history.retired',
+    purged: 'ui.inventory.history.purged',
+    assigned: 'ui.inventory.history.assigned',
+    returned: 'ui.inventory.history.returned',
+    transferred: 'ui.inventory.history.transferred',
+    relationship_created: 'ui.inventory.history.relationship_created',
+    relationship_updated: 'ui.inventory.history.relationship_updated',
+    relationship_removed: 'ui.inventory.history.relationship_removed',
+    host_moved: 'ui.inventory.history.host_moved'
+  };
+  const HISTORY_TITLE_FALLBACK = 'ui.inventory.history.fallback';
   const IMAGE_MAX_BYTES = 1024 * 1024;
   const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
   const IMAGE_ROLES = ['photo', 'fov'];
@@ -770,6 +789,10 @@
             id: text(item.id),
             sequence: Number(item.sequence) || 0,
             action: text(item.action),
+            // `titleKey` is resolved again by the mounted template so a locale
+            // change re-renders the row. `title` keeps the load-time string for
+            // every consumer that reads the mapped record directly.
+            titleKey: this.inventoryHistoryTitleKey(item.action),
             title: this.inventoryHistoryTitle(item.action),
             reason: text(item.reason),
             notes: text(item.notes),
@@ -802,25 +825,11 @@
           if (epoch === this.inventoryHistory.epoch) this.inventoryHistory.loading = false;
         }
       },
+      inventoryHistoryTitleKey(action) {
+        return HISTORY_TITLES[text(action)] || HISTORY_TITLE_FALLBACK;
+      },
       inventoryHistoryTitle(action) {
-        const titles = {
-          created: 'ui.inventory.history.created',
-          updated: 'ui.inventory.history.updated',
-          cloned: 'ui.inventory.history.cloned',
-          archived: 'ui.inventory.history.archived',
-          restored: 'ui.inventory.history.restored',
-          retired: 'ui.inventory.history.retired',
-          purged: 'ui.inventory.history.purged',
-          assigned: 'ui.inventory.history.assigned',
-          returned: 'ui.inventory.history.returned',
-          transferred: 'ui.inventory.history.transferred',
-          relationship_created: 'ui.inventory.history.relationship_created',
-          relationship_updated: 'ui.inventory.history.relationship_updated',
-          relationship_removed: 'ui.inventory.history.relationship_removed',
-          host_moved: 'ui.inventory.history.host_moved'
-        };
-        const key = titles[text(action)];
-        return key ? tr(key) : tr('ui.inventory.history.fallback');
+        return tr(this.inventoryHistoryTitleKey(action));
       },
       inventoryHistoryNextPage() {
         const next = this.inventoryHistory.offset + this.inventoryHistory.limit;

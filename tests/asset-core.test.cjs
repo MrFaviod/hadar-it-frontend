@@ -341,7 +341,14 @@ test('history is read from the server with its own pagination', async () => {
   assert.equal(app.inventoryHistory.items.length, 1);
   assert.equal(app.inventoryHistory.items[0].action, 'archived');
   assert.equal(app.inventoryHistory.items[0].actor, 'ana');
+  // The load-time title and the additive `titleKey` agree, so a caller that
+  // reads the mapped record keeps its string while the template re-renders the
+  // label from the active catalog.
+  assert.equal(app.inventoryHistory.items[0].title, 'Activo archivado');
+  assert.equal(app.inventoryHistory.items[0].titleKey, 'ui.inventory.history.archived');
+  assert.equal(app.inventoryHistory.items[0].recordedAt, '2026-02-01T10:00:00Z');
   assert.equal(app.inventoryHistory.total, 3);
+  assert.equal(app.inventoryHistoryHasMore, true, 'pagination still compares offset+items with total');
 });
 
 test('configuration mutations are non-destructive and reload the catalog', async () => {

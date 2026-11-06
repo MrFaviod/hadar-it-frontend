@@ -89,6 +89,30 @@ class PersonHistory:
                 return body
         return None
 
+class AssetHistory:
+    """Observe the canonical asset history GET issued by the asset record."""
+
+    def __init__(self, page):
+        self.responses = []
+        page.on("response", self._record)
+
+    def _record(self, response):
+        if response.request.method != "GET":
+            return
+        url = response.url.split("?", 1)[0]
+        if "/assets/" in url and url.endswith("/history"):
+            self.responses.append(response)
+
+    def payload(self):
+        for response in reversed(self.responses):
+            try:
+                body = response.json()
+            except Exception:
+                continue
+            if isinstance(body, dict) and isinstance(body.get("items"), list):
+                return body
+        return None
+
 
 def workspace_state_write(entry):
     method, url = entry
@@ -252,6 +276,78 @@ def check_person(page, locale, theme, width):
     return f"person={PERSON['name']!r} assets=1 theme={theme}"
 
 
+def asset_history_titles(page):
+    return [title.strip() for title in page.locator(".asset-history .history-item strong").all_inner_texts()]
+
+def wait_asset_history(page):
+    page.wait_for_function(
+        "() => document.querySelectorAll('.asset-history .history-item').length > 0",
+        timeout=30000,
+    )
+
+def check_asset_history(page, locale, theme, width):
+    cat = v.CATALOG[locale]
+    wait_asset_history(page)
+    v.require(
+        page.locator(".asset-history .config-note[role=status]").count() == 0,
+        f"asset history {locale}/{width}: loading copy still visible",
+    )
+    v.require(
+        page.locator(".asset-history .history-item").count() == 1,
+        f"asset history {locale}/{width}: unexpected row count",
+    )
+    titles = asset_history_titles(page)
+    v.require(
+        titles == [cat["ui.inventory.history.created"]],
+        f"asset history {locale}/{width}: created title {titles!r}",
+    )
+    head = page.locator(".detail-head").inner_text()
+    v.require(ASSET["name"] in head, f"asset history {locale}/{width}: server asset name missing")
+    v.require(ASSET_ID in head, f"asset history {locale}/{width}: server asset id missing")
+    v.require(
+        v.effective_theme(page) == theme,
+        f"asset history {locale}/{width}: theme {v.effective_theme(page)!r}",
+    )
+    return f"rows=1 title={titles[0]!r} asset={ASSET['name']!r} theme={theme}"
+
+def check_asset_history_locale(page):
+    """Switch the loaded asset history ES to EN to ES without reloading the document."""
+    cat_es, cat_en = v.CATALOG["es"], v.CATALOG["en"]
+    route = "#/activo/" + ASSET_ID
+    page.set_viewport_size({"width": 1440, "height": 1000})
+    v.open_route(page, route, ".detail-page")
+    v.set_locale(page, "es")
+    v.settle(page)
+    wait_asset_history(page)
+    page.evaluate("() => { window.__assetHistoryMarker = 'kept'; }")
+    es_titles = asset_history_titles(page)
+    actor_es = page.locator(".asset-history .history-item p span").first.inner_text().strip()
+    v.require(es_titles == [cat_es["ui.inventory.history.created"]], f"asset history es title {es_titles!r}")
+
+    v.set_locale(page, "en")
+    v.settle(page)
+    en_titles = asset_history_titles(page)
+    actor_en = page.locator(".asset-history .history-item p span").first.inner_text().strip()
+    v.require(en_titles == [cat_en["ui.inventory.history.created"]], f"asset history en title {en_titles!r}")
+    v.require(
+        page.evaluate("() => window.__assetHistoryMarker") == "kept",
+        "asset history: the locale switch reloaded the document",
+    )
+    v.require(
+        actor_es == actor_en,
+        f"asset history: free actor text changed {actor_es!r} -> {actor_en!r}",
+    )
+    v.require(ASSET["name"] in page.locator(".detail-head").inner_text(), "asset history: free asset name changed")
+
+    v.set_locale(page, "es")
+    v.settle(page)
+    es_again = asset_history_titles(page)
+    v.require(es_again == [cat_es["ui.inventory.history.created"]], f"asset history es restored {es_again!r}")
+    v.record(
+        f"ASSET_HISTORY locale_switch es={es_titles} en={en_titles} es_again={es_again} "
+        f"rows=1 reload=0 actor={actor_es!r} free_asset={ASSET['name']!r}"
+    )
+
 def capture_dialog(page, shots, person_id):
     """Open the real assignment sheet, capture it, then cancel without saving."""
     route = "#/persona/" + person_id
@@ -345,6 +441,7 @@ def scenario(browser, shots):
     fixture.login(page, BASE, USERNAME, PASSWORD)
     writes = Writes(page)
     history = PersonHistory(page)
+    asset_history = AssetHistory(page)
     writes.take()  # login traffic is its own unit, not a fixture write
     person, asset = seed(page)
     fixture_writes = writes.take()
@@ -363,10 +460,14 @@ def scenario(browser, shots):
             page, shots, "person-detail", "#/persona/" + person["id"], ".person-page", CELLS, check_person
         )
         capture_dialog(page, shots, person["id"])
-        v.require(not errors, f"page errors: {errors}")
-
+        # Read the person payload while the person document is still the live
+        # one: later navigations drop the body of an earlier response.
         payload = history.payload()
         v.require(payload is not None, "HISTORY canonical GET missing")
+        check_asset_history_locale(page)
+        v.capture(page, shots, "asset-history", "#/activo/" + ASSET_ID, ".detail-page", CELLS, check_asset_history)
+        v.require(not errors, f"page errors: {errors}")
+
         actions = [item.get("action") for item in payload["items"] if isinstance(item, dict)]
         v.record(
             f"HISTORY canonical_get=1 items={len(actions)} total={payload.get('total')!r} "
@@ -386,6 +487,16 @@ def scenario(browser, shots):
         # catalog, not the Spanish title captured when the list first loaded.
         v.require(es_titles == [es_title], f"HISTORY es created title {es_titles!r}")
         v.require(en_titles == [en_title], f"HISTORY en created title {en_titles!r}")
+
+        asset_payload = asset_history.payload()
+        v.require(asset_payload is not None, "ASSET_HISTORY canonical GET missing")
+        asset_actions = [item.get("action") for item in asset_payload["items"] if isinstance(item, dict)]
+        v.record(
+            f"ASSET_HISTORY canonical_get=1 items={len(asset_actions)} "
+            f"total={asset_payload.get('total')!r} actions={asset_actions}"
+        )
+        v.require(asset_payload.get("total") == 1, f"ASSET_HISTORY total {asset_payload.get('total')!r}")
+        v.require(asset_actions == ["created"], f"ASSET_HISTORY actions {asset_actions!r}")
 
         capture_writes = writes.take()
         workspace_writes = [entry for entry in capture_writes if workspace_state_write(entry)]

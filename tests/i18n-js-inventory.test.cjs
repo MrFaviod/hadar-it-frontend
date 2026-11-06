@@ -62,3 +62,89 @@ test('inventory adapter copy follows the active locale', async () => {
   }
   assert.deepEqual(s.errors, []);
 });
+
+// The server history list is loaded once and later re-rendered by the mounted
+// template. The eager `title` stays for consumers that read the mapped record;
+// the additive `titleKey` lets the asset history row follow the active locale.
+const HISTORY_ITEMS = [
+  {
+    id: 'h-created', sequence: 1, assetId: 'asset-1', action: 'created',
+    reason: '', notes: 'Alta manual', actorId: 'u1', actorUsername: 'ana',
+    source: 'rest', entityType: 'asset', effectiveAt: '',
+    quickCodeOld: '', quickCodeNew: 'DC-0002', statusOld: '', statusNew: 'in_use',
+    archivedOld: null, archivedNew: false, changes: {}, createdAt: '2026-02-01T10:00:00Z'
+  },
+  {
+    id: 'h-unknown', sequence: 2, assetId: 'asset-1', action: 'mystery_batch',
+    reason: 'Lote heredado', notes: 'Texto libre', actorId: 'u2', actorUsername: 'luis',
+    source: 'import', entityType: 'asset', effectiveAt: '',
+    quickCodeOld: '', quickCodeNew: '', statusOld: '', statusNew: '',
+    archivedOld: null, archivedNew: null, changes: {}, createdAt: '2026-02-02T10:00:00Z'
+  }
+];
+
+function stubHistory(c) {
+  const calls = [];
+  c.fetch = async (url, init) => {
+    calls.push({ url: url, init: init || {} });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ assetId: 'asset-1', items: HISTORY_ITEMS, total: 2, limit: 50, offset: 0 })
+    };
+  };
+  return calls;
+}
+
+test('an already loaded asset history follows the active locale', async () => {
+  const s = setup();
+  try {
+    const calls = stubHistory(s.c);
+    await inLocale(s, 'es', async () => {
+      assert.equal(await s.app.loadInventoryHistory('asset-1'), true);
+    });
+    assert.equal(calls[0].url, '/api/v1/assets/asset-1/history?limit=50&offset=0');
+
+    const [created, unknown] = s.app.inventoryHistory.items;
+    // The semantic key is additive; the load-time title string is unchanged.
+    assert.equal(created.titleKey, 'ui.inventory.history.created');
+    assert.equal(unknown.titleKey, 'ui.inventory.history.fallback');
+    assert.equal(created.title, 'Alta en el inventario');
+    assert.equal(unknown.title, 'Cambio registrado');
+    assert.equal(s.c.ItsmI18n.t(created.titleKey), 'Alta en el inventario');
+    assert.equal(s.c.ItsmI18n.t(unknown.titleKey), 'Cambio registrado');
+
+    // Every other mapped field of the pre-existing contract is still there.
+    const { titleKey: _key, title: _title, ...rest } = created;
+    assert.deepEqual(JSON.parse(JSON.stringify(rest)), {
+      id: 'h-created', sequence: 1, action: 'created',
+      reason: '', notes: 'Alta manual', actor: 'ana', actorId: 'u1', source: 'rest',
+      entityType: 'asset', entityId: 'asset-1', effectiveAt: '',
+      quickCodeOld: '', quickCodeNew: 'DC-0002', statusOld: '', statusNew: 'in_use',
+      archivedOld: null, archivedNew: false, changes: {},
+      recordedAt: '2026-02-01T10:00:00Z', createdAt: '2026-02-01T10:00:00Z'
+    });
+    assert.equal(unknown.actor, 'luis');
+    assert.equal(unknown.notes, 'Texto libre');
+    assert.equal(unknown.reason, 'Lote heredado');
+
+    await inLocale(s, 'en', async () => {
+      // The row re-renders through `$t(entry.titleKey)`, without a reload.
+      assert.equal(s.c.ItsmI18n.t(created.titleKey), 'Created in the inventory');
+      assert.equal(s.c.ItsmI18n.t(unknown.titleKey), 'Recorded change');
+      assert.equal(created.title, 'Alta en el inventario', 'the load-time string stays for direct consumers');
+      assert.equal(unknown.title, 'Cambio registrado');
+      assert.equal(created.notes, 'Alta manual', 'free server text is never translated');
+      assert.equal(unknown.reason, 'Lote heredado');
+      assert.equal(created.action, 'created');
+      assert.equal(unknown.action, 'mystery_batch');
+    });
+    await inLocale(s, 'es', async () => {
+      assert.equal(s.c.ItsmI18n.t(created.titleKey), 'Alta en el inventario');
+      assert.equal(s.c.ItsmI18n.t(unknown.titleKey), 'Cambio registrado');
+    });
+  } finally {
+    s.c.ItsmI18n.setLocale('es');
+  }
+  assert.deepEqual(s.errors, []);
+});

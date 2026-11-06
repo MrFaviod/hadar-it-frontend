@@ -1998,7 +1998,7 @@
                       <li v-for="entry in inventoryHistory.items" :key="entry.id" class="history-item">
                         <span class="history-item__mark" aria-hidden="true"></span>
                         <div class="history-item__copy">
-                          <strong>{{ entry.title }}</strong>
+                          <strong>{{ entry.titleKey ? $t(entry.titleKey) : entry.title }}</strong>
                           <p>
                             <span>{{ entry.actor || $t('ui.asset.detail.history_system') }}</span>
                             <span aria-hidden="true">·</span>
