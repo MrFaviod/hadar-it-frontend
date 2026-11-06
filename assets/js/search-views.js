@@ -27,7 +27,7 @@
       },
       groups(){const groups=this.results?new this.results.constructor():[];this.results.forEach((r,index)=>{let group=groups.find(g=>g.label===r.type);if(!group){group={label:r.type,items:[]};groups.push(group);}group.items.push({record:r,index});});return groups;},
       activeId(){return this.results.length?'universal-option-'+this.active:null;},
-      favoriteTarget(){const record=this.results[this.active];return record&&record.type!=='Acciones'?record:null;},
+      favoriteTarget(){const record=this.results[this.active];return record&&record.kind!=='action'&&record.target?.kind!=='action'?record:null;},
       favoriteOn(){return !!this.favoriteTarget&&this.favorites.includes(this.favoriteTarget.key);},
       status(){if(this.loading)return tr('ui.search.searching');if(this.error)return this.error;if(this.fallback)return tr('ui.search.fallback_sql');return '';},
       emptyText(){if(this.error)return this.error;if(this.loading)return tr('ui.search.searching');if(this.scope==='favorites'&&!this.query)return tr('ui.search.empty_favorites');return tr('ui.search.empty_matches');}
