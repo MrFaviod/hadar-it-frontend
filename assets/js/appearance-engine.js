@@ -24,8 +24,22 @@
       if (!/^#[\da-f]{6}$/i.test(preset.colors?.[mode]?.[key] || '')) throw new Error('El color ' + key + ' del modo ' + (mode === 'light' ? 'claro' : 'oscuro') + ' no es válido. Usa seis dígitos hexadecimales.');
     }
     if (!preset.preferences || !['light', 'dark', 'system'].includes(preset.preferences.defaultMode) || typeof preset.preferences.compact !== 'boolean') throw new Error('El preset está incompleto: faltan preferencias válidas de apariencia.');
-    for (const key of ['logo', 'logoDark', 'logoCompact', 'favicon']) if (preset.branding[key] != null && typeof preset.branding[key] !== 'string') throw new Error('El recurso gráfico ' + key + ' no es válido.');
+    for (const key of ['logo', 'logoDark', 'logoCompact', 'favicon']) {
+      if (preset.branding[key] != null && typeof preset.branding[key] !== 'string') throw new Error('El recurso gráfico ' + key + ' no es válido.');
+      if (preset.branding[key] && !safeResource(preset.branding[key])) throw new Error('El recurso gráfico ' + key + ' no es seguro: usa una ruta interna o una imagen incrustada.');
+    }
     return preset;
+  }
+  // Packages and previews may only reference server-owned resources or bounded
+  // embedded images. External URLs would leak the viewer's IP and allow tracking,
+  // and traversal/backslashes would escape the resource namespace.
+  function safeResource(value) {
+    if (value == null || value === '') return '';
+    if (typeof value !== 'string' || value.length > 3 * 1024 * 1024 || /[\u0000-\u001f\\]/.test(value)) return '';
+    if (/^data:image\/(svg\+xml|png|jpeg|webp|x-icon|vnd\.microsoft\.icon);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+    if (value.startsWith('/api/v1/appearance/')) return /^\/api\/v1\/appearance\/(resources\/[a-z0-9-]+|assets\/[a-z-]+)$/i.test(value) ? value : '';
+    if (!/^[a-z0-9._~/-]+$/i.test(value) || value.includes('..') || value.startsWith('//')) return '';
+    return /^assets\//.test(value) ? value : '';
   }
   function luminance(hex) {
     const v = hex.slice(1).match(/../g).map(s => parseInt(s, 16) / 255).map(c => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);
@@ -81,5 +95,5 @@
   function restore(state) { return applyPreset(state, GENERIC); }
   function setUserMode(state, id, mode) { state.userModes[id || 'guest'] = ['light', 'dark', 'system'].includes(mode) ? mode : 'system'; }
   function getUserMode(state, id) { return state.userModes[id || 'guest'] || state.active.preferences?.defaultMode || 'system'; }
-  window.AssetAppearanceEngine = { clone, createState, validate, tokens, contrast, savePreset, applyPreset, duplicate, restore, setUserMode, getUserMode };
+  window.AssetAppearanceEngine = { clone, createState, validate, tokens, contrast, safeResource, savePreset, applyPreset, duplicate, restore, setUserMode, getUserMode };
 })();

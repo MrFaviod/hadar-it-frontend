@@ -1,6 +1,16 @@
 (function () {
   'use strict';
   const E = window.AssetAppearanceEngine;
+  function userId(vm) { return vm.activeUserId || vm.currentUser?.id || ''; }
+  function syncGeneral(vm, branding) {
+    const next = {
+      appName: branding.appName.trim(),
+      organizationName: branding.organizationName.trim(),
+      logo: branding.logo || 'assets/svg/logo.svg'
+    };
+    vm.config.general = Object.assign({}, vm.config.general, next);
+    if (vm.generalDraft) Object.assign(vm.generalDraft, next);
+  }
   window.AssetAppearanceMethods = {
     syncAppearance() {
       const root = document.documentElement;
@@ -8,6 +18,7 @@
       const mode = window.AssetTheme ? window.AssetTheme.getResolved() : (this.themeMode === 'dark' ? 'dark' : 'light');
       this.themeResolvedMode = mode;
       const preset = this.appearance.active;
+      if (!preset) return;
       const original = preset.id === 'generic' && JSON.stringify(preset.colors) === JSON.stringify(this.appearance.presets[0].colors);
       root.dataset.branding = original ? 'generic' : 'custom';
       root.dataset.density = preset.preferences?.compact ? 'compact' : 'comfortable';
@@ -16,40 +27,102 @@
       }
       let icon = document.querySelector('link[rel="icon"]');
       if (!icon) { icon = document.createElement('link'); icon.rel = 'icon'; document.head.appendChild(icon); }
-      icon.href = preset.branding.favicon || preset.branding.logo || 'assets/svg/logo.svg';
+      // Only bounded internal or embedded resources may reach link.href; a
+      // malformed gallery entry must not turn the shell into a tracking beacon.
+      icon.href = E.safeResource(preset.branding.favicon) || E.safeResource(preset.branding.logo) || 'assets/svg/logo.svg';
       const meta = document.querySelector('meta[name="theme-color"]');
-      if (meta && !original) meta.setAttribute('content', E.tokens(preset, mode)['--brand-primary']);
+      if (meta) meta.setAttribute('content', original ? (mode === 'dark' ? '#0a1820' : '#0b2331') : E.tokens(preset, mode)['--brand-primary']);
+    },
+    applyAppearanceState(preset) {
+      if (!preset) return;
+      E.validate(preset);
+      this.appearance.active = E.clone(preset);
+      syncGeneral(this, preset.branding);
+      this.syncAppearance();
+      if (this.updateDocumentTitle) this.updateDocumentTitle();
     },
     applyAppearance(preset) {
       E.applyPreset(this.appearance, preset);
-      this.config.general = { appName: preset.branding.appName.trim(), organizationName: preset.branding.organizationName.trim(), logo: preset.branding.logo || 'assets/svg/logo.svg' };
-      this.generalDraft = E.clone(this.config.general);
+      syncGeneral(this, preset.branding);
       this.syncAppearance();
       if (this.updateDocumentTitle) this.updateDocumentTitle();
       this.showToast('Apariencia aplicada a toda la aplicación.');
     },
+    applyThemeMode(mode) {
+      const preference = mode === 'light' || mode === 'dark' ? mode : 'system';
+      this.themeMode = preference;
+      if (this.appearance) E.setUserMode(this.appearance, userId(this) || 'guest', preference);
+      if (window.AssetTheme) window.AssetTheme.set(preference);
+      this.syncAppearance();
+    },
+    persistAppearanceMode(mode) {
+      if (!this.authenticated || !window.AssetAppearanceApi) return Promise.resolve(mode);
+      const themeMode = window.AssetAppearanceApi.normalizeMode(mode);
+      const saved = typeof this.patchWorkspaceState === 'function'
+        ? this.patchWorkspaceState({ themeMode: themeMode })
+        : window.AssetAppearanceApi.saveThemeMode(this, mode);
+      return Promise.resolve(saved).catch(error => {
+        if (this.showToast) this.showToast(error.message || 'No se pudo guardar la preferencia de tema.', 'error');
+        return null;
+      });
+    },
     setAppearanceMode(mode) {
-      E.setUserMode(this.appearance, this.activeUserId || this.currentUser?.id, mode);
+      const preference = mode === 'light' || mode === 'dark' ? mode : 'system';
+      E.setUserMode(this.appearance, userId(this) || 'guest', preference);
+      this.themeMode = preference;
+      if (window.AssetTheme) window.AssetTheme.set(preference);
+      this.syncAppearance();
+      return this.persistAppearanceMode(preference);
+    },
+    changeAppearanceUser() {
+      const id = userId(this) || 'guest';
+      if (window.AssetTheme && typeof window.AssetTheme.setScope === 'function') window.AssetTheme.setScope(this.authenticated ? id : null);
+      if (window.AssetAppearanceApi) window.AssetAppearanceApi.identityChanged(this);
+      if (this.authenticated) {
+        // The account's mode lives in workspace state; a scoped cache may avoid
+        // a flash, but the guest key or another account's preference is never
+        // read. Server hydration replaces this value.
+        const cached = window.AssetTheme && typeof window.AssetTheme.setScope === 'function' ? window.AssetTheme.getPreference() : 'system';
+        this.applyThemeMode(cached);
+        return;
+      }
+      if (!Object.keys(this.appearance.userModes).length && window.AssetTheme) E.setUserMode(this.appearance, id, window.AssetTheme.getPreference());
+      const mode = E.getUserMode(this.appearance, id);
       this.themeMode = mode;
       if (window.AssetTheme) window.AssetTheme.set(mode);
       this.syncAppearance();
     },
-    changeAppearanceUser() {
-      const userId = this.activeUserId || this.currentUser?.id || 'guest';
-      if (!Object.keys(this.appearance.userModes).length && window.AssetTheme) E.setUserMode(this.appearance, userId, window.AssetTheme.getPreference());
-      const mode = E.getUserMode(this.appearance, userId);
-      this.themeMode = mode;
-      if (window.AssetTheme) window.AssetTheme.set(mode);
+    resetThemeMode() {
+      if (window.AssetTheme && typeof window.AssetTheme.setScope === 'function') {
+        window.AssetTheme.setScope(null);
+        const guest = window.AssetTheme.getPreference();
+        this.themeMode = guest === 'light' || guest === 'dark' ? guest : 'system';
+        this.syncAppearance();
+        return;
+      }
+      this.themeMode = 'system';
+      if (window.AssetTheme) window.AssetTheme.set('system');
       this.syncAppearance();
+    },
+    startAppearance() {
+      if (window.AssetTheme && typeof window.AssetTheme.setScope === 'function') window.AssetTheme.setScope(this.authenticated ? userId(this) : null);
+      if (!window.AssetAppearanceApi) return Promise.resolve(this.appearance);
+      return window.AssetAppearanceApi.start(this).catch(error => {
+        if (this.showToast) this.showToast(error.message || 'No se pudo cargar la apariencia de la instalación.', 'error');
+        return this.appearance;
+      });
+    },
+    stopAppearance() {
+      if (window.AssetAppearanceApi) window.AssetAppearanceApi.stop(this);
     },
     toggleTheme() {
       const mode = window.AssetTheme ? window.AssetTheme.getResolved() : this.themeMode;
-      this.setAppearanceMode(mode === 'dark' ? 'light' : 'dark');
+      return this.setAppearanceMode(mode === 'dark' ? 'light' : 'dark');
     },
     handleThemeChange(event) {
       this.themeMode = event?.detail?.preference || window.AssetTheme?.getPreference() || 'system';
       this.themeResolvedMode = event?.detail?.resolved || window.AssetTheme?.getResolved() || 'light';
-      E.setUserMode(this.appearance, this.activeUserId || this.currentUser?.id, this.themeMode);
+      E.setUserMode(this.appearance, userId(this) || 'guest', this.themeMode);
       this.syncAppearance();
     }
   };
