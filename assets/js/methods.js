@@ -8,7 +8,13 @@
 
   window.AssetMethods = {
     parseRoute() {
-      const raw = window.location.hash.replace(/^#\/?/, '');
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      const queryAt = hash.indexOf('?');
+      const raw = queryAt === -1 ? hash : hash.slice(0, queryAt);
+      const query = queryAt === -1 ? '' : hash.slice(queryAt + 1);
+      const match = /(?:^|&)share=([^&]*)/.exec(query);
+      let shareToken = '';
+      if (match) { try { shareToken = decodeURIComponent(match[1]); } catch (_) { shareToken = match[1]; } }
       const parts = raw.split('/').filter(Boolean);
       if (parts[0] === 'usuarios') return { name: 'users', userId: null };
       if (parts[0] === 'usuario' && parts[1]) {
@@ -22,7 +28,7 @@
       if (parts[0] === 'etiquetas') return { name: 'labels', assetId: null, personId: null, section: null };
       if (parts[0] === 'reporte' && parts[1]) {
         let id; try { id = decodeURIComponent(parts[1]); } catch (_) { id = parts[1]; }
-        return { name: 'reportAsset', assetId: id, personId: null, section: parts[2] === 'publico' ? 'publico' : null };
+        return { name: 'reportAsset', assetId: id, personId: null, section: parts[2] === 'publico' && shareToken ? 'publico' : null, shareToken };
       }
       if (parts[0] === 'panel') return { name: 'panel', assetId: null, personId: null, section: null };
       if (parts[0] === 'inventario') return { name: 'inventory', assetId: null, personId: null, section: null };
@@ -133,7 +139,10 @@
       if (route.name === 'reports') return '#/reportes';
       if (route.name === 'warranties') return '#/garantias';
       if (route.name === 'labels') return '#/etiquetas';
-      if (route.name === 'reportAsset') return '#/reporte/' + encodeURIComponent(route.assetId) + (route.section === 'publico' ? '/publico' : '');
+      if (route.name === 'reportAsset') {
+        const base = '#/reporte/' + encodeURIComponent(route.assetId) + (route.section === 'publico' ? '/publico' : '');
+        return route.section === 'publico' && route.shareToken ? base + '?share=' + encodeURIComponent(route.shareToken) : base;
+      }
       if (route.name === 'panel') return '#/panel';
       if (route.name === 'conversation') return route.assetId ? '#/conversacion/activo/' + encodeURIComponent(route.assetId) : '#/conversacion';
       if (route.name === 'users') return '#/usuarios';
@@ -186,6 +195,10 @@
     handleHashChange() {
       let parsed = this.parseRoute();
       if (!this.authenticated) {
+        if (parsed.name === 'reportAsset' && parsed.section === 'publico' && parsed.shareToken) {
+          this.applyRoute(parsed);
+          return;
+        }
         this.ensureHash('#/login');
         this.applyRoute({ name: 'login', assetId: null, personId: null, section: null });
         return;

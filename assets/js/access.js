@@ -18,6 +18,14 @@
       ]
     },
     {
+      id: 'reports',
+      label: 'Reportes',
+      icon: 'file-text',
+      permissions: [
+        { id: 'reports.share', label: 'Compartir reportes públicos' }
+      ]
+    },
+    {
       id: 'people',
       label: 'Personas',
       icon: 'user',
@@ -95,12 +103,12 @@
     notificaciones: 'config.integrations',
     mapas: 'config.sites',
     datos: 'assets.edit',
-    reportes: 'assets.edit',
+    reportes: 'config.general',
     // The only stored warranty preference is the expiring-day threshold, which
     // the server guards with config.general (phase 6, S7).
     garantias: 'config.general',
     qr: 'config.general',
-    etiquetas: 'assets.edit'
+    etiquetas: 'config.general'
   };
 
   const SENSITIVE_DIALOG_KEYS = [
@@ -128,7 +136,11 @@
     return permission ? [permission] : ['security'];
   }
   function allows(vm, permissions) { return permissions.some(permission => vm.can(permission)); }
+  function isPublicReportRoute(route) {
+    return !!route && route.name === 'reportAsset' && route.section === 'publico' && !!route.shareToken;
+  }
   function routePermissions(route) {
+    if (isPublicReportRoute(route)) return [];
     if (['users', 'user'].includes(route.name)) return ['users.view'];
     if (['people', 'person'].includes(route.name)) return ['people.view'];
     if (route.name === 'config') return sectionPermissions(route.section);
@@ -149,8 +161,11 @@
     vm.authenticated = false; vm.activeUserId = null; vm.serverPermissions = []; vm.csrfToken = '';
     vm.security = { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES };
     closeSensitiveDialogs(vm); discardLegacyStorage();
-    vm.route = loginRoute();
-    if (vm.ensureHash) vm.ensureHash('#/login');
+    // The tokenized public report is a sessionless screen: an expired private
+    // session must not replace it with the login form.
+    const publicRoute = isPublicReportRoute(vm.route);
+    vm.route = publicRoute ? vm.route : loginRoute();
+    if (!publicRoute && vm.ensureHash) vm.ensureHash('#/login');
   }
   const messages = {
     unauthorized: 'La sesión ha vencido. Inicia sesión de nuevo.',
@@ -176,7 +191,7 @@
       : response.status === 204 ? null : await response.json();
     if (state && state.stopped) throw new Error('Solicitud cancelada.');
     if (!response.ok) {
-      if (response.status === 401 && path !== '/auth/login') clearIdentity(vm);
+      if (response.status === 401 && path !== '/auth/login' && !path.startsWith('/reports/public/')) clearIdentity(vm);
       const code = payload.error && payload.error.code;
       const error = new Error(path === '/auth/login' && response.status === 401 ? 'Usuario o contraseña incorrectos.' : (messages[code] || 'No se pudo completar la solicitud.'));
       error.status = response.status;
@@ -232,6 +247,7 @@
     mapSecurityState() { return this.security; },
     syncAccess() { if (!this.authenticated) return false; moveTo(this, this.route); return true; },
     accessRoute(route) {
+      if (isPublicReportRoute(route)) return route;
       if (!this.authenticated || !this.currentUser || !this.currentUser.active) return loginRoute();
       const next = route && route.name === 'login' ? homeRoute() : route || homeRoute();
       const permissions = routePermissions(next);
@@ -441,6 +457,13 @@
     vm.authenticated = false; vm.activeUserId = null;
     const state = { timer: null, stopped: false, controller: new AbortController() };
     vm.__assetAccess = state;
+    if (isPublicReportRoute(requested)) {
+      // An anonymous public share boots without touching identity or any
+      // private endpoint; only the exact tokenized route is admitted.
+      vm.route = requested;
+      vm.accessReady = Promise.resolve(false);
+      return;
+    }
     vm.accessReady = (async () => {
       try {
         const session = await request(vm, '/auth/me');

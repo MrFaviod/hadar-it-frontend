@@ -176,11 +176,28 @@
 </head>
 <body>
   <div id="app" v-cloak>
-    <a v-if="route.name !== 'login'" class="skip-link" href="#main-content">Saltar al contenido</a>
+    <a v-if="route.name !== 'login' && !isPublicReport" class="skip-link" href="#main-content">Saltar al contenido</a>
 
     <!-- Acceso / aplicación: un único cambio animado al iniciar o cerrar sesión -->
     <transition name="auth" mode="out-in">
-    <section v-if="route.name === 'login'" class="login" aria-labelledby="login-title">
+    <section v-if="isPublicReport" class="login" aria-labelledby="public-report-title">
+      <header class="login__chrome">
+        <div class="login__brand">
+          <span>ITMS · Activos</span>
+        </div>
+        <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
+                :title="themeToggleLabel" @click="toggleTheme">
+          <app-icon :name="themeResolved === 'dark' ? 'sun' : 'moon'"></app-icon>
+          <span class="theme-toggle__label">{{ themeToggleText }}</span>
+        </button>
+      </header>
+      <main class="login__panel">
+        <div class="login__form-wrap">
+          <public-asset-report :app="$root"></public-asset-report>
+        </div>
+      </main>
+    </section>
+    <section v-else-if="route.name === 'login'" class="login" aria-labelledby="login-title">
       <header class="login__chrome">
         <div class="login__brand">
           <img :src="brandLogo" width="40" height="40" alt="">
@@ -444,9 +461,9 @@
                       <span>Nuevo activo</span>
                     </button>
                     <a class="btn btn--ghost" data-od-id="inventory-reports" href="#/reportes" @click.prevent="setHash('#/reportes')"
-                       title="El módulo de reportes sigue usando el conjunto de demostración local">
+                       title="Preparar reportes y etiquetas del inventario del servidor">
                       <app-icon name="file-text"></app-icon>
-                      <span>Reportes (demo)</span>
+                      <span>Reportes</span>
                     </a>
                   </div>
                 </header>
@@ -1882,7 +1899,7 @@
 
                   <asset-warranty-panel v-if="can('assets.view')" :asset="currentAsset" :app="$root"></asset-warranty-panel>
                   <phase6-attachments v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></phase6-attachments>
-                  <asset-qr-panel v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
+                  <asset-qr-panel v-if="serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-qr-panel>
 
                   <asset-relations v-if="!serverAssetMode && can('assets.view')" :asset="currentAsset" :app="$root"></asset-relations>
                   <organization-relations v-else-if="serverOrganizationMode && can('assets.view')" :asset="currentAsset" :app="$root"></organization-relations>
@@ -2884,7 +2901,6 @@
   <script src="assets/js/map-floor-logic.js"></script>
   <script src="assets/js/map-views.js"></script>
   <script src="assets/js/map-config-views.js"></script>
-  <script src="assets/vendor/report-qrcode.js"></script>
   <script src="assets/js/report-engine.js"></script>
   <script src="assets/js/warranty-engine.js"></script>
   <script src="assets/js/label-engine.js"></script>
@@ -2906,6 +2922,7 @@
   <script src="assets/js/organization-api.js"></script>
   <script src="assets/js/redundancy-api.js"></script>
   <script src="assets/js/inventory-api.js"></script>
+  <script src="assets/js/phase9-api.js"></script>
   <script src="assets/js/maintenance-api.js"></script>
   <script src="assets/js/conversation.js"></script>
   <script src="assets/js/app.js"></script>
