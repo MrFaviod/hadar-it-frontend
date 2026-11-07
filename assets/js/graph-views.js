@@ -82,13 +82,13 @@
         return Array.isArray(list) ? list : [];
       },
       categories() {
-        return Array.isArray(this.app.categories) ? this.app.categories : [];
+        return Array.isArray(this.source.categories) ? this.source.categories : [];
       },
       sites() {
-        return Array.isArray(this.app.sites) ? this.app.sites : [];
+        return Array.isArray(this.source.sites) ? this.source.sites : [];
       },
       types() {
-        return this.app.relations && Array.isArray(this.app.relations.types) ? this.app.relations.types : [];
+        return this.source.relations && Array.isArray(this.source.relations.types) ? this.source.relations.types : [];
       },
       activeFocusId() {
         return this.focusId || '';
@@ -206,10 +206,10 @@
         return Math.round(this.view.k * 100) + '%';
       },
       selectedAsset() {
-        return this.selectedId ? Engine.assetById(this.app, this.selectedId) : null;
+        return this.selectedId ? Engine.assetById(this.source, this.selectedId) : null;
       },
       selectedRows() {
-        return this.selectedAsset ? Engine.rowsFor(this.app, this.selectedAsset.id) : [];
+        return this.selectedAsset ? Engine.rowsFor(this.source, this.selectedAsset.id) : [];
       },
       selectedHidden() {
         return this.selectedAsset ? this.hiddenIds.filter((id) => this.neighbourIds(this.selectedAsset.id).indexOf(id) !== -1) : [];
@@ -231,7 +231,7 @@
         };
       },
       totalRelations() {
-        return Engine.counts(this.app);
+        return Engine.counts(this.source);
       },
       hasFilters() {
         return !!(this.filters.categories.length || this.filters.sites.length || this.filters.types.length
@@ -624,7 +624,7 @@
         this.announce = 'Vista global del grafo.';
       },
       openAsset(id) {
-        const asset = Engine.assetById(this.app, id);
+        const asset = Engine.assetById(this.source, id);
         if (asset) this.app.openAsset(asset);
       },
       expandNode(id) {

@@ -18,11 +18,20 @@ function setup(entry='index.html'){
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
  const Vue=c.Vue;c.Vue={...Vue,createApp(o){c.options=o;return {mount(){}};}};vm.runInContext(fs.readFileSync('assets/js/app.js','utf8'),c);c.Vue=Vue;
+ // The real root mixins (access data/computed and the integrated lifecycle
+ // slice) are merged the way Vue merges them: mixin data/methods/computed are
+ // installed on the instance, with root definitions winning. Tests therefore
+ // exercise the lifecycle the shipped watcher calls (identity, route, clear)
+ // instead of only the root's own options.
+ const mixins=(c.options.mixins||[]).filter(mixin=>mixin&&typeof mixin==='object');
+ const mixinData=Object.assign({},...mixins.map(mixin=>typeof mixin.data==='function'?mixin.data():{}));
  // Domain rendering tests use an explicit authorized fixture, never prototype login seeds.
- const app=Vue.reactive(Object.assign({},c.AssetAccess.data(),c.options.data()));app.security.users=[{id:'domain-fixture',name:'Domain fixture',roleId:'fixture',active:true}];app.activeUserId='domain-fixture';app.authenticated=true;app.serverPermissions=c.AssetAccess.catalog.flatMap(group=>group.permissions.map(permission=>permission.id));app.can=()=>true;app.showToast=m=>{app.lastToast=m;};
+ const app=Vue.reactive(Object.assign({},c.AssetAccess.data(),mixinData,c.options.data()));app.security.users=[{id:'domain-fixture',name:'Domain fixture',roleId:'fixture',active:true}];app.activeUserId='domain-fixture';app.authenticated=true;app.serverPermissions=c.AssetAccess.catalog.flatMap(group=>group.permissions.map(permission=>permission.id));app.can=()=>true;app.showToast=m=>{app.lastToast=m;};
+ for(const mixin of mixins)for(const [key,fn] of Object.entries(mixin.methods||{}))app[key]=fn.bind(app);
  for(const [key,fn] of Object.entries(c.options.methods))app[key]=fn.bind(app);
  app.can=()=>true;app.showToast=m=>{app.lastToast=m;};app.setHash=h=>{app.lastHash=h;};
- for(const [key,fn] of Object.entries(Object.assign({},c.AssetAccess.computed,c.options.computed)))Object.defineProperty(app,key,{get:()=>fn.call(app),configurable:true});
+ const computed=Object.assign({},...mixins.map(mixin=>mixin.computed||{}),c.AssetAccess.computed,c.options.computed);
+ for(const [key,fn] of Object.entries(computed))Object.defineProperty(app,key,{get:()=>fn.call(app),configurable:true});
  const errors=[];
  const host={createElement:tag=>({tag,tagName:tag.toUpperCase(),props:{},children:[],parent:null,style:{},// Native listeners (including the v-model directives) are kept so a mounted
  // template can be driven through the same input/change events a browser sends.

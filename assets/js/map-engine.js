@@ -58,9 +58,21 @@
 
   function floorOfAsset(app, asset) {
     if (!asset) return null;
+    const maps = mapsOf(app);
     const room = roomById(app, asset.locationId);
     if (room) return room.floor;
-    const floors = list(mapsOf(app).floors).filter(function (floor) { return floor.site === asset.site; });
+    // A device can be assigned to a floor/building/site, not only a room.
+    // Walk the canonical ancestry before falling back to the site's first
+    // floor, so an unpositioned device stays on its actual floor.
+    const index = maps.locationIndex || {};
+    let current = index[asset.locationId];
+    let guard = 0;
+    while (current && guard < 8) {
+      if (current.level === 'floor') return current.id;
+      current = index[current.parentId];
+      guard += 1;
+    }
+    const floors = list(maps.floors).filter(function (floor) { return floor.site === asset.site; });
     return floors.length ? floors[0].id : '';
   }
 
@@ -304,11 +316,14 @@
       };
     }
     if (asset.fovImage) {
+      const technical = asset.technical && typeof asset.technical === 'object' ? asset.technical : {};
       return {
         src: asset.fovImage,
         caption: 'Campo de visión registrado',
         heading: '',
         range: '',
+        angle: Number(technical.fovAngle) || 0,
+        bearing: 0,
         alt: 'Campo de visión de ' + asset.name,
         floor: floorOfAsset(app, asset)
       };

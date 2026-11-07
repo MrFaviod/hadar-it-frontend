@@ -171,6 +171,11 @@
       siteId: '',
       sites: [],
       positions: [],
+      // Canonical assets for the same authorization scope. Positions only carry
+      // placed equipment, so this bounded pool keeps unpositioned devices
+      // associated with their room/floor instead of dropping them from the map.
+      assets: [],
+      assetsTruncated: false,
       limit: PAGE_LIMIT,
       offset: 0,
       truncated: false,
@@ -301,6 +306,9 @@
     if (!payload || typeof payload !== 'object' || !text(payload.id)) return null;
     const status = text(payload.status);
     const category = text(payload.category) || 'otros';
+    const images = payload.images && typeof payload.images === 'object' ? payload.images : {};
+    const technical = payload.technical && typeof payload.technical === 'object' ? payload.technical : {};
+    const fov = text(images.fov);
     return {
       id: text(payload.id),
       code: text(payload.quickCode),
@@ -326,6 +334,11 @@
       archived: !!payload.archived,
       positionX: text(payload.positionX),
       positionY: text(payload.positionY),
+      images,
+      technical,
+      tech: technical,
+      fovUrl: fov,
+      fovImage: fov,
       serverAsset: true
     };
   }
@@ -444,7 +457,11 @@
     const positions = Array.isArray(payload && payload.positions) ? payload.positions : [];
     const locations = Array.isArray(context && context.locations) ? context.locations : [];
     const byId = {};
-    locations.forEach(function (location) { byId[location.id] = location; });
+    const locationIndex = {};
+    locations.forEach(function (location) {
+      byId[location.id] = location;
+      locationIndex[location.id] = { id: location.id, parentId: location.parentId || '', level: location.level || '' };
+    });
     const buildings = locations
       .filter(function (location) { return location.level === 'building'; })
       .map(function (location) {
@@ -530,6 +547,7 @@
       rooms,
       plans,
       positions: placements,
+      locationIndex,
       geo,
       serverMap: true
     };
@@ -693,24 +711,38 @@
       },
       organizationMapSource() {
         const state = this.organization.map;
-        const assets = state.positions.map(function (position) {
-          return {
-            id: text(position.assetId),
-            code: text(position.quickCode),
-            name: text(position.name),
-            category: 'otros',
-            type: '',
-            site: text(position.siteId),
-            siteId: text(position.siteId),
-            locationId: text(position.locationId),
-            location: '',
-            status: 'in_use',
-            statusId: 'in_use',
-            positionX: position.x === null || position.x === undefined ? '' : String(position.x),
-            positionY: position.y === null || position.y === undefined ? '' : String(position.y),
-            archived: false,
-            serverAsset: true
-          };
+        // Placed assets come from `/map`; the bounded asset pool adds the
+        // canonical record (category/status/images) and every unpositioned
+        // device that is still associated with a room or floor.
+        const pooled = state.assets.map(mapAsset).filter(Boolean);
+        const placed = {};
+        state.positions.forEach(function (position) { placed[text(position.assetId)] = position; });
+        const assets = pooled.length
+          ? pooled
+          : state.positions.map(function (position) {
+            return {
+              id: text(position.assetId),
+              code: text(position.quickCode),
+              name: text(position.name),
+              category: 'otros',
+              type: '',
+              site: text(position.siteId),
+              siteId: text(position.siteId),
+              locationId: text(position.locationId),
+              location: '',
+              status: 'in_use',
+              statusId: 'in_use',
+              positionX: position.x === null || position.x === undefined ? '' : String(position.x),
+              positionY: position.y === null || position.y === undefined ? '' : String(position.y),
+              archived: false,
+              serverAsset: true
+            };
+          });
+        assets.forEach(function (asset) {
+          const position = placed[asset.id];
+          if (!position) return;
+          asset.positionX = position.x === null || position.x === undefined ? '' : String(position.x);
+          asset.positionY = position.y === null || position.y === undefined ? '' : String(position.y);
         });
         return {
           assets,
@@ -2521,6 +2553,30 @@
       },
 
       /* -------------------------------------------------------------- map */
+      /* The map needs every canonical asset to keep unpositioned equipment in
+       * its room/floor group. `/assets/search` is read in bounded MAX_LIMIT
+       * pages until the canonical total is covered; each page shares the map
+       * request's abort signal, so a logout or newer map load stops the walk. */
+      async loadOrganizationAssetPool(signal) {
+        const items = [];
+        let offset = 0;
+        let total = 0;
+        for (;;) {
+          const payload = await window.AssetAccess.request(
+            this,
+            '/assets/search?limit=' + MAX_LIMIT + '&offset=' + offset,
+            { signal }
+          );
+          const page = Array.isArray(payload && payload.items) ? payload.items : [];
+          items.push.apply(items, page);
+          total = Math.max(number(payload && payload.total, 0), items.length);
+          const next = number(payload && payload.offset, offset) + page.length;
+          if (!page.length || next <= offset || items.length >= total) {
+            return { items, total, truncated: items.length < total };
+          }
+          offset = next;
+        }
+      },
       async loadOrganizationMap(options) {
         if (!this.organizationAvailable('assets.view')) return false;
         const state = this.organization.map;
@@ -2537,13 +2593,22 @@
           await this.loadOrganizationLocations();
           const params = ['limit=' + PAGE_LIMIT, 'offset=' + offset];
           if (siteId) params.push('siteId=' + encodeURIComponent(siteId));
-          const payload = await window.AssetAccess.request(this, '/map?' + params.join('&'), {
-            signal: controller ? controller.signal : undefined
-          });
+          const [payload, pool] = await Promise.all([
+            window.AssetAccess.request(this, '/map?' + params.join('&'), {
+              signal: controller ? controller.signal : undefined
+            }),
+            // The pool is presentation context for unpositioned grouping. A
+            // denied/failed secondary read leaves `/map` authoritative instead
+            // of turning the whole explorer into a false error.
+            this.loadOrganizationAssetPool(controller ? controller.signal : undefined)
+              .catch(function () { return null; })
+          ]);
           if (epoch !== state.epoch || !this.authenticated) return false;
           state.siteId = siteId;
           state.sites = Array.isArray(payload.sites) ? payload.sites : [];
           state.positions = Array.isArray(payload.positions) ? payload.positions : [];
+          state.assets = pool && Array.isArray(pool.items) ? pool.items : [];
+          state.assetsTruncated = pool ? Number(pool.total) > (Array.isArray(pool.items) ? pool.items.length : 0) : false;
           state.limit = number(payload.limit, PAGE_LIMIT);
           state.offset = number(payload.offset, offset);
           state.truncated = !!payload.truncated;
@@ -2553,6 +2618,8 @@
           if (epoch !== state.epoch || (error && error.name === 'AbortError')) return false;
           state.sites = [];
           state.positions = [];
+          state.assets = [];
+          state.assetsTruncated = false;
           state.loaded = false;
           state.error = (error && error.message) || 'No se pudieron cargar los datos del mapa.';
           return false;

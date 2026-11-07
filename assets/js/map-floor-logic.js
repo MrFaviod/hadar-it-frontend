@@ -38,26 +38,6 @@
         if (!this.selectedAsset || this.selectedAsset.category !== 'camaras') return null;
         return Engine.cameraView(this.source, this.selectedAsset);
       },
-      fovCone() {
-        const asset = this.selectedAsset;
-        const view = this.camera;
-        if (!asset || !view || !view.angle) return '';
-        const position = this.maps.positions[asset.id];
-        if (!position || position.floor !== this.activeFloorId) return '';
-        const length = 440;
-        const half = (view.angle / 2) * (Math.PI / 180);
-        const bearing = ((view.bearing || 0) * Math.PI) / 180;
-        const points = [];
-        const steps = 18;
-        for (let index = 0; index <= steps; index += 1) {
-          const angle = bearing - half + (2 * half * index) / steps;
-          points.push([
-            (position.x + Math.sin(angle) * length).toFixed(1),
-            (position.y - Math.cos(angle) * length).toFixed(1)
-          ]);
-        }
-        return 'M ' + position.x + ' ' + position.y + ' L ' + points.map((point) => point.join(' ')).join(' L ') + ' Z';
-      },
       floorMarkers() {
         if (!this.floorView) return [];
         const placed = this.floorView.placed;
@@ -169,9 +149,18 @@
       },
       onMarkerMove(event) {
         if (!this.drag || !this.$refs.paper) return;
-        const rect = this.$refs.paper.getBoundingClientRect();
-        const x = ((event.clientX - rect.left) / rect.width) * Engine.PLAN_W;
-        const y = ((event.clientY - rect.top) / rect.height) * Engine.PLAN_H;
+        let x;
+        let y;
+        if (this.serverMapMode && this._floorMap && this.$refs.floorCanvas) {
+          const canvas = this.$refs.floorCanvas.getBoundingClientRect();
+          const point = this._floorMap.unproject([event.clientX - canvas.left, event.clientY - canvas.top]);
+          x = point.lng * Engine.PLAN_H;
+          y = (1 - point.lat) * Engine.PLAN_H;
+        } else {
+          const rect = this.$refs.paper.getBoundingClientRect();
+          x = ((event.clientX - rect.left) / rect.width) * Engine.PLAN_W;
+          y = ((event.clientY - rect.top) / rect.height) * Engine.PLAN_H;
+        }
         Engine.setPosition(this.source, this.drag.id, this.activeFloorId, x, y);
       },
       onMarkerUp() {
