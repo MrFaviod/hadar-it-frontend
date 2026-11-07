@@ -954,6 +954,8 @@
         this.loadError = '';
         // The retained geometry stays visible while the refresh runs.
         if (!this.dirty) this.copyRetained();
+        const coldLabel = !this.settings.loaded && !this.dirty
+          ? JSON.parse(JSON.stringify(this.label)) : null;
         const loaded = await this.app.phase9LoadSettings();
         if (!this.owned || this.ownerToken() !== owner) return;
         this.loading = false;
@@ -962,7 +964,17 @@
           return;
         }
         // An edit typed during the read wins over the response.
-        if (this.dirty) return;
+        if (this.dirty) {
+          if (coldLabel) {
+            const received = LABEL.defaultLabelOptions(this.settings.labelDefaults);
+            Object.keys(received).forEach((key) => {
+              if (JSON.stringify(this.label[key]) === JSON.stringify(coldLabel[key])) {
+                this.label[key] = received[key];
+              }
+            });
+          }
+          return;
+        }
         this.copyRetained();
         this.dirty = false;
         this.saved = false;

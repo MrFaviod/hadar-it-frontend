@@ -953,6 +953,8 @@
         // Retained server values stay visible while the refresh runs, so a
         // refused refresh never turns a configured editor into a blank form.
         if (!this.dirty) this.copyRetained();
+        const coldDraft = !this.state.loaded && !this.dirty
+          ? JSON.parse(JSON.stringify(this.draft)) : null;
         const loaded = await this.app.phase9LoadSettings();
         if (!this.owned || this.ownerToken() !== owner) return;
         this.loading = false;
@@ -962,7 +964,17 @@
         }
         // Intent is read after the await: an edit typed while the read was in
         // flight outranks the response, so the draft and its dirty flag stay.
-        if (this.dirty) return;
+        if (this.dirty) {
+          if (coldDraft) {
+            if (this.draft.baseUrl === coldDraft.baseUrl) this.draft.baseUrl = this.state.baseUrl;
+            Object.keys(this.state.branding).forEach((key) => {
+              if (this.draft.branding[key] === coldDraft.branding[key]) {
+                this.draft.branding[key] = this.state.branding[key];
+              }
+            });
+          }
+          return;
+        }
         this.reset();
         this.dirty = false;
       },

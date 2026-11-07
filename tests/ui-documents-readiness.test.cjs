@@ -1185,3 +1185,36 @@ for (const allowed of [true, false]) {
     view.unmount();
   });
 }
+
+for (const component of ['ReportSettings', 'LabelSettings']) {
+  test(component + ' cold load merges untouched server fields before saving', async () => {
+    const s = setup();
+    appSet(s);
+    s.app.effectivePermissions = ['config.general'];
+    s.app.phase9.settings.loaded = false;
+    const p = await pendingEditor(s, component);
+    if (component === 'ReportSettings') p.editor.draft.baseUrl = 'https://typed.example/';
+    else p.editor.label.widthMm = 133;
+    p.editor.dirty = true;
+    retained(s);
+    s.app.phase9.settings.branding.logoAttachmentId = 'logo-server';
+    s.app.phase9.settings.labelDefaults.heightMm = 67;
+    s.app.phase9.settings.labelDefaults.fields = ['name', 'code'];
+    p.pending.resolve(true);
+    await settled(s);
+    await p.editor.save();
+    assert.equal(p.calls.length, 1);
+    if (component === 'ReportSettings') {
+      assert.equal(p.calls[0].baseUrl, 'https://typed.example/');
+      assert.deepEqual(JSON.parse(JSON.stringify(p.calls[0].branding)),
+        JSON.parse(JSON.stringify(s.app.phase9.settings.branding)));
+    } else {
+      assert.equal(p.calls[0].labelDefaults.widthMm, 133);
+      for (const key of ['heightMm', 'fields']) assert.deepEqual(
+        JSON.parse(JSON.stringify(p.calls[0].labelDefaults[key])),
+        JSON.parse(JSON.stringify(s.app.phase9.settings.labelDefaults[key])));
+    }
+    assert.deepEqual(s.errors, []);
+    p.view.unmount();
+  });
+}
