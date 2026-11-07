@@ -4,7 +4,7 @@
   const ACCESS_KEY = 'asset-manager.access';
   const SESSION_KEY = (Store.KEYS && Store.KEYS.session) || 'asset-manager.session';
   const DEFAULT_SESSION_MINUTES = 30;
-  const CATALOG = [
+  const CATALOG_SOURCE = [
     {
       id: 'assets',
       label: 'Activos',
@@ -97,12 +97,57 @@
       ]
     }
   ];
+  // The permission catalog is a display snapshot of server-issued grants; it
+  // is never authority. Extension groups are merged from discovery so a human
+  // Superadmin can review revoked/disabled module permissions in role details.
+  const CATALOG = window.Vue && typeof window.Vue.reactive === 'function'
+    ? window.Vue.reactive(CATALOG_SOURCE)
+    : CATALOG_SOURCE;
 
   const PERMISSION_IDS = CATALOG.reduce((result, group) => {
     group.permissions.forEach((permission) => result.push(permission.id));
     return result;
   }, []);
   const PERMISSION_SET = new Set(PERMISSION_IDS);
+  const CORE_PERMISSION_SET = new Set(PERMISSION_IDS);
+  let extensionPermissionIds = new Set();
+
+  function setExtensionPermissions(groups) {
+    const nextGroups = [];
+    const nextIds = new Set();
+    (Array.isArray(groups) ? groups : []).forEach((group) => {
+      if (!group || typeof group.id !== 'string' || !group.id || !Array.isArray(group.permissions)) return;
+      const permissions = [];
+      group.permissions.forEach((permission) => {
+        const id = permission && typeof permission.id === 'string' ? permission.id : '';
+        if (!id || CORE_PERMISSION_SET.has(id) || id.indexOf('ext_') !== 0 || id.indexOf('.') === -1) return;
+        if (nextIds.has(id)) return;
+        nextIds.add(id);
+        permissions.push({
+          id,
+          label: typeof permission.label === 'string' && permission.label.trim() ? permission.label.trim() : id,
+          description: typeof permission.description === 'string' ? permission.description : ''
+        });
+      });
+      if (!permissions.length) return;
+      nextGroups.push({
+        id: String(group.id),
+        label: typeof group.label === 'string' && group.label.trim() ? group.label.trim() : String(group.id),
+        icon: typeof group.icon === 'string' && group.icon ? group.icon : 'package',
+        extension: true,
+        permissions
+      });
+    });
+    for (let index = CATALOG.length - 1; index >= 0; index -= 1) {
+      if (CATALOG[index].extension) CATALOG.splice(index, 1);
+    }
+    extensionPermissionIds.forEach((id) => PERMISSION_SET.delete(id));
+    nextGroups.forEach((group) => {
+      CATALOG.push(group);
+      group.permissions.forEach((permission) => PERMISSION_SET.add(permission.id));
+    });
+    extensionPermissionIds = nextIds;
+  }
 
   // The catalog tab holds field/category forms (config.categories) and
   // status/rule forms (config.general); either grant reaches the section, and
@@ -138,7 +183,11 @@
     // the server guards with config.general (phase 6, S7).
     garantias: 'config.general',
     qr: 'config.general',
-    etiquetas: 'config.general'
+    etiquetas: 'config.general',
+    // Installation approval is a reserved human Superadmin capability. The
+    // section is reachable for review, and every lifecycle control still
+    // requires the exact server check.
+    extensiones: 'system.modules'
   };
 
   const SENSITIVE_DIALOG_KEYS = [
@@ -151,7 +200,10 @@
 
   function text(value, fallback) { return typeof value === 'string' && value.trim() ? value.trim() : (fallback || ''); }
   function canonicalRoleId(value) { return text(value, ''); }
-  function safePermissions(value) { return Array.isArray(value) ? value.filter(id => PERMISSION_SET.has(id)) : []; }
+  function safePermissions(value) {
+    return Array.isArray(value) ? value.filter(id => typeof id === 'string' &&
+      (PERMISSION_SET.has(id) || /^ext_[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)*$/.test(id))) : [];
+  }
   function makeResult(ok, error, fieldErrors, extra) { return Object.assign({ ok: !!ok, error: error || '', fieldErrors: fieldErrors || {} }, extra || {}); }
   function roleFor(vm, id) { return vm.security.roles.find(role => role.id === id) || null; }
   function userFor(vm, id) { return vm.security.users.find(user => user.id === id) || null; }
@@ -173,6 +225,10 @@
     if (isPublicReportRoute(route)) return [];
     if (['users', 'user'].includes(route.name)) return ['users.view'];
     if (['people', 'person'].includes(route.name)) return ['people.view'];
+    // A native extension page is a shell route: the enabled module's declared
+    // page permission is enforced by the page component before rendering, and
+    // every operation is re-authorized by the server.
+    if (route && route.name === 'extension') return [];
     if (route.name === 'config') return sectionPermissions(route.section);
     if (['login', 'denied'].includes(route.name)) return [];
     return ['assets.view'];
@@ -586,6 +642,6 @@
   window.AssetAccess = {
     catalog: CATALOG,
     data() { return { security: { users: [], roles: [], sessionMinutes: DEFAULT_SESSION_MINUTES }, serverPermissions: [], csrfToken: '', activeUserId: null, userSearch: '', userRoleFilter: 'all', userStateFilter: 'all' }; },
-    computed, methods, start, stop, guardMethods, request, stream
+    computed, methods, start, stop, guardMethods, request, stream, setExtensionPermissions
   };
 })();

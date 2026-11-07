@@ -1794,3 +1794,365 @@
     white-space: normal;
   }
 }
+/* Native extension host and review surfaces. These reuse the existing tokens,
+   controls and tables; modules never bring a second design system. */
+
+.nav-group-label {
+  margin: 13px 10px 6px;
+  color: #a9c5c8;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.itsm-table__empty {
+  padding: 22px 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.itsm-field__required {
+  color: var(--danger-600);
+}
+
+.itsm-field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+  border: 0;
+  outline: 0;
+  resize: vertical;
+  background: transparent;
+  color: var(--ink-900);
+  font: inherit;
+}
+
+.extension-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.extension-filters .chip--active {
+  border-color: var(--teal-700);
+  background: var(--teal-050);
+  color: var(--teal-800);
+}
+
+.itsm-status__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.itsm-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.extension-page {
+  display: grid;
+  gap: 18px;
+}
+
+.extension-panel {
+  margin-top: 18px;
+}
+
+.extension-review__grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr);
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.extension-review__inbox,
+.extension-review__detail {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  padding: 16px;
+}
+
+.extension-detail__head,
+.extension-installed__list > li,
+.extension-history > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extension-review__inbox h3,
+.extension-review h4,
+.extension-installed h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--ink-900);
+}
+
+.extension-review__inbox p,
+.extension-detail__head p,
+.extension-installed p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.extension-candidates {
+  display: grid;
+  gap: 8px;
+  max-height: 560px;
+  margin: 12px 0 0;
+  padding: 0 4px 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.extension-candidate {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.extension-candidate:hover {
+  border-color: var(--teal-600);
+}
+
+.extension-candidate.is-active {
+  border-color: var(--teal-700);
+  background: var(--teal-050);
+}
+
+.extension-candidate__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.extension-candidate .cell-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.extension-candidate code {
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.extension-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.extension-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+
+.extension-facts dt {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.extension-facts dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12.5px;
+}
+
+.extension-digest {
+  font-size: 10.5px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.extension-block {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.extension-block p {
+  margin: 7px 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.extension-checks,
+.extension-errors,
+.extension-migrations,
+.extension-history {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extension-checks li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.extension-checks .status-pill {
+  flex: none;
+}
+
+.extension-errors {
+  color: var(--danger-700);
+  font-size: 12px;
+}
+
+.extension-permission-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.extension-permission-columns ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.extension-permission-columns code {
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.extension-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.extension-history > li {
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+.extension-history > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.extension-history > li strong {
+  display: block;
+  font-size: 12.5px;
+}
+
+.extension-history > li p {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.extension-history > li p {
+  margin: 3px 0 0;
+}
+
+.extension-installed {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.extension-installed__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extension-installed__list > li {
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+
+.extension-installed__copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.extension-installed__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.extension-review .config-note,
+.extension-review .form-alert,
+.extension-trust {
+  margin-top: 14px;
+}
+
+.extension-trust {
+  align-items: flex-start;
+}
+
+.extension-trust p {
+  margin: 4px 0 0;
+}
+
+@media (max-width: 1100px) {
+  .extension-review__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .extension-facts,
+  .extension-permission-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .extension-review__inbox,
+  .extension-review__detail {
+    padding: 13px;
+  }
+
+  .extension-installed__list > li,
+  .extension-history > li {
+    flex-direction: column;
+  }
+
+  .extension-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

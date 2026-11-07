@@ -3,7 +3,7 @@
 
   const Store = window.AssetStore;
   const KEYS = Store.KEYS;
-  const CONFIG_SECTIONS = ['apariencia', 'general', 'categorias', 'activos', 'sedes', 'personas', 'integraciones', 'relaciones', 'mantenimiento', 'supervision', 'alertas', 'notificaciones', 'mapas', 'datos', 'seguridad', 'reportes', 'garantias', 'qr', 'etiquetas'];
+  const CONFIG_SECTIONS = ['apariencia', 'general', 'categorias', 'activos', 'sedes', 'personas', 'integraciones', 'relaciones', 'mantenimiento', 'supervision', 'alertas', 'notificaciones', 'mapas', 'datos', 'seguridad', 'reportes', 'garantias', 'qr', 'etiquetas', 'extensiones'];
   const MONITOR_TABS = ['estado', 'dispositivos', 'alertas'];
 
   window.AssetMethods = {
@@ -15,6 +15,9 @@
       const match = /(?:^|&)share=([^&]*)/.exec(query);
       let shareToken = '';
       if (match) { try { shareToken = decodeURIComponent(match[1]); } catch (_) { shareToken = match[1]; } }
+      const candidateMatch = /(?:^|&)candidato=([^&]*)/.exec(query);
+      let candidateId = '';
+      if (candidateMatch) { try { candidateId = decodeURIComponent(candidateMatch[1]); } catch (_) { candidateId = candidateMatch[1]; } }
       const parts = raw.split('/').filter(Boolean);
       if (parts[0] === 'usuarios') return { name: 'users', userId: null };
       if (parts[0] === 'usuario' && parts[1]) {
@@ -40,12 +43,20 @@
         return { name: 'conversation', assetId, personId: null, section: null };
       }
       if (parts[0] === 'login') return { name: 'login', assetId: null, personId: null, section: null };
+      if (parts[0] === 'extensiones' && parts[1] && parts[2]) {
+        let extensionId = parts[1];
+        let pageId = parts[2];
+        try { extensionId = decodeURIComponent(parts[1]); } catch (_) { extensionId = parts[1]; }
+        try { pageId = decodeURIComponent(parts[2]); } catch (_) { pageId = parts[2]; }
+        return { name: 'extension', extensionId, pageId, assetId: null, personId: null, section: null, candidateId: '' };
+      }
       if (parts[0] === 'configuracion') {
         return {
           name: 'config',
           assetId: null,
           personId: null,
-          section: CONFIG_SECTIONS.indexOf(parts[1]) !== -1 ? parts[1] : 'general'
+          section: CONFIG_SECTIONS.indexOf(parts[1]) !== -1 ? parts[1] : 'general',
+          candidateId: parts[1] === 'extensiones' ? candidateId : ''
         };
       }
       if (parts[0] === 'datos') {
@@ -139,6 +150,9 @@
       if (route.name === 'reports') return '#/reportes';
       if (route.name === 'warranties') return '#/garantias';
       if (route.name === 'labels') return '#/etiquetas';
+      if (route.name === 'extension' && route.extensionId && route.pageId) {
+        return '#/extensiones/' + encodeURIComponent(route.extensionId) + '/' + encodeURIComponent(route.pageId);
+      }
       if (route.name === 'reportAsset') {
         const base = '#/reporte/' + encodeURIComponent(route.assetId) + (route.section === 'publico' ? '/publico' : '');
         return route.section === 'publico' && route.shareToken ? base + '?share=' + encodeURIComponent(route.shareToken) : base;
@@ -151,7 +165,8 @@
       if (route.name === 'login') return '#/login';
       if (route.name === 'config') {
         const section = CONFIG_SECTIONS.indexOf(route.section) !== -1 ? route.section : 'general';
-        return '#/configuracion/' + section;
+        const candidateQuery = section === 'extensiones' && route.candidateId ? '?candidato=' + encodeURIComponent(route.candidateId) : '';
+        return '#/configuracion/' + section + candidateQuery;
       }
       if (route.name === 'datos') return '#/datos/' + (route.section === 'exportar' ? 'exportar' : 'importar');
       if (route.name === 'maintenance') return '#/mantenimiento';
@@ -334,6 +349,8 @@
         document.title = 'Acceso · ' + appName;
       } else if (this.route.name === 'detail' && this.currentAsset) {
         document.title = this.currentAsset.name + ' · ' + appName;
+      } else if (this.route.name === 'extension') {
+        document.title = 'Extensión nativa · ' + appName;
       } else if (this.route.name === 'config') {
         document.title = (this.configSectionLabel || 'Configuración') + ' · ' + appName;
       } else if (this.route.name === 'datos') {
