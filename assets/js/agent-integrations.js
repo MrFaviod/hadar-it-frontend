@@ -48,6 +48,125 @@
     return number(value).toLocaleString('es-ES');
   }
 
+  // Daily AI quota contract: /api/v1/agent/usage. A missing field is
+  // unavailable, never zero; an explicit null limit is unlimited and zero
+  // denies new admissions. The browser renders those distinctions and never
+  // recomputes totals the server already produced.
+  const QUOTA_BASE = '/agent/usage';
+  const QUOTA_FUNDING_LABELS = { company: 'Empresa', personal: 'Personal' };
+  const QUOTA_LIMIT_SOURCE_LABELS = { override: 'Excepción del usuario', policy: 'Política del servidor', default: 'Valor predeterminado', legacy_config: 'Configuración heredada' };
+  const QUOTA_PRECISION_LABELS = { measured: 'Medido', estimated: 'Estimado', unavailable: 'No disponible' };
+  const QUOTA_SOURCE_LABELS = { provider: 'Proveedor', engine: 'Motor', estimate: 'Estimación', none: 'Sin fuente', legacy: 'Legado' };
+  const QUOTA_STATE_LABELS = { settled: 'Liquidado', unresolved: 'Sin resolver', pending: 'Pendiente', released: 'Liberado', legacy: 'Legado sin atribuir' };
+  const QUOTA_ENGINE_MODES = { managed: 'Gestionado por el gateway', direct: 'Directo', builtin: 'Integrado' };
+  const QUOTA_ENGINE_ENFORCEMENTS = { strict: 'Estricta antes de enviar', admission_only: 'Solo admisión', observed: 'Solo observada', unavailable: 'No disponible' };
+  const QUOTA_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function quotaHas(object, key) {
+    return !!object && Object.prototype.hasOwnProperty.call(object, key);
+  }
+
+  function quotaToken(value) {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+  }
+
+  function normalizeQuotaBalance(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    if (!quotaHas(raw, 'limitTokens') || !quotaHas(raw, 'consumedTokens')) return null;
+    const limit = raw.limitTokens === null ? null : quotaToken(raw.limitTokens);
+    const consumed = quotaToken(raw.consumedTokens);
+    if ((raw.limitTokens !== null && limit === null) || consumed === null) return null;
+    const optional = key => quotaHas(raw, key) ? quotaToken(raw[key]) : null;
+    const precision = raw.precision && typeof raw.precision === 'object' ? raw.precision : {};
+    return {
+      limit,
+      unlimited: limit === null,
+      limitSource: text(raw.limitSource),
+      consumed,
+      reserved: optional('reservedTokens'),
+      legacy: optional('legacyTokens'),
+      availableKnown: quotaHas(raw, 'availableTokens'),
+      available: optional('availableTokens'),
+      pendingCount: optional('pendingCount'),
+      precision: {
+        measured: quotaToken(precision.measured),
+        estimated: quotaToken(precision.estimated),
+        unavailable: quotaToken(precision.unavailable)
+      }
+    };
+  }
+
+  function normalizeQuotaUsage(payload) {
+    const raw = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+    const funding = raw && raw.funding && typeof raw.funding === 'object' ? raw.funding : null;
+    const company = normalizeQuotaBalance(funding && funding.company);
+    const personal = normalizeQuotaBalance(funding && funding.personal);
+    return {
+      periodDay: text(raw && raw.periodDay),
+      timezone: text(raw && raw.timezone),
+      pendingTimezone: text(raw && raw.pendingTimezone),
+      pendingEffectiveDay: text(raw && raw.pendingEffectiveDay),
+      company,
+      personal,
+      hasData: !!(company || personal)
+    };
+  }
+
+  function normalizeQuotaPolicy(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    const limit = value => value === null ? null : quotaToken(value);
+    const companyKnown = quotaHas(payload, 'companyDailyLimit');
+    const personalKnown = quotaHas(payload, 'personalDailyLimit');
+    const companyDailyLimit = companyKnown ? limit(payload.companyDailyLimit) : null;
+    const personalDailyLimit = personalKnown ? limit(payload.personalDailyLimit) : null;
+    if ((companyKnown && payload.companyDailyLimit !== null && companyDailyLimit === null) ||
+        (personalKnown && payload.personalDailyLimit !== null && personalDailyLimit === null)) return null;
+    return {
+      companyKnown,
+      personalKnown,
+      available: companyKnown && personalKnown,
+      companyDailyLimit,
+      companyLimitSource: text(payload.companyLimitSource),
+      personalDailyLimit,
+      timezone: text(payload.timezone),
+      pendingTimezone: text(payload.pendingTimezone),
+      pendingEffectiveDay: text(payload.pendingEffectiveDay),
+      overrides: Array.isArray(payload.overrides) ? payload.overrides.filter(item => item && typeof item === 'object' && text(item.userId)).map(item => ({
+        userId: text(item.userId),
+        scope: item.scope === 'personal' ? 'personal' : 'company',
+        dailyLimit: item.dailyLimit === null ? null : quotaToken(item.dailyLimit),
+        updatedAt: text(item.updatedAt)
+      })) : [],
+      serverTime: text(payload.serverTime)
+    };
+  }
+
+  function normalizeQuotaOverrides(payload) {
+    if (!payload || !Array.isArray(payload.overrides)) return null;
+    return normalizeQuotaPolicy({ companyDailyLimit: null, personalDailyLimit: null, overrides: payload.overrides }).overrides;
+  }
+
+  function normalizeQuotaReport(payload) {
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.items)) return null;
+    if (!payload.totals || typeof payload.totals !== 'object') return null;
+    return {
+      timezone: text(payload.timezone),
+      generatedAt: text(payload.generatedAt),
+      filters: payload.filters && typeof payload.filters === 'object' ? payload.filters : {},
+      groupBy: Array.isArray(payload.groupBy) ? payload.groupBy.map(item => text(item)).filter(Boolean) : [],
+      items: payload.items.filter(item => item && typeof item === 'object' && !Array.isArray(item)),
+      totals: payload.totals,
+      precision: payload.precision && typeof payload.precision === 'object' ? payload.precision : {}
+    };
+  }
+
+  function normalizeQuotaPending(payload) {
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.items)) return null;
+    return payload.items.filter(item => item && typeof item === 'object' && !Array.isArray(item));
+  }
+
   function engineLabel(value) {
     return ENGINE_LABELS[value] || text(value, 'Motor');
   }
@@ -120,6 +239,57 @@
   function modelLabel(model) {
     const name = text(model && model.name, text(model && model.id));
     return model && model.free === true ? name + ' · Gratis' : name;
+  }
+
+  // Exact instance-administration seam: quota routing is an explicit operator
+  // decision. Absent authorization the fields are omitted so the server keeps
+  // its own default; no browser-side strictness is inferred from the mode.
+  function quotaPositiveInteger(value) {
+    if (typeof value === 'number') {
+      return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+    const raw = text(value);
+    if (!/^\d+$/.test(raw)) return null;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  function quotaInstanceDraft(instance) {
+    const managed = !!instance && instance.quotaMode === 'managed';
+    const context = managed && instance.managedContextTokens !== null && instance.managedContextTokens !== undefined
+      ? String(instance.managedContextTokens)
+      : '';
+    return {
+      quotaMode: managed ? 'managed' : 'direct',
+      directCompanyException: !managed && !!instance && instance.directCompanyException === true,
+      managedProviderId: managed && instance ? text(instance.managedProviderId) : '',
+      managedContextTokens: context
+    };
+  }
+
+  function quotaInstanceBody(draft, authorized) {
+    if (!authorized) return {};
+    const managed = !!draft && draft.quotaMode === 'managed';
+    return {
+      quotaMode: managed ? 'managed' : 'direct',
+      directCompanyException: !managed && !!draft && draft.directCompanyException === true,
+      managedProviderId: managed ? text(draft.managedProviderId) : null,
+      managedContextTokens: managed ? quotaPositiveInteger(draft.managedContextTokens) : null
+    };
+  }
+
+  function quotaInstanceError(draft) {
+    if (!draft || draft.quotaMode !== 'managed') return '';
+    if (!QUOTA_UUID_RE.test(text(draft.managedProviderId))) {
+      return 'Selecciona un proveedor global habilitado para el modo gestionado.';
+    }
+    if (!text(draft.defaultModel)) {
+      return 'Indica el modelo predeterminado del proveedor gestionado.';
+    }
+    if (quotaPositiveInteger(draft.managedContextTokens) === null) {
+      return 'El contexto gestionado debe ser un entero positivo de tokens.';
+    }
+    return '';
   }
 
   function statusTone(status, verified) {
@@ -209,6 +379,30 @@
     savePreference(vm, body, options) {
       return window.AssetAccess.request(vm, '/agent/preferences', Object.assign({ method: 'PUT', body }, options || {}));
     },
+    usageMe(vm, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/me', options || {});
+    },
+    quotaPolicy(vm, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/policy', options || {});
+    },
+    saveQuotaPolicy(vm, body, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/policy', Object.assign({ method: 'PUT', body }, options || {}));
+    },
+    quotaOverrides(vm, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/overrides', options || {});
+    },
+    saveQuotaOverride(vm, userId, body, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/overrides/' + encodeURIComponent(userId), Object.assign({ method: 'PUT', body }, options || {}));
+    },
+    deleteQuotaOverride(vm, userId, scope, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/overrides/' + encodeURIComponent(userId) + '?scope=' + encodeURIComponent(scope), Object.assign({ method: 'DELETE' }, options || {}));
+    },
+    quotaReport(vm, query, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/report' + (query ? '?' + query : ''), options || {});
+    },
+    quotaPending(vm, options) {
+      return window.AssetAccess.request(vm, QUOTA_BASE + '/pending?limit=100', options || {});
+    },
     listSessions(vm, options) {
       return window.AssetAccess.request(vm, '/agent/sessions', options || {});
     },
@@ -264,6 +458,213 @@
   };
 
   window.AssetAgentApi = api;
+
+  // Own balance for the signed-in account. This state is private: every
+  // request records the active identity, a newer request supersedes it, and a
+  // late response from a replaced account is discarded. No interval or local
+  // storage is used; refreshing is explicit, on focus/visibility, after a run,
+  // and on the next server read of the day.
+  window.AssetAgentQuotaMixin = {
+    data() {
+      return {
+        quotaSnapshot: null,
+        quotaLoaded: false,
+        quotaLoading: false,
+        quotaError: '',
+        quotaEpoch: 0,
+        quotaOwner: '',
+        quotaController: null
+      };
+    },
+    computed: {
+      quotaCompany() { return this.quotaSnapshot ? this.quotaSnapshot.company : null; },
+      quotaPersonal() { return this.quotaSnapshot ? this.quotaSnapshot.personal : null; },
+      quotaPeriodDay() { return this.quotaSnapshot ? this.quotaSnapshot.periodDay : ''; },
+      quotaTimezone() { return this.quotaSnapshot ? this.quotaSnapshot.timezone : ''; },
+      quotaPendingTimezone() { return this.quotaSnapshot ? this.quotaSnapshot.pendingTimezone : ''; },
+      quotaPendingEffectiveDay() { return this.quotaSnapshot ? this.quotaSnapshot.pendingEffectiveDay : ''; },
+      quotaHasData() { return !!(this.quotaSnapshot && this.quotaSnapshot.hasData); },
+      quotaUnavailable() { return this.quotaLoaded && !this.quotaHasData; },
+      quotaSelectedFunding() {
+        const instance = this.agentActiveInstance;
+        if (!instance) return '';
+        const scope = text(instance.providerScope) || text(instance.funding);
+        if (scope === 'personal') return 'personal';
+        if (scope === 'company' || scope === 'global') return 'company';
+        return '';
+      },
+      quotaSelectedBalance() {
+        if (this.quotaSelectedFunding === 'personal') return this.quotaPersonal;
+        if (this.quotaSelectedFunding === 'company') return this.quotaCompany;
+        return null;
+      },
+      quotaSelectedNotice() {
+        if (!this.agentActiveInstance) return '';
+        if (this.quotaSelectedFunding === 'personal') {
+          return 'La instancia seleccionada usa financiación personal; su consumo no se descuenta del presupuesto de la empresa.';
+        }
+        if (this.quotaSelectedFunding === 'company') {
+          return 'La instancia seleccionada usa financiación de la empresa.';
+        }
+        return 'El servidor no informó la financiación de esta instancia; el saldo no se atribuye ni a la empresa ni a la cuenta personal.';
+      },
+      quotaAccounts() {
+        return [
+          { scope: 'company', label: QUOTA_FUNDING_LABELS.company, balance: this.quotaCompany, selected: this.quotaSelectedFunding === 'company' },
+          { scope: 'personal', label: QUOTA_FUNDING_LABELS.personal, balance: this.quotaPersonal, selected: this.quotaSelectedFunding === 'personal' }
+        ];
+      }
+    },
+    methods: {
+      quotaTokenText(value) {
+        const parsed = quotaToken(value);
+        return parsed === null ? 'No disponible' : formatTokens(parsed);
+      },
+      quotaAmountText(value) {
+        const parsed = quotaToken(value);
+        return parsed === null ? 'No disponible' : formatTokens(parsed) + ' tokens';
+      },
+      quotaFundingLabel(scope) { return QUOTA_FUNDING_LABELS[scope] || 'Sin atribuir'; },
+      quotaLimitSourceLabel(source) { return QUOTA_LIMIT_SOURCE_LABELS[source] || 'Origen no informado'; },
+      quotaLimitText(balance) {
+        if (!balance) return 'No disponible';
+        if (balance.unlimited) return 'Ilimitado';
+        return formatTokens(balance.limit) + ' tokens' + (balance.limit === 0 ? ' · sin admisión' : '');
+      },
+      quotaAvailableText(balance) {
+        if (!balance) return 'No disponible';
+        if (balance.unlimited) return 'Ilimitado';
+        if (!balance.availableKnown || balance.available === null) return 'No disponible';
+        return formatTokens(balance.available) + ' tokens';
+      },
+      quotaPrecisionText(balance) {
+        if (!balance) return 'No disponible';
+        const precision = balance.precision || {};
+        return 'medido ' + this.quotaTokenText(precision.measured) +
+          ' · estimado ' + this.quotaTokenText(precision.estimated) +
+          ' · no disponible ' + this.quotaTokenText(precision.unavailable);
+      },
+      quotaEngineStatus(instance) {
+        const quota = instance && instance.quota && typeof instance.quota === 'object' && !Array.isArray(instance.quota) ? instance.quota : null;
+        if (!quota) {
+          return {
+            known: false,
+            mode: '',
+            modeLabel: 'No informado',
+            enforcement: 'unavailable',
+            enforcementLabel: QUOTA_ENGINE_ENFORCEMENTS.unavailable,
+            reason: 'El servidor no informó el estado de cuota de este motor; se trata como no estricta.',
+            directException: false,
+            strict: false
+          };
+        }
+        const mode = QUOTA_ENGINE_MODES[quota.mode] ? quota.mode : '';
+        const enforcement = QUOTA_ENGINE_ENFORCEMENTS[quota.enforcement] ? quota.enforcement : 'unavailable';
+        return {
+          known: true,
+          mode,
+          modeLabel: mode ? QUOTA_ENGINE_MODES[mode] : 'No informado',
+          enforcement,
+          enforcementLabel: QUOTA_ENGINE_ENFORCEMENTS[enforcement],
+          reason: text(quota.reason),
+          directException: quota.directException === true,
+          strict: mode === 'managed' && enforcement === 'strict'
+        };
+      },
+      quotaPrecisionLabel(value) { return QUOTA_PRECISION_LABELS[value] || 'No disponible'; },
+      quotaSourceLabel(value) { return QUOTA_SOURCE_LABELS[value] || 'Sin fuente'; },
+      quotaStateLabel(value) { return QUOTA_STATE_LABELS[value] || 'Sin clasificar'; },
+      isCurrentQuotaEpoch(epoch) {
+        return epoch === this.quotaEpoch && this.disposed !== true && this.app.authenticated !== false &&
+          this.quotaOwner === String(this.app.activeUserId || '');
+      },
+      resetQuota() {
+        this.quotaEpoch += 1;
+        if (this.quotaController && typeof this.quotaController.abort === 'function') this.quotaController.abort();
+        this.quotaController = null;
+        this.quotaSnapshot = null;
+        this.quotaLoaded = false;
+        this.quotaLoading = false;
+        this.quotaError = '';
+        this.quotaOwner = '';
+      },
+      applyQuota(payload) {
+        const usage = normalizeQuotaUsage(payload);
+        this.quotaSnapshot = Object.assign({ owner: String(this.app.activeUserId || '') }, usage);
+        this.quotaLoaded = true;
+        this.quotaError = '';
+      },
+      async loadQuota() {
+        if (!this.app.authenticated || !window.AssetAccess || typeof window.AssetAccess.request !== 'function') {
+          this.resetQuota();
+          return false;
+        }
+        const epoch = this.quotaEpoch + 1;
+        this.quotaEpoch = epoch;
+        if (this.quotaController && typeof this.quotaController.abort === 'function') this.quotaController.abort();
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        this.quotaController = controller;
+        this.quotaOwner = String(this.app.activeUserId || '');
+        this.quotaLoading = true;
+        this.quotaError = '';
+        try {
+          const payload = await api.usageMe(this.app, controller ? { signal: controller.signal } : {});
+          if (!this.isCurrentQuotaEpoch(epoch)) return false;
+          this.applyQuota(payload);
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaEpoch(epoch)) return false;
+          this.quotaLoaded = false;
+          this.quotaSnapshot = null;
+          if (error && error.status === 401) {
+            this.quotaOwner = '';
+            this.quotaLoading = false;
+            this.quotaError = 'La sesión expiró; vuelve a iniciar sesión para ver tu cuota.';
+          } else {
+            this.quotaError = (error && (error.serverMessage || error.message)) || 'No se pudo consultar tu consumo de IA.';
+          }
+          return false;
+        } finally {
+          if (this.isCurrentQuotaEpoch(epoch)) this.quotaLoading = false;
+        }
+      },
+      onQuotaFocus() {
+        if (this.surfaceVisible === false) return;
+        if (this.app.authenticated) void this.loadQuota();
+      },
+      onQuotaVisibility() {
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') this.onQuotaFocus();
+      }
+    },
+    mounted() {
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') window.addEventListener('focus', this.onQuotaFocus);
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') document.addEventListener('visibilitychange', this.onQuotaVisibility);
+    },
+    beforeUnmount() {
+      if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') window.removeEventListener('focus', this.onQuotaFocus);
+      if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') document.removeEventListener('visibilitychange', this.onQuotaVisibility);
+      this.resetQuota();
+    }
+  };
+
+  // Formatting and server-DTO helpers are stateless. Settings uses only this
+  // surface so it never owns or refreshes the caller's balance.
+  const quotaFormatMethods = window.AssetAgentQuotaMixin.methods;
+  window.AssetAgentQuotaFormatMixin = {
+    methods: {
+      quotaTokenText: quotaFormatMethods.quotaTokenText,
+      quotaAmountText: quotaFormatMethods.quotaAmountText,
+      quotaFundingLabel: quotaFormatMethods.quotaFundingLabel,
+      quotaLimitSourceLabel: quotaFormatMethods.quotaLimitSourceLabel,
+      quotaLimitText: quotaFormatMethods.quotaLimitText,
+      quotaAvailableText: quotaFormatMethods.quotaAvailableText,
+      quotaPrecisionText: quotaFormatMethods.quotaPrecisionText,
+      quotaEngineStatus: quotaFormatMethods.quotaEngineStatus,
+      quotaPrecisionLabel: quotaFormatMethods.quotaPrecisionLabel,
+      quotaSourceLabel: quotaFormatMethods.quotaSourceLabel,
+      quotaStateLabel: quotaFormatMethods.quotaStateLabel
+    }
+  };
 
   window.AssetAgentEngineMixin = {
     data() {
@@ -388,16 +789,6 @@
         parts.push('Consumo medido: ' + formatTokens(this.agentBudget.usedMeasured) + ' tokens');
         parts.push('Consumo informado por motores externos: ' + formatTokens(this.agentBudget.usedReported) + ' tokens');
         return parts.join(' · ');
-      },
-      agentBudgetStrictDisclosure() {
-        if (!this.agentBudget) return '';
-        if (this.agentBudget.strictExternal === false) {
-          return 'Los motores externos no garantizan un límite estricto antes de procesar la solicitud; su consumo se registra por separado.';
-        }
-        if (this.agentBudget.strictExternal === true) {
-          return 'El servidor aplica el límite antes de enviar la solicitud a los motores que permiten interrumpirla.';
-        }
-        return 'El servidor no indicó si la cuota externa es estricta.';
       },
       agentCanSelect() {
         return !this.agentEnginesLoading && this.agentInstanceList.length > 0;
@@ -579,7 +970,7 @@
 
   const enginePicker = {
     name: 'AgentEnginePicker',
-    mixins: [window.AssetAgentEngineMixin],
+    mixins: [window.AssetAgentEngineMixin, window.AssetAgentQuotaMixin],
     props: {
       app: { type: Object, required: true },
       heading: { type: String, default: 'Motor y modelo' },
@@ -600,12 +991,21 @@
           this.agentBudget = null;
           this.agentEnginesError = '';
           this.agentSelectionNotice = '';
-          if (this.app.authenticated) void this.loadAgentEngines();
+          this.resetQuota();
+          if (this.app.authenticated) {
+            void this.loadAgentEngines();
+            void this.loadQuota();
+          }
         }
+      },
+      'app.authenticated'(value) {
+        if (!value) this.resetQuota();
+        else void this.loadQuota();
       }
     },
     created() {
       void this.loadAgentEngines();
+      if (this.app.authenticated) void this.loadQuota();
     },
     beforeUnmount() {
       this.disposed = true;
@@ -682,8 +1082,32 @@
         </div>
         <template v-if="showBudget">
           <p v-if="agentBudgetSummary" class="agent-budget">{{ agentBudgetSummary }}</p>
-          <p v-if="agentBudgetStrictDisclosure" class="agent-budget agent-budget--note">{{ agentBudgetStrictDisclosure }}</p>
-          <p v-else-if="agentEnginesLoaded" class="agent-budget agent-budget--note">El servidor no informó el consumo diario.</p>
+          <section class="agent-quota" aria-labelledby="agent-quota-title">
+            <div class="agent-quota__head">
+              <h3 id="agent-quota-title" class="agent-quota__title">Tu cuota diaria de IA</h3>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? 'Actualizando…' : 'Actualizar cuota' }}</button>
+            </div>
+            <p v-if="quotaLoading && !quotaLoaded" class="agent-quota__meta" role="status">Consultando tu cuota…</p>
+            <p v-if="quotaError" class="agent-note agent-note--error" role="alert">{{ quotaError }}</p>
+            <p v-if="quotaUnavailable" class="agent-budget agent-budget--note">El servidor no devolvió un saldo de cuota; se muestra como no disponible, no como cero.</p>
+            <template v-if="quotaHasData">
+              <p class="agent-quota__meta">Día {{ quotaPeriodDay || 'no informado' }} · Zona {{ quotaTimezone || 'no informada' }}<template v-if="quotaPendingTimezone"> · Cambio pendiente a {{ quotaPendingTimezone }}; se aplicará el {{ quotaPendingEffectiveDay || 'próximo día seguro' }}.</template></p>
+              <dl class="agent-quota__accounts">
+                <div v-for="account in quotaAccounts" :key="account.scope" class="agent-quota__account" :class="{ 'is-selected': account.selected }">
+                  <dt>{{ account.label }}<span v-if="account.selected" class="agent-tag">Contexto actual</span></dt>
+                  <dd v-if="account.balance">
+                    <span>Límite: {{ quotaLimitText(account.balance) }} · {{ quotaLimitSourceLabel(account.balance.limitSource) }}</span>
+                    <span>Consumido: {{ quotaAmountText(account.balance.consumed) }} · Retenido: {{ quotaAmountText(account.balance.reserved) }}</span>
+                    <span>Disponible: {{ quotaAvailableText(account.balance) }}</span>
+                    <span>Esperas pendientes: {{ quotaTokenText(account.balance.pendingCount) }} · Precisión: {{ quotaPrecisionText(account.balance) }}</span>
+                    <span>Histórico sin atribuir: {{ quotaAmountText(account.balance.legacy) }}</span>
+                  </dd>
+                  <dd v-else>No disponible</dd>
+                </div>
+              </dl>
+              <p v-if="quotaSelectedNotice" class="agent-quota__meta">{{ quotaSelectedNotice }}</p>
+            </template>
+          </section>
         </template>
       </section>
     `
@@ -696,12 +1120,125 @@
       draft: { type: Object, required: true },
       identities: { type: Array, default: () => [] },
       busy: { type: Boolean, default: false },
-      error: { type: String, default: '' }
+      error: { type: String, default: '' },
+      canManageQuota: { type: Boolean, default: false }
     },
     emits: ['save', 'cancel'],
+    data() {
+      return {
+        quotaProviders: [],
+        quotaProvidersLoading: false,
+        quotaProvidersError: '',
+        quotaProviderEpoch: 0,
+        quotaProviderController: null,
+        quotaProviderOwner: '',
+        quotaProviderDisposed: false
+      };
+    },
     computed: {
       external() {
         return this.draft.engine !== 'pydantic';
+      },
+      quotaGlobalProviders() {
+        return this.quotaProviders
+          .filter(provider => provider.scope === 'global' && provider.enabled)
+          .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+      },
+      quotaSelectedProviderAvailable() {
+        if (!this.draft.managedProviderId) return true;
+        return this.quotaGlobalProviders.some(provider => provider.id === this.draft.managedProviderId);
+      }
+    },
+    created() {
+      if (this.canManageQuota) void this.loadQuotaProviders();
+    },
+    watch: {
+      'app.activeUserId': {
+        flush: 'sync',
+        handler() {
+          this.resetQuotaProviders();
+          if (this.canManageQuota && this.app.authenticated) void this.loadQuotaProviders();
+        }
+      },
+      'app.authenticated': {
+        flush: 'sync',
+        handler(value) {
+          this.resetQuotaProviders();
+          if (value && this.canManageQuota) void this.loadQuotaProviders();
+        }
+      },
+      canManageQuota(value) {
+        this.resetQuotaProviders();
+        if (value && this.app.authenticated) void this.loadQuotaProviders();
+      }
+    },
+    beforeUnmount() {
+      this.quotaProviderDisposed = true;
+      this.resetQuotaProviders();
+    },
+    methods: {
+      resetQuotaProviders() {
+        this.quotaProviderEpoch += 1;
+        if (this.quotaProviderController) this.quotaProviderController.abort();
+        this.quotaProviderController = null;
+        this.quotaProviderOwner = '';
+        this.quotaProviders = [];
+        this.quotaProvidersLoading = false;
+        this.quotaProvidersError = '';
+      },
+      isCurrentQuotaProvider(epoch) {
+        return epoch === this.quotaProviderEpoch && !this.quotaProviderDisposed &&
+          this.canManageQuota && this.app.authenticated !== false &&
+          this.quotaProviderOwner === String(this.app.activeUserId || '');
+      },
+      quotaProviderOptions(provider) {
+        const models = Array.isArray(provider.models) && provider.models.length
+          ? ' · ' + provider.models.slice(0, 4).join(', ')
+          : '';
+        return (provider.name || provider.id) + models;
+      },
+      normalizeQuotaProvider(item) {
+        return {
+          id: text(item.id),
+          name: text(item.name),
+          scope: text(item.scope),
+          enabled: item.enabled !== false,
+          models: Array.isArray(item.models) ? item.models.map(model => text(model)).filter(Boolean) : []
+        };
+      },
+      async loadQuotaProviders() {
+        if (!this.canManageQuota || !this.app.authenticated || this.quotaProviderDisposed) {
+          this.resetQuotaProviders();
+          return false;
+        }
+        const epoch = ++this.quotaProviderEpoch;
+        if (this.quotaProviderController) this.quotaProviderController.abort();
+        const controller = new AbortController();
+        this.quotaProviderController = controller;
+        this.quotaProviderOwner = String(this.app.activeUserId || '');
+        this.quotaProvidersLoading = true;
+        this.quotaProvidersError = '';
+        try {
+          const payload = await window.AssetAgentApi.providers(this.app, { signal: controller.signal });
+          if (!this.isCurrentQuotaProvider(epoch)) return false;
+          if (!payload || !Array.isArray(payload.items)) throw new Error('El servidor no devolvió la configuración de proveedores.');
+          this.quotaProviders = payload.items.map(item => this.normalizeQuotaProvider(item));
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaProvider(epoch) || (error && error.name === 'AbortError')) return false;
+          if (error && error.status === 401) {
+            this.resetQuotaProviders();
+            return false;
+          }
+          this.quotaProviders = [];
+          this.quotaProvidersError = (error && (error.serverMessage || error.message)) || 'No se pudieron consultar los proveedores globales.';
+          return false;
+        } finally {
+          if (this.isCurrentQuotaProvider(epoch)) {
+            this.quotaProvidersLoading = false;
+            this.quotaProviderController = null;
+          }
+        }
       }
     },
     template: `
@@ -743,7 +1280,8 @@
           </div>
           <div class="field">
             <label class="field__label" for="agent-instance-default">Modelo predeterminado</label>
-            <input id="agent-instance-default" class="input-shell" v-model.trim="draft.defaultModel" maxlength="200">
+            <input id="agent-instance-default" class="input-shell" v-model.trim="draft.defaultModel" maxlength="200" :aria-describedby="canManageQuota && draft.quotaMode === 'managed' ? 'agent-instance-default-help' : null">
+            <p v-if="canManageQuota && draft.quotaMode === 'managed'" id="agent-instance-default-help" class="field__hint">El modelo debe pertenecer al proveedor global seleccionado; el servidor lo valida.</p>
           </div>
           <div class="field">
             <label class="field__label" for="agent-instance-identity">Identidad de integración</label>
@@ -753,6 +1291,39 @@
             </select>
           </div>
         </div>
+        <fieldset v-if="canManageQuota" class="agent-quota-fieldset agent-instance-quota">
+          <legend>Cuota y enrutamiento</legend>
+          <div class="field">
+            <label class="field__label" for="agent-instance-quota-mode">Modo de cuota</label>
+            <select id="agent-instance-quota-mode" class="input-shell" v-model="draft.quotaMode" :disabled="busy" aria-describedby="agent-instance-quota-mode-help">
+              <option value="direct">Directo observado</option>
+              <option value="managed">Gestionado por el gateway de ITSM</option>
+            </select>
+            <p id="agent-instance-quota-mode-help" class="field__hint">Gestionado enruta por el gateway de ITSM; no demuestra por sí solo aislamiento de red ni convierte la cuota en estricta. Directo se observa y no se presenta como estricto.</p>
+          </div>
+          <template v-if="draft.quotaMode === 'managed'">
+            <div class="field">
+              <label class="field__label" for="agent-instance-quota-provider">Proveedor global</label>
+              <select id="agent-instance-quota-provider" class="input-shell" v-model="draft.managedProviderId" :disabled="busy || quotaProvidersLoading" required aria-describedby="agent-instance-quota-provider-help">
+                <option value="">{{ quotaProvidersLoading ? 'Consultando proveedores…' : 'Selecciona un proveedor global' }}</option>
+                <option v-for="provider in quotaGlobalProviders" :key="provider.id" :value="provider.id">{{ quotaProviderOptions(provider) }}</option>
+              </select>
+              <p id="agent-instance-quota-provider-help" class="field__hint">Solo se ofrecen proveedores globales habilitados y permitidos por el servidor. El identificador personal no se acepta aquí.</p>
+              <p v-if="quotaProvidersError" class="agent-note agent-note--error" role="alert">{{ quotaProvidersError }}</p>
+              <p v-else-if="!quotaProvidersLoading && !quotaGlobalProviders.length" class="agent-note">No hay proveedores globales habilitados. El modo gestionado no se puede guardar hasta que exista uno.</p>
+              <p v-else-if="!quotaProvidersLoading && !quotaSelectedProviderAvailable" class="agent-note agent-note--error" role="alert">El proveedor guardado ya no está disponible como global habilitado; selecciona otro o cambia a modo directo.</p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="agent-instance-quota-context">Límite de contexto de entrada</label>
+              <input id="agent-instance-quota-context" class="input-shell" v-model.trim="draft.managedContextTokens" type="number" min="1" step="1" inputmode="numeric" :disabled="busy" required aria-describedby="agent-instance-quota-context-help">
+              <p id="agent-instance-quota-context-help" class="field__hint">Entero positivo declarado por el operador dentro del contexto de entrada admitido por este modelo y proveedor. El límite de salida lo configura la instalación en el servidor. Este valor no demuestra aislamiento de red ni garantiza una cuota estricta del motor.</p>
+            </div>
+          </template>
+          <template v-else>
+            <label class="agent-check"><input id="agent-instance-quota-exception" type="checkbox" v-model="draft.directCompanyException" :disabled="busy"> Excepción explícita para ejecución directa de empresa</label>
+            <p class="field__hint">Sin esta excepción, el servidor no admite trabajos de empresa por ejecución directa. La cuota directa se observa, no se aplica como límite estricto antes de enviar. El servidor decide y audita la excepción.</p>
+          </template>
+        </fieldset>
         <label class="agent-check"><input type="checkbox" v-model="draft.enabled"> Instancia habilitada</label>
         <p v-if="error" class="agent-note agent-note--error" role="alert">{{ error }}</p>
         <div class="agent-editor__actions">
@@ -1055,7 +1626,8 @@
       app: { type: Object, required: true },
       instances: { type: Array, default: () => [] },
       catalog: { type: Object, default: () => ({ skills: [], modules: [] }) },
-      identities: { type: Array, default: () => [] }
+      identities: { type: Array, default: () => [] },
+      canManageQuota: { type: Boolean, default: false }
     },
     emits: ['close', 'applied'],
     data() {
@@ -1063,9 +1635,9 @@
         step: 1,
         mode: 'existing',
         instanceId: '',
-        instanceDraft: {
+        instanceDraft: Object.assign({
           name: '', engine: 'opencode', baseUrl: 'http://127.0.0.1:4096', secretRef: '', username: '', profile: '', directory: '', defaultModel: '', integrationIdentityId: '', enabled: true
-        },
+        }, quotaInstanceDraft()),
         instanceBusy: false,
         instanceError: '',
         target: { path: '', profile: '', version: '', remote: false },
@@ -1237,6 +1809,11 @@
         };
         if (!body.name) { this.instanceError = 'Escribe un nombre para la instancia.'; return false; }
         if (body.engine === 'opencode' && !isHttpUrl(body.baseUrl)) { this.instanceError = 'La URL base de OpenCode debe ser http o https.'; return false; }
+        if (this.canManageQuota) {
+          const quotaError = quotaInstanceError(this.instanceDraft);
+          if (quotaError) { this.instanceError = quotaError; return false; }
+          Object.assign(body, quotaInstanceBody(this.instanceDraft, true));
+        }
         this.instanceBusy = true;
         try {
           const payload = await window.AssetAgentApi.saveInstance(this.app, '', body);
@@ -1432,7 +2009,7 @@
             </select>
             <p v-if="!engineInstances.length" class="agent-note">No hay instancias OpenCode o Hermes registradas. Registra una para continuar.</p>
           </div>
-          <agent-instance-editor v-else :app="app" :draft="instanceDraft" :identities="identities" :busy="instanceBusy" :error="instanceError" @save="prepareInstance" @cancel="mode = 'existing'"></agent-instance-editor>
+          <agent-instance-editor v-else :app="app" :draft="instanceDraft" :identities="identities" :busy="instanceBusy" :error="instanceError" :can-manage-quota="canManageQuota" @save="prepareInstance" @cancel="mode = 'existing'"></agent-instance-editor>
           <p v-if="mode === 'existing' && instanceError" class="agent-note agent-note--error" role="alert">{{ instanceError }}</p>
         </section>
 
@@ -1792,7 +2369,7 @@
       AgentIntegrationWizard: wizard,
       AgentProvidersPanel: providersPanel
     },
-    mixins: [window.AssetAgentEngineMixin],
+    mixins: [window.AssetAgentEngineMixin, window.AssetAgentQuotaFormatMixin],
     props: {
       app: { type: Object, required: true }
     },
@@ -1812,14 +2389,45 @@
         instanceEditing: false,
         instanceBusy: false,
         instanceError: '',
-        instanceDraft: {
+        instanceDraft: Object.assign({
           id: '', name: '', engine: 'opencode', baseUrl: 'http://127.0.0.1:4096', secretRef: '', username: '', profile: '', directory: '', defaultModel: '', integrationIdentityId: '', enabled: true
-        },
+        }, quotaInstanceDraft()),
         moduleBusyId: '',
         moduleError: '',
         operationBusy: '',
         operationError: '',
-        operationResult: null
+        operationResult: null,
+        quotaAdminEpoch: 0,
+        quotaMutationEpoch: 0,
+        quotaReportEpoch: 0,
+        quotaPendingEpoch: 0,
+        quotaAdminOwner: '',
+        quotaPolicyController: null,
+        quotaReportController: null,
+        quotaPendingController: null,
+        quotaPolicy: null,
+        quotaPolicyLoading: false,
+        quotaPolicyError: '',
+        quotaPolicyBusy: false,
+        quotaPolicyNotice: '',
+        quotaDraft: { companyMode: 'limited', companyLimit: '', personalMode: 'limited', personalLimit: '', timezone: '' },
+        quotaOverrides: [],
+        quotaOverrideUser: '',
+        quotaOverrideScope: 'company',
+        quotaOverrideMode: 'inherit',
+        quotaOverrideLimit: '',
+        quotaOverrideBusy: false,
+        quotaOverrideError: '',
+        quotaOverrideNotice: '',
+        quotaPendingRemove: '',
+        quotaReport: null,
+        quotaReportLoading: false,
+        quotaReportError: '',
+        quotaReportFilters: { userId: '', providerId: '', model: '', engine: '', funding: '', dayFrom: '', dayTo: '' },
+        quotaReportIncludeLegacy: true,
+        quotaPending: null,
+        quotaPendingLoading: false,
+        quotaPendingError: ''
       };
     },
     computed: {
@@ -1850,6 +2458,59 @@
         if (!defaults.instanceId) return 'Sin preferencia predeterminada';
         const instance = this.adminInstances.find(item => item.id === defaults.instanceId);
         return (instance ? instance.name : defaults.instanceId) + (defaults.model ? ' · ' + defaults.model : '');
+      },
+      canManageQuota() {
+        if (!(this.app.can && this.app.can(ADMIN_PERMISSION))) return false;
+        const user = this.app.currentUser;
+        return !user || !text(user.actorKind) || user.actorKind === 'human';
+      },
+      canBrowseQuotaUsers() {
+        return !!(this.app.can && this.app.can('users.view'));
+      },
+      quotaUserOptions() {
+        if (!this.canBrowseQuotaUsers) return [];
+        const users = this.app.security && Array.isArray(this.app.security.users) ? this.app.security.users : [];
+        return users.filter(user => user && text(user.id) && (!text(user.actorKind) || user.actorKind === 'human')).map(user => {
+          const name = text(user.name) || text(user.username) || text(user.id);
+          const username = text(user.username);
+          return { id: text(user.id), label: username && username !== name ? name + ' · ' + username : name };
+        });
+      },
+      quotaOverrideRecord() {
+        const userId = text(this.quotaOverrideUser);
+        return this.quotaOverrides.find(item => item.userId === userId && item.scope === this.quotaOverrideScope) || null;
+      },
+      quotaOverrideInputValid() {
+        const userId = text(this.quotaOverrideUser);
+        if (!userId || userId.length > 64) return false;
+        if (this.canBrowseQuotaUsers && this.quotaUserOptions.length) return this.quotaUserOptions.some(item => item.id === userId);
+        return QUOTA_UUID_RE.test(userId);
+      },
+      quotaAdminMutationBusy() {
+        return this.quotaPolicyBusy || this.quotaOverrideBusy;
+      },
+      quotaReportGroupByLabel() {
+        if (!this.quotaReport) return '';
+        return this.quotaReport.groupBy.map(key => this.quotaDimensionLabel(key)).join(', ');
+      }
+    },
+    watch: {
+      'app.activeUserId': {
+        flush: 'sync',
+        handler() {
+          this.resetQuotaAdmin();
+          if (this.app.authenticated && this.canManageQuota) {
+            void this.loadQuotaPolicy();
+            void this.loadQuotaReport();
+          }
+        }
+      },
+      'app.authenticated'(value) {
+        this.resetQuotaAdmin();
+        if (value && this.canManageQuota) {
+          void this.loadQuotaPolicy();
+          void this.loadQuotaReport();
+        }
       }
     },
     created() {
@@ -1858,9 +2519,452 @@
     beforeUnmount() {
       this.disposed = true;
       this.agentEpoch += 1;
+      this.resetQuotaAdmin();
     },
     methods: {
       engineLabel,
+      resetQuotaAdmin() {
+        this.quotaAdminEpoch += 1;
+        this.quotaMutationEpoch += 1;
+        this.quotaReportEpoch += 1;
+        this.quotaPendingEpoch += 1;
+        [this.quotaPolicyController, this.quotaReportController, this.quotaPendingController].forEach(controller => {
+          if (controller && typeof controller.abort === 'function') controller.abort();
+        });
+        this.quotaPolicyController = null;
+        this.quotaReportController = null;
+        this.quotaPendingController = null;
+        this.quotaAdminOwner = '';
+        this.quotaPolicy = null;
+        this.quotaPolicyLoading = false;
+        this.quotaPolicyBusy = false;
+        this.quotaPolicyError = '';
+        this.quotaPolicyNotice = '';
+        this.quotaDraft = { companyMode: 'limited', companyLimit: '', personalMode: 'limited', personalLimit: '', timezone: '' };
+        this.quotaOverrides = [];
+        this.quotaOverrideUser = '';
+        this.quotaOverrideScope = 'company';
+        this.quotaOverrideMode = 'inherit';
+        this.quotaOverrideLimit = '';
+        this.quotaOverrideBusy = false;
+        this.quotaOverrideError = '';
+        this.quotaOverrideNotice = '';
+        this.quotaPendingRemove = '';
+        this.quotaReport = null;
+        this.quotaReportLoading = false;
+        this.quotaReportError = '';
+        this.quotaReportFilters = { userId: '', providerId: '', model: '', engine: '', funding: '', dayFrom: '', dayTo: '' };
+        this.quotaReportIncludeLegacy = true;
+        this.quotaPending = null;
+        this.quotaPendingLoading = false;
+        this.quotaPendingError = '';
+      },
+      isCurrentQuotaAdmin(epoch, kind) {
+        const current = kind === 'report'
+          ? this.quotaReportEpoch
+          : (kind === 'pending' ? this.quotaPendingEpoch : this.quotaAdminEpoch);
+        return epoch === current && this.disposed !== true && this.app.authenticated !== false &&
+          this.quotaAdminOwner === String(this.app.activeUserId || '');
+      },
+      isCurrentQuotaMutation(epoch) {
+        return epoch === this.quotaMutationEpoch && this.disposed !== true && this.app.authenticated !== false &&
+          this.quotaAdminOwner === String(this.app.activeUserId || '');
+      },
+      parseQuotaLimit(value) {
+        if (typeof value === 'number') return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+        const raw = text(value);
+        if (!raw || !/^\d+$/.test(raw)) return undefined;
+        const parsed = Number(raw);
+        return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+      },
+      quotaLimitText(limit, known) {
+        if (known === false) return 'No disponible';
+        if (limit === null || limit === undefined) return 'Ilimitado';
+        return formatTokens(limit) + ' tokens' + (limit === 0 ? ' · sin admisión' : '');
+      },
+      quotaOverrideLimitText(record) {
+        if (!record) return 'Hereda del valor predeterminado';
+        return this.quotaLimitText(record.dailyLimit, true);
+      },
+      quotaDimensionLabel(key) {
+        return {
+          user: 'Usuario',
+          provider: 'Proveedor',
+          model: 'Modelo',
+          engine: 'Motor',
+          funding: 'Financiación',
+          day: 'Día'
+        }[key] || text(key);
+      },
+      quotaUserName(userId) {
+        const id = text(userId);
+        if (!id) return 'Sin usuario';
+        const match = this.quotaUserOptions.find(item => item.id === id);
+        return match ? match.label : id;
+      },
+      quotaRowProvider(row) {
+        if (row.legacy === true) return 'Sin atribuir (legado)';
+        const name = text(row.providerName) || text(row.providerId);
+        if (!name) return 'No informado';
+        const scope = text(row.providerScope);
+        const scopeLabel = scope === 'global' ? 'Global' : scope === 'personal' ? 'Personal' : 'Ámbito no informado';
+        return name + (scope ? ' · ' + scopeLabel : '');
+      },
+      quotaRowModel(row) {
+        if (row.legacy === true) return 'Sin atribuir (legado)';
+        return text(row.model) || 'No informado';
+      },
+      quotaRowEngine(row) {
+        if (row.legacy === true) return 'Sin atribuir (legado)';
+        return text(row.engine) || 'No informado';
+      },
+      quotaRowPrecision(row) {
+        return this.quotaPrecisionLabel(row.precision) + ' · ' + this.quotaSourceLabel(row.source);
+      },
+      quotaRowState(row) {
+        return this.quotaStateLabel(row.state) + (row.legacy === true ? ' · legado' : '');
+      },
+      applyQuotaPolicy(value) {
+        const policy = normalizeQuotaPolicy(value);
+        if (!policy) {
+          this.quotaPolicy = null;
+          this.quotaOverrides = [];
+          return false;
+        }
+        this.quotaPolicy = policy;
+        this.quotaOverrides = policy.overrides.slice();
+        this.quotaDraft = {
+          companyMode: policy.companyKnown ? (policy.companyDailyLimit === null ? 'unlimited' : 'limited') : 'unknown',
+          companyLimit: policy.companyKnown && policy.companyDailyLimit !== null ? String(policy.companyDailyLimit) : '',
+          personalMode: policy.personalKnown ? (policy.personalDailyLimit === null ? 'unlimited' : 'limited') : 'unknown',
+          personalLimit: policy.personalKnown && policy.personalDailyLimit !== null ? String(policy.personalDailyLimit) : '',
+          timezone: policy.timezone
+        };
+        if (!this.quotaOverrideUser || (this.canBrowseQuotaUsers && this.quotaUserOptions.length &&
+          !this.quotaUserOptions.some(item => item.id === this.quotaOverrideUser))) {
+          this.quotaOverrideUser = this.quotaUserOptions.length ? this.quotaUserOptions[0].id : '';
+        }
+        this.syncQuotaOverrideDraft();
+        return true;
+      },
+      syncQuotaOverrideDraft() {
+        const record = this.quotaOverrideRecord;
+        if (!record) {
+          this.quotaOverrideMode = 'inherit';
+          this.quotaOverrideLimit = '';
+          return;
+        }
+        if (record.dailyLimit === null) {
+          this.quotaOverrideMode = 'unlimited';
+          this.quotaOverrideLimit = '';
+          return;
+        }
+        this.quotaOverrideMode = 'limited';
+        this.quotaOverrideLimit = String(record.dailyLimit);
+      },
+      onQuotaOverrideTargetChanged() {
+        this.quotaOverrideError = '';
+        this.quotaOverrideNotice = '';
+        this.quotaPendingRemove = '';
+        this.syncQuotaOverrideDraft();
+      },
+      async loadQuotaPolicy() {
+        if (!this.canManageQuota) return false;
+        const epoch = this.quotaAdminEpoch + 1;
+        this.quotaAdminEpoch = epoch;
+        if (this.quotaPolicyController && typeof this.quotaPolicyController.abort === 'function') this.quotaPolicyController.abort();
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        this.quotaPolicyController = controller;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        this.quotaPolicyLoading = true;
+        this.quotaPolicyError = '';
+        try {
+          const payload = await api.quotaPolicy(this.app, controller ? { signal: controller.signal } : {});
+          if (!this.isCurrentQuotaAdmin(epoch)) return false;
+          if (!this.applyQuotaPolicy(payload)) {
+            this.quotaPolicyError = 'El servidor no devolvió la política diaria de cuota.';
+            return false;
+          }
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaAdmin(epoch)) return false;
+          this.quotaPolicy = null;
+          this.quotaPolicyError = error && error.status === 403
+            ? 'La política de cuota requiere el permiso system.providers de una cuenta humana.'
+            : ((error && (error.serverMessage || error.message)) || 'No se pudo consultar la política de cuota.');
+          return false;
+        } finally {
+          if (this.isCurrentQuotaAdmin(epoch)) this.quotaPolicyLoading = false;
+        }
+      },
+      async saveQuotaPolicy() {
+        if (!this.canManageQuota || !this.quotaPolicy || !this.quotaPolicy.available || this.quotaAdminMutationBusy) {
+          if (this.quotaPolicy && !this.quotaPolicy.available) {
+            this.quotaPolicyError = 'La política no está disponible; no se puede guardar una cuota que el servidor no informó.';
+          }
+          return false;
+        }
+        this.quotaPolicyError = '';
+        this.quotaPolicyNotice = '';
+        let epoch = 0;
+        try {
+          const body = {};
+          const limits = [
+            ['company', 'companyMode', 'companyLimit', 'companyDailyLimit'],
+            ['personal', 'personalMode', 'personalLimit', 'personalDailyLimit']
+          ];
+          for (const [label, modeKey, limitKey, bodyKey] of limits) {
+            if (this.quotaDraft[modeKey] === 'unlimited') {
+              if (this.quotaPolicy[bodyKey] !== null) body[bodyKey] = null;
+            } else if (this.quotaDraft[modeKey] === 'limited') {
+              const parsed = this.parseQuotaLimit(this.quotaDraft[limitKey]);
+              if (parsed === undefined) {
+                this.quotaPolicyError = 'El límite diario ' + (label === 'company' ? 'de la empresa' : 'personal') + ' debe ser un entero mayor o igual que cero.';
+                return false;
+              }
+              if (parsed !== this.quotaPolicy[bodyKey]) body[bodyKey] = parsed;
+            } else {
+              this.quotaPolicyError = 'Indica si el límite diario ' + (label === 'company' ? 'de la empresa' : 'personal') + ' es ilimitado o tiene un valor.';
+              return false;
+            }
+          }
+          const timezone = text(this.quotaDraft.timezone);
+          if (timezone && timezone !== this.quotaPolicy.timezone) body.timezone = timezone;
+          if (!Object.keys(body).length) {
+            this.quotaPolicyNotice = 'No hay cambios que guardar.';
+            return true;
+          }
+          this.quotaPolicyBusy = true;
+          epoch = this.quotaMutationEpoch + 1;
+          this.quotaMutationEpoch = epoch;
+          this.quotaAdminOwner = String(this.app.activeUserId || '');
+          const payload = await api.saveQuotaPolicy(this.app, body);
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          if (!this.applyQuotaPolicy(payload)) {
+            this.quotaPolicyError = 'El servidor no confirmó la política de cuota.';
+            return false;
+          }
+          this.quotaAdminEpoch += 1;
+          this.quotaPolicyLoading = false;
+          this.quotaPolicyNotice = 'Cuota guardada. Un cambio de zona horaria queda pendiente hasta el siguiente límite diario seguro; el día no se reinicia en el navegador.';
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la política de cuota.';
+          return false;
+        } finally {
+          if (epoch === this.quotaMutationEpoch) this.quotaPolicyBusy = false;
+        }
+      },
+      async cancelQuotaTimezoneChange() {
+        if (!this.canManageQuota || !this.quotaPolicy || !this.quotaPolicy.pendingTimezone || this.quotaAdminMutationBusy) return false;
+        this.quotaPolicyBusy = true;
+        this.quotaPolicyError = '';
+        this.quotaPolicyNotice = '';
+        const epoch = this.quotaMutationEpoch + 1;
+        this.quotaMutationEpoch = epoch;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        try {
+          const payload = await api.saveQuotaPolicy(this.app, { cancelTimezoneChange: true });
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          if (!this.applyQuotaPolicy(payload)) {
+            this.quotaPolicyError = 'El servidor no confirmó la cancelación del cambio de zona.';
+            return false;
+          }
+          this.quotaAdminEpoch += 1;
+          this.quotaPolicyLoading = false;
+          this.quotaPolicyNotice = 'Cambio de zona cancelado. Se mantiene la zona actual.';
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          this.quotaPolicyError = (error && (error.serverMessage || error.message)) || 'No se pudo cancelar el cambio de zona horaria.';
+          return false;
+        } finally {
+          if (epoch === this.quotaMutationEpoch) this.quotaPolicyBusy = false;
+        }
+      },
+      async saveQuotaOverride() {
+        if (!this.canManageQuota || this.quotaAdminMutationBusy) return false;
+        this.quotaOverrideError = '';
+        this.quotaOverrideNotice = '';
+        const userId = text(this.quotaOverrideUser);
+        if (!this.quotaOverrideInputValid) {
+          this.quotaOverrideError = this.canBrowseQuotaUsers && this.quotaUserOptions.length
+            ? 'Selecciona un usuario válido de la lista.'
+            : 'Escribe un UUID de usuario válido; el nombre de usuario no es un identificador.';
+          return false;
+        }
+        const scope = this.quotaOverrideScope === 'personal' ? 'personal' : 'company';
+        if (this.quotaOverrideMode === 'inherit') {
+          if (!this.quotaOverrideRecord) {
+            this.quotaOverrideError = 'El usuario ya hereda el valor predeterminado; no hay excepción que eliminar.';
+            return false;
+          }
+          return this.removeQuotaOverride(userId, scope);
+        }
+        let dailyLimit;
+        if (this.quotaOverrideMode === 'unlimited') dailyLimit = null;
+        else if (this.quotaOverrideMode === 'limited') {
+          dailyLimit = this.parseQuotaLimit(this.quotaOverrideLimit);
+          if (dailyLimit === undefined) {
+            this.quotaOverrideError = 'La excepción diaria debe ser un entero mayor o igual que cero.';
+            return false;
+          }
+        } else {
+          this.quotaOverrideError = 'Elige heredar, ilimitado o un límite diario explícito.';
+          return false;
+        }
+        this.quotaOverrideBusy = true;
+        const epoch = this.quotaMutationEpoch + 1;
+        this.quotaMutationEpoch = epoch;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        try {
+          const payload = await api.saveQuotaOverride(this.app, userId, { dailyLimit, scope });
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          const overrides = normalizeQuotaOverrides(payload);
+          if (!overrides) {
+            this.quotaOverrideError = 'El servidor no confirmó las excepciones de cuota.';
+            return false;
+          }
+          this.quotaOverrides = overrides;
+          if (this.quotaPolicy) this.quotaPolicy.overrides = overrides.slice();
+          this.quotaAdminEpoch += 1;
+          this.quotaPolicyLoading = false;
+          this.syncQuotaOverrideDraft();
+          this.quotaOverrideNotice = dailyLimit === null
+            ? 'Excepción guardada: uso ilimitado explícito. Es distinto de heredar el valor predeterminado.'
+            : (dailyLimit === 0
+              ? 'Excepción guardada: cero tokens, sin admisión de ejecuciones.'
+              : 'Excepción guardada: límite diario de ' + formatTokens(dailyLimit) + ' tokens.');
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || 'No se pudo guardar la excepción de cuota.';
+          return false;
+        } finally {
+          if (epoch === this.quotaMutationEpoch) this.quotaOverrideBusy = false;
+        }
+      },
+      requestRemoveQuotaOverride(record) {
+        if (!record) return false;
+        this.quotaPendingRemove = text(record.userId) + '|' + text(record.scope);
+        this.quotaOverrideError = '';
+        this.quotaOverrideNotice = '';
+        return true;
+      },
+      cancelRemoveQuotaOverride() {
+        this.quotaPendingRemove = '';
+      },
+      async confirmRemoveQuotaOverride(record) {
+        if (!record) return false;
+        const key = text(record.userId) + '|' + text(record.scope);
+        if (this.quotaPendingRemove !== key) return false;
+        this.quotaPendingRemove = '';
+        return this.removeQuotaOverride(record.userId, record.scope);
+      },
+      async removeQuotaOverride(userId, scope) {
+        if (!this.canManageQuota || this.quotaAdminMutationBusy) return false;
+        this.quotaOverrideError = '';
+        this.quotaOverrideNotice = '';
+        this.quotaOverrideBusy = true;
+        const epoch = this.quotaMutationEpoch + 1;
+        this.quotaMutationEpoch = epoch;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        try {
+          const payload = await api.deleteQuotaOverride(this.app, userId, scope);
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          const overrides = normalizeQuotaOverrides(payload);
+          if (!overrides) {
+            this.quotaOverrideError = 'El servidor no confirmó las excepciones de cuota.';
+            return false;
+          }
+          this.quotaOverrides = overrides;
+          if (this.quotaPolicy) this.quotaPolicy.overrides = overrides.slice();
+          this.quotaAdminEpoch += 1;
+          this.quotaPolicyLoading = false;
+          this.syncQuotaOverrideDraft();
+          this.quotaOverrideNotice = 'Excepción eliminada: el usuario vuelve a heredar el valor predeterminado de su financiación.';
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaMutation(epoch)) return false;
+          this.quotaOverrideError = (error && (error.serverMessage || error.message)) || 'No se pudo eliminar la excepción de cuota.';
+          return false;
+        } finally {
+          if (epoch === this.quotaMutationEpoch) this.quotaOverrideBusy = false;
+        }
+      },
+      async loadQuotaReport() {
+        if (!this.canManageQuota) return false;
+        const filters = this.quotaReportFilters;
+        const userId = text(filters.userId);
+        if (userId && !QUOTA_UUID_RE.test(userId)) {
+          this.quotaReportError = 'El filtro de usuario debe ser el UUID de la cuenta, no su nombre.';
+          return false;
+        }
+        const parts = [];
+        ['userId', 'providerId', 'model', 'engine', 'funding', 'dayFrom', 'dayTo'].forEach(key => {
+          const value = text(filters[key]);
+          if (value) parts.push(key + '=' + encodeURIComponent(value));
+        });
+        parts.push('includeLegacy=' + (this.quotaReportIncludeLegacy ? 'true' : 'false'));
+        const epoch = this.quotaReportEpoch + 1;
+        this.quotaReportEpoch = epoch;
+        if (this.quotaReportController && typeof this.quotaReportController.abort === 'function') this.quotaReportController.abort();
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        this.quotaReportController = controller;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        this.quotaReportLoading = true;
+        this.quotaReportError = '';
+        try {
+          const payload = await api.quotaReport(this.app, parts.join('&'), controller ? { signal: controller.signal } : {});
+          if (!this.isCurrentQuotaAdmin(epoch, 'report')) return false;
+          const report = normalizeQuotaReport(payload);
+          if (!report) {
+            this.quotaReport = null;
+            this.quotaReportError = 'El servidor no devolvió un informe de consumo utilizable.';
+            return false;
+          }
+          this.quotaReport = report;
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaAdmin(epoch, 'report')) return false;
+          this.quotaReport = null;
+          this.quotaReportError = (error && (error.serverMessage || error.message)) || 'No se pudo consultar el informe de consumo.';
+          return false;
+        } finally {
+          if (this.isCurrentQuotaAdmin(epoch, 'report')) this.quotaReportLoading = false;
+        }
+      },
+      async loadQuotaPending() {
+        if (!this.canManageQuota) return false;
+        const epoch = this.quotaPendingEpoch + 1;
+        this.quotaPendingEpoch = epoch;
+        if (this.quotaPendingController && typeof this.quotaPendingController.abort === 'function') this.quotaPendingController.abort();
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        this.quotaPendingController = controller;
+        this.quotaAdminOwner = String(this.app.activeUserId || '');
+        this.quotaPendingLoading = true;
+        this.quotaPendingError = '';
+        try {
+          const payload = await api.quotaPending(this.app, controller ? { signal: controller.signal } : {});
+          if (!this.isCurrentQuotaAdmin(epoch, 'pending')) return false;
+          const items = normalizeQuotaPending(payload);
+          if (!items) {
+            this.quotaPending = null;
+            this.quotaPendingError = 'El servidor no devolvió las retenciones pendientes.';
+            return false;
+          }
+          this.quotaPending = items;
+          return true;
+        } catch (error) {
+          if (!this.isCurrentQuotaAdmin(epoch, 'pending')) return false;
+          this.quotaPending = null;
+          this.quotaPendingError = (error && (error.serverMessage || error.message)) || 'No se pudieron consultar las retenciones pendientes.';
+          return false;
+        } finally {
+          if (this.isCurrentQuotaAdmin(epoch, 'pending')) this.quotaPendingLoading = false;
+        }
+      },
       async onProvidersChanged() {
         await this.loadAgentEngines();
         if (!this.disposed) this.enginePickerKey += 1;
@@ -1891,6 +2995,9 @@
               : ((error && error.message) || 'No se pudieron consultar las integraciones.');
             this.adminError && (this.loadError = this.loadError || this.adminError);
           }
+        }
+        if (this.canManageQuota) {
+          await Promise.all([this.loadQuotaPolicy(), this.loadQuotaReport()]);
         }
         this.loading = false;
         if (!this.wizardAutoOpened && this.isAdmin && this.adminAvailable && this.installations.length === 0 && this.externalInstances.length === 0) {
@@ -1946,9 +3053,9 @@
         this.enginePickerKey += 1;
       },
       blankInstance() {
-        return {
+        return Object.assign({
           id: '', name: '', engine: 'opencode', baseUrl: 'http://127.0.0.1:4096', secretRef: '', username: '', profile: '', directory: '', defaultModel: '', integrationIdentityId: '', enabled: true
-        };
+        }, quotaInstanceDraft());
       },
       newInstance() {
         this.instanceEditing = true;
@@ -1959,7 +3066,7 @@
         if (!instance || instance.engine === 'pydantic') return;
         this.instanceEditing = true;
         this.instanceError = '';
-        this.instanceDraft = {
+        this.instanceDraft = Object.assign({
           id: instance.id,
           name: text(instance.name),
           engine: text(instance.engine, 'opencode'),
@@ -1971,7 +3078,7 @@
           defaultModel: text(instance.defaultModel),
           integrationIdentityId: text(instance.integrationIdentityId),
           enabled: instance.enabled !== false
-        };
+        }, quotaInstanceDraft(instance));
       },
       cancelInstanceEdit() {
         this.instanceEditing = false;
@@ -1983,6 +3090,10 @@
         const draft = this.instanceDraft;
         if (!text(draft.name)) { this.instanceError = 'Escribe un nombre para la instancia.'; return false; }
         if (draft.engine === 'opencode' && !isHttpUrl(draft.baseUrl)) { this.instanceError = 'La URL base de OpenCode debe ser http o https.'; return false; }
+        if (this.canManageQuota) {
+          const quotaError = quotaInstanceError(draft);
+          if (quotaError) { this.instanceError = quotaError; return false; }
+        }
         const body = {
           name: text(draft.name),
           engine: draft.engine,
@@ -1995,6 +3106,7 @@
           integrationIdentityId: text(draft.integrationIdentityId),
           enabled: draft.enabled !== false
         };
+        Object.assign(body, quotaInstanceBody(draft, this.canManageQuota));
         this.instanceBusy = true;
         try {
           await window.AssetAgentApi.saveInstance(this.app, text(draft.id), body);
@@ -2106,6 +3218,222 @@
         <agent-engine-picker :key="enginePickerKey" :app="app" heading="Preferencia del chat"></agent-engine-picker>
         <agent-providers-panel :app="app" @changed="onProvidersChanged"></agent-providers-panel>
 
+        <template v-if="canManageQuota">
+          <section class="agent-panel agent-quota-admin" aria-labelledby="quota-policy-title">
+            <header class="agent-panel__head">
+              <div>
+                <h3 id="quota-policy-title" class="agent-panel__title">Cuota diaria de IA</h3>
+                <p class="agent-panel__sub">Empresa y cuenta personal se limitan por separado. El navegador no reinicia el día ni convierte un límite nulo en cero; el servidor aplica la zona horaria y conserva las retenciones hasta reconciliarlas.</p>
+              </div>
+              <button type="button" class="btn btn--ghost btn--small" :disabled="quotaPolicyLoading || quotaPolicyBusy" @click="loadQuotaPolicy">{{ quotaPolicyLoading ? 'Consultando…' : 'Actualizar política' }}</button>
+            </header>
+            <p v-if="quotaPolicyLoading" class="agent-note" role="status">Consultando la política de cuota…</p>
+            <p v-if="quotaPolicyError" class="agent-note agent-note--error" role="alert">{{ quotaPolicyError }}</p>
+            <p v-if="quotaPolicyNotice" class="agent-note" role="status">{{ quotaPolicyNotice }}</p>
+            <p v-if="quotaPolicy && !quotaPolicy.available" class="agent-note agent-note--warn">El servidor no devolvió ambos límites. La política se muestra como no disponible y no se puede guardar.</p>
+            <form v-if="quotaPolicy && quotaPolicy.available" class="agent-quota-form" @submit.prevent="saveQuotaPolicy">
+              <fieldset class="agent-quota-fieldset">
+                <legend>Límite diario de la empresa</legend>
+                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="limited" :disabled="quotaPolicyBusy"> Límite diario</label>
+                <label class="agent-check"><input v-model="quotaDraft.companyMode" type="radio" value="unlimited" :disabled="quotaPolicyBusy"> Ilimitado (sin límite)</label>
+                <div class="field">
+                  <label class="field__label" for="quota-company-limit">Tokens por día</label>
+                  <input id="quota-company-limit" v-model="quotaDraft.companyLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaPolicyBusy || quotaDraft.companyMode !== 'limited'" aria-describedby="quota-company-help">
+                  <p id="quota-company-help" class="field__hint">0 bloquea nuevas ejecuciones; no es lo mismo que ilimitado. Valor actual: {{ quotaLimitText(quotaPolicy.companyDailyLimit, quotaPolicy.companyKnown) }} ({{ quotaLimitSourceLabel(quotaPolicy.companyLimitSource) }}).</p>
+                </div>
+              </fieldset>
+              <fieldset class="agent-quota-fieldset">
+                <legend>Límite diario personal</legend>
+                <label class="agent-check"><input v-model="quotaDraft.personalMode" type="radio" value="limited" :disabled="quotaPolicyBusy"> Límite diario</label>
+                <label class="agent-check"><input v-model="quotaDraft.personalMode" type="radio" value="unlimited" :disabled="quotaPolicyBusy"> Ilimitado (sin límite)</label>
+                <div class="field">
+                  <label class="field__label" for="quota-personal-limit">Tokens por día</label>
+                  <input id="quota-personal-limit" v-model="quotaDraft.personalLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaPolicyBusy || quotaDraft.personalMode !== 'limited'" aria-describedby="quota-personal-help">
+                  <p id="quota-personal-help" class="field__hint">El saldo personal no se descuenta del presupuesto de la empresa. Valor actual: {{ quotaLimitText(quotaPolicy.personalDailyLimit, quotaPolicy.personalKnown) }}.</p>
+                </div>
+              </fieldset>
+              <div class="field">
+                <label class="field__label" for="quota-timezone">Zona horaria del día</label>
+                <input id="quota-timezone" v-model="quotaDraft.timezone" type="text" class="input-shell" :disabled="quotaPolicyBusy" aria-describedby="quota-timezone-help" placeholder="America/Mexico_City" autocomplete="off" spellcheck="false">
+                <p id="quota-timezone-help" class="field__hint">Nombre IANA. Zona actual: {{ quotaPolicy.timezone || 'no informada' }}. <template v-if="quotaPolicy.pendingTimezone">Cambio pendiente a {{ quotaPolicy.pendingTimezone }} para el día {{ quotaPolicy.pendingEffectiveDay || 'siguiente seguro' }}; no se aplica de inmediato.</template><template v-else>El cambio se aplica en el siguiente límite diario seguro, no en el navegador.</template></p>
+              </div>
+              <div class="agent-provider-actions">
+                <button type="submit" class="btn btn--primary" :disabled="quotaAdminMutationBusy">{{ quotaPolicyBusy ? 'Guardando…' : 'Guardar política' }}</button>
+                <button v-if="quotaPolicy.pendingTimezone" type="button" class="btn btn--secondary" :disabled="quotaAdminMutationBusy" @click="cancelQuotaTimezoneChange">Cancelar cambio de zona</button>
+              </div>
+            </form>
+
+            <section class="agent-quota-block" aria-labelledby="quota-overrides-title">
+              <h4 id="quota-overrides-title">Excepciones por usuario</h4>
+              <p class="agent-panel__sub">Una excepción reemplaza solo el valor predeterminado de la financiación elegida. Quitarla devuelve la cuenta al valor heredado; ilimitado explícito es una excepción distinta.</p>
+              <div class="agent-quota-form">
+                <div class="field">
+                  <label class="field__label" for="quota-override-user">Usuario real</label>
+                  <select v-if="canBrowseQuotaUsers && quotaUserOptions.length" id="quota-override-user" v-model="quotaOverrideUser" class="input-shell" :disabled="quotaOverrideBusy" @change="onQuotaOverrideTargetChanged">
+                    <option v-for="user in quotaUserOptions" :key="user.id" :value="user.id">{{ user.label }}</option>
+                  </select>
+                  <template v-else>
+                    <input id="quota-override-user" v-model="quotaOverrideUser" type="text" class="input-shell" :disabled="quotaOverrideBusy" aria-describedby="quota-override-user-help" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off" spellcheck="false">
+                    <p id="quota-override-user-help" class="field__hint">UUID de la cuenta. El nombre de usuario no identifica una cuenta. La lista de cuentas requiere el permiso users.view.</p>
+                  </template>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-override-scope">Financiación</label>
+                  <select id="quota-override-scope" v-model="quotaOverrideScope" class="input-shell" :disabled="quotaOverrideBusy" @change="onQuotaOverrideTargetChanged">
+                    <option value="company">Empresa</option>
+                    <option value="personal">Personal</option>
+                  </select>
+                </div>
+                <fieldset class="agent-quota-fieldset">
+                  <legend>Valor de la excepción</legend>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="inherit" :disabled="quotaOverrideBusy"> Heredar el valor predeterminado</label>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="unlimited" :disabled="quotaOverrideBusy"> Ilimitado explícito</label>
+                  <label class="agent-check"><input v-model="quotaOverrideMode" type="radio" value="limited" :disabled="quotaOverrideBusy"> Límite diario</label>
+                  <div class="field">
+                    <label class="field__label" for="quota-override-limit">Tokens por día</label>
+                    <input id="quota-override-limit" v-model="quotaOverrideLimit" type="number" min="0" step="1" inputmode="numeric" class="input-shell" :disabled="quotaOverrideBusy || quotaOverrideMode !== 'limited'" aria-describedby="quota-override-limit-help">
+                    <p id="quota-override-limit-help" class="field__hint">0 bloquea nuevas ejecuciones; ilimitado se elige arriba, no con 0.</p>
+                  </div>
+                </fieldset>
+                <p class="agent-skill__meta">Excepción actual: {{ quotaOverrideLimitText(quotaOverrideRecord) }}.</p>
+                <p v-if="quotaOverrideError" class="agent-note agent-note--error" role="alert">{{ quotaOverrideError }}</p>
+                <p v-if="quotaOverrideNotice" class="agent-note" role="status">{{ quotaOverrideNotice }}</p>
+                <div class="agent-provider-actions">
+                  <button type="button" class="btn btn--primary" :disabled="quotaAdminMutationBusy" @click="saveQuotaOverride">{{ quotaOverrideMode === 'inherit' ? 'Quitar excepción y heredar' : 'Guardar excepción' }}</button>
+                </div>
+              </div>
+              <ul v-if="quotaOverrides.length" class="agent-quota-overrides">
+                <li v-for="record in quotaOverrides" :key="record.userId + '|' + record.scope" class="agent-quota-override">
+                  <div>
+                    <strong>{{ quotaUserName(record.userId) }}</strong>
+                    <span class="agent-tag">{{ quotaFundingLabel(record.scope) }}</span>
+                    <p class="agent-skill__meta">Valor: {{ quotaOverrideLimitText(record) }}<template v-if="record.updatedAt"> · Actualizado: {{ record.updatedAt }}</template></p>
+                  </div>
+                  <div class="agent-installation__actions">
+                    <template v-if="quotaPendingRemove === record.userId + '|' + record.scope">
+                      <button type="button" class="btn btn--danger btn--small" :disabled="quotaAdminMutationBusy" @click="confirmRemoveQuotaOverride(record)">Confirmar herencia</button>
+                      <button type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="cancelRemoveQuotaOverride">Cancelar</button>
+                    </template>
+                    <button v-else type="button" class="btn btn--ghost btn--small" :disabled="quotaAdminMutationBusy" @click="requestRemoveQuotaOverride(record)">Quitar excepción</button>
+                  </div>
+                </li>
+              </ul>
+              <p v-else class="agent-note">No hay excepciones; todas las cuentas heredan sus valores predeterminados.</p>
+            </section>
+
+            <section class="agent-quota-block" aria-labelledby="quota-report-title">
+              <h4 id="quota-report-title">Consumo medido y estimado</h4>
+              <p class="agent-panel__sub">Solo el servidor agrupa y totaliza. Las columnas de caché son descriptivas y no se suman al total. Un campo nulo se muestra como no disponible, nunca como cero.</p>
+              <form class="agent-quota-filters" @submit.prevent="loadQuotaReport">
+                <div class="field">
+                  <label class="field__label" for="quota-report-user">Usuario</label>
+                  <select v-if="canBrowseQuotaUsers && quotaUserOptions.length" id="quota-report-user" v-model="quotaReportFilters.userId" class="input-shell">
+                    <option value="">Todos</option>
+                    <option v-for="user in quotaUserOptions" :key="user.id" :value="user.id">{{ user.label }}</option>
+                  </select>
+                  <input v-else id="quota-report-user" v-model="quotaReportFilters.userId" type="text" class="input-shell" placeholder="UUID de usuario" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-provider">Proveedor</label>
+                  <input id="quota-report-provider" v-model="quotaReportFilters.providerId" type="text" class="input-shell" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-model">Modelo</label>
+                  <input id="quota-report-model" v-model="quotaReportFilters.model" type="text" class="input-shell" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-engine">Motor</label>
+                  <input id="quota-report-engine" v-model="quotaReportFilters.engine" type="text" class="input-shell" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-funding">Financiación</label>
+                  <select id="quota-report-funding" v-model="quotaReportFilters.funding" class="input-shell">
+                    <option value="">Todas</option>
+                    <option value="company">Empresa</option>
+                    <option value="personal">Personal</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-from">Desde</label>
+                  <input id="quota-report-from" v-model="quotaReportFilters.dayFrom" type="date" class="input-shell">
+                </div>
+                <div class="field">
+                  <label class="field__label" for="quota-report-to">Hasta</label>
+                  <input id="quota-report-to" v-model="quotaReportFilters.dayTo" type="date" class="input-shell">
+                </div>
+                <label class="agent-check"><input v-model="quotaReportIncludeLegacy" type="checkbox"> Incluir filas de legado sin atribuir</label>
+                <div class="agent-provider-actions">
+                  <button type="submit" class="btn btn--primary" :disabled="quotaReportLoading">{{ quotaReportLoading ? 'Consultando…' : 'Consultar consumo' }}</button>
+                </div>
+              </form>
+              <p v-if="quotaReportError" class="agent-note agent-note--error" role="alert">{{ quotaReportError }}</p>
+              <template v-if="quotaReport">
+                <p class="agent-skill__meta">Zona: {{ quotaReport.timezone || 'no informada' }} · Generado: {{ quotaReport.generatedAt || 'no informado' }} · Agrupación confirmada: {{ quotaReportGroupByLabel || 'no informada' }}</p>
+                <dl class="agent-quota-totals">
+                  <div><dt>Liquidado</dt><dd>{{ quotaTokenText(quotaReport.totals.settledTokens) }}</dd></div>
+                  <div><dt>Reservado</dt><dd>{{ quotaTokenText(quotaReport.totals.reservedTokens) }}</dd></div>
+                  <div><dt>Retenciones pendientes</dt><dd>{{ quotaTokenText(quotaReport.totals.pendingCount) }} · sin resolver {{ quotaTokenText(quotaReport.totals.unresolvedCount) }}</dd></div>
+                  <div><dt>Liberado</dt><dd>{{ quotaTokenText(quotaReport.totals.releasedCount) }} · recibos {{ quotaTokenText(quotaReport.totals.receiptCount) }}</dd></div>
+                  <div><dt>Legado sin atribuir</dt><dd>{{ quotaTokenText(quotaReport.totals.legacyTokens) }}</dd></div>
+                  <div><dt>Precisión</dt><dd>medido {{ quotaTokenText(quotaReport.precision.measured) }} · estimado {{ quotaTokenText(quotaReport.precision.estimated) }} · no disponible {{ quotaTokenText(quotaReport.precision.unavailable) }}</dd></div>
+                </dl>
+                <p class="agent-skill__meta">Reservado y pendiente no son consumo liquidado. El navegador no recalcula totales, no reparte el legado y no pagina filas que el servidor no paginó.</p>
+                <div v-if="quotaReport.items.length" class="agent-quota-table-wrap">
+                  <table class="agent-quota-table">
+                    <caption class="agent-skill__meta">Consumo de IA con la agrupación confirmada por el servidor</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Día</th><th scope="col">Usuario</th><th scope="col">Proveedor</th><th scope="col">Modelo</th><th scope="col">Motor</th><th scope="col">Financiación</th><th scope="col">Precisión y fuente</th><th scope="col">Estado</th><th scope="col">Liquidado</th><th scope="col">Reservado</th><th scope="col">Pendientes</th><th scope="col">Entrada</th><th scope="col">Salida</th><th scope="col">Caché lectura</th><th scope="col">Caché escritura</th><th scope="col">Razonamiento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, index) in quotaReport.items" :key="index">
+                        <td>{{ row.day || 'No disponible' }}</td>
+                        <td>{{ quotaUserName(row.userId) }}</td>
+                        <td>{{ quotaRowProvider(row) }}</td>
+                        <td>{{ quotaRowModel(row) }}</td>
+                        <td>{{ quotaRowEngine(row) }}</td>
+                        <td>{{ quotaFundingLabel(row.funding) }}</td>
+                        <td>{{ quotaRowPrecision(row) }}</td>
+                        <td>{{ quotaRowState(row) }}</td>
+                        <td>{{ quotaTokenText(row.settledTokens) }}</td>
+                        <td>{{ quotaTokenText(row.reservedTokens) }}</td>
+                        <td>{{ quotaTokenText(row.pendingCount) }} / {{ quotaTokenText(row.unresolvedCount) }}</td>
+                        <td>{{ quotaTokenText(row.inputTokens) }}</td>
+                        <td>{{ quotaTokenText(row.outputTokens) }}</td>
+                        <td>{{ quotaTokenText(row.cacheReadTokens) }}</td>
+                        <td>{{ quotaTokenText(row.cacheWriteTokens) }}</td>
+                        <td>{{ quotaTokenText(row.reasoningTokens) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p v-else class="agent-note">El servidor no devolvió filas para estos filtros.</p>
+              </template>
+            </section>
+
+            <section class="agent-quota-block" aria-labelledby="quota-pending-title">
+              <h4 id="quota-pending-title">Retenciones pendientes</h4>
+              <p class="agent-panel__sub">Una retención reserva cuota antes de la ejecución. No es consumo liquidado y esta vista no libera ni reembolsa nada; la reconciliación pertenece al servidor.</p>
+              <div class="agent-provider-actions">
+                <button type="button" class="btn btn--secondary btn--small" :disabled="quotaPendingLoading" @click="loadQuotaPending">{{ quotaPendingLoading ? 'Consultando…' : 'Consultar retenciones' }}</button>
+              </div>
+              <p v-if="quotaPendingError" class="agent-note agent-note--error" role="alert">{{ quotaPendingError }}</p>
+              <ul v-if="quotaPending && quotaPending.length" class="agent-quota-overrides">
+                <li v-for="hold in quotaPending" :key="hold.reservationId" class="agent-quota-override">
+                  <div>
+                    <strong class="mono">{{ hold.reservationId }}</strong>
+                    <span class="agent-tag">{{ quotaStateLabel(hold.state) }}</span>
+                    <p class="agent-skill__meta">Ejecución: {{ hold.runId || 'no informada' }} · Usuario: {{ quotaUserName(hold.userId) }} · {{ quotaFundingLabel(hold.funding) }} · {{ quotaRowProvider(hold) }}</p>
+                    <p class="agent-skill__meta">Reservado: {{ quotaTokenText(hold.reservedTokens) }} · Día {{ hold.periodDay || 'no informado' }} · Zona {{ hold.timezone || 'no informada' }} · Creado {{ hold.createdAt || 'sin fecha' }}</p>
+                  </div>
+                </li>
+              </ul>
+              <p v-else-if="quotaPending" class="agent-note">El servidor no devolvió retenciones.</p>
+            </section>
+          </section>
+        </template>
+
         <p v-if="!isAdmin" class="agent-note">La administración de instancias, instalaciones y catálogo requiere el permiso de proveedores de IA del sistema.</p>
         <p v-else-if="adminError" class="agent-note agent-note--error" role="alert">{{ adminError }}</p>
 
@@ -2130,18 +3458,22 @@
                 <p class="agent-skill__meta">{{ instance.baseUrl || 'Integración interna del servidor' }}</p>
                 <p class="agent-skill__meta">Perfil: {{ instance.profile || 'Sin perfil' }} · Secreto: {{ instance.secretConfigured ? 'configurado' : (instance.secretRef || 'sin referencia') }}</p>
                 <p v-if="instance.integrationIdentityId" class="agent-skill__meta mono">Identidad: {{ instance.integrationIdentityId }}</p>
+                <p class="agent-skill__meta">Cuota del motor: {{ quotaEngineStatus(instance).modeLabel }} · {{ quotaEngineStatus(instance).enforcementLabel }}<template v-if="quotaEngineStatus(instance).directException"> · excepción directa de empresa</template></p>
+                <p class="agent-skill__meta">Motivo: {{ quotaEngineStatus(instance).reason || 'sin motivo informado' }}</p>
+                <p v-if="quotaEngineStatus(instance).strict" class="agent-skill__meta">El servidor declara cuota estricta. Gestionado describe el enrutamiento por el gateway de ITSM, no demuestra por sí solo aislamiento de red.</p>
+                <p v-if="quotaEngineStatus(instance).mode === 'direct'" class="agent-skill__meta">Ejecución directa: {{ quotaEngineStatus(instance).directException ? 'excepción de empresa declarada por el servidor' : 'sin excepción de empresa declarada' }}; no se presenta como cuota estricta.</p>
                 <div v-if="instance.engine !== 'pydantic'" class="agent-installation__actions">
                   <button type="button" class="btn btn--ghost btn--small" @click="editInstance(instance)">Editar</button>
                 </div>
               </li>
             </ul>
-            <agent-instance-editor v-if="instanceEditing" :app="app" :draft="instanceDraft" :identities="identities" :busy="instanceBusy" :error="instanceError" @save="saveInstance" @cancel="cancelInstanceEdit"></agent-instance-editor>
+            <agent-instance-editor v-if="instanceEditing" :app="app" :draft="instanceDraft" :identities="identities" :busy="instanceBusy" :error="instanceError" :can-manage-quota="canManageQuota" @save="saveInstance" @cancel="cancelInstanceEdit"></agent-instance-editor>
           </section>
 
           <div class="agent-panel__actions">
             <button type="button" class="btn btn--secondary btn--small" @click="openWizard"><app-icon name="layers"></app-icon> Abrir asistente de integración</button>
           </div>
-          <agent-integration-wizard v-if="wizardOpen" :app="app" :instances="adminInstances" :catalog="catalog" :identities="identities" @close="closeWizard" @applied="onWizardApplied"></agent-integration-wizard>
+          <agent-integration-wizard v-if="wizardOpen" :app="app" :instances="adminInstances" :catalog="catalog" :identities="identities" :can-manage-quota="canManageQuota" @close="closeWizard" @applied="onWizardApplied"></agent-integration-wizard>
 
           <agent-catalog-panel :catalog="catalog" :busy-id="moduleBusyId" :error="moduleError" :can-manage="canManageModules" @toggle-module="toggleModule"></agent-catalog-panel>
 

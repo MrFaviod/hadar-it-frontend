@@ -71,7 +71,9 @@
   window.AssetConversation = {
     name: 'AssetConversation',
     components: { AppIcon: window.AppIcon },
-    mixins: window.AssetAgentEngineMixin ? [window.AssetAgentEngineMixin] : [],
+    mixins: []
+      .concat(window.AssetAgentEngineMixin ? [window.AssetAgentEngineMixin] : [])
+      .concat(window.AssetAgentQuotaMixin ? [window.AssetAgentQuotaMixin] : []),
     props: {
       app: { type: Object, required: true }
     },
@@ -354,6 +356,7 @@
       },
       resetSurface() {
         this.epoch += 1;
+        this.resetQuota();
         this.agentEpoch += 1;
         this.agentPreferenceEpoch += 1;
         this.panelOpen = false;
@@ -400,7 +403,9 @@
       async loadEnginesForChat() {
         if (!this.app.authenticated || (!this.isConversationRoute && !this.panelOpen)) return false;
         const epoch = this.epoch;
-        const loaded = await this.loadAgentEngines();
+        const discovery = this.loadAgentEngines();
+        void this.loadQuota();
+        const loaded = await discovery;
         if (!this.isCurrent(epoch)) return false;
         if (!loaded) {
           this.legacyFallback = !this.agentEnginesAvailable;
@@ -481,6 +486,7 @@
           if (requestId === this.requestId) {
             this.busy = false;
             this.request = null;
+            if (!this.disposed) void this.loadQuota();
           }
         }
       },
@@ -556,6 +562,7 @@
             this.busy = false;
             this.streaming = false;
             this.request = null;
+            void this.loadQuota();
           }
         }
       },
@@ -815,11 +822,21 @@
         return typeof status === 'string' && status ? status : 'running';
       },
       applyUsage(event) {
-        const source = event.source === 'reported' ? 'reported' : (event.source === 'measured' ? 'measured' : 'unknown');
+        const precision = ['measured', 'estimated', 'unavailable'].includes(event.precision) ? event.precision : 'unavailable';
+        const source = ['provider', 'engine', 'estimate', 'none'].includes(event.source) ? event.source : 'none';
         this.usage = {
           inputTokens: numericOrNull(event.inputTokens),
           outputTokens: numericOrNull(event.outputTokens),
+          cacheReadTokens: numericOrNull(event.cacheReadTokens),
+          cacheWriteTokens: numericOrNull(event.cacheWriteTokens),
+          reasoningTokens: numericOrNull(event.reasoningTokens),
+          totalTokens: numericOrNull(event.totalTokens),
+          precision,
           source,
+          estimationMethod: typeof event.estimationMethod === 'string' && event.estimationMethod.trim() ? event.estimationMethod.trim() : null,
+          inputIncludesCache: typeof event.inputIncludesCache === 'boolean' ? event.inputIncludesCache : null,
+          outputIncludesReasoning: typeof event.outputIncludesReasoning === 'boolean' ? event.outputIncludesReasoning : null,
+          totalSource: event.totalSource === 'provider' || event.totalSource === 'derived' ? event.totalSource : null,
           cost: event.cost === undefined || event.cost === null ? '' : String(event.cost)
         };
       },
@@ -830,13 +847,23 @@
         return toolTone(status);
       },
       tokenCount(value) {
-        return value === null || value === undefined ? '—' : Number(value).toLocaleString('es-ES');
+        return value === null || value === undefined ? 'no disponible' : Number(value).toLocaleString('es-ES');
+      },
+      usagePrecisionLabel() {
+        if (!this.usage) return '';
+        if (this.usage.precision === 'measured') return 'medido';
+        if (this.usage.precision === 'estimated') return 'estimado';
+        return 'no disponible';
       },
       usageSourceLabel() {
         if (!this.usage) return '';
-        if (this.usage.source === 'measured') return 'medido';
-        if (this.usage.source === 'reported') return 'informado por el motor externo';
-        return 'sin clasificar por el servidor';
+        if (this.usage.source === 'provider') return 'proveedor';
+        if (this.usage.source === 'engine') return 'motor';
+        if (this.usage.source === 'estimate') return 'estimación';
+        return 'no disponible';
+      },
+      usageInclusionLabel(value) {
+        return value === true ? 'sí' : (value === false ? 'no' : 'no disponible');
       },
       actionStatusLabel(status) {
         return ACTION_LABELS[status] || 'Registrada';
@@ -925,9 +952,30 @@
       '      <span v-for="capability in agentCapabilityList" :key="capability.key" class="chip chip--muted">{{ capability.label }}</span>',
       '    </div>',
       '    <p v-if="agentBudgetSummary" class="conversation__usage">{{ agentBudgetSummary }}</p>',
-      '    <p v-if="agentBudgetStrictDisclosure" class="conversation__help">{{ agentBudgetStrictDisclosure }}</p>',
       '  </section>',
       '  <p v-else-if="agentEnginesLoaded" class="conversation__help">El servidor no anunció motores de sesión; se usa el chat compatible del servidor.</p>',
+      '  <section v-if="app.authenticated" id="conversation-quota" class="conversation__quota" aria-labelledby="conversation-quota-title">',
+      '    <div class="conversation__engine-head">',
+      '      <h2 id="conversation-quota-title" class="conversation__heading">Tu cuota diaria de IA</h2>',
+      '      <button id="conversation-quota-refresh" type="button" class="btn btn--ghost btn--small" :disabled="quotaLoading" @click="loadQuota">{{ quotaLoading ? \'Actualizando…\' : \'Actualizar cuota\' }}</button>',
+      '    </div>',
+      '    <p v-if="quotaLoading && !quotaHasData" class="conversation__help" role="status">Consultando tu cuota…</p>',
+      '    <p v-if="quotaError" class="conversation__error" role="alert">{{ quotaError }}</p>',
+      '    <p v-if="quotaUnavailable" class="conversation__help" role="status">La cuota no está disponible en este momento; no se muestra como cero.</p>',
+      '    <template v-if="quotaHasData">',
+      '      <p class="conversation__meta">Día {{ quotaPeriodDay || \'no informado\' }} · Zona {{ quotaTimezone || \'no informada\' }}<template v-if="quotaPendingTimezone"> · cambio pendiente a {{ quotaPendingTimezone }} para {{ quotaPendingEffectiveDay || \'el siguiente límite seguro\' }}</template></p>',
+      '      <ul class="conversation__quota-list">',
+      '        <li v-for="account in quotaAccounts" :key="account.scope" class="conversation__quota-account">',
+      '          <p><strong>{{ account.label }}</strong><span v-if="account.selected" class="chip chip--muted">Contexto actual</span></p>',
+      '          <p class="conversation__meta">Límite: {{ quotaLimitText(account.balance) }} · {{ quotaLimitSourceLabel(account.balance && account.balance.limitSource) }}</p>',
+      '          <p class="conversation__meta">Consumido: {{ quotaAmountText(account.balance && account.balance.consumed) }} · Reservado: {{ quotaAmountText(account.balance && account.balance.reserved) }} · Disponible: {{ quotaAvailableText(account.balance) }}</p>',
+      '          <p class="conversation__meta">Retenciones pendientes: {{ quotaTokenText(account.balance && account.balance.pendingCount) }} · Precisión: {{ quotaPrecisionText(account.balance) }}</p>',
+      '          <p class="conversation__meta">Legado sin atribuir: {{ quotaAmountText(account.balance && account.balance.legacy) }}</p>',
+      '        </li>',
+      '      </ul>',
+      '      <p v-if="quotaSelectedNotice" class="conversation__help" role="status">{{ quotaSelectedNotice }}</p>',
+      '    </template>',
+      '  </section>',
       '  <div class="conversation__log" role="log" aria-live="polite" aria-relevant="additions text">',
       '    <p v-if="!hasMessages && !busy" class="conversation__empty">Todavía no hay mensajes. Escribe una consulta para empezar.</p>',
       '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
@@ -954,7 +1002,7 @@
       '      </li>',
       '    </ul>',
       '  </section>',
-      '  <p v-if="usage" class="conversation__usage" role="status">Consumo {{ usageSourceLabel() }}: {{ tokenCount(usage.inputTokens) }} de entrada · {{ tokenCount(usage.outputTokens) }} de salida<template v-if="usage.cost"> · coste {{ usage.cost }}</template>.</p>',
+      '  <p v-if="usage" id="conversation-usage" class="conversation__usage" role="status">Última llamada · Consumo {{ usagePrecisionLabel() }} · origen: {{ usageSourceLabel() }}. Entrada: {{ tokenCount(usage.inputTokens) }} · salida: {{ tokenCount(usage.outputTokens) }} · caché leída: {{ tokenCount(usage.cacheReadTokens) }} · caché escrita: {{ tokenCount(usage.cacheWriteTokens) }} · razonamiento: {{ tokenCount(usage.reasoningTokens) }} · total: {{ tokenCount(usage.totalTokens) }}<template v-if="usage.totalSource"> ({{ usage.totalSource === \'provider\' ? \'del proveedor\' : \'derivado por el servidor\' }})</template>. Caché incluida en entrada: {{ usageInclusionLabel(usage.inputIncludesCache) }} · razonamiento incluido en salida: {{ usageInclusionLabel(usage.outputIncludesReasoning) }}.<template v-if="usage.estimationMethod"> Método de estimación: {{ usage.estimationMethod }}.</template><template v-if="usage.cost"> Coste: {{ usage.cost }}.</template> No es el total de la ejecución.</p>',
       '  <section v-if="actions.length" class="conversation__section" aria-labelledby="conversation-actions">',
       '    <h2 id="conversation-actions" class="conversation__heading">Acciones ejecutadas</h2>',
       '    <ul class="conversation__actions">',

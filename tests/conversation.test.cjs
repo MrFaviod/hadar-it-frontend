@@ -85,10 +85,32 @@ function agentPayload(overrides) {
   );
 }
 
+function quotaBalance(overrides) {
+  return Object.assign({
+    limitTokens: 1000,
+    consumedTokens: 250,
+    reservedTokens: 50,
+    availableTokens: 700,
+    pendingCount: 1,
+    legacyTokens: 0,
+    limitSource: 'default',
+    precision: { measured: 250, estimated: 0, unavailable: 0 }
+  }, overrides || {});
+}
+
+function usagePayload(overrides) {
+  return Object.assign({
+    periodDay: '2026-10-27',
+    timezone: 'America/Mexico_City',
+    funding: { company: quotaBalance(), personal: quotaBalance() }
+  }, overrides || {});
+}
+
 function mountConversation() {
   const { c, app, mount } = setup();
   const requests = [];
   c.AssetAccess.request = async (vm, path, options) => {
+    if (path === '/agent/usage/me') return usagePayload();
     requests.push({ vm, path, options });
     return agentPayload();
   };
@@ -350,7 +372,7 @@ const DEFAULT_FRAMES = [
   'data: {"type":"delta","text":"Hola"}\n\n',
   'data: {"type":"tool","tool":"assets.search","status":"running"}\n\n',
   'data: {"type":"tool","tool":"assets.search","status":"completed","output":"1 activo"}\n\n',
-  'data: {"type":"usage","inputTokens":12,"outputTokens":5,"source":"reported"}\n\n',
+  'data: {"type":"usage","inputTokens":12,"outputTokens":5,"cacheReadTokens":null,"cacheWriteTokens":null,"reasoningTokens":null,"totalTokens":17,"precision":"measured","source":"engine","estimationMethod":null,"inputIncludesCache":null,"outputIncludesReasoning":null,"totalSource":"derived"}\n\n',
   'data: {"type":"done","cancelled":false,"actions":[{"tool":"assets.search","status":"completed","assetIds":["' +
     ASSET_ID +
     '"]}],"results":[{"id":"' +
@@ -370,7 +392,8 @@ function sessionSurface(config) {
       messageResponse: null,
       createCount: 0,
       cancelResult: { cancelled: true },
-      sessionSnapshot: null
+      sessionSnapshot: null,
+      usage: usagePayload()
     },
     config || {}
   );
@@ -387,6 +410,13 @@ function sessionSurface(config) {
         return jsonResponse({ error: { code: state.enginesError.code, message: '' } }, state.enginesError.status);
       }
       return jsonResponse(state.engines);
+    }
+    if (path === '/agent/usage/me') {
+      if (state.usageError) {
+        return jsonResponse({ error: { code: state.usageError.code || 'unavailable', message: '' } }, state.usageError.status);
+      }
+      if (state.deferUsage) await new Promise((resolve) => { state.releaseUsage = resolve; });
+      return jsonResponse(state.usage);
     }
     if (path === '/agent/preferences' && method === 'PUT') {
       state.preference = body;
@@ -450,7 +480,7 @@ test('the chat loads engines dynamically and heals a saved model that disappeare
   assert.equal(surface.vm.agentBudget.usedMeasured, 1200);
   assert.equal(surface.vm.agentBudget.usedReported, 300);
   assert.equal(surface.vm.agentBudget.strictExternal, false);
-  assert.match(surface.vm.agentBudgetStrictDisclosure, /no garantiza/i);
+  assert.doesNotMatch(vnodeText(surface.mount.root), /aplica el límite antes de enviar/i);
 });
 
 test('sending through the common session path streams deltas, tools, usage and existing cards', async () => {
@@ -473,7 +503,8 @@ test('sending through the common session path streams deltas, tools, usage and e
   assert.equal(surface.vm.messages[1].content, 'Hola');
   assert.equal(surface.vm.tools.length, 1);
   assert.equal(surface.vm.tools[0].status, 'completed');
-  assert.equal(surface.vm.usage.source, 'reported');
+  assert.equal(surface.vm.usage.source, 'engine');
+  assert.equal(surface.vm.usage.precision, 'measured');
   assert.equal(surface.vm.results[0].id, ASSET_ID);
   assert.equal(surface.vm.actions[0].status, 'completed');
   assert.equal(surface.vm.busy, false);
@@ -1038,4 +1069,237 @@ test('a single external profile hides the selector while its engine choice stays
   assert.equal(surface.calls.some(call => call.method === 'PATCH'), false);
   const saved = surface.calls.filter(call => call.path === '/agent/preferences' && call.method === 'PUT').pop();
   assert.deepEqual(saved.body, { instanceId: 'hermes-itsm', model: 'hermes:itsm' });
+});
+
+test('the chat shows both quota accounts without assuming company funding', async () => {
+  const companyOnly = sessionSurface();
+  await companyOnly.settle();
+  assert.equal(companyOnly.vm.quotaSelectedFunding, '');
+  assert.match(companyOnly.vm.quotaSelectedNotice, /no informó/i);
+  assert.ok(findById(companyOnly.mount.root, 'conversation-quota'));
+  assert.match(vnodeText(companyOnly.mount.root), /Empresa/);
+  assert.match(vnodeText(companyOnly.mount.root), /Personal/);
+  assert.match(vnodeText(companyOnly.mount.root), /Reservado:\s+50/);
+
+  const engines = hermesPayload();
+  engines.instances.find(instance => instance.id === 'hermes-default').providerScope = 'personal';
+  engines.preference = { instanceId: 'hermes-default', model: 'hermes:default' };
+  const personal = sessionSurface({
+    engines,
+    usage: usagePayload({
+      funding: {
+        company: quotaBalance({ consumedTokens: 111 }),
+        personal: quotaBalance({ consumedTokens: 999, limitTokens: null, availableTokens: null })
+      }
+    })
+  });
+  await personal.settle();
+  assert.equal(personal.vm.quotaSelectedFunding, 'personal');
+  assert.equal(personal.vm.quotaSelectedBalance.consumed, 999);
+  assert.equal(personal.vm.quotaSelectedBalance.limit, null);
+  assert.equal(personal.vm.quotaLimitText(personal.vm.quotaSelectedBalance), 'Ilimitado');
+  assert.match(personal.vm.quotaSelectedNotice, /personal/i);
+  const text = vnodeText(personal.mount.root);
+  assert.match(text, /Contexto actual/);
+  assert.match(text, /999/);
+});
+
+test('quota zero, unlimited, unknown and missing availability stay distinct', async () => {
+  const denied = sessionSurface({
+    usage: usagePayload({
+      funding: {
+        company: quotaBalance({ limitTokens: 0, consumedTokens: 0, availableTokens: 0, reservedTokens: 0 }),
+        personal: quotaBalance({ limitTokens: null, availableTokens: null, pendingCount: null })
+      }
+    })
+  });
+  await denied.settle();
+  assert.equal(denied.vm.quotaLimitText(denied.vm.quotaCompany), '0 tokens · sin admisión');
+  assert.equal(denied.vm.quotaLimitText(denied.vm.quotaPersonal), 'Ilimitado');
+  assert.match(vnodeText(denied.mount.root), /sin admisión/);
+  assert.match(vnodeText(denied.mount.root), /Ilimitado/);
+
+  const missingAvailability = sessionSurface({
+    usage: usagePayload({ funding: { company: quotaBalance({ availableTokens: undefined }), personal: null } })
+  });
+  await missingAvailability.settle();
+  assert.equal(missingAvailability.vm.quotaPersonal, null);
+  assert.equal(missingAvailability.vm.quotaAvailableText(missingAvailability.vm.quotaCompany), 'No disponible');
+  assert.match(vnodeText(missingAvailability.mount.root), /Personal/);
+  assert.match(vnodeText(missingAvailability.mount.root), /No disponible/);
+
+  const unknown = sessionSurface({ usage: {} });
+  await unknown.settle();
+  assert.equal(unknown.vm.quotaHasData, false);
+  assert.equal(unknown.vm.quotaUnavailable, true);
+  assert.doesNotMatch(vnodeText(unknown.mount.root), /Consumido: 0/);
+  assert.match(vnodeText(unknown.mount.root), /no está disponible/i);
+});
+
+test('the own quota refreshes explicitly and after stream finish, cancellation and error', async () => {
+  const surface = sessionSurface();
+  await surface.settle();
+  const usageCalls = () => surface.calls.filter((call) => call.path === '/agent/usage/me').length;
+  const initial = usageCalls();
+  assert.ok(initial >= 1);
+
+  surface.vm.draft = 'Busca servidores';
+  assert.equal(await surface.vm.send(), true);
+  await surface.settle();
+  assert.equal(usageCalls(), initial + 1);
+
+  surface.state.messageResponse = jsonResponse({ error: { code: 'unavailable', message: 'motor caído' } }, 503);
+  surface.vm.draft = 'Otra consulta';
+  assert.equal(await surface.vm.send(), false);
+  await surface.settle();
+  assert.equal(usageCalls(), initial + 2);
+
+  let release = () => {};
+  surface.state.messageResponse = {
+    ok: true,
+    status: 200,
+    body: {
+      getReader() {
+        return {
+          read() {
+            return new Promise((resolve) => {
+              release = () => resolve({ value: new TextEncoder().encode('data: {"type":"done","cancelled":true}\n\n'), done: false });
+            });
+          },
+          releaseLock() {}
+        };
+      }
+    }
+  };
+  surface.state.cancelResult = { cancelled: true };
+  surface.vm.draft = 'Ejecuta algo largo';
+  const pending = surface.vm.send();
+  await surface.settle();
+  assert.equal(await surface.vm.cancelRun(), true);
+  release();
+  await pending;
+  await surface.settle();
+  assert.equal(usageCalls(), initial + 3);
+
+  const refresh = findById(surface.mount.root, 'conversation-quota-refresh');
+  assert.ok(refresh, 'the explicit quota refresh button is rendered');
+  const click = (refresh.listeners && refresh.listeners.click) || (refresh.props && refresh.props.onClick);
+  assert.ok(click);
+  await click({ preventDefault() {} });
+  await surface.settle();
+  assert.equal(usageCalls(), initial + 4);
+});
+
+test('an expired session clears the own quota without leaving a loading state', async () => {
+  const surface = sessionSurface();
+  await surface.settle();
+  assert.ok(surface.vm.quotaSnapshot);
+  surface.state.usageError = { status: 401, code: 'unauthenticated' };
+  assert.equal(await surface.vm.loadQuota(), false);
+  await surface.settle();
+  assert.equal(surface.vm.quotaSnapshot, null);
+  assert.equal(surface.vm.quotaLoaded, false);
+  assert.equal(surface.vm.quotaLoading, false);
+  assert.equal(surface.vm.quotaOwner, '');
+  assert.doesNotMatch(vnodeText(surface.mount.root), /Consumido:/);
+});
+
+test('a late own-quota response cannot revive a signed-out account', async () => {
+  const surface = sessionSurface();
+  await surface.settle();
+  surface.vm.draft = 'Hola';
+  await surface.vm.send();
+  await surface.settle();
+  assert.ok(surface.vm.quotaSnapshot);
+
+  surface.state.deferUsage = true;
+  const stale = surface.vm.loadQuota();
+  await Promise.resolve();
+  surface.app.authenticated = false;
+  await surface.settle();
+  surface.state.deferUsage = false;
+  surface.state.releaseUsage();
+  assert.equal(await stale, false);
+  await surface.settle();
+  assert.equal(surface.vm.quotaSnapshot, null);
+  assert.equal(surface.vm.quotaLoaded, false);
+  assert.equal(surface.vm.quotaLoading, false);
+});
+
+test('live usage keeps measured provider evidence separate and never adds included cache or reasoning twice', async () => {
+  const event = {
+    type: 'usage', inputTokens: 30, outputTokens: 10, cacheReadTokens: 20,
+    cacheWriteTokens: 3, reasoningTokens: 4, totalTokens: 40,
+    precision: 'measured', source: 'provider', estimationMethod: null,
+    inputIncludesCache: true, outputIncludesReasoning: true, totalSource: 'derived'
+  };
+  const surface = sessionSurface({ frames: ['data: ' + JSON.stringify(event) + '\n\n', 'data: {"type":"done"}\n\n'] });
+  await surface.settle();
+  surface.vm.draft = 'Consulta con caché';
+  assert.equal(await surface.vm.send(), true);
+  await surface.settle();
+  assert.equal(surface.vm.usage.precision, 'measured');
+  assert.equal(surface.vm.usage.source, 'provider');
+  assert.equal(surface.vm.usage.totalTokens, 40);
+  assert.equal(surface.vm.usage.inputTokens, 30);
+  assert.equal(surface.vm.usage.cacheReadTokens, 20);
+  assert.equal(surface.vm.usage.cacheWriteTokens, 3);
+  assert.equal(surface.vm.usage.reasoningTokens, 4);
+  assert.equal(surface.vm.usage.inputIncludesCache, true);
+  assert.equal(surface.vm.usage.outputIncludesReasoning, true);
+  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
+  for (const value of ['30', '10', '20', '3', '4', '40']) assert.match(evidence, new RegExp('\\b' + value + '\\b'));
+  assert.match(evidence, /medido/i);
+  assert.match(evidence, /proveedor/i);
+  assert.match(evidence, /última llamada/i);
+  assert.doesNotMatch(evidence, /sin clasificar|\b67\b/i);
+});
+
+test('live usage replaces only the last call and preserves unavailable components rather than inventing zero', async () => {
+  const events = [
+    { type: 'usage', inputTokens: 30, outputTokens: 10, totalTokens: 40, precision: 'measured', source: 'provider' },
+    {
+      type: 'usage', inputTokens: null, outputTokens: null, cacheReadTokens: null,
+      cacheWriteTokens: null, reasoningTokens: null, totalTokens: null,
+      precision: 'unavailable', source: 'engine', estimationMethod: null,
+      inputIncludesCache: false, outputIncludesReasoning: null, totalSource: null
+    }
+  ];
+  const surface = sessionSurface({ frames: events.map(event => 'data: ' + JSON.stringify(event) + '\n\n').concat('data: {"type":"done"}\n\n') });
+  await surface.settle();
+  surface.vm.draft = 'Dos llamadas';
+  assert.equal(await surface.vm.send(), true);
+  await surface.settle();
+  for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens', 'totalTokens']) assert.equal(surface.vm.usage[key], null, key);
+  assert.equal(surface.vm.usage.source, 'engine');
+  assert.equal(surface.vm.usage.precision, 'unavailable');
+  assert.equal(surface.vm.usage.inputIncludesCache, false);
+  assert.equal(surface.vm.usage.outputIncludesReasoning, null);
+  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
+  assert.match(evidence, /última llamada/i);
+  assert.match(evidence, /no disponible/i);
+  assert.match(evidence, /motor/i);
+  assert.doesNotMatch(evidence, /\b0\b|\b40\b|sin clasificar/i);
+});
+
+test('live estimated usage displays its server method and explicit zero separately from null cache evidence', async () => {
+  const event = {
+    type: 'usage', inputTokens: 0, outputTokens: 2, cacheReadTokens: null,
+    cacheWriteTokens: null, reasoningTokens: null, totalTokens: 2,
+    precision: 'estimated', source: 'estimate', estimationMethod: 'utf8-bytes/4',
+    inputIncludesCache: false, outputIncludesReasoning: null, totalSource: 'derived'
+  };
+  const surface = sessionSurface({ frames: ['data: ' + JSON.stringify(event) + '\n\n', 'data: {"type":"done"}\n\n'] });
+  await surface.settle();
+  surface.vm.draft = 'Estimación';
+  assert.equal(await surface.vm.send(), true);
+  await surface.settle();
+  assert.equal(surface.vm.usage.inputTokens, 0);
+  assert.equal(surface.vm.usage.cacheReadTokens, null);
+  assert.equal(surface.vm.usage.estimationMethod, 'utf8-bytes/4');
+  const evidence = vnodeText(findById(surface.mount.root, 'conversation-usage'));
+  assert.match(evidence, /estimado/i);
+  assert.match(evidence, /utf8-bytes\/4/);
+  assert.match(evidence, /\b0\b/);
+  assert.match(evidence, /no disponible/i);
 });

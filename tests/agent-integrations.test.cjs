@@ -9,6 +9,8 @@ const { setup } = require('./universal-harness.cjs');
 
 const ENGINE_ID = 'opencode-local';
 const MACHINE_ID = 'machine-opencode-ops';
+const GLOBAL_PROVIDER_ID = '11111111-2222-4333-8444-555555555555';
+const PERSONAL_PROVIDER_ID = '66666666-7777-4888-8999-aaaaaaaaaaaa';
 
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
@@ -35,6 +37,14 @@ function collectNodes(node, predicate, result) {
 function nodeText(node) {
   if (!node) return '';
   return (node.text || '') + (node.children || []).map(nodeText).join(' ');
+}
+
+async function enterNativeValue(ui, id, value) {
+  const input = findNode(ui.mount.root, node => node.props && node.props.id === id);
+  assert.ok(input && input.listeners && input.listeners.input, id + ' has a native input listener');
+  input.value = value;
+  input.listeners.input({ target: input, preventDefault() {} });
+  await ui.settle();
 }
 
 function enginesPayload(overrides) {
@@ -109,6 +119,108 @@ function integrationsPayload(overrides) {
   }, overrides);
 }
 
+function quotaBalance(overrides) {
+  return Object.assign({
+    limitTokens: 1000,
+    consumedTokens: 250,
+    reservedTokens: 50,
+    availableTokens: 700,
+    pendingCount: 1,
+    legacyTokens: 0,
+    limitSource: 'default',
+    precision: { measured: 250, estimated: 0, unavailable: 0 }
+  }, overrides || {});
+}
+
+function usagePayload(overrides) {
+  return Object.assign({
+    periodDay: '2026-10-27',
+    timezone: 'America/Mexico_City',
+    funding: { company: quotaBalance(), personal: quotaBalance() }
+  }, overrides || {});
+}
+
+function providersPayload(overrides) {
+  return Object.assign({
+    items: [
+      {
+        id: GLOBAL_PROVIDER_ID,
+        name: 'OpenAI global',
+        scope: 'global',
+        baseUrl: 'https://api.openai.example/v1',
+        models: ['global-model'],
+        enabled: true,
+        credentialConfigured: true
+      },
+      {
+        id: PERSONAL_PROVIDER_ID,
+        name: 'OpenAI personal',
+        scope: 'personal',
+        baseUrl: 'https://api.openai.example/v1',
+        models: ['personal-model'],
+        enabled: true,
+        credentialConfigured: true
+      },
+      {
+        id: '99999999-8888-4777-8666-555555555555',
+        name: 'Global deshabilitado',
+        scope: 'global',
+        baseUrl: 'https://api.openai.example/v1',
+        models: ['disabled-model'],
+        enabled: false,
+      }
+    ]
+  }, overrides || {});
+}
+
+function quotaPolicyPayload(overrides) {
+  return Object.assign({
+    companyDailyLimit: 50000,
+    personalDailyLimit: 10000,
+    companyLimitSource: 'default',
+    personalLimitSource: 'default',
+    timezone: 'America/Mexico_City',
+    pendingTimezone: '',
+    pendingEffectiveDay: '',
+    serverTime: '2026-10-27T12:00:00Z',
+    overrides: []
+  }, overrides || {});
+}
+
+function quotaReportPayload(overrides) {
+  return Object.assign({
+    timezone: 'America/Mexico_City',
+    generatedAt: '2026-10-27T12:00:00Z',
+    filters: { includeLegacy: true },
+    groupBy: ['day', 'provider'],
+    totals: { settledTokens: 100, reservedTokens: 20, pendingCount: 1, unresolvedCount: 0, releasedCount: 0, receiptCount: 1, legacyTokens: 5 },
+    precision: { measured: 100, estimated: 0, unavailable: 1 },
+    items: [{
+      day: '2026-10-27',
+      userId: 'human-1',
+      providerId: 'openai',
+      providerName: 'OpenAI',
+      providerScope: 'global',
+      model: 'gpt-test',
+      engine: 'opencode',
+      funding: 'company',
+      precision: 'measured',
+      source: 'provider',
+      state: 'settled',
+      settledTokens: 100,
+      reservedTokens: 0,
+      pendingCount: 0,
+      unresolvedCount: 0,
+      inputTokens: 80,
+      outputTokens: 20,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      reasoningTokens: null,
+      legacy: false
+    }]
+  }, overrides || {});
+}
+
 function targetDetectionPayload(overrides) {
   return Object.assign({
     target: { engine: 'opencode', path: '/srv/opencode', profile: 'default', version: '1.4.0', remote: false },
@@ -135,6 +247,12 @@ function surface(options) {
     integrations: config.integrations || integrationsPayload(),
     catalog: config.catalog || catalogPayload(),
     detect: config.detect || targetDetectionPayload(),
+    policy: config.policy || quotaPolicyPayload(),
+    usage: config.usage || usagePayload(),
+    report: config.report || quotaReportPayload(),
+    pending: config.pending || { items: [] },
+    providers: config.providers || providersPayload(),
+    deferProviders: config.deferProviders === true,
     install: config.install || {
       id: 'installation-1',
       instanceId: ENGINE_ID,
@@ -175,11 +293,64 @@ function surface(options) {
     }
   };
   if (config.can) app.can = config.can;
+  if (config.users) app.security.users = config.users;
+  if (config.activeUserId) app.activeUserId = config.activeUserId;
   c.AssetAccess.request = async (vm, path, requestOptions) => {
     const method = (requestOptions && requestOptions.method) || 'GET';
     const body = requestOptions && requestOptions.body;
     calls.push({ path, method, body });
     if (path === '/agent/engines') return state.engines;
+    if (path === '/agent/usage/me') return state.usage;
+    if (path === '/agent/providers') {
+      if (state.deferProviders) await new Promise(resolve => { state.releaseProviders = resolve; });
+      return state.providers;
+    }
+    if (path === '/agent/usage/policy' && method === 'GET') {
+      if (state.deferPolicy) await new Promise((resolve) => { state.releasePolicy = resolve; });
+      return state.policy;
+    }
+    if (path === '/agent/usage/policy' && method === 'PUT') {
+      state.policySave = body;
+      if (body.cancelTimezoneChange) {
+        state.policy = Object.assign({}, state.policy, { pendingTimezone: '', pendingEffectiveDay: '' });
+        return state.policy;
+      }
+      const next = Object.assign({}, state.policy);
+      if (Object.prototype.hasOwnProperty.call(body, 'companyDailyLimit')) next.companyDailyLimit = body.companyDailyLimit;
+      if (Object.prototype.hasOwnProperty.call(body, 'personalDailyLimit')) next.personalDailyLimit = body.personalDailyLimit;
+      if (body.timezone) {
+        next.pendingTimezone = body.timezone;
+        next.pendingEffectiveDay = '2026-10-28';
+      }
+      state.policy = next;
+      return next;
+    }
+    if (/^\/agent\/usage\/overrides\/[^/?]+/.test(path)) {
+      const userId = decodeURIComponent(path.split('?')[0].split('/').pop());
+      if (method === 'PUT') {
+        if (state.deferOverride) await new Promise((resolve) => { state.releaseOverride = resolve; });
+        state.overrideSave = { userId, body };
+        state.policy.overrides = (state.policy.overrides || [])
+          .filter(item => !(item.userId === userId && item.scope === body.scope))
+          .concat({ userId, scope: body.scope, dailyLimit: body.dailyLimit, updatedAt: '2026-10-27T12:00:00Z' });
+        return { overrides: state.policy.overrides };
+      }
+      if (method === 'DELETE') {
+        const scope = new URLSearchParams(path.split('?')[1] || '').get('scope');
+        state.overrideDelete = { userId, scope };
+        state.policy.overrides = (state.policy.overrides || [])
+          .filter(item => !(item.userId === userId && item.scope === scope));
+        return { overrides: state.policy.overrides };
+      }
+    }
+    if (path.startsWith('/agent/usage/report')) {
+      state.reportQuery = path;
+      return state.report;
+    }
+    if (path.startsWith('/agent/usage/pending')) {
+      state.pendingQuery = path;
+      return state.pending;
+    }
     if (path === '/agent/integrations') return state.integrations;
     if (path === '/agent/integrations/catalog') return state.catalog;
     if (path === '/agent/preferences' && method === 'PUT') return { instanceId: body.instanceId, model: body.model };
@@ -742,6 +913,97 @@ test('an instance form sends only the secret reference and never a token value',
   assert.equal('password' in save.body, false);
 });
 
+test('instance quota routing saves exact direct and managed fields for provider administrators', async () => {
+  const ui = surface();
+  await ui.settle();
+  const instance = ui.vm.adminInstances.find(item => item.id === ENGINE_ID);
+  ui.vm.editInstance(instance);
+  await ui.settle();
+
+  const mode = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-mode');
+  assert.ok(mode, 'the editor renders the quota mode for a provider administrator');
+  ui.vm.instanceDraft.quotaMode = 'managed';
+  await ui.settle();
+
+  const provider = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-provider');
+  assert.ok(provider, 'managed mode renders the global provider selector');
+  const values = provider.children.filter(node => node.tag === 'option').map(node => node.props.value);
+  assert.equal(values.includes(GLOBAL_PROVIDER_ID), true);
+  assert.equal(values.includes(PERSONAL_PROVIDER_ID), false, 'personal providers are not offered for managed routing');
+  assert.equal(values.includes('99999999-8888-4777-8666-555555555555'), false, 'disabled globals are not offered');
+
+  ui.vm.instanceDraft.managedProviderId = '';
+  assert.equal(await ui.vm.saveInstance(), false);
+  assert.match(ui.vm.instanceError, /proveedor global/i);
+  assert.equal(ui.calls.some(call => call.path === '/agent/integrations/instances/' + ENGINE_ID), false);
+
+  Object.assign(ui.vm.instanceDraft, {
+    managedProviderId: GLOBAL_PROVIDER_ID,
+    managedContextTokens: '32768',
+    defaultModel: 'global-model'
+  });
+  await ui.settle();
+  assert.ok(findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-context'));
+  assert.equal(await ui.vm.saveInstance(), true);
+  const managed = ui.calls.filter(call => call.path === '/agent/integrations/instances/' + ENGINE_ID && call.method === 'PUT').pop();
+  assert.deepEqual(plain({
+    quotaMode: managed.body.quotaMode,
+    directCompanyException: managed.body.directCompanyException,
+    managedProviderId: managed.body.managedProviderId,
+    managedContextTokens: managed.body.managedContextTokens
+  }), {
+    quotaMode: 'managed',
+    directCompanyException: false,
+    managedProviderId: GLOBAL_PROVIDER_ID,
+    managedContextTokens: 32768
+  });
+
+  ui.vm.editInstance(Object.assign({}, instance, {
+    quotaMode: 'managed',
+    managedProviderId: GLOBAL_PROVIDER_ID,
+    managedContextTokens: 32768
+  }));
+  await ui.settle();
+  assert.equal(ui.vm.instanceDraft.managedContextTokens, '32768');
+  Object.assign(ui.vm.instanceDraft, {
+    quotaMode: 'direct',
+    directCompanyException: true
+  });
+  await ui.settle();
+  assert.equal(await ui.vm.saveInstance(), true);
+  const direct = ui.calls.filter(call => call.path === '/agent/integrations/instances/' + ENGINE_ID && call.method === 'PUT').pop();
+  assert.deepEqual(plain({
+    quotaMode: direct.body.quotaMode,
+    directCompanyException: direct.body.directCompanyException,
+    managedProviderId: direct.body.managedProviderId,
+    managedContextTokens: direct.body.managedContextTokens
+  }), {
+    quotaMode: 'direct',
+    directCompanyException: true,
+    managedProviderId: null,
+    managedContextTokens: null
+  });
+});
+
+test('instance quota controls and provider lookups require the instance quota authority', async () => {
+  const ui = surface({
+    component: 'AgentInstanceEditor',
+    props: {
+      canManageQuota: false,
+      draft: {
+        id: '', name: 'OpenCode', engine: 'opencode', baseUrl: 'http://127.0.0.1:4096',
+        secretRef: '', username: '', profile: '', directory: '', defaultModel: '', integrationIdentityId: '',
+        enabled: true, quotaMode: 'managed', managedProviderId: GLOBAL_PROVIDER_ID,
+        managedContextTokens: '1000', directCompanyException: false
+      }
+    }
+  });
+  await ui.settle();
+  assert.equal(findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-mode'), null);
+  assert.equal(findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-provider'), null);
+  assert.equal(ui.calls.some(call => call.path === '/agent/providers'), false);
+});
+
 test('an instance validation refusal shows the server-safe reason and field detail', async () => {
   const { c, app, mount, settle } = setup();
   app.csrfToken = 'csrf-agent';
@@ -847,4 +1109,461 @@ test('a server refusal is shown factually without claiming an installation', asy
   assert.match(vm.error, /no existe/i);
   assert.equal(vm.result, null);
   assert.equal(vm.verified, false);
+});
+
+test('quota administration requires system.providers on a human account', async () => {
+  const denied = surface({ can: permission => permission === 'users.edit' || permission === 'users.view' });
+  await denied.settle();
+  assert.equal(denied.vm.canManageQuota, false);
+  assert.equal(denied.calls.some(call => call.path === '/agent/usage/policy'), false);
+  assert.equal(findNode(denied.mount.root, node => node.props && node.props.id === 'quota-policy'), null);
+
+  const agent = surface({
+    users: [{ id: 'agent-1', name: 'Agente automático', actorKind: 'agent', active: true }],
+    activeUserId: 'agent-1'
+  });
+  await agent.settle();
+  assert.equal(agent.app.can('system.providers'), true);
+  assert.equal(agent.vm.canManageQuota, false);
+  assert.equal(findNode(agent.mount.root, node => node.props && node.props.id === 'quota-policy'), null);
+});
+
+test('policy distinguishes zero from unlimited, saves both defaults and cancels only a pending timezone', async () => {
+  const ui = surface({
+    policy: quotaPolicyPayload({
+      companyDailyLimit: 50000,
+      personalDailyLimit: 0,
+      pendingTimezone: 'Europe/Madrid',
+      pendingEffectiveDay: '2026-10-28'
+    })
+  });
+  await ui.settle();
+  assert.equal(ui.vm.canManageQuota, true);
+  assert.equal(ui.vm.quotaDraft.companyMode, 'limited');
+  assert.equal(ui.vm.quotaDraft.personalMode, 'limited');
+  assert.equal(ui.vm.quotaDraft.personalLimit, '0');
+  assert.equal(ui.vm.quotaLimitText(null, true), 'Ilimitado');
+  assert.equal(ui.vm.quotaLimitText(0, true), '0 tokens · sin admisión');
+  const text = nodeText(ui.mount.root);
+  assert.match(text, /0 tokens · sin admisión/);
+  assert.match(text, /Europe\/Madrid/);
+
+  ui.vm.quotaDraft.companyMode = 'unlimited';
+  ui.vm.quotaDraft.timezone = 'Europe/Madrid';
+  assert.equal(await ui.vm.saveQuotaPolicy(), true);
+  assert.deepEqual(plain(ui.state.policySave), { companyDailyLimit: null, timezone: 'Europe/Madrid' });
+  assert.equal(ui.vm.quotaPolicy.pendingTimezone, 'Europe/Madrid');
+
+  assert.equal(await ui.vm.cancelQuotaTimezoneChange(), true);
+  assert.deepEqual(plain(ui.state.policySave), { cancelTimezoneChange: true });
+  assert.equal(ui.vm.quotaPolicy.pendingTimezone, '');
+});
+
+test('overrides separate inherit, explicit zero and explicit unlimited for a real account', async () => {
+  const users = [
+    { id: 'human-1', name: 'Ana', username: 'ana', actorKind: 'human', active: true },
+    { id: 'human-2', name: 'Luis', username: 'luis', actorKind: 'human', active: true }
+  ];
+  const ui = surface({
+    users,
+    can: permission => permission === 'system.providers' || permission === 'users.view',
+    policy: quotaPolicyPayload({
+      overrides: [{ userId: 'human-1', scope: 'company', dailyLimit: null, updatedAt: '2026-10-27T10:00:00Z' }]
+    })
+  });
+  await ui.settle();
+  assert.equal(ui.vm.canBrowseQuotaUsers, true);
+  assert.equal(ui.vm.quotaUserOptions.length, 2);
+  assert.equal(ui.vm.quotaOverrideUser, 'human-1');
+  assert.equal(ui.vm.quotaOverrideMode, 'unlimited');
+  assert.equal(ui.vm.quotaOverrideLimitText(ui.vm.quotaOverrideRecord), 'Ilimitado');
+  assert.match(nodeText(ui.mount.root), /Ilimitado explícito/);
+
+  ui.vm.quotaOverrideMode = 'inherit';
+  assert.equal(await ui.vm.saveQuotaOverride(), true);
+  assert.deepEqual(plain(ui.state.overrideDelete), { userId: 'human-1', scope: 'company' });
+  assert.equal(ui.vm.quotaOverrides.length, 0);
+  assert.match(ui.vm.quotaOverrideNotice, /hereda|heredar/i);
+
+  ui.vm.quotaOverrideMode = 'limited';
+  ui.vm.quotaOverrideLimit = '0';
+  assert.equal(await ui.vm.saveQuotaOverride(), true);
+  assert.deepEqual(plain(ui.state.overrideSave.body), { dailyLimit: 0, scope: 'company' });
+  assert.equal(ui.vm.quotaOverrideRecord.dailyLimit, 0);
+  assert.equal(ui.vm.quotaOverrideMode, 'limited');
+  assert.equal(ui.vm.quotaOverrideLimit, '0');
+  assert.match(ui.vm.quotaOverrideLimitText(ui.vm.quotaOverrideRecord), /sin admisión/);
+  assert.match(ui.vm.quotaOverrideNotice, /cero|sin admisión/i);
+
+  const putsBefore = ui.calls.filter(call => /^\/agent\/usage\/overrides\//.test(call.path) && call.method === 'PUT').length;
+  ui.vm.quotaOverrideUser = 'ana';
+  assert.equal(ui.vm.quotaOverrideInputValid, false);
+  assert.equal(await ui.vm.saveQuotaOverride(), false);
+  assert.match(ui.vm.quotaOverrideError, /lista/);
+  assert.equal(ui.calls.filter(call => /^\/agent\/usage\/overrides\//.test(call.path) && call.method === 'PUT').length, putsBefore);
+
+  const manual = surface({ can: permission => permission === 'system.providers' });
+  await manual.settle();
+  manual.vm.quotaOverrideUser = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  manual.vm.quotaOverrideScope = 'personal';
+  manual.vm.quotaOverrideMode = 'unlimited';
+  assert.equal(manual.vm.quotaOverrideInputValid, true);
+  assert.equal(await manual.vm.saveQuotaOverride(), true);
+  assert.deepEqual(plain(manual.state.overrideSave.body), { dailyLimit: null, scope: 'personal' });
+  manual.vm.quotaOverrideUser = 'ana';
+  assert.equal(manual.vm.quotaOverrideInputValid, false);
+});
+
+test('the report preserves server totals, null cells and legacy attribution', async () => {
+  const legacy = {
+    day: '2026-10-26',
+    userId: 'human-1',
+    funding: '',
+    precision: 'unavailable',
+    source: 'legacy',
+    state: 'legacy',
+    settledTokens: null,
+    reservedTokens: null,
+    pendingCount: null,
+    unresolvedCount: null,
+    inputTokens: null,
+    outputTokens: null,
+    cacheReadTokens: null,
+    cacheWriteTokens: null,
+    reasoningTokens: null,
+    legacy: true
+  };
+  const measured = quotaReportPayload().items[0];
+  const report = quotaReportPayload({ items: [legacy, measured] });
+  const pending = {
+    items: [{
+      reservationId: 'hold-1',
+      runId: 'run-1',
+      userId: 'human-1',
+      funding: 'company',
+      state: 'pending',
+      reservedTokens: 300,
+      periodDay: '2026-10-27',
+      timezone: 'America/Mexico_City',
+      createdAt: '2026-10-27T11:00:00Z'
+    }]
+  };
+  const ui = surface({
+    report,
+    pending,
+    users: [{ id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', name: 'Ana', username: 'ana', actorKind: 'human', active: true }],
+    can: permission => permission === 'system.providers' || permission === 'users.view'
+  });
+  await ui.settle();
+
+  assert.equal(ui.vm.quotaReport.totals.settledTokens, 100);
+  assert.equal(ui.vm.quotaReport.totals.receiptCount, 1);
+  assert.equal(ui.vm.quotaReport.totals.legacyTokens, 5);
+  assert.equal(ui.vm.quotaRowProvider(legacy), 'Sin atribuir (legado)');
+  assert.equal(ui.vm.quotaRowModel(legacy), 'Sin atribuir (legado)');
+  assert.equal(ui.vm.quotaTokenText(legacy.cacheReadTokens), 'No disponible');
+  assert.equal(ui.vm.quotaTokenText(measured.cacheReadTokens), 'No disponible');
+  const rendered = nodeText(ui.mount.root);
+  assert.match(rendered, /Sin atribuir \(legado\)/);
+  assert.match(rendered, /Legado sin atribuir/);
+  assert.match(rendered, /No disponible/);
+  assert.match(rendered, /no se suman al total/i);
+  assert.match(rendered, /no pagina/i);
+
+  ui.vm.quotaReportFilters.userId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  ui.vm.quotaReportFilters.providerId = 'openai';
+  ui.vm.quotaReportFilters.model = 'gpt-test';
+  ui.vm.quotaReportFilters.engine = 'opencode';
+  ui.vm.quotaReportFilters.funding = 'company';
+  ui.vm.quotaReportFilters.dayFrom = '2026-10-01';
+  ui.vm.quotaReportFilters.dayTo = '2026-10-27';
+  ui.vm.quotaReportIncludeLegacy = false;
+  assert.equal(await ui.vm.loadQuotaReport(), true);
+  for (const part of [
+    'userId=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    'providerId=openai',
+    'model=gpt-test',
+    'engine=opencode',
+    'funding=company',
+    'dayFrom=2026-10-01',
+    'dayTo=2026-10-27',
+    'includeLegacy=false'
+  ]) {
+    assert.match(ui.state.reportQuery, new RegExp(part));
+  }
+  ui.vm.quotaReportFilters.userId = 'ana';
+  assert.equal(await ui.vm.loadQuotaReport(), false);
+  assert.match(ui.vm.quotaReportError, /UUID/);
+
+  assert.equal(await ui.vm.loadQuotaPending(), true);
+  assert.match(ui.state.pendingQuery, /limit=100/);
+  assert.equal(ui.vm.quotaPending.length, 1);
+  assert.equal(ui.vm.quotaPending[0].reservedTokens, 300);
+  assert.equal(ui.vm.quotaStateLabel(ui.vm.quotaPending[0].state), 'Pendiente');
+  assert.match(nodeText(ui.mount.root), /hold-1/);
+  assert.match(nodeText(ui.mount.root), /300/);
+  assert.equal(ui.calls.some(call => /\/release/.test(call.path)), false);
+});
+
+test('engine quota status comes only from the server DTO and missing status is non-strict', async () => {
+  const integrations = integrationsPayload({
+    instances: [
+      {
+        id: 'strict-engine',
+        name: 'Estricto',
+        engine: 'opencode',
+        enabled: true,
+        quota: { mode: 'managed', enforcement: 'strict', reason: 'gateway de ITSM' },
+        quotaMode: 'managed',
+        managedProviderId: 'itsm',
+        managedContextTokens: 32000,
+        directCompanyException: false
+      },
+      {
+        id: 'direct-engine',
+        name: 'Directo',
+        engine: 'hermes',
+        enabled: true,
+        quota: { mode: 'direct', enforcement: 'observed', reason: 'ejecución nativa', directException: true }
+      },
+      { id: 'unknown-engine', name: 'Sin estado', engine: 'pydantic', enabled: true }
+    ]
+  });
+  const ui = surface({ integrations });
+  await ui.settle();
+  const byId = id => ui.vm.adminInstances.find(instance => instance.id === id);
+  const strict = ui.vm.quotaEngineStatus(byId('strict-engine'));
+  const direct = ui.vm.quotaEngineStatus(byId('direct-engine'));
+  const unknown = ui.vm.quotaEngineStatus(byId('unknown-engine'));
+  assert.equal(strict.strict, true);
+  assert.equal(direct.strict, false);
+  assert.equal(direct.directException, true);
+  assert.equal(unknown.known, false);
+  assert.equal(unknown.enforcement, 'unavailable');
+  assert.equal(unknown.strict, false);
+  const rendered = nodeText(ui.mount.root);
+  assert.match(rendered, /Gestionado por el gateway/);
+  assert.match(rendered, /Estricta antes de enviar/);
+  assert.match(rendered, /excepción directa de empresa/);
+  assert.match(rendered, /No informado/);
+});
+
+test('a replaced administrator cannot revive policy, report or pending data', async () => {
+  const ui = surface({
+    users: [
+      { id: 'human-1', name: 'Ana', actorKind: 'human', active: true },
+      { id: 'human-2', name: 'Luis', actorKind: 'human', active: true }
+    ],
+    activeUserId: 'human-1',
+    pending: { items: [{ reservationId: 'hold-1', reservedTokens: 5, state: 'pending' }] }
+  });
+  await ui.settle();
+  assert.equal(await ui.vm.loadQuotaPending(), true);
+  assert.ok(ui.vm.quotaPolicy && ui.vm.quotaReport && ui.vm.quotaPending);
+
+  ui.state.deferPolicy = true;
+  const stale = ui.vm.loadQuotaPolicy();
+  await Promise.resolve();
+  ui.app.can = () => false;
+  ui.app.security.users = [{ id: 'human-2', name: 'Luis', actorKind: 'human', active: true }];
+  ui.app.activeUserId = 'human-2';
+  await ui.settle();
+  ui.state.deferPolicy = false;
+  ui.state.releasePolicy();
+  assert.equal(await stale, false);
+  await ui.settle();
+  assert.equal(ui.vm.quotaPolicy, null);
+  assert.equal(ui.vm.quotaReport, null);
+  assert.equal(ui.vm.quotaPending, null);
+});
+
+test('a policy refresh cannot abort or strand an in-flight override mutation', async () => {
+  const ui = surface({
+    users: [{ id: 'human-1', name: 'Ana', username: 'ana', actorKind: 'human', active: true }],
+    activeUserId: 'human-1'
+  });
+  await ui.settle();
+  ui.vm.quotaOverrideUser = 'human-1';
+  ui.vm.quotaOverrideScope = 'company';
+  ui.vm.quotaOverrideMode = 'limited';
+  ui.vm.quotaOverrideLimit = '0';
+  ui.state.deferOverride = true;
+  const saving = ui.vm.saveQuotaOverride();
+  await ui.settle();
+  assert.equal(ui.vm.quotaOverrideBusy, true);
+
+  ui.state.deferPolicy = true;
+  const refreshing = ui.vm.loadQuotaPolicy();
+  await ui.settle();
+  ui.state.deferOverride = false;
+  ui.state.releaseOverride();
+  assert.equal(await saving, true);
+  assert.equal(ui.state.overrideSave.body.dailyLimit, 0);
+  assert.equal(ui.vm.quotaOverrideBusy, false);
+
+  ui.state.deferPolicy = false;
+  ui.state.releasePolicy();
+  assert.equal(await refreshing, false);
+  assert.equal(ui.vm.quotaPolicyLoading, false);
+  assert.equal(ui.vm.quotaAdminMutationBusy, false);
+});
+
+test('the picker clears its own quota when the account session ends', async () => {
+  const ui = surface({ component: 'AgentEnginePicker' });
+  await ui.settle();
+  assert.ok(ui.vm.quotaSnapshot);
+  ui.app.authenticated = false;
+  await ui.settle();
+  assert.equal(ui.vm.quotaSnapshot, null);
+  assert.equal(ui.vm.quotaLoaded, false);
+  assert.equal(ui.vm.quotaLoading, false);
+});
+
+test('instance quota provider responses cannot revive a signed-out or replaced account', async () => {
+  for (const boundary of ['logout', 'identity']) {
+    const ui = surface({
+      component: 'AgentInstanceEditor',
+      props: {
+        canManageQuota: true,
+        draft: {
+          name: 'OpenCode', engine: 'opencode', quotaMode: 'managed',
+          managedProviderId: '', managedContextTokens: '', defaultModel: ''
+        }
+      }
+    });
+    await ui.settle();
+    assert.equal(ui.vm.quotaGlobalProviders.length, 1);
+    let release;
+    ui.c.AssetAccess.request = async (_app, path) => {
+      assert.equal(path, '/agent/providers');
+      if (release) return { items: [] };
+      return new Promise(resolve => { release = () => resolve(providersPayload()); });
+    };
+    const pending = ui.vm.loadQuotaProviders();
+    await Promise.resolve();
+    if (boundary === 'logout') ui.app.authenticated = false;
+    else ui.app.activeUserId = 'replacement-account';
+    await ui.settle();
+    release();
+    assert.equal(await pending, false, boundary + ' invalidates the old request');
+    await ui.settle();
+    assert.equal(ui.vm.quotaGlobalProviders.length, 0, boundary + ' clears provider options');
+    assert.equal(ui.vm.quotaProvidersLoading, false);
+    assert.equal(ui.vm.quotaProvidersError, '');
+  }
+});
+
+test('a saved managed provider is not announced as unavailable while its options are loading', async () => {
+  const ui = surface({
+    component: 'AgentInstanceEditor',
+    deferProviders: true,
+    props: {
+      canManageQuota: true,
+      draft: {
+        name: 'OpenCode', engine: 'opencode', quotaMode: 'managed',
+        managedProviderId: GLOBAL_PROVIDER_ID, managedContextTokens: '32768', defaultModel: 'global-model'
+      }
+    }
+  });
+  await ui.settle();
+  const provider = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-provider');
+  assert.equal(provider.props.disabled, true);
+  assert.equal(Boolean(findNode(ui.mount.root, node => node.props && node.props.role === 'alert')), false);
+  ui.state.releaseProviders();
+  await ui.settle();
+  const loaded = findNode(ui.mount.root, node => node.props && node.props.id === 'agent-instance-quota-provider');
+  assert.equal(loaded.props.disabled, false);
+  assert.equal(loaded.children.some(node => node.tag === 'option' && node.props.value === GLOBAL_PROVIDER_ID), true);
+  assert.equal(Boolean(findNode(ui.mount.root, node => node.props && node.props.role === 'alert')), false);
+});
+
+test('rendered policy number inputs save numeric defaults including explicit zero', async () => {
+  const ui = surface({ policy: quotaPolicyPayload({ companyDailyLimit: 50000, personalDailyLimit: 1000 }) });
+  await ui.settle();
+  await enterNativeValue(ui, 'quota-company-limit', '100');
+  await enterNativeValue(ui, 'quota-personal-limit', '0');
+  assert.equal(ui.vm.quotaDraft.companyLimit, 100);
+  assert.equal(ui.vm.quotaDraft.personalLimit, 0);
+
+  const form = findNode(ui.mount.root, node => node.tag === 'form' && findNode(node, child => child.props && child.props.id === 'quota-company-limit'));
+  await form.props.onSubmit({ preventDefault() {} });
+  await ui.settle();
+  const save = ui.calls.find(call => call.path === '/agent/usage/policy' && call.method === 'PUT');
+  assert.ok(save, 'submitting valid native number values reaches the policy endpoint');
+  assert.deepEqual(plain(save.body), { companyDailyLimit: 100, personalDailyLimit: 0 });
+  assert.equal(ui.state.policy.companyDailyLimit, 100);
+  assert.equal(ui.state.policy.personalDailyLimit, 0);
+  assert.equal(ui.vm.quotaPolicyError, '');
+});
+
+test('rendered override number input saves positive and zero numeric limits without changing funding', async () => {
+  const ui = surface({ users: [{ id: 'human-1', name: 'Ana', actorKind: 'human', active: true }] });
+  await ui.settle();
+  const section = findNode(ui.mount.root, node => node.props && node.props['aria-labelledby'] === 'quota-overrides-title');
+  const limited = findNode(section, node => node.tag === 'input' && node.props.type === 'radio' && node.props.value === 'limited');
+  limited.checked = true;
+  limited.listeners.change({ target: limited });
+  await ui.settle();
+
+  for (const [value, expected] of [['100', 100], ['0', 0]]) {
+    await enterNativeValue(ui, 'quota-override-limit', value);
+    assert.equal(ui.vm.quotaOverrideLimit, expected);
+    const currentSection = findNode(ui.mount.root, node => node.props && node.props['aria-labelledby'] === 'quota-overrides-title');
+    const save = findNode(currentSection, node => node.tag === 'button' && node.props.onClick);
+    await save.props.onClick({});
+    await ui.settle();
+    assert.ok(ui.state.overrideSave, 'saving a valid native number reaches the override endpoint');
+    assert.equal(ui.state.overrideSave.userId, 'human-1');
+    assert.deepEqual(plain(ui.state.overrideSave.body), { dailyLimit: expected, scope: 'company' });
+    assert.equal(ui.vm.quotaOverrideRecord.dailyLimit, expected);
+    assert.equal(ui.vm.quotaOverrideError, '');
+  }
+});
+
+test('invalid native quota limits send no policy or override mutation and leave stored values unchanged', async () => {
+  const ui = surface({ users: [{ id: 'human-1', name: 'Ana', actorKind: 'human', active: true }] });
+  await ui.settle();
+  const before = plain(ui.state.policy);
+  const section = findNode(ui.mount.root, node => node.props && node.props['aria-labelledby'] === 'quota-overrides-title');
+  const limited = findNode(section, node => node.tag === 'input' && node.props.type === 'radio' && node.props.value === 'limited');
+  limited.checked = true;
+  limited.listeners.change({ target: limited });
+  await ui.settle();
+
+  for (const value of ['-1', '1.5', '9007199254740992', 'NaN', 'Infinity', '']) {
+    await enterNativeValue(ui, 'quota-company-limit', value);
+    const form = findNode(ui.mount.root, node => node.tag === 'form' && findNode(node, child => child.props && child.props.id === 'quota-company-limit'));
+    await form.props.onSubmit({ preventDefault() {} });
+    await ui.settle();
+    assert.ok(ui.vm.quotaPolicyError, value + ' is rejected for policy');
+
+    await enterNativeValue(ui, 'quota-override-limit', value);
+    const currentSection = findNode(ui.mount.root, node => node.props && node.props['aria-labelledby'] === 'quota-overrides-title');
+    const save = findNode(currentSection, node => node.tag === 'button' && node.props.onClick);
+    await save.props.onClick({});
+    await ui.settle();
+    assert.ok(ui.vm.quotaOverrideError, value + ' is rejected for overrides');
+    assert.equal(ui.calls.filter(call => call.method === 'PUT' && call.path.startsWith('/agent/usage/')).length, 0);
+    assert.deepEqual(plain(ui.state.policy), before);
+  }
+});
+
+test('report provider scope stays distinct from company or personal funding', async () => {
+  const measured = quotaReportPayload().items[0];
+  const ui = surface({ report: quotaReportPayload({ items: [
+    Object.assign({}, measured, { providerName: 'Isolated company', providerScope: 'global', funding: 'company' }),
+    Object.assign({}, measured, { providerName: 'My provider', providerScope: 'personal', funding: 'personal' }),
+    Object.assign({}, measured, { providerName: 'Unknown provider', providerScope: 'unknown', funding: 'company' })
+  ] }) });
+  await ui.settle();
+  const table = findNode(ui.mount.root, node => node.tag === 'table' && node.props.class === 'agent-quota-table');
+  const rows = collectNodes(table, node => node.tag === 'tr').filter(row => row.children.some(node => node.tag === 'td'));
+  assert.equal(rows.length, 3);
+  const cells = rows.map(row => row.children.filter(node => node.tag === 'td'));
+  assert.equal(nodeText(cells[0][2]), 'Isolated company · Global');
+  assert.equal(nodeText(cells[0][5]), 'Empresa');
+  assert.equal(nodeText(cells[1][2]), 'My provider · Personal');
+  assert.equal(nodeText(cells[1][5]), 'Personal');
+  assert.equal(nodeText(cells[2][2]), 'Unknown provider · Ámbito no informado');
+  assert.equal(nodeText(cells[2][5]), 'Empresa');
 });

@@ -410,3 +410,46 @@
     transition: opacity var(--dur-fast) var(--ease-out);
   }
 }
+
+.conversation__quota {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.conversation__quota-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation__quota-account {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.conversation__quota-account p {
+  margin: 0;
+}
+
+.conversation__quota-account strong {
+  margin-right: 8px;
+}
+
+.conversation__quota .conversation__meta {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.conversation--compact .conversation__quota {
+  gap: 6px;
+  padding: 12px;
+}
