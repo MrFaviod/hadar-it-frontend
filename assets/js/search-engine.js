@@ -2,7 +2,21 @@
   'use strict';
   const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es').trim();
   const SECTIONS = [['panel','Dashboard','activity'],['inventory','Inventario','inventory'],['people','Personas','user'],['map','Mapa de infraestructura','map-pin'],['graph','Grafo de relaciones','network'],['maintenance','Mantenimiento e incidentes','refresh'],['monitoring','Supervisión','gauge'],['reports','Reportes','file-text'],['warranties','Garantías','shield'],['labels','Etiquetas','printer']];
-  function record(kind,id,label,subtitle,icon,tokens,target) { return {key:kind+':'+id,type:({asset:'Activos',person:'Personas',site:'Sedes',location:'Ubicaciones',incident:'Incidentes',intervention:'Intervenciones',plan:'Mantenimientos',report:'Reportes',section:'Secciones',view:'Vistas guardadas',action:'Acciones'})[kind],label:label||id,subtitle:subtitle||'',icon:icon||'box',tokens:(tokens||[]).filter(Boolean),target:target||{kind,id}}; }
+  const TYPES={asset:'Activos',person:'Personas',site:'Sedes',location:'Ubicaciones',incident:'Incidentes',intervention:'Intervenciones',maintenance:'Mantenimientos',plan:'Mantenimientos',report:'Reportes',category:'Categorías',section:'Secciones',view:'Vistas guardadas',action:'Acciones'};
+  function record(kind,id,label,subtitle,icon,tokens,target) { return {key:kind+':'+id,type:TYPES[kind]||'Resultados',kind,id,label:label||id,subtitle:subtitle||'',icon:icon||'box',tokens:(tokens||[]).filter(Boolean),target:target||{kind,id}}; }
+  function targetFor(item) {
+    const t=item.target||{kind:item.type,id:item.id};
+    if(t.kind==='maintenance')return {...t,kind:'plan'};
+    if(t.kind==='category')return {kind:'category',id:t.id};
+    return t;
+  }
+  function fromServer(item) {
+    const type=item.type||(item.target&&item.target.kind)||'section';
+    const target=targetFor(item);
+    const record=window.AssetSearch.record(type,item.id,item.label,item.subtitle,item.icon,item.tokens||[],target);
+    if(item.key)record.key=item.key;
+    return record;
+  }
   function actions(app) {
     const asset=app.currentAsset || (app.assets||[]).find(a=>a.id===(app.route?.assetId||app.route?.focusId||app.explorerSelection));
     const rows=[],add=(id,label,icon,assetId)=>rows.push(record('action',id,label,assetId?'Para '+asset.name:'Ir a la sección',''+icon,[],{kind:'action',action:id,id:assetId||''}));
@@ -34,5 +48,5 @@
     const q=normalize(query),parts=q.split(/\s+/).filter(Boolean),favorites=options.favorites||[],usage=options.usage||{};
     return index.map((r,i)=>{const label=normalize(r.label),fields=[r.label,r.subtitle,...(r.tokens||[])].map(normalize),hay=fields.join(' ');if(parts.some(p=>!hay.includes(p)))return null;const exact=q&&fields.some(f=>f===q),prefix=q&&fields.some(f=>f.startsWith(q));const score=(exact?10000:prefix?5000:q?1000:0)+(favorites.includes(r.key)?100:0)+Math.min(80,Number(usage[r.key]||0)*5)+(r.type==='Acciones'?10:0);return {r,i,score,label};}).filter(Boolean).sort((a,b)=>b.score-a.score||a.i-b.i).map(x=>x.r);
   }
-  window.AssetSearch={normalize,record,buildIndex,actions,search};
+  window.AssetSearch={normalize,record,fromServer,types:TYPES,buildIndex,actions,search};
 })();
