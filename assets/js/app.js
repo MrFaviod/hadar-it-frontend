@@ -80,6 +80,17 @@
   const Store = window.AssetStore;
   const initial = Store.initialState();
 
+  const AgentRouteMethods = {
+    parseRoute() {
+      const parsed = window.AssetMethods.parseRoute.call(this);
+      return (window.AssetAgentViews && window.AssetAgentViews.routeOverride(parsed, window.location.hash)) || parsed;
+    },
+    hashFor(route) {
+      if (route && route.name === 'config' && route.section === 'ia') return '#/configuracion/ia';
+      return window.AssetMethods.hashFor.call(this, route);
+    }
+  };
+
   const app = window.Vue.createApp({
     mixins: [{ data: window.AssetAccess.data, computed: window.AssetAccess.computed }, window.AssetPhase10],
     components: {
@@ -95,6 +106,12 @@
       AccessSecurity: window.AssetAccessViews.AccessSecurity,
       AssetEditor: window.AssetEditor,
       AssetConversation: window.AssetConversation,
+      AgentEnginePicker: window.AssetAgentViews.AgentEnginePicker,
+      AgentInstanceEditor: window.AssetAgentViews.AgentInstanceEditor,
+      AgentCatalogPanel: window.AssetAgentViews.AgentCatalogPanel,
+      AgentInstallationsPanel: window.AssetAgentViews.AgentInstallationsPanel,
+      AgentIntegrationWizard: window.AssetAgentViews.AgentIntegrationWizard,
+      AgentIntegrationsSettings: window.AssetAgentViews.AgentIntegrationsSettings,
       AssetFieldsPanel: window.AssetConfigViews.AssetFieldsPanel,
       AssetFormsPanel: window.AssetConfigViews.AssetFormsPanel,
       AssetStatusesPanel: window.AssetConfigViews.AssetStatusesPanel,
@@ -234,6 +251,7 @@
         configSections: [
           { id: 'seguridad', label: 'Usuarios y permisos', hint: 'Roles y sesiones', icon: 'user' },
           { id: 'general', label: 'General', hint: 'Identidad y marca', icon: 'sliders' },
+          { id: 'ia', label: 'IA', hint: 'Motores, modelos e integraciones', icon: 'layers' },
           { id: 'apariencia', label: 'Apariencia', hint: 'Branding, temas y presets', icon: 'sliders' },
           { id: 'categorias', label: 'Categorías', hint: 'Catálogo de equipos', icon: 'grid' },
           { id: 'activos', label: 'Activos', hint: 'Campos, formularios y códigos', icon: 'box' },
@@ -692,7 +710,7 @@
       if (this.remoteTimer) window.clearTimeout(this.remoteTimer);
       if (this.toastTimer) window.clearTimeout(this.toastTimer);
     },
-      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods))
+      methods: window.AssetAccess.guardMethods(Object.assign({}, window.AssetMethods, window.AssetConfigMethods, window.AssetPeopleMethods, window.AssetThemeMethods, window.AssetAppearanceMethods, window.AssetSidebarMethods, window.AssetAdminMethods, window.AssetOpsMethods, window.AssetAccess.methods, window.AssetWorkspaceRuntime.methods, window.AssetInventory.methods, window.AssetOrganization.methods, window.AssetRedundancy.methods, window.AssetPhase6.methods, window.AssetMaintenanceApi.methods, window.AssetMonitoringApi.methods, window.AssetPhase9.methods, AgentRouteMethods))
   });
   app.mount(target || '#app');
   return app;
