@@ -1734,6 +1734,9 @@
         preparedInstanceId: '',
         detecting: false,
         detection: null,
+        detectionTarget: null,
+        pendingTarget: null,
+        detectGeneration: 0,
         detectError: '',
         mcp: { url: '', secretRef: '', identityId: '' },
         selectedSkills: [],
@@ -1797,7 +1800,7 @@
           if (this.mode === 'new') return !!text(this.instanceDraft.name) && (this.instanceDraft.engine === 'hermes' || isHttpUrl(this.instanceDraft.baseUrl));
           return !!this.instanceId;
         }
-        if (this.step === 2) return isAbsolutePath(this.target.path) && (this.target.remote === true || !!(this.detection && this.detection.detected === true));
+        if (this.step === 2) return isAbsolutePath(this.target.path) && (this.target.remote === true || this.detectionIsCurrent());
         if (this.step === 3) return isHttpUrl(this.mcp.url) && !!text(this.mcp.secretRef) && !!text(this.mcp.identityId);
         if (this.step === 4) return this.selectedSkills.length > 0;
         return !this.busy;
@@ -1816,10 +1819,65 @@
     },
     watch: {
       'target.path'() {
-        this.detection = null;
+        this.targetChanged();
+      },
+      'target.profile'() {
+        this.targetChanged();
+      },
+      'target.version'() {
+        this.targetChanged();
+      },
+      'target.remote'() {
+        this.targetChanged();
+      },
+      engine() {
+        this.targetChanged();
       }
     },
     methods: {
+      targetSnapshot() {
+        return {
+          engine: text(this.engine),
+          path: text(this.target.path),
+          profile: text(this.targetProfilePayload()),
+          version: text(this.target.version),
+          remote: this.target.remote === true
+        };
+      },
+      sameTarget(left, right) {
+        return !!left && !!right
+          && left.engine === right.engine
+          && left.path === right.path
+          && left.profile === right.profile
+          && left.version === right.version
+          && left.remote === right.remote;
+      },
+      invalidateDetection() {
+        this.detectGeneration += 1;
+        this.detection = null;
+        this.detectionTarget = null;
+        this.pendingTarget = null;
+        this.detecting = false;
+        this.detectError = '';
+      },
+      detectionIsCurrent() {
+        if (!this.detection || this.detection.detected !== true || !this.detectionTarget) return false;
+        return this.sameTarget(this.detectionTarget, this.targetSnapshot());
+      },
+      targetChanged() {
+        // A detection describes exactly one local target. Keep it only while
+        // the snapshot that produced it still matches; the version echoed by
+        // the server is applied before the snapshot is taken, so its own
+        // watcher does not discard a fresh inspection. A watcher queued by an
+        // earlier edit must not cancel an inspection of the current target.
+        if (this.detectionIsCurrent()) return;
+        if (this.detecting && this.pendingTarget && this.sameTarget(this.pendingTarget, this.targetSnapshot())) return;
+        if (!this.detection && !this.detectionTarget && !this.detecting) {
+          this.detectError = '';
+          return;
+        }
+        this.invalidateDetection();
+      },
       engineLabel,
       statusLabel: installationStatusLabel,
       tone(record) {
@@ -1935,43 +1993,56 @@
         }
       },
       async detect() {
-        this.detectError = '';
-        this.detection = null;
+        this.invalidateDetection();
         if (this.target.remote === true) {
           this.detectError = tr('ui.agents.error_inspect_remote');
           return false;
         }
         if (!this.engine) { this.detectError = tr('ui.agents.error_instance_first'); return false; }
         if (!isAbsolutePath(this.target.path)) { this.detectError = tr('ui.agents.error_absolute_path'); return false; }
+        const requested = this.targetSnapshot();
+        const generation = this.detectGeneration;
+        this.pendingTarget = requested;
         this.detecting = true;
         try {
           const payload = await window.AssetAgentApi.detectTarget(this.app, {
-            engine: this.engine,
-            path: text(this.target.path),
+            engine: requested.engine,
+            path: requested.path,
             profile: this.targetProfilePayload(),
-            version: text(this.target.version)
+            version: requested.version
           });
-          const detection = normalizeTargetDetection(payload, this.engine);
+          if (generation !== this.detectGeneration) return false;
+          if (!this.sameTarget(requested, this.targetSnapshot())) {
+            this.invalidateDetection();
+            return false;
+          }
+          const detection = normalizeTargetDetection(payload, requested.engine);
           if (!detection) {
             this.detectError = tr('ui.agents.error_detection_payload');
             return false;
           }
           this.detection = detection;
           if (detection.version) this.target.version = detection.version;
+          this.detectionTarget = this.targetSnapshot();
           return true;
         } catch (error) {
+          if (generation !== this.detectGeneration) return false;
           this.detectError = (error && error.message) || tr('ui.agents.error_detection');
           return false;
         } finally {
-          this.detecting = false;
+          if (generation === this.detectGeneration) {
+            this.detecting = false;
+            this.pendingTarget = null;
+          }
         }
       },
       async install() {
         if (this.busy) return false;
         this.error = '';
         if (!this.instanceId || !this.selectedInstance) { this.error = tr('ui.agents.error_missing_instance'); return false; }
-        if (!this.detection || this.detection.detected !== true) {
-          if (this.target.remote !== true) { this.error = tr('ui.agents.error_confirm_target'); return false; }
+        if (this.target.remote !== true && !this.detectionIsCurrent()) {
+          this.error = tr('ui.agents.error_confirm_target');
+          return false;
         }
         if (!isHttpUrl(this.mcp.url) || !text(this.mcp.secretRef) || !text(this.mcp.identityId)) { this.error = tr('ui.agents.error_mcp_identity'); return false; }
         if (!this.selectedSkills.length) { this.error = tr('ui.agents.error_skills_required'); return false; }

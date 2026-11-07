@@ -602,6 +602,20 @@ test('the installer result shows the sanitized server error and limitations inst
   const ui = surface({
     component: 'AgentIntegrationWizard',
     props: { instances: integrationsPayload().instances.concat(hermes), catalog: catalogPayload(), identities: [{ id: MACHINE_ID, name: 'Hermes ops', actorKind: 'external_agent', roleId: 'reader', active: true }] },
+    detect: targetDetectionPayload({
+      target: { engine: 'hermes', path: '/srv/hermes/itsm', profile: 'itsm', version: '0.22.5', remote: false },
+      detection: {
+        engine: 'hermes',
+        format: 'yaml',
+        version: '0.22.5',
+        profile: 'itsm',
+        targetPath: '/srv/hermes/itsm',
+        configFile: 'hermes.yaml',
+        configExists: true,
+        skillsDirectory: 'skills',
+        limitations: []
+      }
+    }),
     install: {
       id: 'installation-1',
       instanceId: 'hermes-itsm',
@@ -620,11 +634,11 @@ test('the installer result shows the sanitized server error and limitations inst
   vm.mode = 'existing';
   vm.instanceId = 'hermes-itsm';
   await vm.next();
+  assert.equal(await vm.detect(), true);
   vm.mcp.url = 'http://127.0.0.1:8000/mcp';
   vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
   vm.mcp.identityId = MACHINE_ID;
   vm.selectedSkills = ['itsm.assets.search'];
-  vm.detection = { detected: true, targetPath: '/srv/hermes/itsm' };
   vm.step = 5;
   assert.equal(await vm.install(), true);
   await ui.settle();
@@ -726,6 +740,182 @@ test('the wizard installs only the exact inspected target and reports unverified
   await ui.settle();
   assert.match(nodeText(ui.mount.root), /Versión: 1\.4\.0/);
   assert.match(nodeText(ui.mount.root), /no confirmó una conexión MCP real/);
+});
+
+test('the installer refuses a local target that changed after inspection', async () => {
+  const wizard = () => surface({
+    component: 'AgentIntegrationWizard',
+    props: {
+      instances: integrationsPayload().instances,
+      catalog: catalogPayload(),
+      identities: [{ id: MACHINE_ID, name: 'OpenCode ops', actorKind: 'external_agent', roleId: 'reader', active: true }]
+    }
+  });
+  const inspect = async (vm) => {
+    vm.mode = 'existing';
+    vm.instanceId = ENGINE_ID;
+    vm.target.path = '/srv/opencode';
+    vm.target.version = '1.4.0';
+    await vm.next();
+    assert.equal(vm.step, 2);
+    assert.equal(await vm.detect(), true);
+    assert.equal(vm.detection.detected, true);
+    vm.mcp.url = 'http://127.0.0.1:8000/mcp';
+    vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
+    vm.mcp.identityId = MACHINE_ID;
+    vm.selectedSkills = ['itsm.assets.search'];
+  };
+
+  const changes = [
+    ['path', vm => { vm.target.path = '/srv/otro'; }],
+    ['profile', vm => { vm.target.profile = 'ops'; }],
+    ['version', vm => { vm.target.version = '9.9.9'; }]
+  ];
+  for (const [field, change] of changes) {
+    const ui = wizard();
+    const vm = ui.vm;
+    await inspect(vm);
+    change(vm);
+    vm.step = 2;
+    assert.equal(vm.canNext, false, field + ' change must require a new inspection');
+    vm.step = 5;
+    assert.equal(await vm.install(), false, field + ' change must block the install');
+    assert.match(vm.error, /Inspecciona y confirma el destino antes de instalar/);
+    assert.equal(vm.result, null);
+    assert.equal(ui.calls.some(call => call.path === '/agent/integrations/install'), false);
+  }
+
+  const ui = wizard();
+  const vm = ui.vm;
+  await inspect(vm);
+  vm.target.profile = 'ops';
+  assert.equal(await vm.detect(), true);
+  vm.step = 5;
+  assert.equal(await vm.install(), true);
+  assert.equal(ui.calls.filter(call => call.path === '/agent/integrations/install').length, 1);
+});
+
+test('an in-flight inspection cannot overwrite a target that changed while it was pending', async () => {
+  const ui = surface({
+    component: 'AgentIntegrationWizard',
+    props: {
+      instances: integrationsPayload().instances,
+      catalog: catalogPayload(),
+      identities: [{ id: MACHINE_ID, name: 'OpenCode ops', actorKind: 'external_agent', roleId: 'reader', active: true }]
+    }
+  });
+  const pendingInspections = [];
+  ui.c.AssetAccess.request = (vm, path) => {
+    if (path === '/agent/integrations/targets') {
+      return new Promise(resolve => { pendingInspections.push(resolve); });
+    }
+    return Promise.resolve({});
+  };
+  const vm = ui.vm;
+  vm.mode = 'existing';
+  vm.instanceId = ENGINE_ID;
+  vm.target.path = '/srv/opencode';
+  vm.target.version = '1.4.0';
+  await vm.next();
+  assert.equal(vm.step, 2);
+
+  const pending = vm.detect();
+  await Promise.resolve();
+  assert.equal(vm.detecting, true);
+  assert.equal(pendingInspections.length, 1);
+  vm.target.profile = 'ops';
+  pendingInspections[0](targetDetectionPayload());
+  assert.equal(await pending, false);
+  assert.equal(vm.detection, null);
+  assert.equal(vm.detecting, false);
+  assert.equal(vm.target.version, '1.4.0');
+  assert.doesNotMatch(vm.detectError, /inspección de destino válida/i);
+
+  vm.mcp.url = 'http://127.0.0.1:8000/mcp';
+  vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
+  vm.mcp.identityId = MACHINE_ID;
+  vm.selectedSkills = ['itsm.assets.search'];
+  vm.step = 5;
+  assert.equal(await vm.install(), false);
+  assert.match(vm.error, /Inspecciona y confirma el destino antes de instalar/);
+
+  vm.step = 2;
+  const retry = vm.detect();
+  await Promise.resolve();
+  assert.equal(pendingInspections.length, 2);
+  pendingInspections[1](targetDetectionPayload({
+    target: { engine: 'opencode', path: '/srv/opencode', profile: 'ops', version: '1.4.0', remote: false },
+    detection: {
+      engine: 'opencode',
+      format: 'v2',
+      version: '1.4.0',
+      profile: 'ops',
+      targetPath: '/srv/opencode',
+      configFile: 'opencode.json',
+      configExists: false,
+      skillsDirectory: '.opencode/skills',
+      limitations: []
+    }
+  }));
+  assert.equal(await retry, true);
+  assert.equal(vm.detection.detected, true);
+  vm.step = 5;
+  assert.equal(await vm.install(), true);
+});
+
+test('a remote export still works without a local inspection and returning to local requires a fresh one', async () => {
+  const ui = surface({
+    component: 'AgentIntegrationWizard',
+    props: {
+      instances: integrationsPayload().instances,
+      catalog: catalogPayload(),
+      identities: [{ id: MACHINE_ID, name: 'OpenCode ops', actorKind: 'external_agent', roleId: 'reader', active: true }]
+    },
+    install: {
+      id: 'installation-1',
+      instanceId: ENGINE_ID,
+      target: { engine: 'opencode', path: '/srv/opencode', profile: 'default', version: '1.4.0', remote: true },
+      skills: ['itsm.assets.search'],
+      mcp: { url: 'http://127.0.0.1:8000/mcp', secretRef: 'ITSM_MCP_TOKEN', identityId: MACHINE_ID },
+      status: 'exported',
+      verified: false,
+      mcpVerified: false,
+      profileSafetyVerified: false,
+      checks: [],
+      conflicts: [],
+      operation: 'install',
+      managedFiles: [],
+      createdAt: '2026-01-01T00:00:00+00:00',
+      updatedAt: '2026-01-01T00:00:00+00:00'
+    }
+  });
+  const vm = ui.vm;
+  vm.mode = 'existing';
+  vm.instanceId = ENGINE_ID;
+  vm.target.path = '/srv/opencode';
+  await vm.next();
+  assert.equal(vm.step, 2);
+  assert.equal(await vm.detect(), true);
+
+  vm.target.remote = true;
+  vm.mcp.url = 'http://127.0.0.1:8000/mcp';
+  vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
+  vm.mcp.identityId = MACHINE_ID;
+  vm.selectedSkills = ['itsm.assets.search'];
+  vm.step = 5;
+  assert.equal(await vm.install(), true);
+  const exported = ui.calls.filter(call => call.path === '/agent/integrations/install').pop();
+  assert.equal(exported.body.mode, 'remote');
+  assert.equal(exported.body.target.remote, true);
+
+  vm.result = null;
+  vm.error = '';
+  vm.target.remote = false;
+  vm.step = 2;
+  assert.equal(vm.canNext, false);
+  vm.step = 5;
+  assert.equal(await vm.install(), false);
+  assert.match(vm.error, /Inspecciona y confirma el destino antes de instalar/);
 });
 
 test('the wizard accepts the canonical nested target detection envelope', async () => {
@@ -1098,13 +1288,30 @@ test('a server refusal is shown factually without claiming an installation', asy
       error.status = 422;
       throw error;
     }
-    return { detected: true, path: '/srv/opencode' };
+    if (path === '/agent/integrations/targets') {
+      return targetDetectionPayload({
+        target: { engine: 'opencode', path: '/no-existe', profile: 'default', version: '1.4.0', remote: false },
+        detection: {
+          engine: 'opencode',
+          format: 'v2',
+          version: '1.4.0',
+          profile: 'default',
+          targetPath: '/no-existe',
+          configFile: 'opencode.json',
+          configExists: false,
+          skillsDirectory: '.opencode/skills',
+          limitations: []
+        }
+      });
+    }
+    return {};
   };
   const vm = ui.vm;
   vm.mode = 'existing';
   vm.instanceId = ENGINE_ID;
   vm.target.path = '/no-existe';
-  vm.detection = { detected: true, path: '/no-existe' };
+  await vm.next();
+  assert.equal(await vm.detect(), true);
   vm.mcp.url = 'http://127.0.0.1:8000/mcp';
   vm.mcp.secretRef = 'ITSM_MCP_TOKEN';
   vm.mcp.identityId = MACHINE_ID;
