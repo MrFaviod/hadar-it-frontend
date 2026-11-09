@@ -273,7 +273,7 @@ def desktop_composition_is_a_compact_chrome_header_with_a_centred_form(browser):
     assert 56 <= header['height'] <= 96, header
     assert page.evaluate("getComputedStyle(document.querySelector('.login__chrome')).backgroundColor") == 'rgb(11, 35, 49)'
     expect(page.locator('.login__chrome .theme-toggle')).to_be_visible()
-    expect(page.locator('.login__chrome')).to_contain_text('Asset Manager')
+    expect(page.locator('.login__chrome')).to_contain_text('Hadar IT')
 
     assert page.locator('.login__topology').count() == 0, 'decorative topology is not rendered'
     wrap = page.locator('.login__form-wrap').bounding_box()

@@ -365,6 +365,9 @@
       applyPhase6Operation(payload) {
         const operation = this.phase6 && this.phase6.operation;
         if (!operation || !payload || typeof payload !== 'object') return false;
+        const completionChanged = operation.id !== text(payload.id)
+          || operation.state !== text(payload.state)
+          || operation.processed !== count(payload.processed, 0);
         operation.id = text(payload.id);
         operation.kind = text(payload.kind);
         operation.state = text(payload.state);
@@ -378,6 +381,12 @@
         operation.loaded = true;
         operation.error = '';
         if (isFinal(operation.state)) this.stopPhase6Polling();
+        if (completionChanged && isFinal(operation.state)
+          && (operation.kind === 'import' || operation.kind === 'bulk')
+          && (operation.summary.created > 0 || operation.summary.modified > 0)
+          && typeof this.maintainInventoryCount === 'function') {
+          this.maintainInventoryCount({ force: true });
+        }
         return true;
       },
 

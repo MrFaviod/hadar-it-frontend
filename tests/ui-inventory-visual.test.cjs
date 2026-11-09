@@ -70,8 +70,9 @@ test('a failed read reports no result count and no duplicate clear action', () =
 test('the shell counter reports the inventory size, not the filtered subset', () => {
   const link = /<a[^>]*class="nav-link"[^>]*href="#\/inventario"[\s\S]*?<\/a>/.exec(HTML);
   assert.ok(link, 'the inventory navigation link is missing');
-  assert.ok(/v-if="!serverInventory \|\| !inventoryFiltersActive"/.test(link[0]),
-    'the navigation counter still follows the server filter');
+  assert.ok(link[0].includes('inventoryNavTotal !== null'), 'unknown is not a real zero');
+  assert.ok(link[0].includes('serverInventory ? inventoryNavTotal : assets.length'), 'the badge uses the independent global count');
+  assert.ok(!link[0].includes('inventoryFiltersActive'), 'filtering must not hide the global count');
 });
 
 test('loading keeps the shape of the list it replaces', () => {
@@ -213,7 +214,8 @@ function workspaceApp(overrides) {
     workspaceState: sandbox.AssetWorkspace.createState(),
     workspaceUserId: 'user-1',
     workspaceInventory: {status: 'all', location: 'all', columns: ['model']},
-    inventoryFilters: {query: '', category: 'all', status: 'all', limit: 25, offset: 0},
+    inventoryFilters: {query: '', category: 'all', status: 'all'},
+    inventory: {offset: 25, limit: 25},
     inventoryItems: [],
     inventoryStatusChoices: [
       {value: 'in_use', label: 'Asignado'},
@@ -254,9 +256,11 @@ test('a legacy saved snapshot restores one status chip and removing it clears th
     selection: [],
   }});
   assert.equal(app.inventoryFilters.status, 'in_use', 'the restored snapshot did not reach the canonical filter');
+  assert.equal(app.inventory.offset, 0, 'restoring a view must reset canonical pagination');
   assert.equal(statusChips(app).length, 1, 'the restored snapshot paints more than one status chip');
   app.removeWorkspaceFilter(statusChips(app)[0]);
   assert.equal(app.inventoryFilters.status, 'all', 'the chip removal left the canonical status filter');
+  assert.equal(app.inventory.offset, 0);
   assert.equal(app.workspaceInventory.status, 'all', 'the chip removal left the legacy status filter');
   assert.equal(statusChips(app).length, 0, 'a status chip survived its own removal');
 });
@@ -309,6 +313,7 @@ test('resetting every filter leaves no chip and no hidden scope', () => {
   assert.equal(app.workspaceInventoryChips.length, 0, 'chips survived the reset');
   assert.equal(app.workspaceInventory.status, 'all');
   assert.equal(app.workspaceInventory.location, 'all');
+  assert.equal(app.inventory.offset, 0, 'resetting filters must reset canonical pagination');
   assert.equal(app.inventoryFilters.status, 'all');
   assert.equal(app.inventoryFilters.category, 'all');
   assert.equal(app.inventoryFilters.query, '');

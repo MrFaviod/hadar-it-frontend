@@ -83,7 +83,10 @@ test('additional metrics require a canonical value and no-probe equipment receiv
   assert.equal(m.latency.length, 0);
   assert.equal(m.availability.length, 0);
   assert.equal(m.stats.availability, null);
-  assert.equal(m.widgetAvailable('latency'), false);
+  assert.equal(m.widgetAvailable('latency'), true, 'real per-device readings remain usable without an aggregate');
+  const missing = summary({ latency: { current: null } });
+  missing.rows.forEach(row => { row.latencyMs = null; });
+  assert.equal(M.fromSummary(missing).widgetAvailable('latency'), false, 'no aggregate and no measured rows is unavailable');
   assert.equal(m.widgetAvailable('availability'), false);
   assert.equal(m.distribution.find(row => row.id === 'unknown').count, 1, 'unknown stays the server-reported count');
   assert.equal(m.rows.find(row => row.asset.id === 'x3').latencyMs, null);

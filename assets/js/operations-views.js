@@ -412,7 +412,7 @@
                 :class="{ 'is-active': step === item.id, 'is-done': step > item.id }"
                 :aria-current="step === item.id ? 'step' : null">
               <span class="flow-step__num">{{ step > item.id ? '✓' : item.id }}</span>
-              <span class="flow-step__copy"><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span>
+              <span class="flow-step__copy"><strong>{{ item.label }}</strong></span>
             </li>
           </ol>
 
@@ -1256,7 +1256,7 @@
                 :class="{ 'is-active': step === item.id, 'is-done': step > item.id }"
                 :aria-current="step === item.id ? 'step' : null">
               <span class="flow-step__num">{{ step > item.id ? '✓' : item.id }}</span>
-              <span class="flow-step__copy"><strong>{{ item.label }}</strong><small>{{ item.hint }}</small></span>
+              <span class="flow-step__copy"><strong>{{ item.label }}</strong></span>
             </li>
           </ol>
 

@@ -151,6 +151,7 @@
       offset: 0,
       loading: false,
       loaded: false,
+      query: '',
       error: '',
       epoch: nextEpoch(),
       controller: null
@@ -232,6 +233,7 @@
     data() {
       return {
         inventory: createState(),
+        inventoryCount: { total: null, owner: null, loading: false, epoch: nextEpoch(), controller: null },
         inventoryFilters: createFilters(),
         inventoryDetail: createDetail(),
         inventoryCatalog: createCatalog(),
@@ -244,6 +246,10 @@
     },
 
     computed: {
+      inventoryNavTotal() {
+        return this.serverInventory && this.inventoryCount.owner === this.activeUserId
+          ? this.inventoryCount.total : null;
+      },
       inventoryItems() {
         return this.inventory.items;
       },
@@ -537,7 +543,10 @@
       filterFromSidebar(categoryId) {
         if (!this.serverInventory) return window.AssetMethods.filterFromSidebar.call(this, categoryId);
         this.inventoryFilters.category = categoryId || 'all';
-        if (this.route.name !== 'inventory') this.setHash('#/inventario');
+        if (this.route.name !== 'inventory') {
+          this.inventory.offset = 0;
+          this.setHash('#/inventario');
+        }
       },
       assetSiteText(asset) {
         if (!asset) return '—';
@@ -656,6 +665,38 @@
         if (controller) controller.abort();
         if (this.inventoryCatalog) this.inventoryCatalog.controller = null;
       },
+      async maintainInventoryCount(options) {
+        const state = this.inventoryCount;
+        const owner = this.activeUserId;
+        if (!this.serverInventory) {
+          if (state.controller) state.controller.abort();
+          Object.assign(state, { total: null, owner: null, loading: false, epoch: nextEpoch(), controller: null });
+          return false;
+        }
+        const force = options && options.force;
+        if (state.owner === owner && !force && (state.loading || state.total !== null)) return false;
+        if (state.controller) state.controller.abort();
+        const epoch = nextEpoch();
+        const controller = makeController();
+        Object.assign(state, { owner, total: state.owner === owner ? state.total : null, loading: true, epoch, controller });
+        const current = () => this.inventoryCount === state && state.epoch === epoch
+          && this.serverInventory && this.activeUserId === owner;
+        try {
+          // A bounded, unfiltered read: sidebar scope never follows list filters.
+          const payload = await window.AssetAccess.request(this, '/assets/search?limit=1&offset=0', {
+            signal: controller ? controller.signal : undefined
+          });
+          if (!current()) return false;
+          state.total = Number.isInteger(payload.total) && payload.total >= 0 ? payload.total : null;
+          return state.total !== null;
+        } catch (error) {
+          if (!current() || (error && error.name === 'AbortError')) return false;
+          state.total = null;
+          return false;
+        } finally {
+          if (current()) { state.loading = false; state.controller = null; }
+        }
+      },
       async loadInventory(options) {
         if (!this.inventoryAvailable()) return false;
         const opts = options || {};
@@ -667,11 +708,12 @@
         this.inventory.controller = controller;
         this.inventory.loading = true;
         this.inventory.error = '';
+        const query = this.inventoryQueryString();
         try {
-          const payload = await window.AssetAccess.request(this, '/assets/search' + this.inventoryQueryString(), {
+          const payload = await window.AssetAccess.request(this, '/assets/search' + query, {
             signal: controller ? controller.signal : undefined
           });
-          if (epoch !== this.inventory.epoch || !this.authenticated) return false;
+          if (epoch !== this.inventory.epoch || !this.authenticated || query !== this.inventoryQueryString()) return false;
           this.inventory.items = (Array.isArray(payload.items) ? payload.items : [])
             .map((item) => this.inventoryMapAsset(item))
             .filter(Boolean);
@@ -679,9 +721,17 @@
           this.inventory.limit = Number(payload.limit) || this.inventory.limit;
           this.inventory.offset = Number(payload.offset) || 0;
           this.inventory.loaded = true;
+          this.inventory.query = this.inventoryQueryString();
+          if (!this.inventoryFiltersActive) {
+            if (this.inventoryCount.controller) this.inventoryCount.controller.abort();
+            Object.assign(this.inventoryCount, { total: this.inventory.total, owner: this.activeUserId,
+              loading: false, epoch: nextEpoch(), controller: null });
+          } else if (opts.refreshCount) {
+            await this.maintainInventoryCount({ force: true });
+          }
           return true;
         } catch (error) {
-          if (epoch !== this.inventory.epoch) return false;
+          if (epoch !== this.inventory.epoch || query !== this.inventoryQueryString()) return false;
           if (error && error.name === 'AbortError') return false;
           if (error && error.status === 401) {
             this.clearInventoryState();
@@ -837,6 +887,8 @@
         return this.loadInventoryHistory(this.inventoryHistory.id, { limit: this.inventoryHistory.limit, offset: next });
       },
       clearInventoryState() {
+        if (this.inventoryCount.controller) this.inventoryCount.controller.abort();
+        this.inventoryCount = { total: null, owner: null, loading: false, epoch: nextEpoch(), controller: null };
         this.abortInventoryRequest();
         this.abortInventoryDetail();
         this.abortInventoryHistory();
@@ -866,7 +918,9 @@
         if (next && next.name === 'inventory') {
           const tasks = [];
           if (!this.inventoryCatalog.loaded) tasks.push(this.loadInventoryCatalog());
-          if (!this.inventory.loaded) tasks.push(this.loadInventory());
+          // A loaded collection belongs to the query that produced it, not to
+          // every later category or restored view selected outside this route.
+          if (!this.inventory.loaded || this.inventory.query !== this.inventoryQueryString()) tasks.push(this.loadInventory());
           return Promise.all(tasks);
         }
         if (next && next.name === 'datos') {
@@ -1182,7 +1236,7 @@
           const saved = this.inventoryMapAsset(payload);
           this.assetEditor.saving = false;
           this.closeAssetEditor();
-          await this.loadInventory();
+          await this.loadInventory({ refreshCount: true });
           if (saved) {
             if (this.inventoryDetail.id === saved.id) await this.loadInventoryDetail(saved.id);
             this.showToast(isCreate
@@ -1304,7 +1358,7 @@
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
           const kind = dialog.kind;
           this.inventoryLifecycle = createLifecycle();
-          await this.loadInventory();
+          await this.loadInventory({ refreshCount: true });
           if (this.inventoryDetail.id === dialog.assetId) await this.loadInventoryDetail(dialog.assetId);
           if (this.inventoryHistory.id === dialog.assetId) await this.loadInventoryHistory(dialog.assetId);
           const messages = {
@@ -1333,7 +1387,7 @@
           const payload = await window.AssetAccess.request(this, '/assets/' + encodeURIComponent(asset.id) + '/clone', { method: 'POST', body: body });
           if (!this.authenticated || epoch !== this.inventory.epoch) return false;
           const saved = this.inventoryMapAsset(payload);
-          await this.loadInventory();
+          await this.loadInventory({ refreshCount: true });
           this.showToast(saved ? tr('ui.inventory.toast.cloned', { id: saved.id }) : tr('ui.inventory.toast.clone_done'));
           if (saved) this.openAsset(saved);
           return saved || true;

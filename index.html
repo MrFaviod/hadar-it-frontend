@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b2331">
-  <meta name="description" content="Asset Manager: prototipo de gestión de activos informáticos con inventario, ficha de activo y acceso remoto simulado.">
-  <title>Asset Manager · Gestión de activos TI</title>
+  <meta name="description" content="Hadar IT. Bring your own department. ITSM agent-first. Alpha.">
+  <title>Hadar IT · Bring your own department.</title>
   <script src="assets/js/theme.js"></script>
   <script src="assets/js/sidebar.js"></script>
   <style>
@@ -216,6 +216,8 @@
   <link rel="stylesheet" href="assets/css/agent-integrations.css">
   <link rel="stylesheet" href="assets/css/workspace.css">
   <link rel="stylesheet" href="assets/css/help.css">
+  <link rel="stylesheet" href="assets/css/composition.css">
+  <link rel="stylesheet" href="assets/css/operational.css">
   <link rel="stylesheet" href="assets/css/motion.css">
   <link rel="stylesheet" href="assets/vendor/maplibre-gl.css">
 </head>
@@ -260,6 +262,7 @@
 
       <main class="login__panel">
         <div class="login__form-wrap">
+          <p v-if="appName === $t('ui.shell.brand')" class="login__tagline">{{ $t('ui.shell.tagline') }}</p>
           <h1 id="login-title">{{ $t('ui.login.title') }}</h1>
 
           <form class="login-form" @submit.prevent="submitLoginWithFocus" novalidate>
@@ -345,7 +348,7 @@
                    :aria-current="route.name === 'inventory' || route.name === 'detail' ? 'page' : null" @click="closeSidebar">
                   <app-icon name="inventory"></app-icon>
                   <span>{{ $t('ui.nav.inventory') }}</span>
-                  <span v-if="!serverInventory || !inventoryFiltersActive" class="nav-link__count">{{ serverInventory ? inventoryTotal : assets.length }}</span>
+                  <span v-if="!serverInventory || inventoryNavTotal !== null" class="nav-link__count">{{ serverInventory ? inventoryNavTotal : assets.length }}</span>
                 </a>
               </composition-nav-item>
               <composition-nav-item :app="$root" target="nav.conversation" :permitted="can('assets.view')">
@@ -468,6 +471,7 @@
           </div>
 
           <div class="topbar__right">
+            <workspace-shortcuts :app="$root"></workspace-shortcuts>
             <button type="button" class="universal-trigger" :aria-label="$t('ui.shell.search_aria', { app: appName })" aria-haspopup="dialog" :aria-expanded="universalOpen" data-od-id="universal-search-trigger" @click="openUniversalSearch"><app-icon name="search"></app-icon><span>{{ $t('ui.shell.search_trigger') }}</span><kbd>{{ $t('ui.shell.search_shortcut') }}</kbd></button>
             <notification-bell :app="$root"></notification-bell>
             <button type="button" class="theme-toggle" :aria-pressed="themeResolved === 'dark'" :aria-label="themeToggleLabel"
@@ -513,7 +517,7 @@
         </p>
 
         <main id="main-content" class="main" tabindex="-1">
-          <workspace-shortcuts :app="$root"></workspace-shortcuts>
+
           <section v-if="workspaceCanSave && route.name !== 'panel' && route.name !== 'inventory'" class="universal-filter-strip" :aria-label="$t('ui.shell.filters_aria')" data-od-id="shared-view-filters">
             <div class="universal-filter-strip__controls">
               <label v-if="route.name==='map'||route.name==='graph'" class="sr-only" for="shared-category">{{ $t('ui.shell.filter_category') }}</label><select v-if="route.name==='map'||route.name==='graph'" id="shared-category" :value="workspaceFilters.category" @change="setWorkspaceFilter('category',$event.target.value)"><option value="all">{{ $t('ui.shell.filter_all_categories') }}</option><option v-for="c in categories" :key="c.id" :value="c.id">{{c.label}}</option></select>
@@ -539,7 +543,7 @@
               <access-user-detail v-else-if="route.name === 'user'" :app="$root"></access-user-detail>
               <panel-overview ref="workspaceView" v-else-if="route.name === 'panel'" :app="$root"></panel-overview>
               <data-transfer v-else-if="route.name === 'datos'" :app="$root"></data-transfer>
-              <section v-else-if="route.name === 'inventory'" class="page" aria-labelledby="inventory-title">
+              <section v-else-if="route.name === 'inventory'" class="page inventory-page" aria-labelledby="inventory-title">
                 <header class="page-head">
                   <div class="page-head__copy">
                     <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.inventory.eyebrow') }}</p>
@@ -562,6 +566,7 @@
                   </div>
                 </header>
 
+                <div class="inventory-query">
                 <div v-if="workspaceInventoryChips.length" class="universal-filter-strip universal-filter-strip--inventory" data-od-id="inventory-restored-filters">
                   <div class="universal-filter-strip__chips" :aria-label="$t('ui.shell.filter_chips_aria')">
                     <button v-for="chip in workspaceInventoryChips" :key="chip.kind+':'+chip.id" type="button" :aria-label="$t('ui.shell.filter_remove',{label:chip.label})" @click="removeWorkspaceFilter(chip)">{{chip.label}}<app-icon name="close"></app-icon></button>
@@ -593,6 +598,7 @@
                     <span>{{ $t('ui.inventory.refresh') }}</span>
                   </button>
 
+                  <div class="inventory-presentation">
                   <details v-if="prefs.view==='table'" class="inventory-columns"><summary>{{ $t('ui.shell.filter_columns') }}</summary><div><label v-for="c in [{id:'model',label:$t('ui.inventory.column_model')},{id:'location',label:$t('ui.inventory.column_location')},{id:'assignee',label:$t('ui.inventory.column_assignee')},{id:'ip',label:$t('ui.inventory.column_ip')}]" :key="c.id"><input type="checkbox" v-model="workspaceInventory.columns" :value="c.id">{{c.label}}</label></div></details>
                   <div class="view-switch" role="group" :aria-label="$t('ui.inventory.view_aria')">
                     <button type="button" :class="{ 'is-active': prefs.view === 'table' }" :aria-pressed="prefs.view === 'table'" @click="setView('table')">
@@ -601,6 +607,7 @@
                     <button type="button" :class="{ 'is-active': prefs.view === 'cards' }" :aria-pressed="prefs.view === 'cards'" @click="setView('cards')">
                       <app-icon name="grid"></app-icon><span>{{ $t('ui.inventory.view_cards') }}</span>
                     </button>
+                  </div>
                   </div>
                 </div>
 
@@ -616,6 +623,8 @@
                   </button>
                 </div>
 
+                </div>
+                <div class="inventory-results">
                 <div v-if="!inventory.error" class="results-bar" aria-live="polite">
                   <p>{{ $t('ui.inventory.results', { count: inventoryTotal }) }} <span>· {{ inventoryPageLabel }}</span></p>
                   <button v-if="inventoryFiltersActive && inventoryItems.length" type="button" class="text-button text-button--quiet" @click="clearInventoryFilters">
@@ -724,6 +733,7 @@
                   <button v-if="inventoryFiltersActive" type="button" class="btn btn--primary" @click="clearInventoryFilters">{{ $t('ui.inventory.clear_filters') }}</button>
                 </div>
 
+                </div>
                 <nav v-if="inventoryTotal > inventory.limit" class="inventory-pagination" :aria-label="$t('ui.inventory.pagination_aria')">
                   <button type="button" class="btn btn--secondary" :disabled="!inventoryHasPrev" @click="prevInventoryPage">{{ $t('ui.inventory.previous') }}</button>
                   <span aria-live="polite">{{ inventoryPageLabel }}</span>
@@ -740,7 +750,7 @@
                   <div class="page-head__copy">
                     <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.people.eyebrow') }}</p>
                     <h1 id="people-title">{{ $t('ui.people.title') }}</h1>
-                    <p class="page-head__lead">{{ $t('ui.people.lead') }}</p>
+
                   </div>
                   <button v-if="can('people.create')" type="button" class="btn btn--primary" @click="openPersonDialog()">
                     <app-icon name="plus"></app-icon> {{ $t('ui.people.new') }}
@@ -1131,7 +1141,7 @@
                   <div class="page-head__copy">
                     <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.shell.config_eyebrow') }}</p>
                     <h1 id="config-title">{{ $t('ui.page.settings') }}</h1>
-                    <p class="config-page__lead">{{ $t('ui.shell.config_lead') }}</p>
+
                   </div>
                   <div v-if="!serverOrganizationMode" class="page-head__meta" :aria-label="$t('ui.shell.config_summary_aria')">
                     <span class="mono">{{ $t('ui.shell.config_categories', { count: categories.length }) }}</span>
@@ -1152,7 +1162,7 @@
                        :href="'#/configuracion/' + section.id" :class="{ 'is-active': route.section === section.id }"
                        :aria-current="route.section === section.id ? 'page' : null" @click="closeSidebar">
                       <span class="config-nav__icon"><app-icon :name="section.icon"></app-icon></span>
-                      <span class="config-nav__text"><strong>{{ section.label }}</strong><small>{{ section.hint }}</small></span>
+                      <span class="config-nav__text"><strong>{{ section.label }}</strong></span>
                       <app-icon name="chevron-right"></app-icon>
                     </a>
                   </nav>
@@ -1170,7 +1180,7 @@
                         <div>
                           <p class="eyebrow">{{ $t('ui.catalog.general.eyebrow') }}</p>
                           <h2 id="config-general-title">{{ $t('ui.catalog.general.title') }}</h2>
-                          <p>{{ $t('ui.catalog.general.lead') }}</p>
+
                         </div>
                         <span class="config-badge"><app-icon name="sliders"></app-icon> {{ $t('ui.catalog.general.badge') }}</span>
                       </header>
@@ -1179,7 +1189,7 @@
                         <span class="brand-preview__logo"><img :src="brandLogo" width="64" height="64" alt=""></span>
                         <div class="brand-preview__copy"><strong>{{ appName }}</strong><small>{{ organizationName }}</small></div>
                       </div>
-                      <p>{{ $t('ui.catalog.general.body') }}</p>
+
                       <a class="btn btn--secondary" href="#/configuracion/apariencia">{{ $t('ui.catalog.general.manage') }}</a>
                     </section>
                       <search-settings :app="$root"></search-settings>
@@ -2974,6 +2984,7 @@
   <script src="assets/js/phase10-api.js"></script>
   <script src="assets/js/dashboard-model.js"></script>
   <script src="assets/js/dashboard-preferences.js"></script>
+  <script src="assets/js/dashboard-charts.js"></script>
   <script src="assets/js/dashboard-views.js"></script>
   <script src="assets/js/panel.js"></script>
   <script src="assets/js/transfer-data.js"></script>

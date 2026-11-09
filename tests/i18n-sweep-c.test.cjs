@@ -93,7 +93,7 @@ test('S3 extension pages render English copy and keep the Spanish source', async
 test('S3 appearance settings render English copy and keep the Spanish source', async () => {
   const s = setup();
   const { spanish, english, restored } = await renderBothLocales('AppearanceSettings', { app: s.app });
-  assert.match(spanish, /Logotipos, colores y tipografía de la organización\./);
-  assert.match(english, /Organization logos, colors and typography\./);
-  assert.match(restored, /Logotipos, colores y tipografía de la organización\./);
+  assert.match(spanish, /Identidad de la organización/);
+  assert.match(english, /Organization identity/);
+  assert.match(restored, /Identidad de la organización/);
 });

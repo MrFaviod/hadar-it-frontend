@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const components = { AppIcon: window.AppIcon, MonChart: window.Views.MonChart, MonStatusPill: window.Views.MonStatusPill };
+  const components = { DashboardDonut: window.AssetDashboardCharts.DashboardDonut, AppIcon: window.AppIcon, MonChart: window.Views.MonChart, MonStatusPill: window.Views.MonStatusPill };
   // The dashboard renders outside a mounted template too (KPI cards), so copy
   // and formats come from the runtime instead of a module-level literal.
   function tr(key, params) {
@@ -42,8 +42,12 @@
       model() { return this.snapshot || window.AssetDashboardModel.build(this.app, this.filters); },
       activity() { return this.model.activity.filter(e => !this.activityKind || e.kind === this.activityKind).slice(0, 8); },
       groups() { return this.breakdown === 'site' ? this.model.bySite : this.model.byCategory; },
+      maxGroupTotal() { return Math.max(1, ...this.groups.map(group => group.total)); },
       currentPoint() { const s = this.widget === 'latency' ? this.model.latency : this.model.availability; return s[this.pointIndex < 0 ? s.length - 1 : this.pointIndex]; },
-      series() { return this.widget === 'latency' ? this.model.latency : this.model.availability; }
+      series() { return this.widget === 'latency' ? this.model.latency : this.model.availability; },
+      timeline() { return window.AssetDashboardCharts.isTimeline(this.series); },
+      measuredLatency() { return window.AssetDashboardCharts.latencyRows(this.model.rows); },
+      maxLatency() { return Math.max(1, ...this.measuredLatency.map(r => r.latencyMs)); }
     },
     methods: {
       format,
@@ -70,12 +74,18 @@
         return formatted || tr('ui.dashboard.date_none');
       },
       fraction(n, total) { return total ? Math.max(0, n / total * 100) + '%' : '0%'; },
-      assetName(alert) { const asset = this.model.assets.find(item => item.id === alert.assetId); return asset ? asset.name : ''; },
+      assetName(alert) { const asset = this.model.assets.find(item => item.id === alert.assetId); return asset ? asset.name : (alert.asset && alert.asset.name) || ''; },
       open(asset) { this.app.openAsset(asset); }
     },
     template: `<div class="noc-widget-body">
       <template v-if="widget === 'availability' || widget === 'latency'">
-        <div v-if="series.length" class="noc-chart-wrap">
+        <div v-if="widget==='availability' && series.length && !timeline" class="ops-window-chart" role="img" :aria-label="series.map(p=>p.label+': '+p.value+'%').join(', ')">
+          <div class="ops-gauge" :style="{'--gauge-value':Math.max(0,Math.min(100,model.stats.availability || 0))+'%'}"><div><strong>{{ format(model.stats.availability) }}<small>%</small></strong><span>{{ periodLabel(filters.period) }}</span></div></div>
+          <div class="ops-window-bars"><div v-for="(point,index) in series" :key="index" class="ops-window-row"><span>{{ point.label }}</span><div><i :style="{width:Math.max(0,Math.min(100,point.value))+'%'}"></i></div><b>{{ format(point.value) }}<small>%</small></b></div><span class="ops-chart-caption">{{ $t('ui.dashboard.window_comparison') }}</span></div>
+        </div>
+        <div v-else-if="widget==='latency' && measuredLatency.length" class="ops-latency-bars"><a v-for="row in measuredLatency.slice(0,8)" :key="row.asset.id" :href="row.href"><span>{{row.asset.name}}</span><div><i :style="{width:fraction(row.latencyMs,maxLatency)}"></i></div><b>{{format(row.latencyMs)}}<small> {{ $t('ui.dashboard.unit_ms') }}</small></b></a></div>
+        <div v-else-if="widget==='latency' && series.length" class="ops-current-reading"><strong>{{format(series[0].value)}}<small> {{ $t('ui.dashboard.unit_ms') }}</small></strong><span>{{ $t('ui.dashboard.current') }}</span></div>
+        <div v-else-if="timeline" class="noc-chart-wrap">
           <mon-chart :points="series" :label="widget === 'availability' ? $t('ui.dashboard.chart_availability') : $t('ui.dashboard.chart_latency')" :unit="widget === 'availability' ? '%' : 'ms'" :height="190" :min="widget === 'availability' ? 0 : null" :max="widget === 'availability' ? 100 : null"></mon-chart>
           <div class="noc-chart-inspect"><label :for="'sample-'+widget">{{ $t('ui.dashboard.inspect_label') }}</label><input :id="'sample-'+widget" type="range" min="0" :max="series.length-1" :value="pointIndex < 0 ? series.length-1 : Math.min(pointIndex,series.length-1)" @input="pointIndex=Number($event.target.value)" :aria-label="widget === 'availability' ? $t('ui.dashboard.sample_availability') : $t('ui.dashboard.sample_latency')" data-od-id="dashboard-chart-sample"><output v-if="currentPoint">{{ currentPoint.label }} · {{ format(currentPoint.value) }} {{ widget === 'availability' ? '%' : 'ms' }}</output></div>
           <div class="noc-chart-footer"><span>{{ $t('ui.dashboard.uptime_label') }} <b>{{ model.uptimeDays === null ? $t('ui.dashboard.no_data') : $t('ui.dashboard.uptime_days', { count: model.uptimeDays }) }}</b></span><span>{{ $t('ui.dashboard.last_check') }} <b>{{ when(model.lastCheck) }}</b></span></div>
@@ -91,16 +101,14 @@
       </template>
       <template v-else-if="widget === 'distribution'">
         <template v-if="model.stats.total">
-          <div class="noc-distribution" role="img" :aria-label="model.distribution.map(r=>r.label+': '+r.count).join(', ')"><span v-for="item in model.distribution.filter(r=>r.count)" :key="item.id" :class="'noc-state--'+item.id" :style="{width:fraction(item.count,model.stats.total)}"></span></div>
-          <a v-for="item in model.distribution.filter(r=>r.count || ['up','degraded','down','unmonitored'].includes(r.id))" :key="item.id" class="noc-state-row" href="#/supervision/dispositivos"><i :class="'noc-state--'+item.id"></i><span>{{ item.label }}</span><strong>{{ item.count }}</strong><small>{{ format(model.stats.total ? item.count/model.stats.total*100 : 0) }} %</small></a>
-          <p class="noc-footnote">{{ $t('ui.dashboard.distribution_note') }}</p>
+          <dashboard-donut :rows="model.distribution" :label="$t('ui.dashboard.inventory_records')"></dashboard-donut><a class="noc-text-link" href="#/supervision/dispositivos">{{ $t('ui.panel.open_monitoring') }} <app-icon name="arrow-right"></app-icon></a>
         </template>
         <p v-else class="noc-empty">{{ $t('ui.dashboard.distribution_empty') }}</p>
       </template>
       <template v-else-if="widget === 'infrastructure'">
         <div class="noc-segment" role="group" :aria-label="$t('ui.dashboard.breakdown_aria')"><button type="button" :aria-pressed="breakdown==='category'" @click="breakdown='category'">{{ $t('ui.dashboard.by_category') }}</button><button type="button" :aria-pressed="breakdown==='site'" @click="breakdown='site'">{{ $t('ui.dashboard.by_site') }}</button></div>
-        <div v-if="groups.length" class="noc-groups" data-od-id="dashboard-groups" tabindex="0" role="group" :aria-label="breakdown==='site' ? $t('ui.dashboard.by_site') : $t('ui.dashboard.by_category')"><a v-for="group in groups" :key="group.id" :href="breakdown==='site' ? '#/infra/mapa' : '#/supervision/dispositivos'" class="noc-group"><span>{{ group.label }}<small>{{ $t('ui.dashboard.group_devices', { count: group.total }) }}</small></span><div class="noc-group-bar" :aria-label="$t('ui.dashboard.group_aria', { up: group.up, degraded: group.degraded, down: group.down, other: group.other })\"><i class="noc-state--up" :style="{width:fraction(group.up,group.total)}"></i><i class="noc-state--degraded" :style="{width:fraction(group.degraded,group.total)}"></i><i class="noc-state--down" :style="{width:fraction(group.down,group.total)}"></i><i class="noc-state--unmonitored" :style="{width:fraction(group.other,group.total)}"></i></div></a></div>
-        <p v-else class="noc-empty">{{ $t('ui.dashboard.empty_filters') }}</p><a v-if="groups.length > 4" class="noc-text-link" href="#/supervision">{{ $t('ui.panel.open_monitoring') }} <app-icon name="arrow-right"></app-icon></a><p class="noc-footnote">{{ $t('ui.dashboard.legend') }}</p>
+        <div v-if="groups.length" class="noc-groups" data-od-id="dashboard-groups" tabindex="0" role="group" :aria-label="breakdown==='site' ? $t('ui.dashboard.by_site') : $t('ui.dashboard.by_category')"><a v-for="group in groups" :key="group.id" :href="breakdown==='site' ? '#/infra/mapa' : '#/supervision/dispositivos'" class="noc-group"><span>{{ group.label }}<small>{{ $t('ui.dashboard.group_devices', { count: group.total }) }}</small></span><div class="noc-group-bar" :style="{width:fraction(group.total,maxGroupTotal)}" :aria-label="$t('ui.dashboard.group_aria', { up: group.up, degraded: group.degraded, down: group.down, other: group.other })\"><i class="noc-state--up" :style="{width:fraction(group.up,group.total)}"></i><i class="noc-state--degraded" :style="{width:fraction(group.degraded,group.total)}"></i><i class="noc-state--down" :style="{width:fraction(group.down,group.total)}"></i><i class="noc-state--unmonitored" :style="{width:fraction(group.other,group.total)}"></i></div></a></div>
+        <p v-else class="noc-empty">{{ $t('ui.dashboard.empty_filters') }}</p><a v-if="groups.length > 4" class="noc-text-link" href="#/supervision">{{ $t('ui.panel.open_monitoring') }} <app-icon name="arrow-right"></app-icon></a>
       </template>
       <template v-else-if="widget === 'activity'">
         <label class="noc-inline-filter">{{ $t('ui.dashboard.activity_type') }}<select v-model="activityKind" data-od-id="dashboard-log-filter"><option value="">{{ $t('ui.dashboard.all_events') }}</option><option value="alert">{{ $t('ui.dashboard.events_alert') }}</option><option value="recovery">{{ $t('ui.dashboard.events_recovery') }}</option><option value="inventory">{{ $t('ui.dashboard.events_inventory') }}</option><option value="technical">{{ $t('ui.dashboard.events_technical') }}</option></select></label>
@@ -112,7 +120,7 @@
       </template>
       <template v-else-if="widget === 'warranties'">
         <button type="button" v-for="row in model.warranties.slice(0,5)" :key="row.asset.id" class="noc-work noc-work--button" @click="open(row.asset)"><span><b>{{ row.asset.name }}</b><small>{{ row.asset.code || row.asset.id }}</small></span><strong>{{ warrantyLabel(row.days) }}</strong><time>{{ day(row.until) }}</time></button>
-        <p v-if="!model.warranties.length" class="noc-empty">{{ $t('ui.dashboard.warranties_empty') }}</p><p class="noc-footnote">{{ $t('ui.dashboard.warranties_note') }}</p>
+        <p v-if="!model.warranties.length" class="noc-empty">{{ $t('ui.dashboard.warranties_empty') }}</p>
       </template>
       <template v-else-if="widget === 'inventory'">
         <div class="noc-inventory"><a href="#/inventario"><strong>{{ model.inventory.total }}</strong><span>{{ $t('ui.dashboard.inventory_records') }}</span></a><a href="#/inventario"><strong>{{ model.inventory.active }}</strong><span>{{ $t('ui.dashboard.inventory_active') }}</span></a><a href="#/inventario"><strong>{{ model.inventory.unassigned }}</strong><span>{{ $t('ui.dashboard.inventory_unassigned') }}</span></a></div>

@@ -49,7 +49,7 @@ function setup() {
   for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) {
     if ((src.includes('/vendor/') && !src.includes('report-qrcode')) || /theme|sidebar|app\.js/.test(src)) continue;
     if (src === 'assets/js/panel.js' && !c.AssetDashboardViews) {
-      for (const name of ['dashboard-model', 'dashboard-preferences', 'dashboard-views']) {
+      for (const name of ['dashboard-model', 'dashboard-preferences', 'dashboard-charts', 'dashboard-views']) {
         vm.runInContext(fs.readFileSync('assets/js/' + name + '.js', 'utf8'), c);
       }
     }

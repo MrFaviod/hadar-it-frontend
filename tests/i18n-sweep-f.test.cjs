@@ -169,12 +169,12 @@ test('T3a agents: the engine picker renders engine, profile and model copy from 
   await withLocales(s, {
     es: (copy) => {
       assert.match(copy, /Motor y modelo/, 'the Spanish heading is unchanged');
-      assert.match(copy, /El perfil elegido se usará en las conversaciones nuevas/, 'the Spanish profile hint is unchanged');
+      assert.match(copy, /Se aplica a conversaciones nuevas\./, 'the Spanish profile hint is unchanged');
       assert.match(copy, /Respuesta progresiva/, 'the Spanish capability label is unchanged');
     },
     en: (copy) => {
       assert.match(copy, /Engine and model/, 'the English heading is shown');
-      assert.match(copy, /The chosen profile is used in new conversations/, 'the English profile hint is shown');
+      assert.match(copy, /Applies to new conversations\./, 'the English profile hint is shown');
       assert.match(copy, /Progressive response/, 'the English capability label is shown');
       assert.doesNotMatch(copy, /Motor y modelo|El perfil elegido|conversaciones nuevas|Respuesta progresiva/, 'no Spanish copy leaks into English');
     }
@@ -195,13 +195,13 @@ test('T3a agents: the instance editor renders field labels and hints from the ca
       assert.match(copy, /Nombre/, 'the Spanish name label is unchanged');
       assert.match(copy, /URL base/, 'the Spanish base URL label is unchanged');
       assert.match(copy, /Guardar instancia/, 'the Spanish save label is unchanged');
-      assert.match(copy, /Solo se guarda la referencia a la variable de entorno/, 'the Spanish secret hint is unchanged');
+      assert.match(copy, /Referencia de entorno; no introduzcas la clave\./, 'the Spanish secret hint is unchanged');
     },
     en: (copy) => {
       assert.match(copy, /Name/, 'the English name label is shown');
       assert.match(copy, /Base URL/, 'the English base URL label is shown');
       assert.match(copy, /Save instance/, 'the English save label is shown');
-      assert.match(copy, /Only the reference to the environment variable is stored/, 'the English secret hint is shown');
+      assert.match(copy, /Environment reference; do not enter the key\./, 'the English secret hint is shown');
       assert.doesNotMatch(copy, /Guardar instancia|URL base|Solo se guarda la referencia/, 'no Spanish copy leaks into English');
     }
   });

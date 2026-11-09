@@ -367,7 +367,7 @@
         return this.config.departments;
       },
       appName() {
-        return this.config.general.appName || 'Asset Manager';
+        return this.config.general.appName || 'Hadar IT';
       },
       organizationName() {
         return this.config.general.organizationName || 'Operaciones TI';
@@ -661,7 +661,8 @@
       }
     }, window.AssetInventory.computed, window.AssetOrganization.computed, window.AssetRedundancy.computed, window.AssetMaintenanceApi.computed, window.AssetMonitoringApi.computed, window.AssetPhase9.computed, window.AssetExtensions.computed),
     watch: {
-      activeUserId() { this.changeAppearanceUser(); this.phase10IdentityChanged(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); this.extensionsIdentityChanged(); },
+      activeUserId() { this.changeAppearanceUser(); this.phase10IdentityChanged(); this.identityChangedPhase6(); this.identityChangedPhase9(); this.maintainMaintenanceIdentity(); this.maintainMonitoringIdentity(); this.extensionsIdentityChanged(); this.maintainInventoryCount(); },
+      serverInventory: { immediate: true, handler() { this.maintainInventoryCount(); } },
       serverPermissions: { deep: true, handler() { this.extensionsIdentityChanged(); } },
       'config.general': { deep: true, handler(value) {
         Object.assign(this.appearance.active.branding, value);

@@ -69,7 +69,10 @@ test('dashboard has no fabricated data without a summary and exposes unavailable
   assert.equal(empty.available, false);
   assert.equal(M.fromSummary(summary({ incidents: undefined })).widgetAvailable('incidents'), false);
   assert.equal(M.fromSummary(summary({ availability: { current: null, configured: false, samples: [], samplesCount: 0 } })).widgetAvailable('availability'), false);
-  assert.equal(M.fromSummary(summary({ latency: { current: null } })).widgetAvailable('latency'), false);
+  assert.equal(M.fromSummary(summary({ latency: { current: null } })).widgetAvailable('latency'), true, 'canonical per-device readings are available');
+  const noLatency = summary({ latency: { current: null } });
+  noLatency.rows.forEach(row => { row.latencyMs = null; });
+  assert.equal(M.fromSummary(noLatency).widgetAvailable('latency'), false);
 });
 
 test('dashboard API keeps only the latest monotonic response and clears on failure', async () => {

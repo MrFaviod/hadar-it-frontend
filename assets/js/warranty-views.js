@@ -615,13 +615,15 @@
     template: `
       <section class="page warranties-page" data-od-id="warranties-center">
         <header class="page-head">
-          <div><p class="eyebrow">{{ t('ui.warranty.lifecycle') }}</p><h1>{{ t('ui.warranty.center_title') }}</h1><p class="page-head__description">{{ t('ui.warranty.center_lead') }}</p></div>
+          <div><p class="eyebrow">{{ t('ui.warranty.lifecycle') }}</p><h1>{{ t('ui.warranty.center_title') }}</h1></div>
           <div class="doc-inline"><a class="btn btn--secondary" href="#/configuracion/garantias"><app-icon name="sliders"></app-icon>{{ t('ui.warranty.preferences') }}</a><button class="btn btn--primary" type="button" disabled aria-describedby="warranty-report-note">{{ t('ui.warranty.report') }}</button></div>
         </header>
         <p id="warranty-report-note" class="doc-help">{{ t('ui.warranty.report_note') }}</p>
         <div class="warranty-metrics">
           <button v-for="m in metrics" :key="m.id" type="button" :class="['warranty-metric',{'is-active':filter===m.cov}]" :aria-pressed="filter===m.cov" @click="setCoverage(m.cov)"><span>{{ m.label }}</span><strong class="mono">{{ counts[m.cov || 'all'] }}</strong><small>{{ m.description }}</small></button>
         </div>
+        <div class="warranty-results">
+        <div class="warranty-filters">
         <div class="warranty-toolbar">
           <label class="doc-field"><span class="sr-only">{{ t('ui.warranty.search_aria') }}</span><input type="search" v-model="search" :placeholder="t('ui.warranty.search_placeholder')"></label>
           <label class="doc-field"><span class="sr-only">{{ t('ui.transfer.dialog.site') }}</span><select v-model="site"><option value="all">{{ t('ui.warranty.all_sites') }}</option><option v-for="s in app.sites" :key="s.id" :value="s.id">{{ s.label }}</option></select></label>
@@ -629,6 +631,7 @@
           <label class="doc-field"><span class="sr-only">{{ t('ui.warranty.provider') }}</span><select v-model="provider"><option value="all">{{ t('ui.warranty.all_providers') }}</option><option v-for="p in providers" :key="p" :value="p">{{ p }}</option></select></label>
         </div>
         <p class="doc-help">{{ t('ui.warranty.filters_note') }}</p>
+        </div>
         <div class="results-bar"><p>{{ t('ui.warranty.results', { shown: rows.length, total: counts.all }) }}</p><button class="text-button" type="button" :aria-pressed="filter==='unknown'" @click="setCoverage(filter==='unknown'?'':'unknown')">{{ t('ui.warranty.coverage.unknown') }} <span class="mono">{{ counts.unknown }}</span></button></div>
         <p v-if="state.loading" class="config-note" role="status">{{ t('ui.warranty.loading_list') }}</p>
         <p v-else-if="state.error" class="field__error" role="alert">{{ state.error }}</p>
@@ -650,6 +653,7 @@
         </div>
         <button v-if="state.hasMore" class="btn btn--secondary btn--small" type="button" :disabled="state.loading" @click="loadMore">{{ t('ui.warranty.load_more') }}</button>
         <p class="doc-help warranty-bottom-note">{{ loadedNote }} {{ t('ui.warranty.bottom_note') }}</p>
+        </div>
         ${editorTemplate}
       </section>
     `

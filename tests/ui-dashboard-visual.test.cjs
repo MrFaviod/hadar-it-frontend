@@ -48,7 +48,7 @@ function context(locale = 'es') {
     formatDate: () => '',
     formatBytes: value => String(value)
   };
-  for (const file of ['dashboard-model', 'dashboard-preferences', 'dashboard-views', 'panel']) {
+  for (const file of ['dashboard-model', 'dashboard-preferences', 'dashboard-charts', 'dashboard-views', 'panel']) {
     vm.runInContext(read('assets/js/' + file + '.js'), c, { filename: file + '.js' });
   }
   return c;

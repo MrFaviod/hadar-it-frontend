@@ -8,7 +8,7 @@ export function AssetApp() {
   useEffect(() => {
     if (host.current) return mountLegacy(host.current, setError);
   }, []);
-  if (error) return <main role="alert"><h1>No se pudo iniciar Asset Manager</h1>
+  if (error) return <main role="alert"><h1>No se pudo iniciar Hadar IT</h1>
     <p>{error.message}</p><button onClick={() => location.reload()}>Reintentar</button></main>;
   return <div id="app" data-react-host ref={host} />;
 }

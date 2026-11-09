@@ -7,8 +7,8 @@
   }
   const clone = value => JSON.parse(JSON.stringify(value));
   const GENERIC = {
-    id: 'generic', name: 'Asset Manager', version: 1, description: 'Identidad original · Siempre disponible',
-    branding: { appName: 'Asset Manager', organizationName: 'Operaciones TI', logo: 'assets/svg/logo.svg', logoDark: '', logoCompact: '', favicon: 'assets/svg/logo.svg' },
+    id: 'generic', name: 'Hadar IT', version: 1, description: 'Identidad original · Siempre disponible',
+    branding: { appName: 'Hadar IT', organizationName: 'Operaciones TI', logo: 'assets/svg/logo.svg', logoDark: '', logoCompact: '', favicon: 'assets/svg/logo.svg' },
     colors: { light: { primary: '#0b2331', secondary: '#0d766e', accent: '#a65c13' }, dark: { primary: '#071923', secondary: '#62d4c7', accent: '#f6bf67' } },
     preferences: { defaultMode: 'system', compact: false }
   };

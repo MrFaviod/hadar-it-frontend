@@ -2187,7 +2187,6 @@
 
         <section v-else-if="step === 2" class="agent-wizard__body" aria-labelledby="agent-wizard-target">
           <h4 id="agent-wizard-target">{{ $t('ui.agents.wizard_target_section') }}</h4>
-          <p>{{ $t('ui.agents.wizard_target_lead', { engine: targetEngineLabel }) }}</p>
           <div class="field">
             <label class="field__label" for="agent-wizard-path">{{ $t('ui.agents.wizard_target_path') }}</label>
             <input id="agent-wizard-path" class="input-shell" v-model.trim="target.path" :placeholder="$t('ui.agents.wizard_target_path_placeholder')" autocomplete="off">
@@ -2270,7 +2269,7 @@
             <dt>{{ $t('ui.agents.wizard_identity_label') }}</dt><dd>{{ selectedIdentity ? machineIdentityLabel(selectedIdentity) : $t('ui.agents.wizard_no_identity') }}</dd>
             <dt>{{ $t('ui.agents.wizard_skills') }}</dt><dd>{{ $t('ui.agents.wizard_selected_count', { count: selectedSkills.length }, selectedSkills.length) }}</dd>
           </dl>
-          <p class="field__hint">{{ $t('ui.agents.wizard_receipt_hint') }}</p>
+
           <div class="agent-wizard__actions">
             <button type="button" class="btn btn--primary btn--small" :disabled="busy" @click="install">{{ busy ? $t('ui.agents.wizard_processing') : (target.remote ? $t('ui.agents.wizard_generate_request') : $t('ui.agents.wizard_install_verify')) }}</button>
           </div>
@@ -3486,7 +3485,7 @@
           <div>
             <p class="eyebrow">{{ $t('ui.agents.settings_eyebrow') }}</p>
             <h2 id="agent-ia-title">{{ $t('ui.agents.settings_title') }}</h2>
-            <p>{{ $t('ui.agents.settings_lead') }}</p>
+
           </div>
           <span class="config-badge"><app-icon name="layers"></app-icon> {{ $t('ui.agents.settings_badge') }}</span>
         </header>

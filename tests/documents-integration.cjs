@@ -13,7 +13,7 @@ function setup(entry='index.html'){
  const html=fs.readFileSync(entry,'utf8');
  for(const [,src] of html.matchAll(/<script src="([^"]+)"/g)){
   if((src.includes('/vendor/')&&!src.includes('report-qrcode'))||/theme|sidebar|app\.js/.test(src))continue;
-  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
+  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-charts','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
  c.ItsmI18n.primeBundle('es');

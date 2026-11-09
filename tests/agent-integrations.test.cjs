@@ -1352,7 +1352,7 @@ test('policy distinguishes zero from unlimited, saves both defaults and cancels 
   assert.equal(ui.vm.canManageQuota, true);
   assert.equal(ui.vm.quotaDraft.companyMode, 'limited');
   assert.equal(Boolean(findNode(ui.mount.root, node => node.props && node.props.id === 'quota-personal-limit')), false);
-  assert.match(nodeText(ui.mount.root), /El consumo con proveedores personales se registra, pero no tiene límite diario/);
+  assert.match(nodeText(ui.mount.root), /Personales: consumo registrado, sin límite diario/);
   assert.equal(ui.vm.quotaLimitText(null, true), 'Ilimitado');
   assert.equal(ui.vm.quotaLimitText(0, true), '0 tokens · sin admisión');
   const text = nodeText(ui.mount.root);

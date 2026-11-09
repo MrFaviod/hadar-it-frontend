@@ -1,0 +1,244 @@
+/* Operational composition contract. Loaded after domain styles so the owner
+ * of a stack, not each child, controls its separation. No new visual effects.
+ * Keep related controls/results closer than independent sections. */
+:root {
+  --layout-section: 24px;
+  --layout-group: 12px;
+  --layout-field: 6px;
+  --layout-inset: 20px;
+}
+
+/* The workspace tools share the page edge; they are not another page header. */
+.main {
+  padding-top: var(--layout-section);
+}
+.main > .workspace-shortcuts {
+  margin: 0 0 var(--layout-group);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.main > .universal-filter-strip {
+  margin: 0 0 var(--layout-section);
+}
+
+.page,
+.noc,
+.maint-page,
+.mon-page {
+  gap: var(--layout-section);
+}
+.page > .page-head,
+.page > .config-page__head {
+  margin-block: 0;
+}
+.page-head,
+.maint-head,
+.mon-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--layout-group) var(--layout-section);
+}
+.page-head > :first-child {
+  min-width: 0;
+  flex: 1 1 24rem;
+}
+.page-head :is(.page-head__side, .doc-inline),
+.maint-head__actions,
+.mon-head__actions {
+  flex-wrap: wrap;
+  gap: var(--layout-group);
+}
+.page-head :is(.page-sub, .page-head__lead, .page-head__description) {
+  max-width: 68ch;
+  margin-top: var(--layout-field);
+}
+
+/* Query controls and category refinements are one block, not peer sections. */
+.inventory-query,
+.inventory-results,
+.warranty-results,
+.warranty-filters,
+.report-selection {
+  display: grid;
+  min-width: 0;
+  gap: var(--layout-group);
+}
+.inventory-query > .universal-filter-strip {
+  margin: 0;
+}
+.inventory-query .toolbar--inventory {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 200px) auto;
+  gap: var(--layout-group);
+}
+.inventory-presentation {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--layout-group);
+  grid-column: 1 / -1;
+}
+.inventory-presentation .view-switch {
+  grid-column: auto;
+}
+.inventory-query .category-rail {
+  margin: 0;
+  padding: 0;
+  gap: var(--layout-field);
+}
+/* The result count directly precedes the surface it describes. */
+.inventory-results,
+.warranty-results {
+  gap: var(--layout-field);
+}
+.warranty-results > .warranty-filters {
+  margin-bottom: var(--layout-group);
+}
+.warranty-results > .warranty-bottom-note {
+  margin: var(--layout-group) 0 0;
+}
+.warranties-page > .warranty-metrics {
+  margin: 0;
+  gap: var(--layout-group);
+}
+.warranty-metric {
+  padding: var(--layout-inset);
+  gap: var(--layout-field);
+}
+/* Help for the disabled report action stays with its header, not the metrics. */
+.warranties-page > #warranty-report-note {
+  margin-top: calc(var(--layout-group) - var(--layout-section));
+}
+.report-selection > :is(.doc-tabs, .doc-family-grid) {
+  margin: 0;
+}
+.report-selection .doc-tabs button {
+  min-height: 44px;
+}
+
+/* Existing generic lists also attach their counts to the following table.
+ * Keep this scoped to direct siblings so dialogs/embedded tables are untouched. */
+.page > .toolbar + .results-bar {
+  margin-top: calc(var(--layout-group) - var(--layout-section));
+}
+.page > .results-bar + .table-panel {
+  margin-top: calc(var(--layout-field) - var(--layout-section));
+}
+
+/* Forms: a label, its control and its help form one unit. A row of fields is
+ * separated more than their contents. Sections keep the larger page rhythm. */
+.field,
+.doc-field {
+  gap: var(--layout-field);
+}
+.form-grid,
+.config-form-grid,
+.doc-form-grid {
+  gap: var(--layout-group) var(--layout-inset);
+}
+.config-general-stack {
+  gap: var(--layout-section);
+}
+.config-section {
+  padding: var(--layout-inset);
+}
+.config-section__head {
+  margin-bottom: var(--layout-inset);
+  padding-bottom: var(--layout-group);
+}
+.noc-context {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.noc-filters {
+  gap: var(--layout-group);
+}
+.noc-filters label {
+  gap: var(--layout-field);
+}
+
+/* Configuration keeps navigation beside content only while both fit.
+   Status facts are label/value groups, not a vertically stacked form. */
+.config-layout { gap: var(--layout-section); }
+.config-nav { gap: var(--layout-field); }
+.config-nav__item { min-height: 54px; }
+.config-nav__text small { font-size: 12px; line-height: 1.4; }
+.config-content .config-section__head { flex-wrap: wrap; }
+.config-content .config-section__head > div:first-child { flex: 1 1 18rem; min-width: 0; }
+.config-content .config-form-foot { flex-wrap: wrap; gap: var(--layout-group); margin-top: var(--layout-inset); }
+.config-assets { gap: var(--layout-group); }
+.config-assets__tab { min-height: 44px; }
+.config-general-stack > .config-section > p + .btn { margin-top: var(--layout-group); }
+@media (max-width: 760px) {
+  .config-assets__tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .config-assets__tab { min-width: 0; white-space: normal; justify-content: flex-start; }
+}
+.config-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--layout-inset);
+  margin: 0;
+}
+.config-status-grid > div { display: grid; align-content: start; gap: var(--layout-field); min-width: 0; }
+.config-status-grid dt { color: var(--muted); font-size: 13px; }
+.config-status-grid dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+@media (max-width: 1080px) {
+  .config-page > .config-section-picker { display: grid; gap: var(--layout-field); color: var(--muted); font-size: 13px; }
+  .config-section-picker select { width: 100%; min-width: 0; min-height: 50px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--paper); color: var(--text); font: inherit; font-size: 15px; }
+  .config-layout > .config-nav { display: none; }
+  .config-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .config-status-grid { grid-template-columns: minmax(0, 1fr); gap: var(--layout-group); }
+  .config-content .config-form-foot > .btn { width: 100%; }
+}
+
+@media (min-width: 1241px) {
+  .inventory-query .toolbar--inventory {
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 200px) auto auto;
+  }
+  .inventory-presentation {
+    grid-column: auto;
+    flex-wrap: nowrap;
+    margin-left: var(--layout-group);
+  }
+}
+@media (max-width: 900px) {
+  :root {
+    --layout-section: 20px;
+    --layout-inset: 16px;
+  }
+  .inventory-query .toolbar--inventory {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .inventory-query .toolbar--inventory > .search-field {
+    grid-column: 1 / -1;
+  }
+  .inventory-presentation {
+    justify-content: flex-start;
+  }
+  .inventory-presentation .view-switch {
+    width: auto;
+  }
+  .page-head {
+    flex-direction: row;
+  }
+  .page-head > :first-child {
+    flex-basis: 100%;
+  }
+}
+@media (max-width: 480px) {
+  .inventory-presentation {
+    justify-content: space-between;
+  }
+  .inventory-query .category-rail {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-block: 3px;
+  }
+  .inventory-query .search-clear {
+    width: 44px;
+    height: 44px;
+  }
+}

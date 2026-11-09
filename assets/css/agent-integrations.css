@@ -98,6 +98,17 @@
   gap: 12px;
 }
 
+.agent-engine__grid {
+  align-items: start;
+}
+
+.agent-engine__grid .input-shell {
+  width: 100%;
+  min-width: 0;
+  height: 50px;
+  align-self: start;
+}
+
 .agent-engine__errors {
   display: grid;
   gap: 8px;

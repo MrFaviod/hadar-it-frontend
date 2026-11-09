@@ -9,7 +9,7 @@ function setup(entry='index.html'){
  const html=fs.readFileSync(entry,'utf8');
  for(const [,src] of html.matchAll(/<script src="([^"]+)"/g)){
   if((src.includes('/vendor/')&&!src.includes('report-qrcode'))||/theme|sidebar|app\.js/.test(src))continue;
-  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
+  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-charts','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
  const Vue=c.Vue;c.Vue={...Vue,createApp(o){c.options=o;return {mount(){}};}};vm.runInContext(fs.readFileSync('assets/js/app.js','utf8'),c);c.Vue=Vue;
@@ -36,7 +36,7 @@ test('S1/S8 the canonical entry registers Appearance and preserve existing route
 });
 test('S1/S2/S3/S7 draft edits preview but apply synchronizes identity and discard restores draft',async()=>{
  const s=setup(),m=s.mount('AppearanceSettings'),v=m.instance,original=s.app.appName;
- v.select(s.app.appearance.presets[1]);v.draft.branding.appName='Inventario de prueba';await s.tick();assert.equal(s.app.appName,original);assert.ok(v.dirty);v.apply();await s.tick();assert.equal(s.app.appName,'Inventario de prueba');assert.equal(s.app.config.general.appName,'Inventario de prueba');v.draft.branding.appName='Sin aplicar';v.discard();assert.equal(v.draft.branding.appName,'Inventario de prueba');v.setMode('dark');assert.equal(s.app.themeMode,'dark');assert.equal(s.c.AssetAppearanceEngine.getUserMode(s.app.appearance,'admin'),'dark');v.restore();await s.tick();assert.equal(s.app.appName,'Asset Manager');assert.equal(v.draft.id,'generic');assert.deepEqual(s.errors,[]);m.unmount();
+ v.select(s.app.appearance.presets[1]);v.draft.branding.appName='Inventario de prueba';await s.tick();assert.equal(s.app.appName,original);assert.ok(v.dirty);v.apply();await s.tick();assert.equal(s.app.appName,'Inventario de prueba');assert.equal(s.app.config.general.appName,'Inventario de prueba');v.draft.branding.appName='Sin aplicar';v.discard();assert.equal(v.draft.branding.appName,'Inventario de prueba');v.setMode('dark');assert.equal(s.app.themeMode,'dark');assert.equal(s.c.AssetAppearanceEngine.getUserMode(s.app.appearance,'admin'),'dark');v.restore();await s.tick();assert.equal(s.app.appName,'Hadar IT');assert.equal(v.draft.id,'generic');assert.deepEqual(s.errors,[]);m.unmount();
 });
 test('S3/S5 importing stages a preset and resolves name conflicts without applying',async()=>{
  const s=setup(),m=s.mount('AppearanceSettings'),v=m.instance,before=JSON.stringify(s.app.appearance.active),n=s.app.appearance.presets.length;

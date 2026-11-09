@@ -584,10 +584,11 @@
           <div>
             <p class="eyebrow">{{ $t('ui.reports.eyebrow') }}</p>
             <h1>{{ $t('ui.nav.reports') }}</h1>
-            <p class="page-head__description">{{ $t('ui.reports.lead') }}</p>
+
           </div>
         </header>
 
+        <div class="report-selection">
         <div class="doc-tabs" role="tablist" :aria-label="$t('ui.reports.tabs_aria')">
           <button role="tab" :aria-selected="tab === 'prepare'" :class="{ active: tab === 'prepare' }" @click="tab = 'prepare'">{{ $t('ui.reports.tab_prepare') }}</button>
           <button role="tab" :aria-selected="tab === 'jobs'" :class="{ active: tab === 'jobs' }" @click="tab = 'jobs'">
@@ -595,8 +596,7 @@
           </button>
         </div>
 
-        <template v-if="tab === 'prepare'">
-          <div class="doc-family-grid">
+          <div v-if="tab === 'prepare'" class="doc-family-grid">
             <button v-for="familyOption in familyOptions" :key="familyOption.id" type="button" class="doc-family"
                     :class="{ active: familyOption.id === family }" @click="chooseFamily(familyOption.id)">
               <span class="doc-family__number">0{{ familyOptions.indexOf(familyOption) + 1 }}</span>
@@ -605,6 +605,9 @@
             </button>
           </div>
 
+        </div>
+
+        <template v-if="tab === 'prepare'">
           <div class="doc-workspace">
             <aside class="doc-controls">
               <div class="doc-control-head">
@@ -745,7 +748,7 @@
 
               <div v-if="editor && draft" class="doc-editor">
                 <div class="doc-editor__head">
-                  <div><h3>{{ $t('ui.reports.editor_title') }}</h3><p>{{ $t('ui.reports.editor_lead') }}</p></div>
+                  <div><h3>{{ $t('ui.reports.editor_title') }}</h3></div>
                   <span class="mono">v{{ draft.version }}</span>
                 </div>
                 <div class="doc-form-grid">

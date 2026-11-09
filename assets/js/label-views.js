@@ -644,7 +644,7 @@
           <div>
             <p class="eyebrow">{{ $t('ui.labels.eyebrow_physical') }}</p>
             <h1>{{ $t('ui.labels.center.title') }}</h1>
-            <p class="page-head__description">{{ $t('ui.labels.center.lead') }}</p>
+
           </div>
           <a class="btn btn--secondary" href="#/configuracion/etiquetas"><app-icon name="sliders"></app-icon>{{ $t('ui.labels.center.defaults_link') }}</a>
         </header>

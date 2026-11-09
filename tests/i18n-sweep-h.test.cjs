@@ -42,11 +42,11 @@ async function withView(name, run) {
 test('S3 the data transfer hub renders English and keeps the Spanish source', async () => {
   await withView('DataTransfer', async (harness, view, spanish) => {
     assert.match(spanish, /Importar y exportar/);
-    assert.match(spanish, /Excel y CSV al inventario/);
+    assert.match(spanish, /Seleccionar archivo Excel o CSV/);
     await switchLocale(harness, 'en');
     const english = textOf(view.root);
     assert.match(english, /Import and export/);
-    assert.match(english, /Excel and CSV into the inventory/);
+    assert.match(english, /Select an Excel or CSV file/);
     assert.doesNotMatch(english, /Importar y exportar/);
   });
 });

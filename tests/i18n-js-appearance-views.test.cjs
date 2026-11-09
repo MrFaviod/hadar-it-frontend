@@ -44,7 +44,7 @@ test('appearance settings notices and labels follow the active locale', async ()
     view.save();
     assert.equal(view.notice, 'Preset guardado en la galería de esta sesión. No se ha aplicado.');
     view.restore();
-    assert.equal(view.notice, 'Se ha restaurado la identidad original de Asset Manager.');
+    assert.equal(view.notice, 'Se ha restaurado la identidad original de Hadar IT.');
     assert.deepEqual(Array.from(view.resourceKeys, (item) => item.label), [
       'Logotipo principal', 'Variante para modo oscuro', 'Logotipo compacto', 'Favicon'
     ]);
@@ -58,7 +58,7 @@ test('appearance settings notices and labels follow the active locale', async ()
     view.save();
     assert.equal(view.notice, 'Preset saved in this session gallery. It has not been applied.');
     view.restore();
-    assert.equal(view.notice, 'The original Asset Manager identity has been restored.');
+    assert.equal(view.notice, 'The original Hadar IT identity has been restored.');
     assert.deepEqual(Array.from(view.resourceKeys, (item) => item.label), [
       'Primary logo', 'Dark mode variant', 'Compact logo', 'Favicon'
     ]);

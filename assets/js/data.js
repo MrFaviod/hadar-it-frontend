@@ -412,7 +412,7 @@
     assignments,
     defaultGeneral: {
       organizationName: 'Operaciones TI',
-      appName: 'Asset Manager',
+      appName: 'Hadar IT',
       logo: 'assets/svg/logo.svg'
     },
     defaultSettings: {

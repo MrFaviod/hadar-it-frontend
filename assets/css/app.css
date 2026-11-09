@@ -447,6 +447,9 @@ button.text-button {
 /* Forms */
 .field {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
+  min-width: 0;
   gap: 7px;
 }
 .field > label {

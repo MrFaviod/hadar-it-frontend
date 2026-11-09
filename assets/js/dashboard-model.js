@@ -113,7 +113,7 @@
     model.widgetAvailable = widget => {
       if (unavailable.has(widget)) return false;
       if (widget === 'availability') return !!(availabilitySource.configured || availability.length);
-      if (widget === 'latency') return latencyCurrent !== null;
+      if (widget === 'latency') return latencyCurrent !== null || rows.some(row => row.latencyMs !== null);
       if (widget === 'incidents') return Array.isArray(raw.incidents);
       if (widget === 'distribution') return Array.isArray(raw.distribution);
       return true;

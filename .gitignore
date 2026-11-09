@@ -1,16 +1,41 @@
-node_modules
+# Dependencies and generated frontend output.
+node_modules/
 dist/
-.verification/
-.atl/
-.codegraph/
-__pycache__/
-*.local
 
-# Private working records: kept local, never published
-AGENTS.md
-odd/
-docs/reviews/
-.worktrees/
-.publish/
+# Private working records: anchored so public nested docs remain addable.
+/AGENTS.md
+/SYSTEM.md
+/odd/
+/docs/reviews/
+/.worktrees/
+/.atl/
+/.codegraph/
+/.omp/
+/.publish/
+/.verification/
+/.verification-*.log
+/.tmp-*/
+/.tmp-*.log
+
+# Private local configuration.
 .env
 .env.*
+*.local
+*.local.md
+AGENTS.local.md
+**/.claude/settings.local.json
+
+# Test output and caches.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+coverage/
+test-results/
+playwright-report/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

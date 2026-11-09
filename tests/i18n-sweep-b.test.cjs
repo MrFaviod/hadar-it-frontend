@@ -70,7 +70,7 @@ test('S3 warranty settings render English and keep the Spanish source', async ()
 
 test('S3 the assigned index.html sweep B regions are catalog-backed', () => {
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-  const inventory = slice(html, '<section v-else-if="route.name === \'inventory\'" class="page"', '<monitoring-center v-else-if=');
+  const inventory = slice(html, '<section v-else-if="route.name === \'inventory\'"', '<monitoring-center v-else-if=');
   const detail = slice(html, 'route.name === \'detail\' && currentAsset', '<!-- Diálogo de acceso remoto -->');
   const dialogs = slice(html, '<!-- Diálogo de acceso remoto -->', '<!-- Estructura física del servidor -->');
 

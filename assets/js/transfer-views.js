@@ -661,7 +661,7 @@
                 </span>
                 <span class="tx-step__text">
                   <strong>{{ item.label }}</strong>
-                  <small>{{ item.hint }}</small>
+
                 </span>
                 <span v-if="item.badge" class="tx-step__badge mono">{{ item.badge }}</span>
               </button>
@@ -673,7 +673,7 @@
               <div>
                 <p class="eyebrow"><span class="eyebrow__line"></span> {{ stepEyebrow }}</p>
                 <h2 id="tx-step-title">{{ stepTitle }}</h2>
-                <p>{{ stepLead }}</p>
+
               </div>
               <div class="tx-panel__tools">
                 <button v-if="step === 2" type="button" class="btn btn--secondary btn--small" @click="autoMapping">
@@ -1328,7 +1328,7 @@
           <div class="page-head__copy">
             <p class="eyebrow"><span class="eyebrow__line"></span> {{ $t('ui.transfer.hub.eyebrow') }}</p>
             <h1 id="transfer-title">{{ $t('ui.transfer.hub.title') }}</h1>
-            <p class="page-sub">{{ $t('ui.transfer.hub.subtitle') }}</p>
+
           </div>
           <div class="page-head__side">
             <div class="page-head__meta" :aria-label="$t('ui.transfer.hub.summary_aria')">
@@ -1344,13 +1344,13 @@
                   :class="{ 'is-active': tab === 'import' }" :aria-selected="tab === 'import' ? 'true' : 'false'"
                   aria-controls="tx-panel-import" data-od-id="transfer-tab-import" @click="setTab('import')">
             <span class="tx-tab__icon"><app-icon name="upload"></app-icon></span>
-            <span class="tx-tab__text"><strong>{{ $t('ui.transfer.hub.tab_import') }}</strong><small>{{ $t('ui.transfer.hub.tab_import_hint') }}</small></span>
+            <span class="tx-tab__text"><strong>{{ $t('ui.transfer.hub.tab_import') }}</strong></span>
           </button>
           <button type="button" role="tab" id="tx-tab-export" class="tx-tab"
                   :class="{ 'is-active': tab === 'export' }" :aria-selected="tab === 'export' ? 'true' : 'false'"
                   aria-controls="tx-panel-export" data-od-id="transfer-tab-export" @click="setTab('export')">
             <span class="tx-tab__icon"><app-icon name="download"></app-icon></span>
-            <span class="tx-tab__text"><strong>{{ $t('ui.transfer.hub.tab_export') }}</strong><small>{{ $t('ui.transfer.hub.tab_export_hint') }}</small></span>
+            <span class="tx-tab__text"><strong>{{ $t('ui.transfer.hub.tab_export') }}</strong></span>
           </button>
         </div>
 

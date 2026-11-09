@@ -20,7 +20,7 @@ function setup(entry='index.html'){
  const html=fs.readFileSync(entry,'utf8');
  for(const [,src] of html.matchAll(/<script src="([^"]+)"/g)){
   if((src.includes('/vendor/')&&!/report-qrcode|vue-i18n/.test(src))||/theme|sidebar|app\.js/.test(src))continue;
-  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
+  if(src==='assets/js/panel.js'&&!c.AssetDashboardViews)for(const name of ['dashboard-model','dashboard-preferences','dashboard-charts','dashboard-views'])vm.runInContext(fs.readFileSync('assets/js/'+name+'.js','utf8'),c);
   vm.runInContext(fs.readFileSync(src,'utf8'),c,{filename:src});
  }
  // The bundle overlay is a server concern; the harness resolves the source
