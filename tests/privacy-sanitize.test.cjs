@@ -4,9 +4,7 @@
 // neutral examples: reserved example domains, RFC 1918 ranges and generic
 // paths. Records that must stay private (AGENTS.md, odd/, docs/reviews/) are
 // ignored rather than shipped, and published docs do not point at them. The
-// OpenDesign manifest keeps its import-time hashes as history and records a
-// sanitization-time snapshot separately, so the original provenance is never
-// silently rewritten. The content scan, not a hash, is the privacy guard.
+// Internal capture manifests are not shipped. The content scan is the privacy guard.
 //
 // The forbidden identifiers below are assembled from fragments on purpose:
 // this file is itself part of the scanned product surface.
@@ -15,7 +13,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 
 const root = path.resolve(__dirname, '..');
 
@@ -77,10 +74,6 @@ function productFiles() {
 
 function read(rel) {
   return fs.readFileSync(path.join(root, rel), 'utf8');
-}
-
-function sha256(rel) {
-  return crypto.createHash('sha256').update(fs.readFileSync(path.join(root, rel))).digest('hex');
 }
 
 test('product files carry no private organization, host, project or network identifiers', () => {
@@ -145,10 +138,10 @@ test('demo monitoring channels use reserved example domains instead of a real or
 test('private records stay ignored while the existing ignore rules survive', () => {
   const gitignore = read('.gitignore').split('\n').map((line) => line.trim()).filter(Boolean);
   for (const entry of ['AGENTS.md', 'odd/', 'docs/reviews/', '.worktrees/', '.publish/', '.env', '.env.*']) {
-    assert.ok(gitignore.includes(entry), '.gitignore ignores ' + entry);
+    assert.ok(gitignore.includes(entry) || gitignore.includes('/' + entry), '.gitignore ignores ' + entry);
   }
   for (const entry of ['node_modules', 'dist/', '.verification/', '.atl/', '.codegraph/', '__pycache__/', '*.local']) {
-    assert.ok(gitignore.includes(entry), '.gitignore keeps ' + entry);
+    assert.ok(gitignore.includes(entry) || gitignore.includes('/' + entry), '.gitignore keeps ' + entry);
   }
 
   const dockerignore = read('.dockerignore').split('\n').map((line) => line.trim()).filter(Boolean);
@@ -160,30 +153,6 @@ test('private records stay ignored while the existing ignore rules survive', () 
   }
 });
 
-test('import manifest keeps original provenance and records sanitized hashes separately', () => {
-  const manifest = JSON.parse(read('docs/opendesign/source-manifest.json'));
-
-  assert.equal(manifest.projectId, '00000000-0000-4000-8000-000000000000');
-  assert.match(manifest.source, /^\/home\/user\//);
-
-  assert.equal(typeof manifest.sha256Note, 'string');
-  assert.match(manifest.sha256Note, /import/i);
-  assert.equal(typeof manifest.sanitized, 'object');
-  assert.equal(typeof manifest.sanitized.note, 'string');
-  assert.match(manifest.sanitized.note, /sanitiz/i);
-
-  const sanitized = manifest.sanitized.sha256;
-  assert.ok(sanitized && Object.keys(sanitized).length > 0, 'sanitization snapshot hashes are recorded');
-
-  // The snapshot is history, not a pin: later legitimate edits to the demo
-  // data must not fail this privacy guard.
-  for (const [rel, snapshot] of Object.entries(sanitized)) {
-    assert.ok(rel in manifest.sha256, 'sanitized file belongs to the imported manifest: ' + rel);
-    assert.match(snapshot, /^[0-9a-f]{64}$/, 'snapshot is a SHA-256 digest: ' + rel);
-    assert.notEqual(manifest.sha256[rel], snapshot, 'the import hash stays separate from the snapshot: ' + rel);
-    assert.notEqual(
-      manifest.sha256[rel], sha256(rel),
-      'the imported original hash was not regenerated from the sanitized file: ' + rel
-    );
-  }
+test('internal capture manifests are not shipped', () => {
+  assert.equal(fs.existsSync(path.join(root, 'docs/opendesign/source-manifest.json')), false);
 });

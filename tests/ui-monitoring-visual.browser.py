@@ -22,7 +22,7 @@ boundary with ``page.route``, on top of the real inventory rows the API returns:
 no Prometheus, no Alertmanager, no agent, no device and no provider is
 contacted. The unconfigured-Prometheus state, the empty states and the 404s are
 the real API answers. Every value injected by the boundary is a fixture value
-recorded in ``docs/ui-monitoring-visual.md``; nothing is invented as a reading.
+documented in ``docs/development.md``; nothing is invented as a reading.
 
 Every rendered state is its own PNG (route, state, locale, theme and viewport in
 the file name) so a human can open one image at a time. Dialogs are opened and

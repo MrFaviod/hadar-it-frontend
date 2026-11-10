@@ -3,11 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-/* Focused regression guards for the monitoring corrections made during the
- * individual visual pass (U6). Each test names a painted behaviour that was
- * wrong, not the internal implementation. The recorded failures that motivated
- * them are the run in `.verification/demo-indicator-bc512341df5d/` and the
- * per-image reads in `docs/ui-monitoring-visual.md`. */
+/* Regression guards for visible monitoring behaviour. Browser prerequisites
+ * and commands live in docs/development.md. */
 
 const VIEWS = 'assets/js/monitoring-views.js';
 const SETTINGS = 'assets/js/monitoring-settings.js';
@@ -127,7 +124,7 @@ test('the browser script still captures both installations and every scenario fa
   for (const name of ['run_center', 'run_devices', 'run_real_unconfigured', 'run_alert_page', 'run_inbox', 'run_bell', 'run_dialogs', 'run_settings', 'run_marked', 'run_ordinary']) {
     assert.match(script, new RegExp('def ' + name + '\\('), 'missing scenario ' + name);
   }
-  const docs = fs.readFileSync('docs/ui-monitoring-visual.md', 'utf8');
+  const docs = fs.readFileSync('docs/development.md', 'utf8');
   assert.match(docs, /python3 tests\/ui-monitoring-visual\.browser\.py/, 'the docs must name the run command');
   assert.match(docs, /node --test tests\/ui-monitoring-visual\.test\.cjs/);
 });
