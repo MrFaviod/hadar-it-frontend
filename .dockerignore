@@ -11,7 +11,10 @@ __pycache__
 # Private working records are not part of a build context
 AGENTS.md
 odd
-docs/reviews
+docs/
+DESIGN.md
+brand-spec.md
+SYSTEM.md
 .worktrees
 .publish
 .env

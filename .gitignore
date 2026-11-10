@@ -2,7 +2,12 @@
 node_modules/
 dist/
 
-# Private working records: anchored so public nested docs remain addable.
+# Internal documentation stays local; shared guides live in hadar-it.
+/docs/
+/DESIGN.md
+/brand-spec.md
+
+# Private working records.
 /AGENTS.md
 /SYSTEM.md
 /odd/
