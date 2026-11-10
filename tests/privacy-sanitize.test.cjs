@@ -140,12 +140,12 @@ test('private records stay ignored while the existing ignore rules survive', () 
   for (const entry of ['AGENTS.md', 'odd/', 'docs/reviews/', '.worktrees/', '.publish/', '.env', '.env.*']) {
     assert.ok(gitignore.includes(entry) || gitignore.includes('/' + entry), '.gitignore ignores ' + entry);
   }
-  for (const entry of ['node_modules', 'dist/', '.verification/', '.atl/', '.codegraph/', '__pycache__/', '*.local']) {
+  for (const entry of ['node_modules/', 'dist/', '.verification/', '.atl/', '.codegraph/', '__pycache__/', '*.local']) {
     assert.ok(gitignore.includes(entry) || gitignore.includes('/' + entry), '.gitignore keeps ' + entry);
   }
 
   const dockerignore = read('.dockerignore').split('\n').map((line) => line.trim()).filter(Boolean);
-  for (const entry of ['AGENTS.md', 'odd', 'docs/reviews', '.worktrees', '.publish', '.env', '.env.*']) {
+  for (const entry of ['AGENTS.md', 'SYSTEM.md', 'odd', 'docs/', 'DESIGN.md', 'brand-spec.md', '.worktrees', '.publish', '.env', '.env.*']) {
     assert.ok(dockerignore.includes(entry), '.dockerignore excludes ' + entry);
   }
   for (const entry of ['.git', 'node_modules', 'dist', '.verification', '.venv', '.atl', '.codegraph', '__pycache__', '*.local']) {
