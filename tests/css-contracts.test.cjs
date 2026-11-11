@@ -45,3 +45,18 @@ test('panel.css (dashboard legacy, unused) stays deleted', ()=>{
  assert.equal(fs.existsSync(path.join(cssDir,'panel.css')),false,'panel.css has no users; delete it');
 });
 
+
+const px=(body,prop)=>{const m=body.match(new RegExp('(?:^|[;\\s{])'+prop+'\\s*:\\s*(\\d+(?:\\.\\d+)?)px'));return m?Number(m[1]):null;};
+
+test('row checkboxes expose a 24px pointer target', ()=>{
+ const blocks=rules('.row-select');
+ assert.ok(blocks.length>0,'rule present');
+ assert.ok(px(blocks.join(';'),'width')>=24,'row-select width below 24px');
+ assert.ok(px(blocks.join(';'),'height')>=24,'row-select height below 24px');
+});
+
+test('switch labels expose a 24px pointer target', ()=>{
+ const blocks=rules('.switch');
+ assert.ok(blocks.length>0,'rule present');
+ assert.ok(px(blocks.join(';'),'min-height')>=24,'switch label below 24px');
+});

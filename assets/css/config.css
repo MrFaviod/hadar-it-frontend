@@ -609,6 +609,7 @@
   align-items: center;
   gap: 7px;
   flex: none;
+  min-height: 24px;
   cursor: pointer;
 }
 .switch input {
