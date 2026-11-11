@@ -418,10 +418,11 @@
     window.AssetSchema.normalizeAdmin(storedAdmin),
     config.categories
   );
+  const assetContext = { admin: assetAdmin, categories: config.categories, sites: config.sites, people };
   const assets = mergeSeedAssets(window.AssetSchema.normalizeAssets(
     Array.isArray(storedAssets) && storedAssets.length ? storedAssets : buildAssets(storedOverrides, assignments),
-    { admin: assetAdmin, categories: config.categories, sites: config.sites, people }
-  ));
+    assetContext
+  ), assetContext);
   const relations = normalizeRelations(readJSON(window.localStorage, KEYS.relations, null), assets);
   const maps = window.AssetMapData.normalizeMaps(
     readJSON(window.localStorage, KEYS.maps, null),
