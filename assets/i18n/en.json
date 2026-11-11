@@ -3802,7 +3802,7 @@
   "ui.extensions.contributions.task_line": "Task {name} · every {seconds} seconds · permission {permission}",
   "ui.extensions.contributions.operations_line": "Authorised operations: {count} · schema {schema}",
   "ui.extensions.contributions.sdk_line": "SDK {sdk} · schema {schema}. These are the declared resources of the exact package you are reviewing.",
-  "ui.extensions.migrations.line": "Schema {from} → {to} · {count}. Rollback is blocked if the data schema stops being compatible.",
+  "ui.extensions.migrations.line": "Schema {from} → {to} · {state}. Rollback is blocked if the data schema stops being compatible.",
   "ui.extensions.confirm.type_id": "Type {id} to confirm",
   "ui.extensions.page.state_aria": "Extension state",
   "ui.extensions.review.filter_aria": "Filter candidates",

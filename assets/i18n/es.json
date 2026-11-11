@@ -3802,7 +3802,7 @@
   "ui.extensions.contributions.task_line": "Tarea {name} · cada {seconds} segundos · permiso {permission}",
   "ui.extensions.contributions.operations_line": "Operaciones autorizadas: {count} · esquema {schema}",
   "ui.extensions.contributions.sdk_line": "SDK {sdk} · esquema {schema}. Estos son los recursos declarados del paquete exacto que estás revisando.",
-  "ui.extensions.migrations.line": "Esquema {from} → {to} · {count}. El rollback queda bloqueado si el esquema de datos deja de ser compatible.",
+  "ui.extensions.migrations.line": "Esquema {from} → {to} · {state}. El rollback queda bloqueado si el esquema de datos deja de ser compatible.",
   "ui.extensions.confirm.type_id": "Escribe {id} para confirmar",
   "ui.extensions.page.state_aria": "Estado de la extensión",
   "ui.extensions.review.filter_aria": "Filtrar candidatos",
