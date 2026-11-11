@@ -41,8 +41,10 @@ test('layout tokens have a single :root source', ()=>{
  }
 });
 
-test('panel.css (dashboard legacy, unused) stays deleted', ()=>{
- assert.equal(fs.existsSync(path.join(cssDir,'panel.css')),false,'panel.css has no users; delete it');
+test('panel.css (dashboard legacy, unused) keeps no rules', ()=>{
+ // The file stays while index.html links it; it holds no rules.
+ const text=fs.existsSync(path.join(cssDir,'panel.css'))?fs.readFileSync(path.join(cssDir,'panel.css'),'utf8'):'';
+ assert.equal(text.replace(/\/\*[\s\S]*?\*\//g,'').trim(),'','panel.css has rules that no app source uses');
 });
 
 
