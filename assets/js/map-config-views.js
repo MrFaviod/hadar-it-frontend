@@ -416,7 +416,7 @@
           </div>
         </section>
 
-        <div v-if="!installed && planDialog.open" class="map-dialog" role="dialog" aria-modal="true" aria-labelledby="map-plan-dialog-title">
+        <div v-if="!installed && planDialog.open" class="map-dialog" role="dialog" aria-modal="true" aria-labelledby="map-plan-dialog-title" @keydown.esc="closePlanDialog">
           <form class="map-dialog__panel" @submit.prevent="createPlan">
             <header class="map-dialog__head">
               <h2 id="map-plan-dialog-title">{{ $t('ui.map.action.add_plan') }}</h2>
@@ -426,7 +426,7 @@
             </header>
             <label class="map-field">
               <span>{{ $t('ui.map.dialog.name') }}</span>
-              <input v-model="planDialog.name" type="text" :placeholder="$t('ui.map.dialog.name_placeholder')" autocomplete="off">
+              <input v-model="planDialog.name" type="text" autofocus :placeholder="$t('ui.map.dialog.name_placeholder')" autocomplete="off">
             </label>
             <label class="map-field">
               <span>{{ $t('ui.map.dialog.floor') }}</span>
