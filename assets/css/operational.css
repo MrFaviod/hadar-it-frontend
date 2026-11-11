@@ -1,7 +1,6 @@
 /* Operational console. Structure, not decoration: strong chrome, quiet data surfaces,
    one accent for interaction, semantic colors only for measured states. */
 .login__tagline { margin:0 0 12px; color:var(--muted); font:500 14px/1.5 var(--font-body); }
-:root { --sidebar-w:244px; --topbar-h:60px; --page-max:1680px; --page-title-size:30px; --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px; --shadow-sm:none; --shadow-md:0 8px 24px #07192312; --shadow-lg:0 18px 48px #07192324; }
 .app-shell { font-size:14px; }
 .app-shell .sidebar { background:#101f2c; }
 .sidebar__head { padding-inline:16px; }
