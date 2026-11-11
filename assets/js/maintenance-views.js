@@ -237,7 +237,7 @@
       },
       alerts() {
         return (this.maintenance.alerts || [])
-          .filter((item) => Engine.alertMatches(item, this.assets, { query: this.filters.query, state: this.filters.state }))
+          .filter((item) => Engine.alertMatches(item, this.assets, { query: this.filters.query, status: this.filters.state }))
           .slice()
           .sort((a, b) => String(b.detectedAt).localeCompare(String(a.detectedAt)));
       },
