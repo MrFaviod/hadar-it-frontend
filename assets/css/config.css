@@ -948,7 +948,7 @@
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--surface-muted, rgba(15, 118, 110, 0.12));
+  background: var(--teal-050);
   font-size: 11px;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -959,7 +959,7 @@
   padding: 12px 14px;
   border: 1px solid var(--border-strong, #cbd5e1);
   border-radius: 10px;
-  background: var(--surface, #fff);
+  background: var(--paper);
   color: inherit;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 13px;
@@ -967,7 +967,7 @@
   resize: vertical;
 }
 .translation-content:focus-visible {
-  outline: 2px solid var(--focus, #0f766e);
+  outline: 2px solid var(--teal-700);
   outline-offset: 2px;
 }
 .translation-report {
@@ -1007,7 +1007,7 @@
 }
 .translation-custom__reason {
   flex: 1 1 240px;
-  color: var(--text-muted, #64748b);
+  color: var(--muted);
   font-size: 13px;
 }
 .translation-confirm {
@@ -1022,8 +1022,8 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--warning-soft, rgba(217, 119, 6, 0.14));
-  color: var(--warning, #b45309);
+  background: var(--amber-100);
+  color: var(--amber-700);
 }
 .translation-confirm__key {
   margin: 6px 0 0;

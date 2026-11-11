@@ -2237,7 +2237,7 @@
 }
 .extension-pager__status {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--muted);
   font-size: 0.85rem;
 }
 .extension-form { display: grid; gap: 12px; margin-top: 16px; }
@@ -2245,7 +2245,7 @@
 .extension-form__message { margin: 0; color: var(--teal-800, var(--text)); font-size: 0.9rem; }
 .extension-check { display: flex; align-items: flex-start; gap: 10px; min-height: 44px; }
 .extension-check input { margin-top: 4px; }
-.extension-actions__status { margin: 0; flex-basis: 100%; font-size: 0.85rem; color: var(--text-muted); }
+.extension-actions__status { margin: 0; flex-basis: 100%; font-size: 0.85rem; color: var(--muted); }
 .extension-frame {
   display: block;
   width: 100%;
