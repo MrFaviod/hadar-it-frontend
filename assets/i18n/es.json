@@ -6284,6 +6284,8 @@
   "ui.asset.schema.library.rack.hint": "Posición física en el rack.",
   "ui.asset.schema.library.resolution.label": "Resolución",
   "ui.asset.schema.library.resolution.hint": "Ej. 2560 × 1440.",
+  "ui.asset.schema.library.fov_label": "Ángulo de visión",
+  "ui.asset.schema.library.fov_hint": "Ángulo que cubre el objetivo, según el fabricante.",
   "ui.asset.schema.library.fov_label.label": "Ángulo de visión",
   "ui.asset.schema.library.fov_hint.hint": "Ej. 110° horizontal.",
   "ui.asset.schema.library.night_vision.label": "Visión nocturna",

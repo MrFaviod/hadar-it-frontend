@@ -66,7 +66,7 @@
   const COMMON_KEYS = COMMON_FIELDS.map((field) => field.key);
 
   const FIELD_LIBRARY = [
-    libraryOf('serial', 'text', '', 'ui.asset.common.serial', 'ui.asset.schema.library.serial.hint'),
+    libraryOf('serial', 'text', '', 'ui.asset.common.serial'),
     libraryOf('cpu', 'text', '', 'ui.asset.schema.library.cpu.label', 'ui.asset.schema.library.cpu.hint'),
     libraryOf('ram', 'number', 'GB', 'ui.asset.schema.library.ram.label'),
     libraryOf('storage', 'text', '', 'ui.asset.schema.library.storage.label', 'ui.asset.schema.library.storage.hint'),

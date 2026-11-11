@@ -6283,6 +6283,8 @@
   "ui.asset.schema.library.rack.hint": "Hint text of the rack field in the technical field library.",
   "ui.asset.schema.library.resolution.label": "Label of the resolution field in the technical field library.",
   "ui.asset.schema.library.resolution.hint": "Hint text of the resolution field in the technical field library.",
+  "ui.asset.schema.library.fov_label": "Label of the field-of-view angle field in the technical field library.",
+  "ui.asset.schema.library.fov_hint": "Hint text of the field-of-view angle field in the technical field library.",
   "ui.asset.schema.library.fov_label.label": "Label of the fov label field in the technical field library.",
   "ui.asset.schema.library.fov_hint.hint": "Hint text of the fov hint field in the technical field library.",
   "ui.asset.schema.library.night_vision.label": "Label of the night vision field in the technical field library.",
