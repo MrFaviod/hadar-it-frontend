@@ -96,7 +96,7 @@ html[data-theme="dark"] .floor-paper {
 }
 
 .floor-map canvas:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--teal-700);
   outline-offset: -2px;
 }
 
@@ -382,7 +382,7 @@ html[data-theme="dark"] .floor-noplan {
 }
 
 .floor-group__asset:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--teal-700);
   outline-offset: -2px;
 }
 

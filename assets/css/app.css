@@ -59,7 +59,7 @@
   --font-display: 'Space Grotesk', 'Trebuchet MS', sans-serif;
   --font-body: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
   --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
-  --page-title-size: 36px;
+  --page-title-size: 30px;
 
   --ink-950: #071923;
   --ink-900: #0b2331;
@@ -105,15 +105,15 @@
   --text: #152b34;
   --muted: #58717a;
 
-  --radius-xs: 5px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
   --radius-pill: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(7, 25, 35, 0.06);
-  --shadow-md: 0 12px 30px -18px rgba(7, 25, 35, 0.35);
-  --shadow-lg: 0 28px 70px -24px rgba(7, 25, 35, 0.45);
+  --shadow-sm: none;
+  --shadow-md: 0 8px 24px #07192312;
+  --shadow-lg: 0 18px 48px #07192324;
 
   --ease-out: cubic-bezier(0.22, 0.68, 0.22, 1);
   --ease-in: cubic-bezier(0.55, 0, 0.78, 0.4);
@@ -121,9 +121,9 @@
   --dur-base: 220ms;
   --dur-slow: 320ms;
 
-  --sidebar-w: 268px;
-  --topbar-h: 68px;
-  --page-max: 1440px;
+  --sidebar-w: 244px;
+  --topbar-h: 60px;
+  --page-max: 1680px;
   --icon-size: 20px;
   --od-icon-size: 20px;
 }

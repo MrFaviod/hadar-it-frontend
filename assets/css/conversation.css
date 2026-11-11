@@ -188,7 +188,8 @@
 }
 
 .conversation__form textarea:focus-visible {
-  outline: none;
+  outline: 2px solid var(--teal-600);
+  outline-offset: 0;
 }
 
 .conversation__form .btn {
