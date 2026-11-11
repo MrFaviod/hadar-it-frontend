@@ -269,6 +269,7 @@
           open: false,
           blockedMessage: '',
           pendingType: '',
+          pendingRestore: false,
           prefsDraft: {
             mode: 'global',
             depth: 2,
@@ -372,6 +373,11 @@
           this.app.showToast(tr('ui.relations.toast.type_removed'));
         },
         restoreTypes() {
+          if (!this.pendingRestore) {
+            this.pendingRestore = true;
+            return;
+          }
+          this.pendingRestore = false;
           const result = Engine.restoreTypes(this.app);
           this.blockedMessage = '';
           this.app.showToast(tr('ui.relations.toast.types_restored'));
@@ -440,7 +446,11 @@
           </div>
 
           <div class="relations-config-actions">
-            <button type="button" class="text-button" @click="restoreTypes">
+            <template v-if="pendingRestore">
+              <button type="button" class="btn btn--danger btn--small" @click="restoreTypes">{{ $t('ui.relations.settings.restore') }}</button>
+              <button type="button" class="btn btn--ghost btn--small" @click="pendingRestore = false">{{ $t('ui.common.cancel') }}</button>
+            </template>
+            <button v-else type="button" class="text-button" @click="restoreTypes">
               <app-icon name="restore"></app-icon> {{ $t('ui.relations.settings.restore') }}
             </button>
             <p class="config-note"><app-icon name="info"></app-icon> {{ $t('ui.relations.settings.restore_note') }}</p>
