@@ -222,7 +222,6 @@
       try {
         const response = await window.fetch('/api/v1/i18n/bundle?locale=' + encodeURIComponent(target), {
           credentials: 'same-origin',
-          cache: 'no-store',
           headers: headers
         });
         if (response.status === 304 && cached) return cached.messages;
@@ -292,7 +291,6 @@
     try {
       const response = await window.fetch('/api/v1/i18n/locales', {
         credentials: 'same-origin',
-        cache: 'no-store',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) return null;
@@ -308,7 +306,6 @@
     if (typeof window.fetch !== 'function') return false;
     try {
       const responses = await Promise.all(BUILTIN_LOCALES.map(function (tag) {
-        return window.fetch('assets/i18n/' + tag + '.json', { cache: 'no-store', headers: { Accept: 'application/json' } });
       }));
       const loaded = {};
       for (let index = 0; index < responses.length; index += 1) {
