@@ -22,7 +22,10 @@ function loadRuntime(): Promise<void> {
         window.document.head.append(script);
       });
     }
-  })();
+  })().catch((error) => {
+    ready = undefined;
+    throw error;
+  });
 }
 
 // React owns the host; the existing renderer exclusively owns its descendants.
