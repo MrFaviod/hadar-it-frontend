@@ -925,6 +925,7 @@
         personTimer: null,
         saving: false,
         loading: false,
+        confirmCancel: false,
         error: ''
       };
     },
@@ -1067,6 +1068,11 @@
       },
       async cancelPlan() {
         if (!this.plan) return;
+        if (!this.confirmCancel) {
+          this.confirmCancel = true;
+          return;
+        }
+        this.confirmCancel = false;
         this.saving = true;
         this.error = '';
         let result;
@@ -1141,7 +1147,7 @@
           <p v-if="plan" class="field field--span cell-muted">{{ $t('ui.maintenance.dialog.last_preventive', { date: fmtDay(plan.lastCompletedOn), status: planStatusLabel(plan.status) }) }}</p>
         </div>
         <template #footer>
-          <button v-if="plan" type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="cancelPlan">{{ $t('ui.maintenance.dialog.cancel_plan') }}</button>
+          <button v-if="plan" type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="cancelPlan">{{ confirmCancel ? $t('ui.maintenance.dialog.confirm_cancel_plan') : $t('ui.maintenance.dialog.cancel_plan') }}</button>
           <button type="button" class="btn btn--ghost btn--small" :disabled="saving" @click="close">{{ $t('ui.common.close') }}</button>
           <button type="button" class="btn btn--primary btn--small" data-od-id="asset-plan-save" :disabled="saving || loading" @click="save">{{ saving ? $t('ui.maintenance.saving') : (plan ? $t('ui.maintenance.dialog.save_plan') : $t('ui.maintenance.dialog.create_plan')) }}</button>
         </template>
