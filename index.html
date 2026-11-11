@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b2331">
-  <meta name="description" content="Hadar IT. Bring your own department. ITSM agent-first. Alpha.">
+  <meta name="description" content="Pre-alpha ITSM for small IT teams.">
   <title>Hadar IT · Bring your own department.</title>
   <script src="assets/js/theme.js"></script>
   <script src="assets/js/sidebar.js"></script>
@@ -194,7 +194,6 @@
   <link rel="stylesheet" href="assets/css/theme.css">
   <link rel="stylesheet" href="assets/css/mobile-responsive.css">
   <link rel="stylesheet" href="assets/css/access.css">
-  <link rel="stylesheet" href="assets/css/panel.css">
   <link rel="stylesheet" href="assets/css/dashboard.css">
   <link rel="stylesheet" href="assets/css/dashboard-preferences.css">
   <link rel="stylesheet" href="assets/css/transfer.css">
@@ -2149,14 +2148,14 @@
           <span class="spinner spinner--teal" aria-hidden="true"></span>
           <p>{{ $t('ui.asset.remote.connecting', { name: remoteDialog.asset.name }) }}</p>
         </div>
-        <div v-else-if="remoteDialog.state === 'connected'" class="connection-success" role="status">
-          <span class="success-mark"><app-icon name="check"></app-icon></span>
-          <div><strong>{{ $t('ui.asset.remote.done') }}</strong><p>{{ $t('ui.asset.remote.done_body') }}</p></div>
+        <div v-else-if="remoteDialog.state === 'unavailable'" class="connection-state" role="status">
+          <app-icon name="info"></app-icon>
+          <div><strong>{{ $t('ui.asset.remote.unavailable') }}</strong><p>{{ $t('ui.asset.remote.unavailable_body') }}</p></div>
         </div>
       </div>
       <template #footer>
         <button type="button" class="btn btn--ghost" @click="closeRemote">{{ $t('ui.asset.remote.close') }}</button>
-        <button v-if="remoteDialog.state !== 'connected'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
+        <button v-if="remoteDialog.state !== 'unavailable'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
           <span v-if="remoteDialog.state === 'connecting'" class="spinner" aria-hidden="true"></span>
           <app-icon v-else name="arrow-up-right"></app-icon>
           {{ remoteDialog.state === 'connecting' ? $t('ui.asset.remote.simulating') : $t('ui.asset.remote.simulate') }}

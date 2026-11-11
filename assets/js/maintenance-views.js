@@ -107,6 +107,7 @@
       const prefs = (this.app.maintenance && this.app.maintenance.prefs) || {};
       return {
         view: prefs.defaultView || 'agenda',
+        pendingCancelPlanId: '',
         filters: {
           query: '', state: '', planStatus: '', category: '', siteId: '', type: '',
           priority: '', technicianId: '', from: '', to: ''
@@ -237,7 +238,7 @@
       },
       alerts() {
         return (this.maintenance.alerts || [])
-          .filter((item) => Engine.alertMatches(item, this.assets, { query: this.filters.query, state: this.filters.state }))
+          .filter((item) => Engine.alertMatches(item, this.assets, { query: this.filters.query, status: this.filters.state }))
           .slice()
           .sort((a, b) => String(b.detectedAt).localeCompare(String(a.detectedAt)));
       },
@@ -510,6 +511,11 @@
       cancelPlan(row) {
         const plan = row.plan;
         if (!plan || !this.app.maintenanceEditable) return;
+        if (this.pendingCancelPlanId !== plan.id) {
+          this.pendingCancelPlanId = plan.id;
+          return;
+        }
+        this.pendingCancelPlanId = '';
         this.app.cancelMaintenancePlan(plan.id, { notes: '' }).then((result) => {
           if (result.ok) this.app.showToast(T('ui.maintenance.notice.plan_cancelled'));
           else if (result.error) this.app.showToast(result.error, 'error');
@@ -701,7 +707,7 @@
                 <div v-if="app.can('assets.edit')" class="maint-row__actions">
                   <button type="button" class="btn btn--secondary btn--small" data-maint-action="complete" @click="openComplete(row)"><app-icon name="check"></app-icon> {{ $t('ui.maintenance.row.complete') }}</button>
                   <button type="button" class="btn btn--ghost btn--small" data-maint-action="postpone" @click="openPostpone(row)">{{ $t('ui.maintenance.row.postpone') }}</button>
-                  <button v-if="row.plan.status !== 'cancelled'" type="button" class="btn btn--ghost btn--small" data-maint-action="cancel" @click="cancelPlan(row)">{{ $t('ui.common.cancel') }}</button>
+                  <button v-if="row.plan.status !== 'cancelled'" type="button" class="btn btn--ghost btn--small" data-maint-action="cancel" @click="cancelPlan(row)">{{ pendingCancelPlanId === row.plan.id ? $t('ui.maintenance.dialog.confirm_cancel_plan') : $t('ui.common.cancel') }}</button>
                 </div>
               </article>
             </div>

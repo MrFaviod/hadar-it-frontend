@@ -459,6 +459,9 @@
       if (state.disposed) return false;
       const target = contentWindow();
       if (!target || typeof target.postMessage !== 'function') return false;
+      // Payloads are addressed to the guest window accepted at readiness. A
+      // replaced window is a navigated frame: stop instead of posting to it.
+      if (state.guest !== null && target !== state.guest) return terminate();
       try {
         target.postMessage(payload, '*');
         return true;

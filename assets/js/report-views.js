@@ -145,6 +145,7 @@
         tab: 'prepare',
         family: 'inventory',
         templateId: '',
+        pendingDeleteTemplate: false,
         draft: null,
         draftInlineId: '',
         composition: 'consolidated',
@@ -447,6 +448,11 @@
       },
       async removeTemplate() {
         if (!this.templateId) return;
+        if (!this.pendingDeleteTemplate) {
+          this.pendingDeleteTemplate = true;
+          return;
+        }
+        this.pendingDeleteTemplate = false;
         const result = await this.app.phase9DeleteTemplate(this.templateId);
         if (!result.ok) {
           this.error = result.error;
@@ -800,7 +806,7 @@
                 </div>
                 <div class="doc-inline">
                   <button type="button" class="btn btn--primary btn--small" :disabled="!canEditTemplate" @click="saveTemplate">{{ $t('ui.reports.save_template') }}</button>
-                  <button v-if="templateId" type="button" class="btn btn--ghost btn--small" :disabled="!canEditTemplate" @click="removeTemplate">{{ $t('ui.reports.delete_template') }}</button>
+                  <button v-if="templateId" type="button" class="btn btn--ghost btn--small" :disabled="!canEditTemplate" @click="removeTemplate">{{ pendingDeleteTemplate ? $t('ui.reports.confirm_delete_template') : $t('ui.reports.delete_template') }}</button>
                   <span v-if="!canEditTemplate" class="doc-help">{{ $t('ui.reports.need_edit') }}</span>
                 </div>
               </div>

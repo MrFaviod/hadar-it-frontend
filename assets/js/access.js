@@ -272,6 +272,8 @@
     try { window.sessionStorage.removeItem(SESSION_KEY); } catch (_) { /* Cookies remain the session transport. */ }
   }
   function clearIdentity(vm) {
+    // Any response still in flight belongs to the identity being cleared.
+    if (vm.__assetAccess) vm.__assetAccess.epoch += 1;
     vm.authenticated = false; vm.activeUserId = null; vm.serverPermissions = []; vm.csrfToken = '';
     // The demo marker belongs to the session identity: logout, expiry and a
     // fresh start must not leave a stale notice behind.
@@ -478,7 +480,12 @@
     },
     async checkAccessSession() {
       if (!this.authenticated || this.__assetAccess && this.__assetAccess.stopped) return false;
-      try { applySession(this, await request(this, '/auth/me')); await loadState(this); this.syncAccess(); return true; }
+      const epoch = this.__assetAccess ? this.__assetAccess.epoch : 0;
+      try {
+        const session = await request(this, '/auth/me');
+        if (epoch !== (this.__assetAccess ? this.__assetAccess.epoch : 0)) return false;
+        applySession(this, session); await loadState(this); this.syncAccess(); return true;
+      }
       catch (error) { if (error.status !== 401) clearIdentity(this); return false; }
     },
     scheduleAccessCheck() {
@@ -706,7 +713,7 @@
     discardLegacyStorage();
     const requested = vm.parseRoute ? vm.parseRoute() : homeRoute();
     vm.authenticated = false; vm.activeUserId = null; vm.demoMode = false;
-    const state = { timer: null, stopped: false, controller: new AbortController() };
+    const state = { timer: null, stopped: false, epoch: 0, controller: new AbortController() };
     vm.__assetAccess = state;
     if (isPublicReportRoute(requested)) {
       // An anonymous public share boots without touching identity or any
@@ -715,10 +722,11 @@
       vm.accessReady = Promise.resolve(false);
       return;
     }
+    const epoch = state.epoch;
     vm.accessReady = (async () => {
       try {
         const session = await request(vm, '/auth/me');
-        if (state.stopped) return;
+        if (state.stopped || epoch !== state.epoch) return;
         applySession(vm, session); await loadState(vm);
         if (!state.stopped) { moveTo(vm, requested); vm.startSessionListeners(); }
       } catch (_) { if (!state.stopped) clearIdentity(vm); }
