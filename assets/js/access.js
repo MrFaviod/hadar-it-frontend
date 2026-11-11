@@ -480,10 +480,10 @@
     },
     async checkAccessSession() {
       if (!this.authenticated || this.__assetAccess && this.__assetAccess.stopped) return false;
-      const epoch = this.__assetAccess.epoch;
+      const epoch = this.__assetAccess ? this.__assetAccess.epoch : 0;
       try {
         const session = await request(this, '/auth/me');
-        if (epoch !== this.__assetAccess.epoch) return false;
+        if (epoch !== (this.__assetAccess ? this.__assetAccess.epoch : 0)) return false;
         applySession(this, session); await loadState(this); this.syncAccess(); return true;
       }
       catch (error) { if (error.status !== 401) clearIdentity(this); return false; }
