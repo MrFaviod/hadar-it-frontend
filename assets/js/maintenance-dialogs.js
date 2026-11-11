@@ -336,10 +336,14 @@
         this.saving = true;
         this.error = '';
         const payload = this.payload();
-        const result = this.interventionId
-          ? await this.app.updateMaintenanceIntervention(this.interventionId, payload)
-          : await this.app.saveMaintenanceIntervention(payload);
-        this.saving = false;
+        let result;
+        try {
+          result = this.interventionId
+            ? await this.app.updateMaintenanceIntervention(this.interventionId, payload)
+            : await this.app.saveMaintenanceIntervention(payload);
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.maintenance.dialog.error_save');
           return;
@@ -639,8 +643,12 @@
           responsiblePersonId: this.form.responsiblePersonId || undefined,
           openedOn: this.form.openedOn
         };
-        const result = await this.app.createMaintenanceIncident(payload);
-        this.saving = false;
+        let result;
+        try {
+          result = await this.app.createMaintenanceIncident(payload);
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.incidents.dialog.error_create');
           return;
@@ -776,8 +784,12 @@
         }
         this.saving = true;
         this.error = '';
-        const result = await this.app.completeMaintenancePlan(this.planId, { completedOn: this.completedOn, notes: this.notes || undefined });
-        this.saving = false;
+        let result;
+        try {
+          result = await this.app.completeMaintenancePlan(this.planId, { completedOn: this.completedOn, notes: this.notes || undefined });
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.maintenance.dialog.error_complete');
           return;
@@ -850,8 +862,12 @@
         }
         this.saving = true;
         this.error = '';
-        const result = await this.app.postponeMaintenancePlan(this.planId, { dueOn: this.dueOn, notes: this.notes || undefined });
-        this.saving = false;
+        let result;
+        try {
+          result = await this.app.postponeMaintenancePlan(this.planId, { dueOn: this.dueOn, notes: this.notes || undefined });
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.maintenance.dialog.error_postpone');
           return;
@@ -1033,10 +1049,14 @@
           responsiblePersonId: this.form.responsiblePersonId || null,
           dueOn: this.form.dueOn || undefined
         };
-        const result = this.plan
+        let result;
+        try {
+          result = this.plan
           ? await this.app.updateMaintenancePlan(this.plan.id, payload)
           : await this.app.saveMaintenancePlan(Object.assign({ assetId: this.assetId, maintenanceType: this.form.maintenanceType }, payload));
-        this.saving = false;
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.maintenance.dialog.error_save_plan');
           return;
@@ -1049,8 +1069,12 @@
         if (!this.plan) return;
         this.saving = true;
         this.error = '';
-        const result = await this.app.cancelMaintenancePlan(this.plan.id, { notes: '' });
-        this.saving = false;
+        let result;
+        try {
+          result = await this.app.cancelMaintenancePlan(this.plan.id, { notes: '' });
+        } finally {
+          this.saving = false;
+        }
         if (!result.ok) {
           this.error = result.error || T('ui.maintenance.dialog.error_cancel_plan');
           return;
