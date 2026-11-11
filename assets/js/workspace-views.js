@@ -18,7 +18,7 @@
     computed:{target(){return this.app.currentWorkspaceTarget;},active(){return this.target&&this.app.workspaceFavorites.some(f=>f.key===this.target.key);},ownedViews(){return this.app.workspaceViews.filter(v=>v.ownerId===this.app.workspaceUserId&&v.route===this.app.route.name);}},
     methods:{
       tr,
-      favoriteLabel(record){return tr(this.active?'ui.workspace.unfavorite':'ui.workspace.favorite',{label:record.label});},
+      favoriteLabel(record){const on=this.app.workspaceFavorites.some(f=>f.key===record.key);return tr(on?'ui.workspace.unfavorite':'ui.workspace.favorite',{label:record.label});},
       routeLabel(route){const key=ROUTE_LABEL_KEYS[route];return key?tr(key):route;},
       scopeLabel(view){return tr(view.scope==='shared'?'ui.workspace.shared':'ui.workspace.personal');},
       isViewFavorite(view){return this.app.workspaceFavorites.some(f=>f.key==='view:'+view.id);},
