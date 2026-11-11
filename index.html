@@ -2149,14 +2149,14 @@
           <span class="spinner spinner--teal" aria-hidden="true"></span>
           <p>{{ $t('ui.asset.remote.connecting', { name: remoteDialog.asset.name }) }}</p>
         </div>
-        <div v-else-if="remoteDialog.state === 'connected'" class="connection-success" role="status">
-          <span class="success-mark"><app-icon name="check"></app-icon></span>
-          <div><strong>{{ $t('ui.asset.remote.done') }}</strong><p>{{ $t('ui.asset.remote.done_body') }}</p></div>
+        <div v-else-if="remoteDialog.state === 'unavailable'" class="connection-state" role="status">
+          <app-icon name="info"></app-icon>
+          <div><strong>{{ $t('ui.asset.remote.unavailable') }}</strong><p>{{ $t('ui.asset.remote.unavailable_body') }}</p></div>
         </div>
       </div>
       <template #footer>
         <button type="button" class="btn btn--ghost" @click="closeRemote">{{ $t('ui.asset.remote.close') }}</button>
-        <button v-if="remoteDialog.state !== 'connected'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
+        <button v-if="remoteDialog.state !== 'unavailable'" type="button" class="btn btn--primary" :disabled="remoteDialog.state === 'connecting'" @click="simulateRemote">
           <span v-if="remoteDialog.state === 'connecting'" class="spinner" aria-hidden="true"></span>
           <app-icon v-else name="arrow-up-right"></app-icon>
           {{ remoteDialog.state === 'connecting' ? $t('ui.asset.remote.simulating') : $t('ui.asset.remote.simulate') }}

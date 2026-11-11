@@ -2564,6 +2564,8 @@
   "ui.asset.remote.connecting": "Simulating a connection to {name}…",
   "ui.asset.remote.done": "Simulation complete",
   "ui.asset.remote.done_body": "No real session was opened.",
+  "ui.asset.remote.unavailable": "Remote session unavailable",
+  "ui.asset.remote.unavailable_body": "No session was opened. This dialog only simulates the flow.",
   "ui.asset.remote.close": "Close",
   "ui.asset.remote.simulating": "Connecting…",
   "ui.asset.remote.simulate": "Simulate connection",

@@ -2564,6 +2564,8 @@
   "ui.asset.remote.connecting": "Simulando conexión con {name}…",
   "ui.asset.remote.done": "Simulación completada",
   "ui.asset.remote.done_body": "No se ha abierto ninguna sesión real.",
+  "ui.asset.remote.unavailable": "Sesión remota no disponible",
+  "ui.asset.remote.unavailable_body": "No se abrió ninguna sesión. Este diálogo solo simula el flujo.",
   "ui.asset.remote.close": "Cerrar",
   "ui.asset.remote.simulating": "Conectando…",
   "ui.asset.remote.simulate": "Simular conexión",

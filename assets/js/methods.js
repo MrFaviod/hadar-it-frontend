@@ -496,7 +496,7 @@
       this.remoteDialog.state = 'connecting';
       this.remoteTimer = window.setTimeout(() => {
         this.remoteTimer = null;
-        if (this.remoteDialog.open) this.remoteDialog.state = 'connected';
+        if (this.remoteDialog.open) this.remoteDialog.state = 'unavailable';
       }, 900);
     },
     showToast(text, tone) {

@@ -2564,6 +2564,8 @@
   "ui.asset.remote.connecting": "Status while the simulated connection runs; name is the asset name.",
   "ui.asset.remote.done": "Heading after the simulated connection finishes.",
   "ui.asset.remote.done_body": "Explanation after the simulated connection finishes.",
+  "ui.asset.remote.unavailable": "Remote dialog copy: shown after the simulated flow ends; no real connection exists.",
+  "ui.asset.remote.unavailable_body": "Remote dialog copy: explains that the simulation opened no session.",
   "ui.asset.remote.close": "Button that closes the remote dialog.",
   "ui.asset.remote.simulating": "Button label while the simulated connection runs.",
   "ui.asset.remote.simulate": "Button that starts the simulated connection.",
