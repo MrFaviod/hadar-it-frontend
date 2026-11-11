@@ -308,3 +308,15 @@ test('R3-F8: the frontend URL validator binds the path and digest to this extens
   );
   assert.throws(() => sandbox.window.ExtensionFrame.validatedFrontendUrl(good), /extensión|extension/i, 'an unbound call is refused');
 });
+
+test('the host stops posting to a frame whose window was replaced after readiness', () => {
+  const { frame, bridge, posts } = fixture();
+  assert.equal(bridge.handleMessage(event(frame, { type: 'itsm:ready' })), true);
+  const before = posts.length;
+  const replacement = { posted: [], postMessage(payload) { this.posted.push(payload); } };
+  frame.contentWindow = replacement;
+  assert.equal(bridge.sendTheme(), false, 'a replaced window must not receive host payloads');
+  assert.equal(replacement.posted.length, 0);
+  assert.equal(posts.length, before, 'the original guest window is not used either');
+  assert.equal(bridge.state.disposed, true, 'the bridge terminates on window replacement');
+});
