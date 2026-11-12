@@ -103,6 +103,7 @@ test('report template notices read from the catalog at call time', async (t) => 
   await inLocale(s, 'en', async () => {
     s.view.templateId = 'custom-1';
     await s.view.removeTemplate();
+    await s.view.removeTemplate();
     assert.equal(s.app.lastToast, 'Template deleted.');
   });
   s.c.ItsmI18n.setLocale('es');

@@ -418,7 +418,11 @@ body.graph-workspace-expanded {
 
 .gnode {
   cursor: grab;
-  outline: none;
+}
+
+.gnode:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
 }
 
 .gnode:active {

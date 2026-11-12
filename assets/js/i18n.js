@@ -169,6 +169,13 @@
     return value;
   }
 
+  // A bundle overlays its built-in catalog, so the catalog must land first.
+  function loadWithCatalog(tag) {
+    const base = BUILTIN_LOCALES.indexOf(tag) !== -1 ? tag : parentOf(tag);
+    if (!base || hasCatalog(base)) return loadBundle(tag);
+    return fetchBuiltinCatalog(base).then(function () { return loadBundle(tag); });
+  }
+
   function applyLocale(tag) {
     const target = isLocaleKnown(normalize(tag))
       ? normalize(tag)
@@ -179,7 +186,7 @@
     syncDocumentLang(target);
     bump();
     notify(target);
-    if (!state.bundles[target]) loadBundle(target);
+    if (!state.bundles[target]) loadWithCatalog(target);
     return target;
   }
 
@@ -196,7 +203,7 @@
     });
     bump();
     if (!state.locales.length) {
-      state.locales = Object.keys(state.catalogs).map(function (tag) {
+      state.locales = BUILTIN_LOCALES.map(function (tag) {
         return { tag: tag, name: tag, nativeName: tag, provider: 'builtin' };
       });
     }
@@ -222,7 +229,6 @@
       try {
         const response = await window.fetch('/api/v1/i18n/bundle?locale=' + encodeURIComponent(target), {
           credentials: 'same-origin',
-          cache: 'no-store',
           headers: headers
         });
         if (response.status === 304 && cached) return cached.messages;
@@ -292,7 +298,6 @@
     try {
       const response = await window.fetch('/api/v1/i18n/locales', {
         credentials: 'same-origin',
-        cache: 'no-store',
         headers: { Accept: 'application/json' }
       });
       if (!response.ok) return null;
@@ -304,23 +309,31 @@
     }
   }
 
-  async function fetchBuiltinCatalogs() {
-    if (typeof window.fetch !== 'function') return false;
-    try {
-      const responses = await Promise.all(BUILTIN_LOCALES.map(function (tag) {
-        return window.fetch('assets/i18n/' + tag + '.json', { cache: 'no-store', headers: { Accept: 'application/json' } });
-      }));
-      const loaded = {};
-      for (let index = 0; index < responses.length; index += 1) {
-        if (!responses[index].ok) continue;
-        loaded[BUILTIN_LOCALES[index]] = await responses[index].json();
+  const builtinInflight = new Map();
+
+  // A built-in catalog is downloaded once, on first use. English falls back to
+  // Spanish (fallbackChain), so Spanish is always fetched as the source catalog.
+  function fetchBuiltinCatalog(tag) {
+    if (BUILTIN_LOCALES.indexOf(tag) === -1) return Promise.resolve(false);
+    if (hasCatalog(tag)) return Promise.resolve(true);
+    if (builtinInflight.has(tag)) return builtinInflight.get(tag);
+    const promise = (async function () {
+      if (typeof window.fetch !== 'function') return false;
+      try {
+        const response = await window.fetch('assets/i18n/' + tag + '.json', { headers: { Accept: 'application/json' } });
+        if (!response.ok) return false;
+        installCatalogs({ [tag]: await response.json() });
+        return true;
+      } catch (_) {
+        return false;
       }
-      if (!Object.keys(loaded).length) return false;
-      installCatalogs(loaded);
-      return true;
-    } catch (_) {
-      return false;
-    }
+    })();
+    const tracked = promise.then(function (value) {
+      builtinInflight.delete(tag);
+      return value;
+    });
+    builtinInflight.set(tag, tracked);
+    return tracked;
   }
 
   function readPreference() {
@@ -564,7 +577,10 @@
     }
     applyLocale(initial);
     api.ready = (async function () {
-      if (!preloaded || !preloaded.catalogs) await fetchBuiltinCatalogs();
+      if (!preloaded || !preloaded.catalogs) {
+        const startup = BUILTIN_LOCALES.indexOf(state.anonymous) !== -1 ? state.anonymous : SOURCE_LOCALE;
+        await Promise.all([fetchBuiltinCatalog(startup), fetchBuiltinCatalog(SOURCE_LOCALE)]);
+      }
       await loadLocales();
       // Activation itself requests the overlay; a repeated boot must not add a
       // second bundle request for the same locale.

@@ -108,6 +108,7 @@
     assetWarrantyState(asset) {
       if (!asset || !asset.warranty || !asset.warranty.until) return { label: tr('ui.asset.admin.warranty_none'), tone: 'hold' };
       const days = Math.round((Date.parse(asset.warranty.until + 'T12:00:00') - Date.now()) / 86400000);
+      if (Number.isNaN(days)) return { label: tr('ui.asset.admin.warranty_none'), tone: 'hold' };
       if (days < 0) return { label: tr('ui.asset.admin.warranty_expired'), tone: 'down' };
       if (days <= 60) return { label: tr('ui.asset.admin.warranty_expiring', { days: days }), tone: 'warn' };
       return { label: tr('ui.asset.admin.warranty_active', { date: Schema.formatDate(asset.warranty.until) }), tone: 'ok' };
@@ -300,10 +301,13 @@
     },
     applyAssetWarrantyPreset(months) {
       const draft = this.assetEditor.draft;
-      const base = new Date();
-      base.setMonth(base.getMonth() + months);
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth() + months, 1);
+      const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+      target.setDate(Math.min(now.getDate(), lastDay));
+      const pad = (value) => String(value).padStart(2, '0');
       draft.warranty = Object.assign({ until: '', provider: '', note: '' }, draft.warranty, {
-        until: base.toISOString().slice(0, 10)
+        until: target.getFullYear() + '-' + pad(target.getMonth() + 1) + '-' + pad(target.getDate())
       });
     },
 
@@ -581,6 +585,8 @@
       const finalStatus = this.assetFinalStatus();
       const note = dialog.note.trim();
       const reason = this.retireReasonText(dialog.reason);
+      const previousStatus = asset.status;
+      const previousAssignee = asset.assignee;
       asset.retired = {
         at: new Date().toISOString(),
         reason,
@@ -592,8 +598,8 @@
       asset.assigneeId = '';
       asset.assignee = '';
       asset.updatedAt = new Date().toISOString();
-      const retireChanges = [{ field: 'statusId', label: tr('ui.asset.common.status'), before: asset.status, after: finalStatus.label }];
-      if (asset.assignee) retireChanges.push({ field: 'assigneeId', label: tr('ui.asset.common.responsible'), before: asset.assignee, after: tr('ui.asset.field.unassigned') });
+      const retireChanges = [{ field: 'statusId', label: tr('ui.asset.common.status'), before: previousStatus, after: finalStatus.label }];
+      if (previousAssignee) retireChanges.push({ field: 'assigneeId', label: tr('ui.asset.common.responsible'), before: previousAssignee, after: tr('ui.asset.field.unassigned') });
       retireChanges.push({
         field: 'retired',
         label: tr('ui.asset.admin.change_retention'),

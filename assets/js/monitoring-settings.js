@@ -287,8 +287,12 @@
           snmpModule: this.profile.snmpModule || null,
           snmpAuthRef: this.profile.snmpAuthRef || null
         };
-        const result = await this.app.updateMonitoringProfile(this.profile.category, body);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.updateMonitoringProfile(this.profile.category, body);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.monitoring.settings.error.profile_save');
         else {
           this.app.showToast(tr('ui.monitoring.settings.toast.profile_saved'));
@@ -325,8 +329,12 @@
           this.error = tr('ui.monitoring.settings.error.nothing_to_save');
           return;
         }
-        const result = await this.app.updateMonitoringAsset(assetId, body);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.updateMonitoringAsset(assetId, body);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.monitoring.settings.error.override_save');
         else {
           this.notice = tr('ui.monitoring.settings.notice.override_saved', { asset: assetId });
@@ -345,14 +353,18 @@
           return;
         }
         this.busy = true;
-        const result = await this.app.saveMonitoringExporter({
+        let result;
+        try {
+          result = await this.app.saveMonitoringExporter({
           name: this.exporter.name,
           kind: this.exporter.kind,
           module: this.exporter.module,
           address: this.exporter.address,
           enabled: !!this.exporter.enabled
         });
-        this.busy = false;
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.monitoring.settings.error.exporter_save');
         else {
           this.notice = tr('ui.monitoring.settings.notice.exporter_saved');
@@ -746,8 +758,12 @@
           enabled: this.window.enabled !== false
         };
         if (this.editingWindowId) body.id = this.editingWindowId;
-        const result = await this.app.saveMonitoringWindow(body);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.saveMonitoringWindow(body);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.alerts.error.window_save');
         else {
           const updated = !!this.editingWindowId;
@@ -767,8 +783,12 @@
           return;
         }
         this.busy = true;
-        const result = await this.app.silenceMonitoringAsset(assetId, { hours: this.silence.hours, comment: this.silence.comment });
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.silenceMonitoringAsset(assetId, { hours: this.silence.hours, comment: this.silence.comment });
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.monitoring.silence.failed');
         else {
           this.notice = tr('ui.alerts.notice.silence_applied', { asset: assetId });
@@ -998,8 +1018,12 @@
           config
         };
         if (this.channel.id) body.id = this.channel.id;
-        const result = await this.app.saveNotificationChannel(body);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.saveNotificationChannel(body);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.notifications.settings.error.channel_save');
         else {
           this.notice = tr('ui.notifications.settings.notice.channel_saved');
@@ -1011,8 +1035,12 @@
         this.busy = true;
         this.error = '';
         this.notice = '';
-        const result = await this.app.testNotificationChannel(item.id);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.testNotificationChannel(item.id);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.notifications.settings.error.channel_test');
         else this.notice = tr('ui.notifications.settings.notice.channel_test');
       },
@@ -1061,8 +1089,12 @@
           maxAttempts: Number(this.rule.maxAttempts) || 1
         };
         if (this.editingRuleId) body.id = this.editingRuleId;
-        const result = await this.app.saveNotificationRule(body);
-        this.busy = false;
+        let result;
+        try {
+          result = await this.app.saveNotificationRule(body);
+        } finally {
+          this.busy = false;
+        }
         if (!result.ok) this.error = result.error || tr('ui.notifications.settings.error.rule_save');
         else {
           this.notice = tr('ui.notifications.settings.notice.rule_saved');

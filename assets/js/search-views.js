@@ -91,6 +91,7 @@
             await window.AssetAccess.request(this.app, '/search/' + action, { method: 'POST', signal: controller.signal });
             if (!current()) return;
           }
+          if (!this.app.can('config.general')) return;
           const status = await window.AssetAccess.request(this.app, '/search/status', { signal: controller.signal });
           if (!current()) return;
           this.status = status;
