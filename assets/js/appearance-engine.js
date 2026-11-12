@@ -96,7 +96,7 @@
     return clone(p);
   }
   function applyPreset(state, preset) { validate(preset); state.previous = clone(state.active); state.active = clone(preset); return state.active; }
-  function duplicate(state, preset) { const p = clone(preset); p.name += ' · Copia'; return savePreset(state, p, 'both'); }
+  function duplicate(state, preset) { const p = clone(preset); p.name += tr('ui.appearance.preset.copy_suffix'); return savePreset(state, p, 'both'); }
   function restore(state) { return applyPreset(state, GENERIC); }
   function setUserMode(state, id, mode) { state.userModes[id || 'guest'] = ['light', 'dark', 'system'].includes(mode) ? mode : 'system'; }
   function getUserMode(state, id) { return state.userModes[id || 'guest'] || state.active.preferences?.defaultMode || 'system'; }

@@ -1925,6 +1925,8 @@
   "ui.operations.field.quick_code": "Código rápido",
   "ui.operations.field.reason": "Motivo",
   "ui.operations.field.return_status": "Estado al ingresar",
+  "ui.operations.field.responsible": "Responsable",
+  "ui.appearance.preset.copy_suffix": " · Copia",
   "ui.operations.field.serial": "Número de serie",
   "ui.operations.field.site": "Sede",
   "ui.operations.field.status": "Estado",

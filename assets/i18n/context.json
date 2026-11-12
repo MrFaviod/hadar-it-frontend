@@ -1925,6 +1925,8 @@
   "ui.operations.field.quick_code": "Asset field label label. English: \"Quick code\".",
   "ui.operations.field.reason": "Asset field label label. English: \"Reason\".",
   "ui.operations.field.return_status": "Asset field label label. English: \"Status on return\".",
+  "ui.operations.field.responsible": "Field label for the responsible person in an operation change row.",
+  "ui.appearance.preset.copy_suffix": "Suffix appended to the name of a duplicated appearance preset.",
   "ui.operations.field.serial": "Asset field label label. English: \"Serial number\".",
   "ui.operations.field.site": "Asset field label label. English: \"Site\".",
   "ui.operations.field.status": "Asset field label label. English: \"Status\".",

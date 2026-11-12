@@ -1925,6 +1925,8 @@
   "ui.operations.field.quick_code": "Quick code",
   "ui.operations.field.reason": "Reason",
   "ui.operations.field.return_status": "Status on return",
+  "ui.operations.field.responsible": "Responsible",
+  "ui.appearance.preset.copy_suffix": " · Copy",
   "ui.operations.field.serial": "Serial number",
   "ui.operations.field.site": "Site",
   "ui.operations.field.status": "Status",

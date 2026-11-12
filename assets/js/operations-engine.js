@@ -183,7 +183,7 @@
       }
       if (!plan.errors.length) {
         if (site.id !== asset.site) {
-          addChange(plan, 'site', 'Sede', siteLabel(ctx.sites, asset.site), site.label);
+          addChange(plan, 'site', tr('ui.operations.field.site'), siteLabel(ctx.sites, asset.site), site.label);
           plan.patch.site = site.id;
           recalcCode(asset, plan, ctx, site.id);
         }
@@ -413,7 +413,7 @@
       const siteChanged = !!targetSite && targetSite.id !== asset.site;
       if (siteChanged) {
         row.patch.site = targetSite.id;
-        row.changes.push({ field: 'site', label: 'Sede', before: siteLabel(ctx.sites, asset.site), after: targetSite.label });
+        row.changes.push({ field: 'site', label: tr('ui.operations.field.site'), before: siteLabel(ctx.sites, asset.site), after: targetSite.label });
       }
 
       let targetLocationId = has('locationId') ? values.locationId : asset.locationId;
@@ -475,7 +475,7 @@
           row.patch.assignee = person ? person.name : '';
           row.changes.push({
             field: 'assigneeId',
-            label: 'Responsable',
+            label: tr('ui.operations.field.responsible'),
             before: asset.assignee || tr('ui.operations.value.unassigned'),
             after: person ? person.name : tr('ui.operations.value.unassigned')
           });
@@ -501,7 +501,7 @@
           row.patch.cost = next;
           row.changes.push({
             field: 'cost',
-            label: 'Coste',
+            label: tr('ui.operations.field.cost'),
             before: currency(asset.cost),
             after: currency(next)
           });
