@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
-  <title id="title">Hadar IT</title>
-  <rect width="64" height="64" rx="15" fill="#0c2333"/>
-  <path d="M32 12 52 23 32 34 12 23l20-11Z" fill="#7bd3ca"/>
-  <path d="m12 31 20 11 20-11v6L32 48 12 37v-6Z" fill="#2e9e97"/>
-  <path d="m12 42 20 11 20-11v4L32 57 12 46v-4Z" fill="#b8e5df"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="hadar-favicon-title">
+  <title id="hadar-favicon-title">Hadar IT</title>
+  <rect width="64" height="64" rx="14" fill="#0c2333"/>
+  <rect x="12.14" y="12" width="9.39" height="40" fill="#14958a"/>
+  <rect x="42.47" y="12" width="9.39" height="40" fill="#14958a"/>
+  <path d="M47.63 32C41.69 29.93 36.69 28.2 36.06 27.51C35.44 26.82 33.88 21.29 32 14.73C30.12 21.29 28.56 26.82 27.94 27.51C27.31 28.2 22.31 29.93 16.37 32C22.31 34.07 27.31 35.8 27.94 36.49C28.56 37.18 30.12 42.71 32 49.27C33.88 42.71 35.44 37.18 36.06 36.49C36.69 35.8 41.69 34.07 47.63 32Z" fill="#b5ece5"/>
 </svg>

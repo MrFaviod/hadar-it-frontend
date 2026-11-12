@@ -33,7 +33,7 @@
       if (!icon) { icon = document.createElement('link'); icon.rel = 'icon'; document.head.appendChild(icon); }
       // Only bounded internal or embedded resources may reach link.href; a
       // malformed gallery entry must not turn the shell into a tracking beacon.
-      icon.href = E.safeResource(preset.branding.favicon) || E.safeResource(preset.branding.logo) || 'assets/svg/logo.svg';
+      icon.href = E.safeResource(preset.branding.favicon) || E.safeResource(preset.branding.logo) || 'assets/svg/favicon.svg';
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) meta.setAttribute('content', original ? (mode === 'dark' ? '#0a1820' : '#0b2331') : E.tokens(preset, mode)['--brand-primary']);
     },
