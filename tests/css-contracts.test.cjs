@@ -62,3 +62,8 @@ test('switch labels expose a 24px pointer target', ()=>{
  assert.ok(blocks.length>0,'rule present');
  assert.ok(px(blocks.join(';'),'min-height')>=24,'switch label below 24px');
 });
+
+test('labels.css keeps no rules for label markup that no runtime renders', ()=>{
+ const labels=fs.readFileSync(path.join(cssDir,'labels.css'),'utf8').replace(/\/\*[\s\S]*?\*\//g,'');
+ assert.doesNotMatch(labels,/label-(sheet|cell|pagination|preview-stage|offset|field-options|field-order)|inventory-label|qr-dialog-preview|--label-/,'dead label rule left in labels.css');
+});
