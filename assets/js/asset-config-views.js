@@ -24,7 +24,7 @@
         return this.app.inventoryConfigFields();
       },
       canEdit() {
-        return this.real ? this.app.inventoryCanConfigure('fields') : true;
+        return this.real ? this.app.inventoryCanConfigure('fields') : !!(typeof this.app.can === 'function' && this.app.can('assets.edit'));
       }
     },
     template: `
@@ -66,7 +66,7 @@
                 :aria-label="$t(field.active === false ? 'ui.catalog.fields.activate' : 'ui.catalog.fields.deactivate', { label: field.label })"
                 @click="app.setAssetFieldActive(field, field.active === false)"
               >{{ field.active === false ? $t('ui.catalog.fields.activate_button') : $t('ui.catalog.fields.deactivate_button') }}</button>
-              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.fields.delete', { label: field.label })" @click="app.requestDeleteAssetField(field)">
+              <button v-if="!real && canEdit" type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.fields.delete', { label: field.label })" @click="app.requestDeleteAssetField(field)">
                 <app-icon name="trash" />
               </button>
             </div>
@@ -110,7 +110,7 @@
         return this.app.inventoryConfigFields().filter((field) => field.active !== false);
       },
       canEdit() {
-        return this.real ? this.app.inventoryCanConfigure('fields') : true;
+        return this.real ? this.app.inventoryCanConfigure('fields') : !!(typeof this.app.can === 'function' && this.app.can('assets.edit'));
       }
     },
     methods: {
@@ -260,7 +260,7 @@
         return this.app.inventoryConfigStatuses();
       },
       canEdit() {
-        return this.real ? this.app.inventoryCanConfigure('statuses') : true;
+        return this.real ? this.app.inventoryCanConfigure('statuses') : !!(typeof this.app.can === 'function' && this.app.can('assets.edit'));
       }
     },
     template: `
@@ -301,7 +301,7 @@
                 :aria-label="$t(status.active === false ? 'ui.catalog.statuses.activate' : 'ui.catalog.statuses.deactivate', { label: status.label })"
                 @click="app.setAssetStatusActive(status, status.active === false)"
               >{{ status.active === false ? $t('ui.catalog.statuses.activate_button') : $t('ui.catalog.statuses.deactivate_button') }}</button>
-              <button v-else type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.statuses.delete', { label: status.label })" @click="app.requestDeleteAssetStatus(status)">
+              <button v-if="!real && canEdit" type="button" class="icon-button icon-button--danger" :aria-label="$t('ui.catalog.statuses.delete', { label: status.label })" @click="app.requestDeleteAssetStatus(status)">
                 <app-icon name="trash" />
               </button>
             </div>
@@ -347,7 +347,7 @@
         return this.real ? this.app.inventoryConfigStatuses() : [];
       },
       canEdit() {
-        return this.real ? this.app.inventoryCanConfigure('rules') : true;
+        return this.real ? this.app.inventoryCanConfigure('rules') : !!(typeof this.app.can === 'function' && this.app.can('assets.edit'));
       }
     },
     template: `

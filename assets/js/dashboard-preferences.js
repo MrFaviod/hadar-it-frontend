@@ -72,7 +72,7 @@
   function clearTemporary(state, userId) { state.temporary[key(userId)] = []; }
   function resetLayout(state, userId) { saveLayout(state, userId, DEFAULTS.slice()); clearTemporary(state, userId); }
   function linksFor(state, userId) { return (state.links || []).filter(l => l.scope === 'shared' || l.ownerId === key(userId)); }
-  function editable(link, userId, shared) { return link.scope === 'shared' ? shared : link.ownerId === key(userId); }
+  function editable(link, userId, shared) { return link.ownerId === key(userId) && (link.scope !== 'shared' || shared); }
   function normalizeShortcut(draft, links, userId, shared) {
     const existing = draft.id ? links.find(l => l.id === draft.id) : null;
     const fail = error => ({ ok: false, error });

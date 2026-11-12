@@ -36,8 +36,7 @@
     return access.request(vm, basePath(vm) + path, Object.assign({ method: method }, options || {}));
   }
   function canManage(vm) {
-    if (vm && typeof vm.can === 'function') return !!vm.can('config.general');
-    return true;
+    return !!(vm && typeof vm.can === 'function' && vm.can('config.general'));
   }
   function requireSession(vm) {
     if (!vm || !vm.authenticated) throw makeError(tr('ui.appearance.api.login_required'), 401);

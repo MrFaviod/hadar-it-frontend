@@ -141,7 +141,7 @@
       username: '',
       name: '',
       email: '',
-      roleId: roles.length ? roles[0].id : '',
+      roleId: roles.find(role => canAssignRole(app, role))?.id || '',
       active: true,
       lastAccess: '',
       personId: '',
@@ -331,7 +331,10 @@
         if (field === 'username' && !value) errors.username = tr('ui.access.error_username_required');
         if (field === 'name' && !value) errors.name = tr('ui.access.error_name_required');
         if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) errors.email = tr('ui.access.error_email_invalid');
-        if (field === 'roleId' && !this.draft.roleId) errors.roleId = tr('ui.access.error_role_required');
+        if (field === 'roleId') {
+          const role = list(this.app.security && this.app.security.roles).find(role => role.id === this.draft.roleId);
+          if (!canAssignRole(this.app, role)) errors.roleId = tr('ui.access.error_role_required');
+        }
         if (field === 'password' && this.dialog.mode === 'create' && !this.draft.password) errors.password = tr('ui.access.error_password_required');
         this.errors = errors;
       },
@@ -537,7 +540,10 @@
         if (field === 'username' && !value) errors.username = tr('ui.access.error_username_required');
         if (field === 'name' && !value) errors.name = tr('ui.access.error_name_required');
         if (field === 'email' && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) errors.email = tr('ui.access.error_email_invalid');
-        if (field === 'roleId' && !this.draft.roleId) errors.roleId = tr('ui.access.error_role_required');
+        if (field === 'roleId') {
+          const role = list(this.app.security && this.app.security.roles).find(role => role.id === this.draft.roleId);
+          if (!canAssignRole(this.app, role)) errors.roleId = tr('ui.access.error_role_required');
+        }
         this.errors = errors;
       },
       validDraft() {
@@ -735,6 +741,7 @@
   };
 
   window.AssetAccessViews = {
+    canAssignRole,
     AccessUsers,
     AccessUserDetail,
     AccessSecurity,

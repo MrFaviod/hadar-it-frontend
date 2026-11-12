@@ -543,6 +543,11 @@
       }
     },
     saveUser(draft) {
+      const role = roleFor(this, draft.roleId);
+      if (!window.AssetAccessViews?.canAssignRole(this, role)) {
+        const error = tr('ui.access.error_role_required');
+        return Promise.resolve(makeResult(false, error, { roleId: error }));
+      }
       const body = { username: draft.username, name: draft.name, email: draft.email || '', roleId: draft.roleId, personId: draft.personId || '', active: draft.active !== false };
       if (draft.password) body.password = draft.password;
       return save(this, '/identity/users' + (draft.id ? '/' + encodeURIComponent(draft.id) : ''), draft.id ? 'PUT' : 'POST', body, draft.id ? 'users.edit' : 'users.create');
