@@ -34,3 +34,12 @@ test('edge revalidates static assets instead of caching them blindly', ()=>{
 test('edge hides the nginx version', ()=>{
  assert.match(conf,/server_tokens\s+off\s*;/);
 });
+
+test('edge reports the app CSP without enforcing it', ()=>{
+ const m=conf.match(/add_header\s+Content-Security-Policy-Report-Only\s+"([^"]+)"\s+always\s*;/);
+ assert.ok(m,'report-only CSP missing');
+ const directives=Object.fromEntries(m[1].split(';').map(d=>d.trim()).filter(Boolean).map(d=>{const [name,...v]=d.split(/\s+/);return [name,v];}));
+ assert.ok(directives['script-src'].includes("'unsafe-eval'"),'legacy runtime compiles templates in the browser');
+ assert.ok(directives['worker-src'].includes('blob:'),'MapLibre worker runs from a blob URL');
+ assert.doesNotMatch(conf,/add_header\s+Content-Security-Policy\s/,'CSP must stay report-only until browser-verified');
+});
