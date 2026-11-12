@@ -276,7 +276,7 @@ test('explorer switches keep live shared filters and selection over stale saved 
   vmApp.workspaceUserId = 'ana';
   vmApp.explorerFilters = { categories: ['computadoras'], sites: [], states: ['asignado'], locations: [], search: '' };
   vmApp.explorerSelection = 'asset:x1';
-  const child = { app: vmApp, filters: { categories: ['computadoras'], sites: [], states: ['asignado'], locations: [], search: '' }, selectedId: 'asset:x1' };
+  const child = { app: vmApp, filters: { categories: ['computadoras'], sites: [], states: ['asignado'], locations: [], search: '' }, selectedId: 'asset:x1', view: { x: 0, y: 0, k: 1 } };
   c.AssetGraphView.created.call(child);
   assert.deepEqual(Array.from(child.filters.categories), ['computadoras']);
   assert.deepEqual(Array.from(child.filters.states), ['asignado']);

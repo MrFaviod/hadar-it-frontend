@@ -76,13 +76,22 @@
   function mode(value) { return value === 'system' ? 'auto' : THEMES.includes(value) ? value : 'auto'; }
   function numeric(value) { return value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : Number(value); }
 
+  function validatedShortcuts(links, ownerId) {
+    return (Array.isArray(links) ? links : []).flatMap(link => {
+      const normalize = window.AssetDashboardPrefs && window.AssetDashboardPrefs.normalizeShortcut;
+      // Hydration is not an edit: validate content with the existing normalizer
+      // without applying edit ownership to another user's visible shared link.
+      const checked = normalize && link && normalize({ ...link, id: '' }, [], ownerId, true);
+      return checked && checked.ok ? [{ ...clone(link), ...checked.shortcut, id: link.id, ownerId: link.ownerId }] : [];
+    });
+  }
   function workspaceFromDto(dto, ownerId, epoch) {
     const source = dto || {};
     const favorites = Array.isArray(source.favorites) ? clone(source.favorites) : [];
     const usage = source.usage && typeof source.usage === 'object' ? clone(source.usage) : {};
     const lastViews = source.lastViews && typeof source.lastViews === 'object' ? clone(source.lastViews) : {};
     const views = Array.isArray(source.views) ? clone(source.views) : [];
-    const shortcuts = Array.isArray(source.shortcuts) ? clone(source.shortcuts) : [];
+    const shortcuts = validatedShortcuts(source.shortcuts, ownerId);
     const users = ownerId ? { [ownerId]: { favorites, usage, lastViews } } : {};
     return { users, views, nextId: views.reduce((next, view) => Math.max(next, Number(view.id.replace(/^view-/, '')) || 0), 0) + 1,
       widgets: Array.isArray(source.widgets) ? source.widgets.filter(id => WIDGETS.includes(id)) : null,
@@ -217,6 +226,7 @@
     return (vm.dashboard && Array.isArray(vm.dashboard.links)) ? vm.dashboard.links : [];
   }
   function writeShortcuts(vm, shortcuts) {
+    shortcuts = validatedShortcuts(shortcuts, ownerOf(vm));
     if (vm.workspaceState) vm.workspaceState = { ...vm.workspaceState, shortcuts: shortcuts.slice() };
     if (!vm.dashboard) vm.dashboard = createDashboardState();
     vm.dashboard = { ...vm.dashboard, links: shortcuts.slice() };
