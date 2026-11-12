@@ -36,7 +36,7 @@ MODULE = """
 (function () {
   'use strict';
   var inits = 0;
-  window.ITSMExtension.register({ components: { Panel: { props: ['assetId', 'sdk'], template: '<p>{{ assetId }}</p>' } } });
+  window.ITSMExtension.register({ components: { Panel: { props: ['assetId', 'sdk'], render: function () { return Vue.h('p', this.assetId); } } } });
   window.addEventListener('message', function (event) {
     if (event.source !== window.parent) return;
     var data = event.data || {};

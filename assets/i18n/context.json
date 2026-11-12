@@ -5900,6 +5900,7 @@
   "ui.extensions.frame.missing_component": "In-frame error heading when the requested component is missing.",
   "ui.extensions.frame.missing_component_name": "In-frame error detail naming the missing component.",
   "ui.extensions.frame.register_required": "In-frame error when a module registers without a components map.",
+  "ui.extensions.frame.render_required": "Visible isolated-frame error before mount when a registered or local component uses a raw template or lacks a render function. {component} names the component option path; not a mount-success signal.",
   "ui.extensions.frame.document_title": "Sandbox document title when the extension provides no title.",
   "ui.extensions.frame.error_module_invalid": "Host error when the frontend module URL is missing.",
   "ui.extensions.frame.error_binding_unapproved": "Host error when the module binding has no id or digest.",

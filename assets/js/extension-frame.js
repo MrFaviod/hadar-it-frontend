@@ -74,6 +74,7 @@
     missingComponent: 'ui.extensions.frame.missing_component',
     missingComponentName: 'ui.extensions.frame.missing_component_name',
     registerRequired: 'ui.extensions.frame.register_required',
+    renderRequired: 'ui.extensions.frame.render_required',
     documentTitle: 'ui.extensions.frame.document_title'
   };
 
@@ -168,7 +169,7 @@
   function t(name, params) {
     var message = MESSAGES[name];
     if (typeof message !== 'string' || !message) return '';
-    return message.replace(/\{(\w+)\}/g, function (match, key) {
+    return message.replace(/\\{(\\w+)\\}/g, function (match, key) {
       return params && params[key] !== undefined && params[key] !== null ? String(params[key]) : match;
     });
   }
@@ -230,7 +231,26 @@
         return String(value);
       }
     },
-    template: '<div class="kit-table-wrap"><table class="kit-table"><caption class="kit-sr">{{ caption || copy('captionFallback') }}</caption><thead><tr><th v-for="column in columns" :key="column.field" scope="col">{{ column.label || column.field }}</th></tr></thead><tbody><tr v-if="loading"><td :colspan="columns.length || 1" class="kit-empty" role="status">{{ copy('loadingData') }}</td></tr><tr v-else-if="!rows.length"><td :colspan="columns.length || 1" class="kit-empty">{{ empty || copy('emptyTable') }}</td></tr><tr v-for="(row, index) in rows" :key="row.id || index"><td v-for="column in columns" :key="column.field">{{ cell(row, column) }}</td></tr></tbody></table></div>'
+    render: function () {
+      var self = this;
+      var h = Vue.h;
+      var body = [];
+      if (this.loading || !this.rows.length) {
+        body.push(h('tr', [h('td', { colspan: this.columns.length || 1, class: 'kit-empty', role: this.loading ? 'status' : null },
+          this.loading ? this.copy('loadingData') : (this.empty || this.copy('emptyTable')))]));
+      }
+      this.rows.forEach(function (row, index) {
+        body.push(h('tr', { key: row.id || index }, self.columns.map(function (column) {
+          return h('td', { key: column.field }, self.cell(row, column));
+        })));
+      });
+      return h('div', { class: 'kit-table-wrap' }, [h('table', { class: 'kit-table' }, [
+        h('caption', { class: 'kit-sr' }, this.caption || this.copy('captionFallback')),
+        h('thead', [h('tr', this.columns.map(function (column) {
+          return h('th', { key: column.field, scope: 'col' }, column.label || column.field);
+        }))]), h('tbody', body)
+      ])]);
+    }
   };
   var KitField = {
     name: 'ItsmField',
@@ -254,12 +274,23 @@
     methods: {
       onInput: function (event) { this.$emit('update:modelValue', event.target.value); }
     },
-    template: '<div class="kit-field"><label :for="controlId">{{ label }}<span v-if="required" aria-hidden="true"> *</span></label><textarea v-if="multiline" :id="controlId" :value="modelValue" :required="required" :aria-invalid="invalid" :aria-describedby="describedBy" @input="onInput"></textarea><input v-else :id="controlId" :type="type" :value="modelValue" :required="required" :aria-invalid="invalid" :aria-describedby="describedBy" @input="onInput"><p v-if="error" :id="errorId" class="kit-field__error" role="alert">{{ error }}</p><p v-else-if="hint" :id="hintId" class="kit-field__hint">{{ hint }}</p></div>'
+    render: function () {
+      var h = Vue.h;
+      var control = { id: this.controlId, value: this.modelValue, required: this.required,
+        'aria-invalid': this.invalid, 'aria-describedby': this.describedBy, onInput: this.onInput };
+      if (!this.multiline) control.type = this.type;
+      return h('div', { class: 'kit-field' }, [
+        h('label', { for: this.controlId }, [this.label, this.required ? h('span', { 'aria-hidden': 'true' }, ' *') : null]),
+        h(this.multiline ? 'textarea' : 'input', control),
+        this.error ? h('p', { id: this.errorId, class: 'kit-field__error', role: 'alert' }, this.error)
+          : (this.hint ? h('p', { id: this.hintId, class: 'kit-field__hint' }, this.hint) : null)
+      ]);
+    }
   };
   var KitStatus = {
     name: 'ItsmStatus',
     props: { label: { type: String, default: '—' }, tone: { type: String, default: 'hold' } },
-    template: '<span class="kit-status" :class="&quot;kit-status--&quot; + tone">{{ label }}</span>'
+    render: function () { return Vue.h('span', { class: 'kit-status kit-status--' + this.tone }, this.label); }
   };
   var KitButton = {
     name: 'ItsmButton',
@@ -273,8 +304,44 @@
     computed: {
       classes: function () { return this.variant === 'secondary' ? 'kit-btn kit-btn--secondary' : 'kit-btn'; }
     },
-    template: '<button :type="type" :class="classes" :disabled="disabled" @click="$emit(\\'click\\')"><slot>{{ label }}</slot></button>'
+    render: function () {
+      var self = this;
+      return Vue.h('button', { type: this.type, class: this.classes, disabled: this.disabled,
+        onClick: function () { self.$emit('click'); } }, this.$slots.default ? this.$slots.default() : this.label);
+    }
   };
+  // Inspect only Vue component option edges inside the sandbox, never module code in the host.
+  function unsupportedComponent(components) {
+    var seen = new Set();
+    function inspect(component, name, requireRender) {
+      if (!component || (typeof component !== 'object' && typeof component !== 'function')) return name;
+      if (component.template !== undefined || (requireRender && typeof component !== 'function' && typeof component.render !== 'function')) return name;
+      if (seen.has(component)) return '';
+      seen.add(component);
+      var local = component.components || {};
+      var names = Object.keys(local);
+      for (var i = 0; i < names.length; i += 1) {
+        var invalid = inspect(local[names[i]], name + '.' + names[i], true);
+        if (invalid) return invalid;
+      }
+      if (component.extends) {
+        var inherited = inspect(component.extends, name + '.extends', false);
+        if (inherited) return inherited;
+      }
+      var mixins = component.mixins || [];
+      for (var j = 0; j < mixins.length; j += 1) {
+        var mixed = inspect(mixins[j], name + '.mixins[' + j + ']', false);
+        if (mixed) return mixed;
+      }
+      return '';
+    }
+    var names = Object.keys(components);
+    for (var i = 0; i < names.length; i += 1) {
+      var invalid = inspect(components[names[i]], names[i], true);
+      if (invalid) return invalid;
+    }
+    return '';
+  }
   function boot(init) {
     if (booted) return;
     booted = true;
@@ -285,6 +352,12 @@
     var root = document.getElementById('root');
     if (!component) {
       root.innerHTML = '<div class="kit-error" role="alert"><strong>' + escapeText(t('missingComponent')) + '</strong><p>' + escapeText(t('missingComponentName', { component: String(init.component || '') })) + '</p></div>';
+      return;
+    }
+    var unsupported = unsupportedComponent(components);
+    if (unsupported) {
+      root.innerHTML = '<div class="kit-error" role="alert">' + escapeText(t('renderRequired', { component: unsupported })) + '</div>';
+      reportHeight();
       return;
     }
     var sdk = {
@@ -542,10 +615,9 @@
 
     function onNavigate(data) {
       if (typeof data.page !== 'string' || !data.page || data.page.length > 200) return false;
-      if (pages.has(data.page) || /^#\/[A-Za-z0-9/_?=-]*$/.test(data.page)) {
+      if (pages.has(data.page) || data.page.startsWith('#/')) {
         try {
-          if (typeof config.navigate === 'function') config.navigate(data.page);
-          return true;
+          return typeof config.navigate === 'function' && config.navigate(data.page) !== false;
         } catch (_) {
           return false;
         }
@@ -584,6 +656,7 @@
         }
         return true;
       }
+      if (!state.ready) return false;
       if (data.type === 'itsm:request') return onRequest(data);
       if (data.type === 'itsm:navigate') return onNavigate(data);
       if (data.type === 'itsm:resize') return onResize(data);

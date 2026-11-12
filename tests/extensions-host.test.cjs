@@ -65,6 +65,8 @@ function createHost(permissions) {
     },
     setExtensionPermissions: (groups) => catalog.push(groups)
   };
+  sandbox.window.AssetStore = { KEYS: {} };
+  evaluate(sandbox, 'assets/js/methods.js');
   evaluate(sandbox, 'assets/js/extension-views.js');
   evaluate(sandbox, 'assets/js/ui-composition.js');
   evaluate(sandbox, 'assets/js/extensions.js');
@@ -165,7 +167,16 @@ test('navigation stays inside own pages and core hash routes', () => {
   assert.equal(String(host.window.location.hash), '#/extensiones/demo/records');
   assert.equal(sdk.navigate('#/inventario'), true);
   assert.equal(String(host.window.location.hash), '#/inventario');
+  assert.equal(sdk.navigate('#/extensiones/demo/records'), true);
+  assert.equal(sdk.navigate('#/extensiones/demo/not-declared'), false);
   assert.equal(sdk.navigate('#/extensiones/otra/x'), false);
+  for (const hash of ['#//evil', '#/unknown', '#/configuracion/unknown', '#/panel/extra']) {
+    const before = String(host.window.location.hash);
+    assert.equal(sdk.navigate(hash), false, hash);
+    assert.equal(host.service.frameNavigate(host.app, host.app.extensions.items[0], hash), false, hash);
+    assert.equal(String(host.window.location.hash), before);
+  }
+  assert.equal(host.service.frameNavigate(host.app, host.app.extensions.items[0], '#/activo/a%20b'), true);
   assert.equal(sdk.navigate('https://evil.example'), false);
 });
 

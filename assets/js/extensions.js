@@ -628,8 +628,8 @@
       window.location.hash = pageLink(item.id, own);
       return true;
     }
-    if (page.charAt(0) !== '#' || page.indexOf('#/') !== 0 || /\s/.test(page)) return false;
-    if (page.indexOf('#/extensiones/') === 0 && page.indexOf('#/extensiones/' + encode(item.id) + '/') !== 0) return false;
+    const ownHash = item.pages.find(entry => pageLink(item.id, entry) === page);
+    if (!ownHash && !window.AssetMethods?.isDeclaredHash(page)) return false;
     window.location.hash = page;
     return true;
   }
@@ -681,17 +681,7 @@
           window.location.hash = pageLink(item.id, page);
           return true;
         }
-        const hash = text(target);
-        if (!hash || hash.charAt(0) !== '#' || hash.indexOf('#/') !== 0 || hash.indexOf('\\') !== -1 || /\s/.test(hash)) {
-          return false;
-        }
-        if (/^#\/\/|^#\/[a-zA-Z][a-zA-Z0-9+.-]*:/.test(hash)) return false;
-        if (hash.indexOf('#/extensiones/') === 0) {
-          const own = '#/extensiones/' + encode(item.id) + '/';
-          if (hash.indexOf(own) !== 0) return false;
-        }
-        window.location.hash = hash;
-        return true;
+        return frameNavigate(vm, item, text(target));
       }
     };
     return Object.freeze(sdk);

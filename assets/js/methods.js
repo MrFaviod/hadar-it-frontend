@@ -13,8 +13,21 @@
   }
 
   window.AssetMethods = {
-    parseRoute() {
-      const hash = window.location.hash.replace(/^#\/?/, '');
+    // Admission checks reuse this parser without mutating browser location.
+    isDeclaredHash(hash) {
+      if (typeof hash !== 'string' || !hash.startsWith('#/') || /[\\\s]/.test(hash)) return false;
+      const route = window.AssetMethods.parseRoute.call({ authenticated: true }, hash);
+      if (route.name === 'extension') return false; // The extension owner checks its own declarations.
+      const canonical = window.AssetMethods.hashFor(route);
+      if (hash === canonical) return true;
+      if (['map', 'graph'].includes(route.name)) {
+        const alias = canonical.replace(/^#\/infra\/(mapa|grafo)/, '#/$1');
+        return hash === alias || hash === alias.replace('/activo/', '/');
+      }
+      return hash === '#/supervision/' + MONITOR_TABS[0] && canonical === '#/supervision';
+    },
+    parseRoute(inputHash) {
+      const hash = (typeof inputHash === 'string' ? inputHash : window.location.hash).replace(/^#\/?/, '');
       const queryAt = hash.indexOf('?');
       const raw = queryAt === -1 ? hash : hash.slice(0, queryAt);
       const query = queryAt === -1 ? '' : hash.slice(queryAt + 1);

@@ -5901,6 +5901,7 @@
   "ui.extensions.frame.missing_component": "El módulo no registró el componente solicitado.",
   "ui.extensions.frame.missing_component_name": "Falta {component}.",
   "ui.extensions.frame.register_required": "El módulo debe registrar componentes con window.ITSMExtension.register({components}).",
+  "ui.extensions.frame.render_required": "El componente {component} debe proporcionar una función render (escrita o precompilada). No se admiten templates raw.",
   "ui.extensions.frame.document_title": "Extensión aislada",
   "ui.extensions.frame.error_module_invalid": "La extensión no publica un módulo de frontend válido.",
   "ui.extensions.frame.error_binding_unapproved": "La ruta del módulo de frontend no está ligada a una extensión aprobada.",

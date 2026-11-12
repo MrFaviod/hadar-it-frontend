@@ -85,7 +85,7 @@ test('bridge announces the exact sandbox and CSP the host builds', () => {
     extensionId: EXTENSION_ID,
     component: 'LicensePanel',
     vueSource: 'window.Vue = {};',
-    moduleSource: 'window.ITSMExtension.register({components:{LicensePanel:{template:"<p>x</p>"}}});',
+    moduleSource: 'window.ITSMExtension.register({components:{LicensePanel:{render:function(){return Vue.h("p","x")}}}});',
     theme: { '--paper': '#ffffff' }
   });
   assert.match(doc, /<iframe|<!DOCTYPE html>/i);

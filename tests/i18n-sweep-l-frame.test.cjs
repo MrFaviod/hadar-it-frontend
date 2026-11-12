@@ -80,6 +80,7 @@ test('the sandbox document declares the active locale and embeds the messages', 
 test('the bridge posts a localized error to the frame', () => {
   const { sandbox, frame, bridge, posts } = fixture({ sdk: null });
   sandbox.window.ItsmI18n.setLocale('en');
+  bridge.handleMessage({ source: frame.contentWindow, data: { type: 'itsm:ready' } });
   assert.equal(bridge.handleMessage({
     source: frame.contentWindow,
     data: { type: 'itsm:request', id: 'r1', operation: 'list_licenses', args: {} }

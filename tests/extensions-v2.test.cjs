@@ -470,7 +470,7 @@ test('isolated views fetch their own module and run it inside an allow-scripts f
   c.fetch = async (url) => {
     const target = String(url);
     if (target.includes('/assets/vendor/vue.global.prod.js')) return { ok: true, status: 200, text: async () => 'window.__vueLoaded = true;' };
-    if (target.includes('/api/v1/extensions/license/frontend.js')) return { ok: true, status: 200, text: async () => 'window.ITSMExtension.register({components:{LicensePanel:{template:"<p>aislado</p>"}}});' };
+    if (target.includes('/api/v1/extensions/license/frontend.js')) return { ok: true, status: 200, text: async () => 'window.ITSMExtension.register({components:{LicensePanel:{render:function(){return Vue.h("p","aislado")}}}});' };
     return { ok: false, status: 404, json: async () => ({}) };
   };
   const isolated = item({
