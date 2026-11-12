@@ -672,7 +672,7 @@
     if (key === 'location') return asset.location || '';
     if (key === 'assignee') return personLabel(app, asset);
     if (key === 'status') return asset.status || '';
-    if (key === 'cost') return Data.formatNumber(asset.cost);
+    if (key === 'cost') return asset.cost == null || asset.cost === '' ? '' : Number(asset.cost);
     if (key === 'warrantyUntil') return asset.warranty && asset.warranty.until ? Data.formatDate(asset.warranty.until) : '';
     if (key === 'warrantyProvider') return asset.warranty ? asset.warranty.provider || '' : '';
     if (key === 'mac' || key === 'os' || key === 'cpu' || key === 'ram') {

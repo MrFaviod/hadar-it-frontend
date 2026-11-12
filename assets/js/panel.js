@@ -92,7 +92,7 @@
       openReport() { this.reports = !this.reports; },
       downloadReport() {
         const rows = [[tr('ui.panel.csv_asset'), tr('ui.panel.csv_code'), tr('ui.panel.csv_status'), tr('ui.panel.csv_availability'), tr('ui.panel.csv_latency'), tr('ui.panel.csv_last_check')], ...this.model.rows.map(r => [r.asset.name, r.asset.code || r.asset.id, r.statusMeta.label, r.uptimePct === null ? '' : r.uptimePct, r.latencyMs === null ? '' : r.latencyMs, r.lastCheckAt])];
-        const csv = '\ufeff' + rows.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(';')).join('\r\n');
+        const csv = '\ufeff' + window.AssetTransferData.toCsv([], rows, ';');
         const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
         const a = document.createElement('a'); a.href = url; a.download = tr('ui.panel.csv_filename') + '.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
         this.app.showToast(tr('ui.panel.toast_downloaded'));

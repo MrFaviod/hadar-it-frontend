@@ -577,8 +577,11 @@
   }
 
   function csvCell(value, separator) {
-    const text = String(value == null ? '' : value);
-    const needsQuotes = text.indexOf('"') !== -1 || text.indexOf('\n') !== -1 || text.indexOf(separator) !== -1;
+    // Only actual numbers are numeric. Text (including numeric-looking text)
+    // keeps its type and gets a visible spreadsheet safety prefix when needed.
+    let text = String(value == null ? '' : value);
+    if (typeof value !== 'number' && /^[=+\-@\s\x00-\x1f\x7f-\x9f]/u.test(text)) text = "'" + text;
+    const needsQuotes = text.indexOf('"') !== -1 || /[\r\n]/.test(text) || text.indexOf(separator) !== -1;
     return needsQuotes ? '"' + text.replace(/"/g, '""') + '"' : text;
   }
 

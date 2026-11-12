@@ -40,7 +40,7 @@ test('edge reports the app CSP without enforcing it', ()=>{
  const m=conf.match(/add_header\s+Content-Security-Policy-Report-Only\s+"([^"]+)"\s+always\s*;/);
  assert.ok(m,'report-only CSP missing');
  const directives=Object.fromEntries(m[1].split(';').map(d=>d.trim()).filter(Boolean).map(d=>{const [name,...v]=d.split(/\s+/);return [name,v];}));
- assert.ok(directives['script-src'].includes("'unsafe-eval'"),'legacy runtime compiles templates in the browser');
+ assert.ok(!directives['script-src'].includes("'unsafe-eval'"),'host CSP stays without unsafe-eval; eval violations are reported, not allowed');
  assert.ok(directives['worker-src'].includes('blob:'),'MapLibre worker runs from a blob URL');
  assert.doesNotMatch(conf,/add_header\s+Content-Security-Policy\s/,'CSP must stay report-only until browser-verified');
 });
