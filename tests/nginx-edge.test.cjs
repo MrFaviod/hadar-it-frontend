@@ -28,7 +28,8 @@ test('edge compresses text assets', ()=>{
 });
 
 test('edge revalidates static assets instead of caching them blindly', ()=>{
- assert.match(location('/assets/'),/add_header\s+Cache-Control\s+"no-cache"\s*;/);
+  assert.match(location('/assets/'),/expires\s+epoch\s*;/);
+  assert.doesNotMatch(location('/assets/'),/add_header/, 'add_header in a location drops inherited security headers');
 });
 
 test('edge hides the nginx version', ()=>{
