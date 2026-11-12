@@ -16,6 +16,28 @@
   // preferences (base, labels, clusters, camera) are local presentation state
   // persisted in `app.maps.prefs`, so they are composed for reads when the
   // active map model has none. Nothing is written to either side.
+  // MapLibre is only used by the map views, so it loads on the first mount. A
+  // failed load clears the cached promise so a later visit retries.
+  let mapLibreReady = null;
+  function loadMapLibre() {
+    if (window.maplibregl) return Promise.resolve();
+    if (!mapLibreReady) {
+      const assets = [
+        Object.assign(document.createElement('link'), { rel: 'stylesheet', href: 'assets/vendor/maplibre-gl.css' }),
+        Object.assign(document.createElement('script'), { src: 'assets/vendor/maplibre-gl.js' })
+      ];
+      mapLibreReady = Promise.all(assets.map((element) => new Promise((resolve, reject) => {
+        element.onload = () => resolve();
+        element.onerror = () => reject(new Error('Could not load MapLibre'));
+        document.head.appendChild(element);
+      }))).catch((error) => {
+        mapLibreReady = null;
+        throw error;
+      });
+    }
+    return mapLibreReady;
+  }
+
   function mapsWithPrefs(maps, app) {
     if (!maps || maps.prefs) return maps;
     const local = Engine.mapsOf(app);
@@ -416,7 +438,7 @@
       initMap() {
         if (this.map || !this.$refs.mapCanvas) return;
         if (!window.maplibregl) {
-          this.mapError = tr('ui.map.error.engine');
+          loadMapLibre().then(() => this.initMap(), () => { this.mapError = tr('ui.map.error.engine'); });
           return;
         }
         try {
@@ -755,8 +777,10 @@
         const canvas = this.$refs.floorCanvas;
         if (!canvas || !this.floorPlanSrc) return;
         if (!window.maplibregl) {
-          this.floorPlanState = 'error';
-          this.floorPlanError = tr('ui.map.error.maplibre');
+          loadMapLibre().then(() => this.mountFloorMap(), () => {
+            this.floorPlanState = 'error';
+            this.floorPlanError = tr('ui.map.error.maplibre');
+          });
           return;
         }
         this.destroyFloorMap();
