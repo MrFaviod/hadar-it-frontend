@@ -48,20 +48,22 @@ with sync_playwright() as p:
     anonymous = context.request.get(BASE + SESSION_PATH, fail_on_status_code=False)
     assert anonymous.status in (401, 403), f'anonymous session answered {anonymous.status}'
 
-    # A rejected credential is reported in the live region and the input stays.
+    # A rejected credential is reported in the live region and focus moves to
+    # the alert, which is a focusable role="alert" summary; the field is the
+    # next stop in the tab order, so the retry stays keyboard-only.
     page.keyboard.type(WRONG)
     page.keyboard.press('Enter')
     alert = page.locator('#setup-message')
     expect(alert).to_be_visible()
     expect(alert).to_have_attribute('class', 'form-alert')
+    expect(alert).to_have_attribute('role', 'alert')
     expect(wizard).to_be_visible()
     expect(page.locator('[data-setup-wizard="claimed"]')).to_have_count(0)
-    # The field is disabled while the claim is in flight and a disabled input
-    # drops focus to the body; a rejected attempt must hand the caret back so
-    # the retry stays keyboard-only.
-    expect(credential).to_be_focused()
+    expect(alert).to_be_focused()
 
-    # Keyboard only: select all, replace with the real credential, submit with Enter.
+    # Keyboard only: Tab back to the field, replace the credential, submit with Enter.
+    page.keyboard.press('Tab')
+    expect(credential).to_be_focused()
     page.keyboard.press('Control+a')
     page.keyboard.type(CREDENTIAL)
     page.keyboard.press('Enter')
@@ -71,7 +73,7 @@ with sync_playwright() as p:
     expect(page.get_by_role('heading', name='Instalación reclamada', level=1)).to_be_focused()
     expect(page.locator('[data-setup-state]')).to_have_text('claimed')
     pending = page.locator('[data-setup-step="pending"]')
-    expect(pending).to_have_count(4)
+    expect(pending).to_have_count(5)
     for index in range(pending.count()):
         expect(pending.nth(index)).to_contain_text('Pendiente')
 

@@ -158,7 +158,7 @@ def main():
             wait(page, '[data-setup-owner="created"]', timeout=60000)
             if text_of(page, '[data-setup-owner="created"]') == '':
                 fail('the created owner receipt is empty')
-            if text_of(page, '[data-setup-state]') != 'owner_ready':
+            if text_of(page, '[data-setup-state]') not in ('owner_ready', 'configuring'):
                 fail('the owner step did not persist owner_ready: ' + repr(text_of(page, '[data-setup-state]')))
             if page.query_selector('#setup-owner-password') is not None:
                 fail('the owner password field stayed in the page after submit')
@@ -167,11 +167,14 @@ def main():
             if page.evaluate('JSON.stringify({...localStorage, ...sessionStorage}).includes(%r)' % OWNER_PASSWORD):
                 fail('the owner password leaked into browser storage')
 
-            # The owner exists now; a reload must not offer a second one.
+            # The owner exists now; a reload must not offer a second one. The
+            # wizard resumes in configuration, with verification still pending.
             page.reload(wait_until='networkidle')
-            wait(page, '[data-setup-panel="done"]')
+            wait(page, '[data-setup-panel="configure"]')
             if step_state(page, 'owner') != 'done':
                 fail('the progress indicator does not mark the owner as done')
+            if step_state(page, 'configuration') not in ('active', 'done'):
+                fail('the configuration step is not the current step: ' + repr(step_state(page, 'configuration')))
             if step_state(page, 'verify') != 'pending':
                 fail('the unfinished verification step is presented as done')
 
