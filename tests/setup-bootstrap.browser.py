@@ -56,6 +56,10 @@ with sync_playwright() as p:
     expect(alert).to_have_attribute('class', 'form-alert')
     expect(wizard).to_be_visible()
     expect(page.locator('[data-setup-wizard="claimed"]')).to_have_count(0)
+    # The field is disabled while the claim is in flight and a disabled input
+    # drops focus to the body; a rejected attempt must hand the caret back so
+    # the retry stays keyboard-only.
+    expect(credential).to_be_focused()
 
     # Keyboard only: select all, replace with the real credential, submit with Enter.
     page.keyboard.press('Control+a')

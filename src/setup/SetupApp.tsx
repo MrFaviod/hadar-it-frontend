@@ -50,6 +50,15 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (step === 'claimed') heading.current?.focus();
   }, [step]);
 
+  useEffect(() => {
+    // The submit disables the field while the claim is in flight, and a
+    // disabled input drops focus to the body. Return the caret to the field
+    // once the attempt settles, so retrying a rejected credential stays a
+    // keyboard-only action instead of a Tab hunt.
+    if (step !== 'claim' || locked || !message) return;
+    input.current?.focus();
+  }, [message, locked, step]);
+
   if (!t) {
     return <main className="login setup" aria-busy="true" data-setup-wizard="loading" />;
   }
