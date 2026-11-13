@@ -32,6 +32,18 @@ test('edge revalidates static assets instead of caching them blindly', ()=>{
   assert.doesNotMatch(location('/assets/'),/add_header/, 'add_header in a location drops inherited security headers');
 });
 
+test('edge resolves upstreams lazily so the UI boots without the API', ()=>{
+  assert.match(conf,/resolver\s+127\.0\.0\.11[^;]*;/,'missing the Docker DNS resolver');
+  assert.match(conf,/resolver\s+127\.0\.0\.11[^;]*ipv6=off/,'IPv6 AAAA answers stall a name that only exists on IPv4');
+  assert.doesNotMatch(conf,/proxy_pass\s+https?:\/\/[a-z0-9.-]+:\d+/,'a literal upstream is resolved once at boot and never recovers');
+  const setup=location('/api/setup/v1/');
+  assert.match(setup,/proxy_pass\s+\$setup_upstream\$request_uri\s*;/,'setup keeps the full original URI and query');
+  assert.match(setup,/set\s+\$setup_upstream\s+http:\/\/setup:8100\s*;/);
+  const api=location('/api/');
+  assert.match(api,/proxy_pass\s+\$api_upstream\$request_uri\s*;/,'the API keeps the full original URI and query');
+  assert.match(api,/set\s+\$api_upstream\s+http:\/\/backend:8000\s*;/);
+});
+
 test('edge hides the nginx version', ()=>{
  assert.match(conf,/server_tokens\s+off\s*;/);
 });
