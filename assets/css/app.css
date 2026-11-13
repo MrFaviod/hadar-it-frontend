@@ -1465,3 +1465,57 @@ button.text-button {
     transform: none !important;
   }
 }
+
+/* Setup wizard: the access surface, one column, no new primitives. Copy and
+   controls reuse .login__form-wrap, .field, .input-shell and .btn. */
+.setup__lead {
+  margin: 0 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.setup__messages {
+  display: grid;
+  gap: var(--layout-field, 6px);
+}
+.setup__state {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.setup__state-value {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.setup-steps {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-step {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  font-size: 14px;
+}
+.setup-step__badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--slate-050);
+  color: var(--slate-700);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}

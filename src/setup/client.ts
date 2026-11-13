@@ -62,6 +62,36 @@ export interface SetupClient {
   csrfToken(): string | null;
 }
 
+export type EntryDecision =
+  | { view: 'wizard'; status: SetupStatus; session: SetupSession | null }
+  | { view: 'legacy'; reason: 'installed' | 'unavailable' };
+
+const SESSION_PROBE_TIMEOUT_MS = 1000;
+
+// Boot decision, kept out of the component so it can be exercised without a
+// DOM. A claimed installation still has a setup session in this browser: that
+// is the only case where a second request is worth its latency. Everything
+// else falls back to today's shell, and unavailability never shows a claim.
+export async function resolveEntry(
+  client: SetupClient,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<EntryDecision> {
+  const status = await client.getStatus(options);
+  if (status.kind === 'setup-available') return { view: 'wizard', status: status.status, session: null };
+  if (status.kind === 'unavailable') return { view: 'legacy', reason: 'unavailable' };
+  // A 404 means no setup service at all: there is no session to ask about.
+  // Any other existing-instance answer may still carry a live setup session in
+  // this browser (a reload after the claim), and that is the wizard's step.
+  if (status.reason !== 'absent' && status.status) {
+    const session = await client.getSession({
+      signal: options.signal,
+      timeoutMs: Math.min(SESSION_PROBE_TIMEOUT_MS, options.timeoutMs ?? SESSION_PROBE_TIMEOUT_MS),
+    });
+    if (session.ok) return { view: 'wizard', status: status.status, session: session.session };
+  }
+  return { view: 'legacy', reason: 'installed' };
+}
+
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 type Transport =

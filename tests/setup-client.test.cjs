@@ -207,3 +207,39 @@ test('session reads the claimed state and treats a denial as no session', async 
     assert.equal(result.reason, 'denied', String(status));
   }
 });
+
+test('entry decision mounts the wizard only on an explicit claim or a live setup session', async () => {
+  const seen = [];
+  const enabled = async (url) => { seen.push(String(url)); return reply(200, STATUS); };
+  const first = load(enabled).createSetupClient({ fetch: enabled, timeoutMs: 50 });
+  const decision = await load(enabled).resolveEntry(first, { timeoutMs: 50 });
+  assert.equal(decision.view, 'wizard');
+  assert.equal(decision.session, null);
+  assert.deepEqual(seen, ['/api/setup/v1/status'], 'a claimable install needs no session probe');
+
+  const reload = [];
+  const claimed = async (url) => {
+    reload.push(String(url));
+    if (String(url).endsWith('/status')) return reply(200, { ...STATUS, state: 'claimed', claim_available: false });
+    return reply(200, { state: 'claimed', mode: 'dev', release_mode: 'dev', checks: {} });
+  };
+  const client = load(claimed).createSetupClient({ fetch: claimed, timeoutMs: 50 });
+  const kept = await load(claimed).resolveEntry(client, { timeoutMs: 50 });
+  assert.equal(kept.view, 'wizard');
+  assert.equal(kept.session.state, 'claimed');
+  assert.deepEqual(reload, ['/api/setup/v1/status', '/api/setup/v1/session']);
+
+  const denied = async (url) => String(url).endsWith('/session')
+    ? reply(401, { detail: 'no session' })
+    : reply(200, { ...STATUS, state: 'complete', claim_available: false });
+  const installed = await load(denied).resolveEntry(load(denied).createSetupClient({ fetch: denied, timeoutMs: 50 }), { timeoutMs: 50 });
+  assert.deepEqual({ ...installed }, { view: 'legacy', reason: 'installed' });
+
+  const gone = async () => reply(404, { detail: 'Not Found' });
+  const absent = await load(gone).resolveEntry(load(gone).createSetupClient({ fetch: gone, timeoutMs: 50 }), { timeoutMs: 50 });
+  assert.deepEqual({ ...absent }, { view: 'legacy', reason: 'installed' });
+
+  const down = async () => reply(503, { detail: 'unavailable' });
+  const unavailable = await load(down).resolveEntry(load(down).createSetupClient({ fetch: down, timeoutMs: 50 }), { timeoutMs: 50 });
+  assert.deepEqual({ ...unavailable }, { view: 'legacy', reason: 'unavailable' });
+});
