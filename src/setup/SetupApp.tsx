@@ -1,10 +1,18 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
+  SECTION_IDS,
   setupClient,
   type AiDiagnosticCode,
   type AiReceipt,
+  type Checklist,
+  type ChecklistItem,
   type ClaimResult,
+  type ConfigurationDiagnosticCode,
   type OwnerFailureCode,
+  type SectionApplyReceipt,
+  type SectionId,
+  type SectionPreview,
+  type SectionView,
   type SetupClient,
   type SetupSession,
   type StorageDiagnosticCode,
@@ -19,6 +27,8 @@ import {
   type OwnerFormCode,
   type OwnerFormState,
 } from './owner-form';
+import { ConfigurationPanel, VerifyPanel } from './sections';
+import { verifyOutcome } from './section-status';
 import { loadTranslator, type Translator } from './strings';
 
 // The first-start wizard. It is a sibling of the legacy host, never a Vue view:
@@ -32,13 +42,14 @@ const STEPS = [
   { key: 'ai', label: 'ui.setup.steps.ai' },
   { key: 'storage', label: 'ui.setup.steps.storage' },
   { key: 'owner', label: 'ui.setup.steps.owner' },
+  { key: 'configuration', label: 'ui.setup.steps.configuration' },
   { key: 'verify', label: 'ui.setup.steps.verify' },
 ] as const;
 
 type StepKey = typeof STEPS[number]['key'];
 type StepStatus = 'done' | 'active' | 'pending';
 type Step = 'claim' | 'claimed';
-type Panel = 'ai' | 'storage' | 'owner' | 'done';
+type Panel = 'ai' | 'storage' | 'owner' | 'configure' | 'verify';
 type FormCode = AiDiagnosticCode | 'form-incomplete';
 type FocusTarget = 'receipt' | 'pending' | 'error' | 'assistant' | 'panel' | 'storage-error' | 'owner-error';
 
@@ -121,27 +132,31 @@ function panelForState(state: string): Panel {
     case 'ai_deferred':
     case 'storage_ready': return state === 'storage_ready' ? 'owner' : 'storage';
     case 'owner_ready':
-    case 'configuring':
+    case 'configuring': return 'configure';
     case 'verifying':
-    case 'complete': return 'done';
+    case 'complete': return 'verify';
     default: return 'ai';
   }
 }
 
-/** Honest progress: a deferred AI step stays pending, and so does verification. */
-function stepStatuses(state: string, panel: Panel): Record<StepKey, StepStatus> {
+/**
+ * Honest progress: a deferred AI step stays pending, a postponed section is
+ * never a pass, and verification only fills once the run itself has observed
+ * the checklist.
+ */
+function stepStatuses(state: string, panel: Panel, aiDeferred: boolean): Record<StepKey, StepStatus> {
   const rank: Record<string, number> = {
     claimed: 0,
     ai_configured: 1,
     ai_deferred: 1,
     storage_ready: 2,
     owner_ready: 3,
-    configuring: 3,
-    verifying: 3,
-    complete: 3,
+    configuring: 4,
+    verifying: 5,
+    complete: 5,
   };
   const current = rank[state] ?? 0;
-  const ai: StepStatus = state === 'ai_deferred' || current < 1
+  const ai: StepStatus = aiDeferred || current < 1
     ? (panel === 'ai' ? 'active' : 'pending')
     : 'done';
   const storage: StepStatus = current >= 2
@@ -150,12 +165,19 @@ function stepStatuses(state: string, panel: Panel): Record<StepKey, StepStatus> 
   const owner: StepStatus = current >= 3
     ? 'done'
     : current === 2 ? (panel === 'owner' ? 'active' : 'pending') : 'pending';
+  const configuration: StepStatus = current >= 5
+    ? 'done'
+    : current === 4 ? (panel === 'configure' ? 'active' : 'pending') : 'pending';
+  const verify: StepStatus = state === 'complete'
+    ? 'done'
+    : current >= 4 ? (panel === 'verify' ? 'active' : 'pending') : 'pending';
   return {
     claim: 'done',
     ai,
     storage,
     owner,
-    verify: 'pending',
+    configuration,
+    verify,
   };
 }
 
@@ -202,6 +224,18 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   const [ownerReceipt, setOwnerReceipt] = useState<{ username: string; displayName: string } | null>(null);
   const [ownerAi, setOwnerAi] = useState<'transferred' | 'pending' | null>(null);
 
+  const [aiDeferred, setAiDeferred] = useState(initialSession?.state === 'ai_deferred');
+  const [sections, setSections] = useState<SectionView[]>([]);
+  const [configurationLoading, setConfigurationLoading] = useState(false);
+  const [configurationError, setConfigurationError] = useState<ConfigurationDiagnosticCode | null>(null);
+  const [configBusy, setConfigBusy] = useState<SectionId | null>(null);
+  const [previews, setPreviews] = useState<Partial<Record<SectionId, SectionPreview>>>({});
+  const [receipts, setReceipts] = useState<Partial<Record<SectionId, SectionApplyReceipt>>>({});
+  const [verifyingInstallation, setVerifyingInstallation] = useState(false);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [verifyBlocked, setVerifyBlocked] = useState<ChecklistItem[] | null>(null);
+  const [verifyError, setVerifyError] = useState<ConfigurationDiagnosticCode | null>(null);
+
   const input = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const panelHeading = useRef<HTMLHeadingElement>(null);
@@ -212,6 +246,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   const storageErrorRef = useRef<HTMLDivElement>(null);
   const ownerErrorRef = useRef<HTMLDivElement>(null);
   const ownerReceiptRef = useRef<HTMLHeadingElement>(null);
+  const claimMessageRef = useRef<HTMLDivElement>(null);
+  const configurationLoaded = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -245,13 +281,21 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   }, [step]);
 
   useEffect(() => {
-    // The submit disables the field while the claim is in flight, and a
-    // disabled input drops focus to the body. Return the caret to the field
-    // once the attempt settles, so retrying a rejected credential stays a
-    // keyboard-only action instead of a Tab hunt.
-    if (step !== 'claim' || locked || (!message && !resumeFailed)) return;
-    input.current?.focus();
-  }, [message, locked, step, resumeFailed]);
+    // A rejected credential is announced where the operator is: the summary is
+    // the alert, and it takes focus so a keyboard user hears the reason before
+    // returning to the field, which is still the next control in tab order.
+    if (step !== 'claim' || (!message && !resumeFailed)) return;
+    claimMessageRef.current?.focus();
+  }, [message, step, resumeFailed]);
+
+  useEffect(() => {
+    if (step !== 'claimed' || panel !== 'configure' || configurationLoaded.current) return;
+    configurationLoaded.current = true;
+    void loadConfiguration();
+    // One automatic attempt per mount; the panel's reload button drives every
+    // later attempt explicitly, so a failing service cannot loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, step]);
 
   useEffect(() => {
     // A panel change is the wizard moving forward; announce it by moving the
@@ -283,8 +327,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (submitting || locked) return;
     const value = credential.trim();
     if (!value) {
+      // The summary announces itself; the effect above moves focus to it.
       setMessage(t!('ui.setup.claim.required'));
-      input.current?.focus();
       return;
     }
     setSubmitting(true);
@@ -304,9 +348,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     setAttempts(result.attemptsRemaining);
     if (result.code === 'locked') {
       setLocked(true);
-      return;
     }
-    if (result.code === 'invalid') input.current?.focus();
+    // The alert is the next thing to read; the effect focuses it once rendered.
   }
 
   async function verifyProvider(event: FormEvent<HTMLFormElement>) {
@@ -329,6 +372,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (result.ok) {
       setState(result.state);
       setReceipt(result.receipt);
+      setAiDeferred(false);
       setKeyMissing(false);
       setFocusRequest({ target: 'receipt' });
       return;
@@ -348,7 +392,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       setState(result.state);
       setReceipt(result.receipt);
       // A deferred provider is not this wizard's work: the database step is
-      // next and the progress list keeps AI as pending.
+      // next, and the progress list and the agent section keep AI as pending.
+      setAiDeferred(true);
       setPanel('storage');
       return;
     }
@@ -431,16 +476,147 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     setState(result.state);
     setOwnerReceipt(result.owner);
     setOwnerAi(result.ai);
-    setPanel('done');
+    // The installation has an owner; the wizard now configures it and verifies
+    // the result, so this is not a terminal "done" panel.
+    setPanel('configure');
+  }
+
+  /**
+   * Enter configuration once per panel visit: the service moves an owner-ready
+   * installation to ``configuring``, then each section is read for its
+   * effective value and source. A failed read is reported as a code; no
+   * section keeps a stale value it could not confirm.
+   */
+  async function loadConfiguration() {
+    setConfigurationLoading(true);
+    setConfigurationError(null);
+    if (state === 'owner_ready') {
+      const started = await client.startConfiguration();
+      if (!started.ok) {
+        setConfigurationLoading(false);
+        setConfigurationError(started.code);
+        return;
+      }
+      setState(started.state);
+    }
+    const results = await Promise.all(SECTION_IDS.map((id) => client.getSection(id)));
+    setConfigurationLoading(false);
+    const failure = results.find((result) => !result.ok);
+    if (failure && !failure.ok) {
+      setConfigurationError(failure.code);
+      return;
+    }
+    setSections(results.flatMap((result) => (result.ok ? [result.section] : [])));
+  }
+
+  async function previewConfiguration(section: SectionId, value: string) {
+    if (configBusy) return;
+    setConfigBusy(section);
+    setConfigurationError(null);
+    const result = await client.previewSection(section, value);
+    setConfigBusy(null);
+    if (!result.ok) {
+      setConfigurationError(result.code);
+      return;
+    }
+    setPreviews((current) => ({ ...current, [section]: result.preview }));
+  }
+
+  async function applyConfiguration(section: SectionId, value: string) {
+    if (configBusy) return;
+    setConfigBusy(section);
+    setConfigurationError(null);
+    const result = await client.applySection(section, value, true);
+    setConfigBusy(null);
+    if (!result.ok) {
+      setConfigurationError(result.code);
+      return;
+    }
+    // The receipt is the service's read-back: the section takes its status
+    // and the applied value from it, never from the request that was sent.
+    setSections((current) => current.map((entry) => (entry.id === section
+      ? { ...entry, status: result.receipt.status, source: 'installation', value }
+      : entry)));
+    setPreviews((current) => {
+      const next = { ...current };
+      delete next[section];
+      return next;
+    });
+    setReceipts((current) => ({ ...current, [section]: result.receipt }));
+    const refreshed = await client.getSection(section);
+    if (refreshed.ok) {
+      setSections((current) => current.map((entry) => (entry.id === section ? refreshed.section : entry)));
+    }
+  }
+
+  async function postponeConfiguration(section: SectionId) {
+    if (configBusy) return;
+    setConfigBusy(section);
+    setConfigurationError(null);
+    const result = await client.postponeSection(section);
+    setConfigBusy(null);
+    if (!result.ok) {
+      setConfigurationError(result.code);
+      return;
+    }
+    // A postponement is recorded as itself: the chip says so and verification
+    // reports it apart from the passes.
+    setSections((current) => current.map((entry) => (entry.id === section
+      ? { ...entry, status: 'postponed' }
+      : entry)));
+    setPreviews((current) => {
+      const next = { ...current };
+      delete next[section];
+      return next;
+    });
+    setReceipts((current) => {
+      const next = { ...current };
+      delete next[section];
+      return next;
+    });
+  }
+
+  async function verifyInstallation() {
+    if (verifyingInstallation) return;
+    setVerifyingInstallation(true);
+    setConfigurationError(null);
+    setVerifyError(null);
+    setVerifyBlocked(null);
+    const result = await client.verify();
+    setVerifyingInstallation(false);
+    if (!result.ok) {
+      setVerifyError(result.code);
+      return;
+    }
+    setState(result.state);
+    setChecklist(result.checklist);
+    const outcome = verifyOutcome(result.checklist);
+    if (result.state === 'verifying' || result.state === 'complete') {
+      setPanel('verify');
+      return;
+    }
+    // Verification did not pass: the operator stays where the fix is, with the
+    // blocking items named and their observed status shown.
+    setVerifyBlocked(outcome.blocked);
   }
 
   async function ask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (asking) return;
-    const value = question.trim();
+    await askQuestion(question.trim());
+  }
+
+  /** One assistant call shared by the AI step and the configuration panel. */
+  async function askQuestion(value: string) {
+    if (asking) return;
     if (!value) {
       setAssistantError('form-incomplete');
-      setFocusRequest({ target: 'assistant' });
+      if (panel === 'ai') {
+        setFocusRequest({ target: 'assistant' });
+        // The alert mounts in this commit; the frame callback finds it even
+        // when the effect ran before the portal's ref was attached.
+        requestAnimationFrame(() => assistantErrorRef.current?.focus());
+      }
       return;
     }
     setAsking(true);
@@ -455,12 +631,12 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       return;
     }
     setAssistantError(result.code);
-    setFocusRequest({ target: 'assistant' });
+    if (panel === 'ai') setFocusRequest({ target: 'assistant' });
   }
 
   const claimAlert = message ?? (resumeFailed ? t('ui.setup.resume.failed') : null);
   const describedBy = claimAlert ? 'setup-credential-hint setup-message' : 'setup-credential-hint';
-  const statuses = stepStatuses(state, panel);
+  const statuses = stepStatuses(state, panel, aiDeferred);
   const canApply = probe !== null
     && probe.reachable
     && probe.adoptable
@@ -479,9 +655,14 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     const configured = state === 'ai_configured';
     const deferred = state === 'ai_deferred';
     const aiBusy = verifying || deferring;
-    const fieldInvalid = aiError === 'form-incomplete';
-    const fieldDescribedBy = aiError ? 'setup-ai-base-hint setup-ai-error' : 'setup-ai-base-hint';
-    const keyDescribedBy = aiError ? 'setup-ai-key-hint setup-ai-error' : 'setup-ai-key-hint';
+    const incomplete = aiError === 'form-incomplete';
+    // One empty field must not mark the other two invalid.
+    const baseInvalid = incomplete && !baseUrl.trim();
+    const modelInvalid = incomplete && !model.trim();
+    const keyInvalid = incomplete && !apiKey;
+    const fieldInvalid = baseInvalid;
+    const fieldDescribedBy = baseInvalid ? 'setup-ai-base-hint setup-ai-error' : 'setup-ai-base-hint';
+    const keyDescribedBy = keyInvalid ? 'setup-ai-key-hint setup-ai-error' : 'setup-ai-key-hint';
     const external = storageSummary?.configSource === 'external' ? storageSummary : null;
     const classificationText = probe === null ? '' : t(
       probe.classification === 'empty' ? 'ui.setup.storage.class_empty'
@@ -513,14 +694,16 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                       data-setup-step={status}
                     >
                       <span>{t(entry.label)}</span>
-                      <span className="setup-step__badge">{badge(status)}</span>
+                      <span className="setup-step__badge" role="status">{badge(status)}</span>
                     </li>
                   );
                 })}
               </ol>
             </section>
             <div className="setup__messages" aria-live="polite" aria-atomic="true">
-              {claimAlert ? <p className="form-alert" id="setup-message">{claimAlert}</p> : null}
+              {claimAlert ? (
+                <div className="form-alert" id="setup-message" role="alert" tabIndex={-1} ref={claimMessageRef}>{claimAlert}</div>
+              ) : null}
             </div>
 
             {panel === 'ai' ? (
@@ -595,7 +778,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                             value={question}
                             disabled={asking}
                             aria-invalid={assistantError === 'form-incomplete' ? true : undefined}
-                            aria-describedby="setup-assistant-hint"
+                            aria-describedby={assistantError ? 'setup-assistant-hint setup-assistant-error' : 'setup-assistant-hint'}
                             onChange={(event) => setQuestion(event.target.value)}
                           />
                         </div>
@@ -604,7 +787,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                       <div className="setup__messages" aria-live="polite" aria-atomic="true">
                         {asking ? <p className="form-note" role="status">{t('ui.setup.ai.assistant_progress')}</p> : null}
                         {assistantError ? (
-                          <p className="form-alert" role="alert" tabIndex={-1} ref={assistantErrorRef}>
+                          <p className="form-alert" id="setup-assistant-error" role="alert" tabIndex={-1} ref={assistantErrorRef}>
                             {aiMessage(assistantError, t)}
                           </p>
                         ) : null}
@@ -674,7 +857,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                         </div>
                         <p className="field__hint" id="setup-ai-base-hint">{t('ui.setup.ai.base_url_hint')}</p>
                       </div>
-                      <div className={`field${fieldInvalid ? ' field--invalid' : ''}`}>
+                      <div className={`field${modelInvalid ? ' field--invalid' : ''}`}>
                         <label htmlFor="setup-ai-model">{t('ui.setup.ai.model')}</label>
                         <div className="input-shell">
                           <input
@@ -685,14 +868,14 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                             spellCheck={false}
                             value={model}
                             disabled={keyMissing || aiBusy}
-                            aria-invalid={fieldInvalid ? true : undefined}
-                            aria-describedby={aiError ? 'setup-ai-model-hint setup-ai-error' : 'setup-ai-model-hint'}
+                            aria-invalid={modelInvalid ? true : undefined}
+                            aria-describedby={modelInvalid ? 'setup-ai-model-hint setup-ai-error' : 'setup-ai-model-hint'}
                             onChange={(event) => setModel(event.target.value)}
                           />
                         </div>
                         <p className="field__hint" id="setup-ai-model-hint">{t('ui.setup.ai.model_hint')}</p>
                       </div>
-                      <div className={`field${fieldInvalid ? ' field--invalid' : ''}`}>
+                      <div className={`field${keyInvalid ? ' field--invalid' : ''}`}>
                         <label htmlFor="setup-ai-api-key">{t('ui.setup.ai.api_key')}</label>
                         <div className="input-shell">
                           <input
@@ -703,7 +886,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                             spellCheck={false}
                             value={apiKey}
                             disabled={keyMissing || aiBusy}
-                            aria-invalid={fieldInvalid ? true : undefined}
+                            aria-invalid={keyInvalid ? true : undefined}
                             aria-describedby={keyDescribedBy}
                             onChange={(event) => setApiKey(event.target.value)}
                           />
@@ -1060,37 +1243,73 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
               </section>
             ) : null}
 
-            {panel === 'done' ? (
-              <section className="setup__ai" aria-labelledby="setup-done-title" data-setup-panel="done">
-                <h2 id="setup-done-title" tabIndex={-1} ref={panelHeading}>{t('ui.setup.done.title')}</h2>
-                <p className="setup__lead">{t('ui.setup.done.lead')}</p>
+            {panel === 'configure' ? (
+              <>
                 {ownerReceipt ? (
-                  <section aria-labelledby="setup-owner-created" data-setup-owner="created">
-                    <h3 id="setup-owner-created" tabIndex={-1} ref={ownerReceiptRef}>{t('ui.setup.owner.receipt_title')}</h3>
-                    <dl className="setup__receipt">
-                      <div>
-                        <dt>{t('ui.setup.owner.receipt_username')}</dt>
-                        <dd data-setup-owner-field="username">{ownerReceipt.username}</dd>
-                      </div>
-                      <div>
-                        <dt>{t('ui.setup.owner.receipt_name')}</dt>
-                        <dd data-setup-owner-field="display-name">{ownerReceipt.displayName}</dd>
-                      </div>
-                    </dl>
-                    {ownerAi ? (
-                      <p className="field__hint">
-                        {ownerAi === 'transferred' ? t('ui.setup.owner.ai_transferred') : t('ui.setup.owner.ai_pending')}
-                      </p>
-                    ) : null}
+                  <section className="form-note" aria-labelledby="setup-owner-created" data-setup-owner="created">
+                    <div>
+                      <h3 id="setup-owner-created" tabIndex={-1} ref={ownerReceiptRef}>{t('ui.setup.owner.receipt_title')}</h3>
+                      <dl className="setup__receipt">
+                        <div>
+                          <dt>{t('ui.setup.owner.receipt_username')}</dt>
+                          <dd data-setup-owner-field="username">{ownerReceipt.username}</dd>
+                        </div>
+                        <div>
+                          <dt>{t('ui.setup.owner.receipt_name')}</dt>
+                          <dd data-setup-owner-field="display-name">{ownerReceipt.displayName}</dd>
+                        </div>
+                      </dl>
+                      {ownerAi ? (
+                        <p className="field__hint">
+                          {ownerAi === 'transferred' ? t('ui.setup.owner.ai_transferred') : t('ui.setup.owner.ai_pending')}
+                        </p>
+                      ) : null}
+                    </div>
                   </section>
                 ) : null}
-                <div className="form-note">
-                  <div>
-                    <h3>{t('ui.setup.done.next_title')}</h3>
-                    <p>{t('ui.setup.done.next_body')}</p>
-                  </div>
-                </div>
-              </section>
+                <ConfigurationPanel
+                  t={t}
+                  headingRef={panelHeading}
+                  sections={sections}
+                  loading={configurationLoading}
+                  error={configurationError}
+                  busy={configBusy}
+                  previews={previews}
+                  receipts={receipts}
+                  blocked={verifyBlocked}
+                  aiDeferred={aiDeferred}
+                  appUsable={state === 'complete'}
+                  verifying={verifyingInstallation}
+                  verifyError={verifyError}
+                  assistant={{ answer, tools: answerTools, latency: answerLatency, asking, error: assistantError }}
+                  onPreview={(section, value) => { void previewConfiguration(section, value); }}
+                  onApply={(section, value) => { void applyConfiguration(section, value); }}
+                  onDiscard={(section) => {
+                    setPreviews((current) => {
+                      const next = { ...current };
+                      delete next[section];
+                      return next;
+                    });
+                  }}
+                  onPostpone={(section) => { void postponeConfiguration(section); }}
+                  onVerify={() => { void verifyInstallation(); }}
+                  onReload={() => { void loadConfiguration(); }}
+                  onAsk={(value) => { void askQuestion(value); }}
+                />
+              </>
+            ) : null}
+
+            {panel === 'verify' ? (
+              <VerifyPanel
+                t={t}
+                headingRef={panelHeading}
+                checklist={checklist}
+                state={state}
+                verifying={verifyingInstallation}
+                appUsable={state === 'complete'}
+                onVerify={() => { void verifyInstallation(); }}
+                onBack={() => setPanel('configure')}
+              />
             ) : null}
           </div>
         </div>
@@ -1105,6 +1324,11 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
           <h1 id="setup-title">{t('ui.setup.title')}</h1>
           <p className="setup__lead">{t('ui.setup.lead')}</p>
           <form className="login-form" noValidate onSubmit={submit} aria-busy={submitting}>
+            <div className="setup__messages" aria-live="polite" aria-atomic="true">
+              {claimAlert ? (
+                <div className="form-alert" id="setup-message" role="alert" tabIndex={-1} ref={claimMessageRef}>{claimAlert}</div>
+              ) : null}
+            </div>
             <div className={`field${message || resumeFailed ? ' field--invalid' : ''}`}>
               <label htmlFor="setup-credential">{t('ui.setup.claim.label')}</label>
               <div className="input-shell">
@@ -1123,9 +1347,6 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                 />
               </div>
               <p className="field__hint" id="setup-credential-hint">{t('ui.setup.claim.hint')}</p>
-            </div>
-            <div className="setup__messages" aria-live="polite" aria-atomic="true">
-              {claimAlert ? <p className="form-alert" id="setup-message">{claimAlert}</p> : null}
               {attempts !== null && attempts > 0
                 ? <p className="field__hint">{t('ui.setup.claim.attempts', { count: attempts })}</p>
                 : null}

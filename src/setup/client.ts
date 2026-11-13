@@ -109,6 +109,118 @@ export type OwnerResult =
   | { ok: true; state: string; owner: OwnerReceipt; ai: 'transferred' | 'pending' }
   | { ok: false; code: OwnerFailureCode };
 
+/** The five configuration sections the wizard can show. */
+export type SectionId = 'agent' | 'appearance' | 'notifications' | 'monitoring' | 'operational';
+
+export const SECTION_IDS: readonly SectionId[] = [
+  'agent',
+  'appearance',
+  'notifications',
+  'monitoring',
+  'operational',
+];
+
+/** A conscious postponement stays postponed: it is never a pass. */
+export type SectionStatus = 'pending' | 'postponed' | 'applied' | 'verified' | 'risk';
+
+/** Where the effective value came from, including values the wizard cannot edit. */
+export type ValueSource = 'default' | 'installation' | 'environment' | 'domain_service' | 'unknown';
+
+export interface SectionView {
+  id: SectionId;
+  status: SectionStatus;
+  source: ValueSource;
+  required: boolean;
+  postponable: boolean;
+  /** An environment or domain-service value; the wizard explains, it cannot edit. */
+  locked: boolean;
+  /** The effective value as data, never a sentence the service authored. */
+  value: string | null;
+  /** Closed option ids this section accepts; empty when the value is not editable. */
+  options: string[];
+  updatedAt: string | null;
+}
+
+export interface SectionField {
+  field: string;
+  value: string;
+}
+
+export interface SectionChange {
+  field: string;
+  from: string | null;
+  to: string | null;
+}
+
+export interface SectionPreview {
+  section: SectionId;
+  value: string | null;
+  changes: SectionChange[];
+}
+
+/** What apply read back after writing; the proof the UI can show. */
+export interface SectionApplyReceipt {
+  section: SectionId;
+  state: string | null;
+  status: SectionStatus;
+  readback: SectionField[];
+}
+
+export type ConfigurationDiagnosticCode =
+  | 'confirm_required'
+  | 'state_refused'
+  | 'item_required'
+  | 'not_postponable'
+  | 'invalid_request'
+  | 'session_expired'
+  | 'unavailable'
+  | 'network'
+  | 'timeout'
+  | 'invalid-response';
+
+export type ConfigurationResult =
+  | { ok: true; state: string; sections: SectionView[] }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+export type SectionResult =
+  | { ok: true; section: SectionView }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+export type PreviewResult =
+  | { ok: true; preview: SectionPreview }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+export type ApplyResult =
+  | { ok: true; receipt: SectionApplyReceipt }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+export type PostponeResult =
+  | { ok: true; status: 'postponed' }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+/** Closed checklist states; ``risk`` is a declared exclusion, not a pass. */
+export type ChecklistStatus = 'passed' | 'failed' | 'pending' | 'postponed' | 'risk';
+
+export interface ChecklistItem {
+  id: string;
+  status: ChecklistStatus;
+  required: boolean;
+  postponable: boolean;
+  /** Observed evidence as field/value data; empty when nothing was observed. */
+  evidence: SectionField[];
+  observedAt: string | null;
+}
+
+export interface Checklist {
+  mode: string | null;
+  items: ChecklistItem[];
+}
+
+export type VerifyResult =
+  | { ok: true; state: string; checklist: Checklist }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+
 /** Closed diagnostics the AI step knows how to explain; never server text. */
 export type AiDiagnosticCode =
   | 'provider_unreachable'
@@ -172,6 +284,18 @@ export interface SetupClient {
   applyStorage(databaseUrl: string, options?: RequestOptions): Promise<StorageApplyResult>;
   /** Creates the first owner. The password is an argument of this call only. */
   createOwner(input: OwnerInput, options?: RequestOptions): Promise<OwnerResult>;
+  /** owner_ready -> configuring. Idempotent; the response lists the sections. */
+  startConfiguration(options?: RequestOptions): Promise<ConfigurationResult>;
+  /** One section's effective value and where it comes from. */
+  getSection(section: SectionId, options?: RequestOptions): Promise<SectionResult>;
+  /** Writes nothing: the service answers the diff the operator would apply. */
+  previewSection(section: SectionId, value: string, options?: RequestOptions): Promise<PreviewResult>;
+  /** Refused before any request unless ``confirm`` is exactly true. */
+  applySection(section: SectionId, value: string, confirm: boolean, options?: RequestOptions): Promise<ApplyResult>;
+  /** Only for a section the service marked postponable. */
+  postponeSection(section: SectionId, options?: RequestOptions): Promise<PostponeResult>;
+  /** Runs the checklist; failures come back with the observed evidence. */
+  verify(options?: RequestOptions): Promise<VerifyResult>;
   /** One verification turn. The key lives in this call, never in the client. */
   configureAi(input: AiProviderInput, options?: RequestOptions): Promise<AiResult>;
   deferAi(options?: RequestOptions): Promise<AiResult>;
@@ -224,6 +348,11 @@ const DEFAULT_WRITE_TIMEOUT_MS = 20000;
 const DEFAULT_AI_TIMEOUT_MS = 30000;
 // A database probe or migration may wait on a remote engine.
 const DEFAULT_STORAGE_TIMEOUT_MS = 30000;
+// A section read or write is one settings row change; no external round trip.
+const DEFAULT_CONFIGURATION_TIMEOUT_MS = 20000;
+// Verify probes the queue, the database and a temp file, so it gets the
+// storage budget rather than the short status one.
+const DEFAULT_VERIFY_TIMEOUT_MS = 30000;
 // The assistant is bounded server-side at 30s; the client waits it out.
 const DEFAULT_ASK_TIMEOUT_MS = 45000;
 
@@ -323,6 +452,176 @@ function parseOwnerResult(value: unknown): { owner: OwnerReceipt; ai: 'transferr
   const ai = raw?.ai === 'transferred' ? 'transferred' : raw?.ai === 'pending' ? 'pending' : null;
   if (!username || !displayName || !ai) return null;
   return { owner: { username, displayName }, ai };
+}
+
+function sectionIdOf(value: unknown): SectionId | null {
+  return typeof value === 'string' && (SECTION_IDS as readonly string[]).includes(value)
+    ? value as SectionId
+    : null;
+}
+
+const SECTION_STATUSES: readonly SectionStatus[] = ['pending', 'postponed', 'applied', 'verified', 'risk'];
+
+function sectionStatusOf(value: unknown): SectionStatus | null {
+  return typeof value === 'string' && (SECTION_STATUSES as readonly string[]).includes(value)
+    ? value as SectionStatus
+    : null;
+}
+
+const VALUE_SOURCES: readonly ValueSource[] = ['default', 'installation', 'environment', 'domain_service', 'unknown'];
+
+function valueSourceOf(value: unknown): ValueSource | null {
+  return typeof value === 'string' && (VALUE_SOURCES as readonly string[]).includes(value)
+    ? value as ValueSource
+    : null;
+}
+
+// A section is a closed record: the effective value is data (one string), and
+// an unknown source degrades to ``unknown`` rather than a guessed origin. The
+// service's own prose is never a field of this type.
+function parseSection(value: unknown): SectionView | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const id = sectionIdOf(raw.id ?? raw.section);
+  if (!id) return null;
+  const status = sectionStatusOf(raw.status);
+  if (!status) return null;
+  const effective = typeof raw.effective === 'string' ? raw.effective : null;
+  return {
+    id,
+    status,
+    source: valueSourceOf(raw.source ?? raw.config_source) ?? 'unknown',
+    required: raw.required === true,
+    postponable: raw.postponable === true,
+    locked: raw.locked === true,
+    value: text(raw.value) ?? text(raw.effective_value) ?? effective,
+    options: strings(raw.options),
+    updatedAt: text(raw.updated_at ?? raw.updatedAt),
+  };
+}
+
+function parseSectionBody(body: unknown): SectionView | null {
+  const raw = object(body);
+  if (!raw) return null;
+  return parseSection(raw.section !== undefined ? raw.section : raw);
+}
+
+function parseSectionList(value: unknown): SectionView[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const parsed = value.map(parseSection);
+  return parsed.every((entry): entry is SectionView => entry !== null) ? parsed : null;
+}
+
+function parseSectionFields(value: unknown): SectionField[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const fields: SectionField[] = [];
+  for (const entry of value) {
+    const raw = object(entry);
+    const field = text(raw?.field);
+    const fieldValue = text(raw?.value);
+    if (!field || fieldValue === null) return null;
+    fields.push({ field, value: fieldValue });
+  }
+  return fields;
+}
+
+function parsePreview(body: unknown, section: SectionId): SectionPreview | null {
+  const raw = object(body);
+  if (!raw || !Array.isArray(raw.changes)) return null;
+  const changes: SectionChange[] = [];
+  for (const entry of raw.changes) {
+    const change = object(entry);
+    const field = text(change?.field);
+    if (!field) return null;
+    changes.push({
+      field,
+      from: text(change?.from),
+      to: text(change?.to),
+    });
+  }
+  return { section: sectionIdOf(raw.section) ?? section, value: text(raw.value), changes };
+}
+
+function parseApply(body: unknown, section: SectionId): SectionApplyReceipt | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const readback = parseSectionFields(raw.receipt);
+  // A write without a read-back is not an applied change the wizard can show.
+  if (!readback || readback.length === 0) return null;
+  const parsed = raw.section !== undefined ? parseSection(raw.section) : null;
+  const status = parsed?.status ?? sectionStatusOf(raw.status);
+  if (!status) return null;
+  return {
+    section: parsed?.id ?? section,
+    state: text(raw.state),
+    status,
+    readback,
+  };
+}
+
+function parsePostpone(body: unknown): 'postponed' | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const nested = object(raw.section);
+  const status = sectionStatusOf(nested?.status ?? raw.status);
+  // Anything other than an explicit postponement is not one: a service answer
+  // that says ``applied`` did not postpone and the UI must not paint it so.
+  return status === 'postponed' ? 'postponed' : null;
+}
+
+const CHECKLIST_STATUSES: readonly ChecklistStatus[] = ['passed', 'failed', 'pending', 'postponed', 'risk'];
+
+function checklistStatusOf(value: unknown): ChecklistStatus | null {
+  return typeof value === 'string' && (CHECKLIST_STATUSES as readonly string[]).includes(value)
+    ? value as ChecklistStatus
+    : null;
+}
+
+function parseChecklistItem(value: unknown): ChecklistItem | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const id = text(raw.id);
+  const status = checklistStatusOf(raw.status);
+  const evidence = parseSectionFields(raw.evidence);
+  if (!id || !status || evidence === null) return null;
+  return {
+    id,
+    status,
+    required: raw.required === true,
+    postponable: raw.postponable === true,
+    evidence,
+    observedAt: text(raw.observed_at ?? raw.observedAt),
+  };
+}
+
+function parseChecklist(body: unknown): Checklist | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const source = raw.checklist !== undefined ? object(raw.checklist) : raw;
+  if (!source || !Array.isArray(source.items) || source.items.length === 0) return null;
+  const items = source.items.map(parseChecklistItem);
+  if (!items.every((entry): entry is ChecklistItem => entry !== null)) return null;
+  return { mode: text(source.mode), items };
+}
+
+const CONFIGURATION_DIAGNOSTICS: readonly ConfigurationDiagnosticCode[] = [
+  'state_refused',
+  'item_required',
+  'not_postponable',
+  'invalid_request',
+];
+
+function diagnosticOfConfiguration(body: unknown, httpStatus: number): ConfigurationDiagnosticCode {
+  const raw = object(body);
+  const code = text(raw?.error) ?? text(raw?.detail);
+  if (code && (CONFIGURATION_DIAGNOSTICS as readonly string[]).includes(code)) {
+    return code as ConfigurationDiagnosticCode;
+  }
+  if (code && SESSION_ERROR_CODES.has(code)) return 'session_expired';
+  if (httpStatus === 401 || httpStatus === 403) return 'session_expired';
+  return 'unavailable';
 }
 
 // The agent API answers with one closed code in ``error`` (its routes never
@@ -654,6 +953,112 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     return { ok: true, state, owner: parsed.owner, ai: parsed.ai };
   }
 
+  // Configuration writes. The same closed-code rule as storage and AI: a
+  // service answer outside the documented codes is availability, not prose the
+  // wizard would print.
+  async function configWrite(
+    path: string,
+    payload: unknown,
+    timeoutMs: number,
+    options: RequestOptions,
+  ): Promise<{ ok: true; body: unknown } | { ok: false; code: ConfigurationDiagnosticCode }> {
+    const hasBody = payload !== undefined;
+    const result = await transport(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      body: hasBody ? JSON.stringify(payload) : undefined,
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
+    return { ok: true, body };
+  }
+
+  async function startConfiguration(options: RequestOptions = {}): Promise<ConfigurationResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const outcome = await configWrite('/configuration', undefined, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const raw = object(outcome.body);
+    const state = text(raw?.state);
+    const sections = parseSectionList(raw?.sections);
+    if (!state || sections === null) return { ok: false, code: 'invalid-response' };
+    return { ok: true, state, sections };
+  }
+
+  async function getSection(section: SectionId, options: RequestOptions = {}): Promise<SectionResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const result = await transport(`/configuration/${section}`, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
+    const parsed = parseSectionBody(body);
+    if (!parsed) return { ok: false, code: 'invalid-response' };
+    return { ok: true, section: parsed };
+  }
+
+  async function previewSection(
+    section: SectionId,
+    value: string,
+    options: RequestOptions = {},
+  ): Promise<PreviewResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const outcome = await configWrite(`/configuration/${section}/preview`, { value }, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const preview = parsePreview(outcome.body, section);
+    if (!preview) return { ok: false, code: 'invalid-response' };
+    return { ok: true, preview };
+  }
+
+  async function applySection(
+    section: SectionId,
+    value: string,
+    confirm: boolean,
+    options: RequestOptions = {},
+  ): Promise<ApplyResult> {
+    // The confirm gate is client-side on purpose: a bare click on the section
+    // control cannot become a write, and a retried render cannot replay one.
+    if (confirm !== true) return { ok: false, code: 'confirm_required' };
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const outcome = await configWrite(`/configuration/${section}/apply`, { value, confirm: true }, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const receipt = parseApply(outcome.body, section);
+    if (!receipt) return { ok: false, code: 'invalid-response' };
+    return { ok: true, receipt };
+  }
+
+  async function postponeSection(section: SectionId, options: RequestOptions = {}): Promise<PostponeResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const outcome = await configWrite(`/configuration/${section}/postpone`, {}, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const status = parsePostpone(outcome.body);
+    if (!status) return { ok: false, code: 'invalid-response' };
+    return { ok: true, status };
+  }
+
+  async function verify(options: RequestOptions = {}): Promise<VerifyResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
+    const outcome = await configWrite('/verify', undefined, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const raw = object(outcome.body);
+    const state = text(raw?.state);
+    const checklist = parseChecklist(outcome.body);
+    if (!state || !checklist) return { ok: false, code: 'invalid-response' };
+    return { ok: true, state, checklist };
+  }
+
   // Session writes for the AI step. The provider key is a parameter of this
   // call and never a field of the client: it cannot be read back, replayed by
   // a later request, or picked up by a component re-render.
@@ -735,6 +1140,12 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     checkStorage,
     applyStorage,
     createOwner,
+    startConfiguration,
+    getSection,
+    previewSection,
+    applySection,
+    postponeSection,
+    verify,
     configureAi,
     deferAi,
     askAssistant,

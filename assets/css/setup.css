@@ -1,0 +1,167 @@
+/* Configuration and verification panels. Rules stay local to the wizard and
+   reuse the tokens, radii and badges already defined for the setup steps. */
+.setup-config {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  min-width: 0;
+}
+.setup-config__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.setup-config__head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.setup-config__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 0;
+}
+.setup-config__meta code {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.setup-config__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+.setup-config__row .field {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.setup-config__select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink-900);
+}
+.setup-config__diff {
+  display: grid;
+  gap: 8px;
+}
+.setup-config__diff h4,
+.setup-config [data-setup-config-receipt] h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.setup-config__diff:focus-visible,
+.setup-config [data-setup-config-receipt]:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+}
+.setup-config__link {
+  font-size: 13px;
+}
+.setup-config__assistant {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.setup-config__assistant > summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.setup-config__assistant[open] > summary {
+  margin-bottom: 10px;
+}
+.setup-config__blocked {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-config__blocked li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.setup-verify {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-verify__item {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  min-width: 0;
+}
+.setup-verify__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.setup-verify__head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+/* Chips: a pass is the only green; a postponement and a risk stay amber, and a
+   failure uses the danger pair. Colour never carries the meaning alone: the
+   chip also prints its own word. */
+.setup-step__badge[data-setup-chip="passed"],
+.setup-step__badge[data-setup-chip="applied"],
+.setup-step__badge[data-setup-chip="verified"] {
+  background: var(--teal-100);
+  color: var(--teal-800);
+}
+.setup-step__badge[data-setup-chip="postponed"],
+.setup-step__badge[data-setup-chip="risk"] {
+  background: var(--amber-100);
+  color: var(--amber-800);
+}
+.setup-step__badge[data-setup-chip="failed"] {
+  background: var(--danger-100);
+  color: var(--danger-700);
+}
+[data-setup-config="blocked"] .setup-step__badge,
+[data-setup-verify="checklist"] .setup-step__badge {
+  white-space: normal;
+}
+@media (max-width: 480px) {
+  .setup-config {
+    padding: 12px;
+  }
+  .setup-config__row,
+  .setup__ai-actions {
+    align-items: stretch;
+  }
+  .setup-config__row > .btn,
+  .setup__ai-actions > .btn {
+    width: 100%;
+  }
+}
