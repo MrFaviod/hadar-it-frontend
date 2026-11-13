@@ -4,6 +4,7 @@ type LegacyApp = { unmount(): void };
 declare global {
   interface Window {
     AssetReactHost?: boolean;
+    AssetLoaderGroups?: Record<string, string[]>;
     mountAssetApp(target?: Element | string): LegacyApp;
   }
 }
@@ -18,8 +19,21 @@ function loadRuntime(): Promise<void> {
   return ready ??= (async () => {
     window.AssetReactHost = true;
     const scripts = [...originalDocument().body.querySelectorAll<HTMLScriptElement>('script[src]')];
+    // FR-02: the canonical entry keeps the full ordered list as the static
+    // compatibility path. The React host loads only the blocking shell here;
+    // operational bundles are declared by data-domain and fetched on demand
+    // through assets/js/loader.js in document order.
+    const bootstrap: HTMLScriptElement[] = [];
+    const groups: Record<string, string[]> = {};
+    for (const element of scripts) {
+      const src = element.getAttribute('src')!;
+      const domain = element.getAttribute('data-domain');
+      if (domain) (groups[domain] ||= []).push(src);
+      else bootstrap.push(element);
+    }
+    window.AssetLoaderGroups = groups;
     // async=false keeps execution in document order while downloads run in parallel.
-    await Promise.all(scripts.map((element) => new Promise<void>((resolve, reject) => {
+    await Promise.all(bootstrap.map((element) => new Promise<void>((resolve, reject) => {
       const script = window.document.createElement('script');
       script.async = false;
       script.src = new URL(element.getAttribute('src')!, new URL(import.meta.env.BASE_URL, location.href)).href;

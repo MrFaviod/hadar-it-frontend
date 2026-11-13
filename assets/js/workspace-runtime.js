@@ -10,8 +10,18 @@
   // explorer this session or a target navigation populated it. On reload the
   // saved last view is the only source, so empty defaults must not erase it.
   function explorerShared(app){const f=(app&&app.explorerFilters)||{};return ['categories','sites','states','locations'].some(k=>Array.isArray(f[k])&&f[k].length>0)||!!f.search||!!(app&&app.explorerSelection);}
-  function childFor(app){return app.$refs?.workspaceView;}
-  const viewFields={};
+  // One public unwrap protocol: the deferred wrapper exposes its mounted child
+  // through AssetLoader.realView, while a static entry returns the view itself.
+  function childFor(app){const ref=app.$refs?.workspaceView;return window.AssetLoader?.realView?window.AssetLoader.realView(ref):ref;}
+  // Field schemas are static data, not a consequence of the component having
+  // arrived: a saved view restored before its bundle loads must keep its
+  // snapshot. Installation still happens when the definition appears.
+  const viewFields={
+    map:['filters','level','activeSiteId','activeFloorId','selectedId','selectedRoom','floorZoom'],
+    graph:['filters','view','hiddenIds','selectedId'],
+    panel:['filters'],
+    reports:['tab','family','templateId','template','filters','ids','explicit','group','from','to','event','warrantyFilter','output']
+  };
   function ownFields(source, fields){const out={};if(!source||typeof source!=='object'||Array.isArray(source))return out;fields.forEach(key=>{if(Object.hasOwn(source,key)&&source[key]!==undefined)out[key]=W.clone(source[key]);});return out;}
   function restorableSnapshot(route,source){
     if(route==='inventory')return {
@@ -45,14 +55,36 @@
       beforeUnmount(){const a=this.app;if(a.workspaceState){const snapshot=snapshotChild(this);W.rememberView(a.workspaceState,a.workspaceUserId,route,snapshot);if(a.authenticated&&a.phase10RememberLastView)a.phase10RememberLastView(route,snapshot);}}
     }];
   }
-  installMemory(window.AssetMapViews.MapExplorer,'map',['filters','level','activeSiteId','activeFloorId','selectedId','selectedRoom','floorZoom']);
-  installMemory(window.AssetGraphView,'graph',['filters','view','hiddenIds','selectedId']);
-  installMemory(window.AssetPanel.PanelOverview,'panel',['filters']);
-  installMemory(window.AssetReportViews.ReportsCenter,'reports',['tab','family','templateId','template','filters','ids','explicit','group','from','to','event','warrantyFilter','output']);
+  // Operational view bundles are demand-loaded: when this runtime evaluates
+  // before a domain bundle, remember the wiring and apply it as soon as the
+  // view registers. The eager computed/methods surface is never deferred.
+  const pendingViews = [];
+  function installWhenReady(resolve, route, fields) {
+    const admitted = fields || viewFields[route] || [];
+    const component = resolve();
+    if (component) { installMemory(component, route, admitted); return; }
+    pendingViews.push(() => {
+      const late = resolve();
+      if (late && !late.workspaceFields) installMemory(late, route, admitted);
+    });
+  }
+  installWhenReady(() => window.AssetMapViews?.MapExplorer,'map');
+  installWhenReady(() => window.AssetGraphView,'graph');
+  installWhenReady(() => window.AssetPanel?.PanelOverview,'panel');
+  installWhenReady(() => window.AssetReportViews?.ReportsCenter,'reports');
 
-  const maintenance=window.AssetMaintViews.MaintenanceCenter;
-  const maintenanceCreated=maintenance.created;
-  maintenance.created=function(){maintenanceCreated?.call(this);const id=this.app.workspaceMaintenanceId;if(!id)return;this.loadPlanDetail(id);this.view='agenda';};
+  function attachMaintenance() {
+    const maintenance = window.AssetMaintViews?.MaintenanceCenter;
+    if (!maintenance || maintenance.workspaceHooked) return;
+    const maintenanceCreated = maintenance.created;
+    maintenance.workspaceHooked = true;
+    maintenance.created = function(){maintenanceCreated?.call(this);const id=this.app.workspaceMaintenanceId;if(!id)return;this.loadPlanDetail(id);this.view='agenda';};
+  }
+  attachMaintenance();
+  function wirePendingViews() {
+    attachMaintenance();
+    pendingViews.forEach((wire) => wire());
+  }
   const computed={
     workspaceUserId(){return String(this.currentUser?.id||'');},
     workspaceFavorites(){return W.user(this.workspaceState,this.workspaceUserId).favorites;},
@@ -109,5 +141,5 @@
     handleWorkspaceRoute(next,previous){this.universalOpen=false;if(previous?.name==='inventory'&&next.name!=='inventory'){const snapshot={prefs:{category:this.prefs.category,site:this.prefs.site,search:this.prefs.search,view:this.prefs.view,sort:this.prefs.sort},inventory:W.clone(this.workspaceInventory),selection:this.bulk.ids.slice(),filters:{query:String((this.inventoryFilters||{}).query||''),category:String((this.inventoryFilters||{}).category||'all'),status:String((this.inventoryFilters||{}).status||'all')}};W.rememberView(this.workspaceState,this.workspaceUserId,'inventory',snapshot);if(this.authenticated&&this.phase10RememberLastView)this.phase10RememberLastView('inventory',snapshot);}// Inventory state already lives on the root: keep explicit navigation filters intact.
 }
   };
-  window.AssetWorkspaceRuntime={computed,methods};
+  window.AssetWorkspaceRuntime={computed,methods,wirePendingViews};
 })();

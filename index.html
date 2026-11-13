@@ -2669,7 +2669,7 @@
       </template>
     </modal-shell>
 
-    <asset-editor :app="$root"></asset-editor>
+    <asset-editor v-if="$root.authenticated" :app="$root"></asset-editor>
 
     <modal-shell
       :open="statusDialog.open"
@@ -2969,44 +2969,44 @@
   <script src="assets/js/asset-admin.js"></script>
   <script src="assets/js/operations-engine.js"></script>
   <script src="assets/js/operations-views.js"></script>
-  <script src="assets/js/maintenance-dialogs.js"></script>
-  <script src="assets/js/maintenance-views.js"></script>
-  <script src="assets/js/maintenance-panels.js"></script>
+  <script src="assets/js/maintenance-dialogs.js" data-domain="maint"></script>
+  <script src="assets/js/maintenance-views.js" data-domain="maint"></script>
+  <script src="assets/js/maintenance-panels.js" data-domain="maint"></script>
   <script src="assets/js/monitoring-api.js"></script>
-  <script src="assets/js/monitoring-views.js"></script>
-  <script src="assets/js/monitoring-settings.js"></script>
-  <script src="assets/js/graph-layout.js"></script>
-  <script src="assets/js/relations-engine.js"></script>
-  <script src="assets/js/asset-editor.js"></script>
-  <script src="assets/js/asset-config-views.js"></script>
+  <script src="assets/js/monitoring-views.js" data-domain="monitor"></script>
+  <script src="assets/js/monitoring-settings.js" data-domain="monitor"></script>
+  <script src="assets/js/graph-layout.js" data-domain="graph"></script>
+  <script src="assets/js/relations-engine.js" data-domain="graph"></script>
+  <script src="assets/js/asset-editor.js" data-domain="asset-edit"></script>
+  <script src="assets/js/asset-config-views.js" data-domain="asset-edit"></script>
   <script src="assets/js/access.js"></script>
   <script src="assets/js/access-views.js"></script>
   <script src="assets/js/phase10-api.js"></script>
-  <script src="assets/js/dashboard-model.js"></script>
+  <script src="assets/js/dashboard-model.js" data-domain="dashboard"></script>
   <script src="assets/js/dashboard-preferences.js"></script>
-  <script src="assets/js/dashboard-charts.js"></script>
-  <script src="assets/js/dashboard-views.js"></script>
-  <script src="assets/js/panel.js"></script>
+  <script src="assets/js/dashboard-charts.js" data-domain="dashboard"></script>
+  <script src="assets/js/dashboard-views.js" data-domain="dashboard"></script>
+  <script src="assets/js/panel.js" data-domain="dashboard"></script>
   <script src="assets/js/transfer-data.js"></script>
-  <script src="assets/js/transfer-engine.js"></script>
-  <script src="assets/js/transfer-export-views.js"></script>
-  <script src="assets/js/transfer-views.js"></script>
-  <script src="assets/js/relations-views.js"></script>
-  <script src="assets/js/infrastructure-monitoring.js"></script>
-  <script src="assets/js/graph-views.js"></script>
-  <script src="assets/js/map-engine.js"></script>
-  <script src="assets/js/map-floor-logic.js"></script>
-  <script src="assets/js/map-views.js"></script>
-  <script src="assets/js/map-config-views.js"></script>
-  <script src="assets/js/report-engine.js"></script>
-  <script src="assets/js/warranty-engine.js"></script>
-  <script src="assets/js/label-engine.js"></script>
-  <script src="assets/js/label-views.js"></script>
-  <script src="assets/js/report-views.js"></script>
-  <script src="assets/js/warranty-views.js"></script>
+  <script src="assets/js/transfer-engine.js" data-domain="transfer"></script>
+  <script src="assets/js/transfer-export-views.js" data-domain="transfer"></script>
+  <script src="assets/js/transfer-views.js" data-domain="transfer"></script>
+  <script src="assets/js/relations-views.js" data-domain="graph"></script>
+  <script src="assets/js/infrastructure-monitoring.js" data-domain="monitor"></script>
+  <script src="assets/js/graph-views.js" data-domain="graph"></script>
+  <script src="assets/js/map-engine.js" data-domain="map"></script>
+  <script src="assets/js/map-floor-logic.js" data-domain="map"></script>
+  <script src="assets/js/map-views.js" data-domain="map"></script>
+  <script src="assets/js/map-config-views.js" data-domain="map"></script>
+  <script src="assets/js/report-engine.js" data-domain="docs"></script>
+  <script src="assets/js/warranty-engine.js" data-domain="docs"></script>
+  <script src="assets/js/label-engine.js" data-domain="docs"></script>
+  <script src="assets/js/label-views.js" data-domain="docs"></script>
+  <script src="assets/js/report-views.js" data-domain="docs"></script>
+  <script src="assets/js/warranty-views.js" data-domain="docs"></script>
   <script src="assets/js/phase6-api.js"></script>
-  <script src="assets/js/phase6-views.js"></script>
-  <script src="assets/js/transfer-server.js"></script>
+  <script src="assets/js/phase6-views.js" data-domain="phase6"></script>
+  <script src="assets/js/transfer-server.js" data-domain="transfer"></script>
   <script src="assets/js/appearance-engine.js"></script>
   <script src="assets/js/appearance-package.js"></script>
   <script src="assets/js/appearance-api.js"></script>
@@ -3022,15 +3022,16 @@
   <script src="assets/js/inventory-api.js"></script>
   <script src="assets/js/phase9-api.js"></script>
   <script src="assets/js/maintenance-api.js"></script>
-  <script src="assets/js/agent-integrations.js"></script>
-  <script src="assets/js/system-operations.js"></script>
-  <script src="assets/js/translation-views.js"></script>
-  <script src="assets/js/conversation.js"></script>
+  <script src="assets/js/agent-integrations.js" data-domain="agent"></script>
+  <script src="assets/js/system-operations.js" data-domain="agent"></script>
+  <script src="assets/js/translation-views.js" data-domain="agent"></script>
+  <script src="assets/js/conversation.js" data-domain="agent"></script>
   <script src="assets/js/extension-frame.js"></script>
   <script src="assets/js/extension-views.js"></script>
   <script src="assets/js/ui-composition.js"></script>
   <script src="assets/js/extensions.js"></script>
   <script src="assets/js/help.js"></script>
+  <script src="assets/js/loader.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
 </html>

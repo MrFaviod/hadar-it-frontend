@@ -434,7 +434,7 @@
     phase10IdentityChanged() { if (!this.authenticated) { window.AssetPhase10Api.clear(this); return; } window.AssetPhase10Api.start(this); if (this.route && this.route.name === 'panel') this.loadDashboardSummary(); },
     handlePhase10Route(next) { if (!this.authenticated) return; const meta = this.dashboard && this.dashboard.meta; if (next && next.name === 'panel' && !(meta && (meta.loading || meta.loaded))) this.loadDashboardSummary(); },
     patchWorkspaceState(patch) { return window.AssetPhase10Api.patchState(this, patch); },
-    loadDashboardSummary(filters) { const child = this.$refs && this.$refs.workspaceView; return window.AssetPhase10Api.loadDashboard(this, filters || (child && child.filters) || {}); },
+    loadDashboardSummary(filters) { const ref = this.$refs && this.$refs.workspaceView; const child = window.AssetLoader?.realView ? window.AssetLoader.realView(ref) : ref; return window.AssetPhase10Api.loadDashboard(this, filters || (child && child.filters) || {}); },
     loadWorkspaceState() { return window.AssetPhase10Api.loadWorkspace(this); },
     loadArtifactIntegrations() { return window.AssetPhase10Api.loadIntegrations(this); },
     saveArtifactIntegrations(draft) { return window.AssetPhase10Api.saveIntegrations(this, draft); },

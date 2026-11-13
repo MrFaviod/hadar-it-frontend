@@ -3,7 +3,7 @@
 
   const Store = window.AssetStore;
   const KEYS = Store.KEYS;
-  const CONFIG_SECTIONS = ['apariencia', 'general', 'categorias', 'activos', 'sedes', 'personas', 'integraciones', 'relaciones', 'mantenimiento', 'supervision', 'alertas', 'notificaciones', 'mapas', 'datos', 'seguridad', 'reportes', 'garantias', 'qr', 'etiquetas', 'extensiones', 'idiomas'];
+  const CONFIG_SECTIONS = ['apariencia', 'general', 'categorias', 'activos', 'sedes', 'personas', 'integraciones', 'relaciones', 'mantenimiento', 'supervision', 'alertas', 'notificaciones', 'mapas', 'datos', 'seguridad', 'reportes', 'garantias', 'qr', 'etiquetas', 'extensiones', 'idiomas', 'sistema', 'ia'];
   const MONITOR_TABS = ['estado', 'dispositivos', 'alertas'];
 
   // This module is also evaluated without app.js in component harnesses, so it
