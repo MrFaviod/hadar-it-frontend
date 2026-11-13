@@ -49,6 +49,66 @@ export type SessionResult =
   | { ok: true; session: SetupSession }
   | { ok: false; reason: 'denied' | 'unavailable' | 'network' | 'timeout' };
 
+/** Closed classification of a candidate database; never the service's prose. */
+export type StorageClassification = 'empty' | 'ours' | 'foreign';
+
+export interface StorageProbe {
+  reachable: boolean;
+  engine: string | null;
+  version: string | null;
+  classification: StorageClassification | 'unreachable';
+  identity: string | null;
+  adoptable: boolean;
+}
+
+/** What apply_storage actually did; no database URL and no credential. */
+export interface StorageSummary {
+  engine: string;
+  version: string | null;
+  classification: 'empty' | 'ours';
+  identity: string | null;
+  configSource: 'installation' | 'external';
+  migrated: boolean;
+}
+
+/** Closed diagnostics the storage and owner steps know how to explain. */
+export type StorageDiagnosticCode =
+  | 'unsupported_engine'
+  | 'database_not_adoptable'
+  | 'invalid_request'
+  | 'state_refused'
+  | 'session_expired'
+  | 'unavailable'
+  | 'network'
+  | 'timeout'
+  | 'invalid-response';
+
+export type StorageCheckResult =
+  | { ok: true; probe: StorageProbe }
+  | { ok: false; code: StorageDiagnosticCode };
+
+export type StorageApplyResult =
+  | { ok: true; state: string; storage: StorageSummary }
+  | { ok: false; code: StorageDiagnosticCode };
+
+export interface OwnerInput {
+  username: string;
+  displayName: string;
+  email?: string;
+  password: string;
+}
+
+export interface OwnerReceipt {
+  username: string;
+  displayName: string;
+}
+
+export type OwnerFailureCode = StorageDiagnosticCode | 'owner_exists';
+
+export type OwnerResult =
+  | { ok: true; state: string; owner: OwnerReceipt; ai: 'transferred' | 'pending' }
+  | { ok: false; code: OwnerFailureCode };
+
 /** Closed diagnostics the AI step knows how to explain; never server text. */
 export type AiDiagnosticCode =
   | 'provider_unreachable'
@@ -106,6 +166,12 @@ export interface SetupClient {
   getStatus(options?: RequestOptions): Promise<StatusResult>;
   claim(credential: string, options?: RequestOptions): Promise<ClaimResult>;
   getSession(options?: RequestOptions): Promise<SessionResult>;
+  /** Probes a candidate database; drives no transition and keeps no URL. */
+  checkStorage(databaseUrl: string, options?: RequestOptions): Promise<StorageCheckResult>;
+  /** Migrates and claims the candidate database for this release mode. */
+  applyStorage(databaseUrl: string, options?: RequestOptions): Promise<StorageApplyResult>;
+  /** Creates the first owner. The password is an argument of this call only. */
+  createOwner(input: OwnerInput, options?: RequestOptions): Promise<OwnerResult>;
   /** One verification turn. The key lives in this call, never in the client. */
   configureAi(input: AiProviderInput, options?: RequestOptions): Promise<AiResult>;
   deferAi(options?: RequestOptions): Promise<AiResult>;
@@ -156,6 +222,8 @@ const DEFAULT_STATUS_TIMEOUT_MS = 1500;
 const DEFAULT_WRITE_TIMEOUT_MS = 20000;
 // Provider verification does a discovery round trip and one tool call.
 const DEFAULT_AI_TIMEOUT_MS = 30000;
+// A database probe or migration may wait on a remote engine.
+const DEFAULT_STORAGE_TIMEOUT_MS = 30000;
 // The assistant is bounded server-side at 30s; the client waits it out.
 const DEFAULT_ASK_TIMEOUT_MS = 45000;
 
@@ -204,6 +272,59 @@ function parseSession(value: unknown): SetupSession | null {
   };
 }
 
+function probeClass(value: unknown): StorageProbe['classification'] | null {
+  return value === 'empty' || value === 'ours' || value === 'foreign' || value === 'unreachable'
+    ? value
+    : null;
+}
+
+// The service answers with a closed status (the contract calls it
+// ``classification``); both spellings are accepted, anything else is a broken
+// response rather than prose the wizard would render.
+function parseStorageProbe(value: unknown): StorageProbe | null {
+  const raw = object(value);
+  if (!raw || typeof raw.reachable !== 'boolean') return null;
+  const classification = probeClass(raw.classification ?? raw.status);
+  if (!classification) return null;
+  return {
+    reachable: raw.reachable,
+    engine: text(raw.engine),
+    version: text(raw.version),
+    classification,
+    identity: text(raw.identity),
+    adoptable: raw.adoptable === true,
+  };
+}
+
+function parseStorageSummary(value: unknown): StorageSummary | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const engine = text(raw.engine);
+  const classification = raw.status === 'empty' || raw.status === 'ours' ? raw.status : null;
+  const configSource = raw.config_source === 'external'
+    ? 'external'
+    : raw.config_source === 'installation' ? 'installation' : null;
+  if (!engine || !classification || !configSource) return null;
+  return {
+    engine,
+    version: text(raw.version),
+    classification,
+    identity: text(raw.identity),
+    configSource,
+    migrated: raw.migrated === true,
+  };
+}
+
+function parseOwnerResult(value: unknown): { owner: OwnerReceipt; ai: 'transferred' | 'pending' } | null {
+  const raw = object(value);
+  const owner = object(raw?.owner);
+  const username = text(owner?.username);
+  const displayName = text(owner?.display_name);
+  const ai = raw?.ai === 'transferred' ? 'transferred' : raw?.ai === 'pending' ? 'pending' : null;
+  if (!username || !displayName || !ai) return null;
+  return { owner: { username, displayName }, ai };
+}
+
 // The agent API answers with one closed code in ``error`` (its routes never
 // echo upstream text). Anything outside these sets is availability, not a
 // diagnosis: unknown strings are dropped so nothing server-authored is ever
@@ -234,6 +355,32 @@ function diagnosticOf(body: unknown, httpStatus: number): AiDiagnosticCode {
   if (code && SESSION_ERROR_CODES.has(code)) return 'session_expired';
   if (httpStatus === 401 || httpStatus === 403) return 'session_expired';
   return 'unavailable';
+}
+
+const STORAGE_DIAGNOSTICS: readonly StorageDiagnosticCode[] = [
+  'unsupported_engine',
+  'database_not_adoptable',
+  'invalid_request',
+  'state_refused',
+];
+
+// Same rule as the AI step: the service's closed code is the only thing kept.
+// Its ``guidance`` string is operator text and never reaches the page.
+function diagnosticOfStorage(body: unknown, httpStatus: number): StorageDiagnosticCode {
+  const raw = object(body);
+  const code = text(raw?.error) ?? text(raw?.detail);
+  if (code && (STORAGE_DIAGNOSTICS as readonly string[]).includes(code)) {
+    return code as StorageDiagnosticCode;
+  }
+  if (code && SESSION_ERROR_CODES.has(code)) return 'session_expired';
+  if (httpStatus === 401 || httpStatus === 403) return 'session_expired';
+  return 'unavailable';
+}
+
+function diagnosticOfOwner(body: unknown, httpStatus: number): OwnerFailureCode {
+  const code = text(object(body)?.error) ?? text(object(body)?.detail);
+  if (code === 'owner_exists') return 'owner_exists';
+  return diagnosticOfStorage(body, httpStatus);
 }
 
 function parseReceipt(value: unknown): AiReceipt | null {
@@ -424,9 +571,87 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     // 404 keeps the reload path on the claim step instead of a dead end.
     if (response.status === 401 || response.status === 403 || response.status === 404) return { ok: false, reason: 'denied' };
     if (!response.ok) return { ok: false, reason: 'unavailable' };
-    const session = parseSession(await readJson(response));
+    const body = await readJson(response);
+    const session = parseSession(body);
     if (!session) return { ok: false, reason: 'unavailable' };
+    // A reloaded wizard has no claim response left. GET /session returns the
+    // session's CSRF value, and adopting it here is what keeps the storage and
+    // owner mutations working after a reload.
+    const refreshed = tokenOf(body);
+    if (refreshed) csrfToken = refreshed;
     return { ok: true, session };
+  }
+
+  // Storage writes mirror the AI rule: the URL is an argument of one call and
+  // never a field of the client, so it cannot be replayed by a re-render.
+  async function storageWrite(
+    path: string,
+    databaseUrl: string,
+    timeoutMs: number,
+    options: RequestOptions,
+  ): Promise<{ ok: true; body: unknown } | { ok: false; code: StorageDiagnosticCode }> {
+    const result = await transport(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ database_url: databaseUrl }),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOfStorage(body, response.status) };
+    return { ok: true, body };
+  }
+
+  async function checkStorage(databaseUrl: string, options: RequestOptions = {}): Promise<StorageCheckResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_STORAGE_TIMEOUT_MS;
+    const outcome = await storageWrite('/storage/check', databaseUrl, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const probe = parseStorageProbe(outcome.body);
+    if (!probe) return { ok: false, code: 'invalid-response' };
+    return { ok: true, probe };
+  }
+
+  async function applyStorage(databaseUrl: string, options: RequestOptions = {}): Promise<StorageApplyResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_STORAGE_TIMEOUT_MS;
+    const outcome = await storageWrite('/storage', databaseUrl, timeoutMs, options);
+    if (!outcome.ok) return outcome;
+    const raw = object(outcome.body);
+    const state = text(raw?.state);
+    const storage = parseStorageSummary(raw?.storage);
+    if (!state || !storage) return { ok: false, code: 'invalid-response' };
+    return { ok: true, state, storage };
+  }
+
+  async function createOwner(input: OwnerInput, options: RequestOptions = {}): Promise<OwnerResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_STORAGE_TIMEOUT_MS;
+    const payload: Record<string, string> = {
+      username: input.username.trim(),
+      display_name: input.displayName.trim(),
+      password: input.password,
+    };
+    const email = input.email?.trim();
+    if (email) payload.email = email;
+    const result = await transport('/owner', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOfOwner(body, response.status) };
+    const parsed = parseOwnerResult(body);
+    const state = text(object(body)?.state);
+    if (!parsed || !state) return { ok: false, code: 'invalid-response' };
+    return { ok: true, state, owner: parsed.owner, ai: parsed.ai };
   }
 
   // Session writes for the AI step. The provider key is a parameter of this
@@ -507,6 +732,9 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     getStatus,
     claim,
     getSession,
+    checkStorage,
+    applyStorage,
+    createOwner,
     configureAi,
     deferAi,
     askAssistant,

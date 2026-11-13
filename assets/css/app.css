@@ -1577,6 +1577,43 @@ button.text-button {
   overflow-wrap: anywhere;
   text-align: right;
 }
+/* The storage step adds an engine choice that has no earlier counterpart. The
+   control keeps a 44px row and lets the recommendation badge sit at the end. */
+.setup__engine {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.setup__engine legend {
+  padding: 0;
+  color: var(--ink-900);
+  font-size: 13px;
+  font-weight: 600;
+}
+.setup__engine label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  min-width: 0;
+  font-size: 14px;
+}
+.setup__engine label input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--teal-700);
+}
+.setup__engine .setup-step__badge {
+  margin-left: auto;
+}
+.setup__ai h3 {
+  margin: 0;
+  font-size: 15px;
+}
 .setup__ai-actions {
   display: flex;
   flex-wrap: wrap;
