@@ -65,7 +65,7 @@
 .noc-context a { min-height:24px; font-size:11px; }
 .noc-filters { display:grid; grid-template-columns:minmax(140px,1fr) minmax(140px,1fr) auto auto; align-items:end; gap:12px; padding:9px 14px; border:1px solid var(--border); background:var(--paper); border-radius:6px; }
 .noc-filters label,.noc-period { font-size:11px; gap:4px; min-width:0; }
-.noc-filters select { font-size:12px; min-height:44px; padding:8px 10px; }
+.noc-filters select { font-size:1rem; min-height:44px; padding:8px 10px; }
 .noc-segment { padding:0; gap:0; overflow:hidden; }
 .noc-segment button { min-height:44px; border-radius:0; font-size:12px; padding-inline:14px; }
 .noc-kpis { border:0; border-radius:0; background:transparent; gap:12px; box-shadow:none; }

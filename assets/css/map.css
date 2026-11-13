@@ -133,7 +133,7 @@ html[data-theme="dark"] .infra-tab.is-active:hover {
   background: transparent;
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
 .map-search input::placeholder {

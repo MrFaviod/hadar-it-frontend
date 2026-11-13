@@ -708,7 +708,7 @@
 }
 
 .tx-map__entry .input-shell select {
-  font-size: 12px;
+  font-size: 1rem;
 }
 
 .tx-detect {

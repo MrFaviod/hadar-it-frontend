@@ -29,7 +29,7 @@
   background: var(--paper);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 15px;
+  font-size: 1rem;
 }
 
 .select-shell select:focus-visible {
