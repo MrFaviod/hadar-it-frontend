@@ -12,12 +12,14 @@ import type {
   AiDiagnosticCode,
   Checklist,
   ChecklistItem,
+  CompletionCode,
   ConfigurationDiagnosticCode,
   SectionDecision,
   SectionDetail,
   SectionId,
   SectionInput,
   SectionPreview,
+  SetupReport,
 } from './client';
 import { SECTION_ROUTES, chipFor, choicesFor, currentRows, suggestionsFor, type SectionChip } from './section-status';
 import type { Translator } from './strings';
@@ -639,6 +641,137 @@ export function VerifyPanel(props: VerifyPanelProps) {
       </div>
       <p className="field__hint">{t('ui.setup.verify.next')}</p>
       {props.appUsable ? <a className="setup-config__link" href={SECTION_ROUTES.operational}>{t('ui.setup.config.open_settings')}</a> : null}
+    </section>
+  );
+}
+
+export interface FinishPanelProps {
+  t: Translator;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  errorRef?: RefObject<HTMLParagraphElement | null>;
+  report: SetupReport | null;
+  loading: boolean;
+  error: CompletionCode | null;
+  completing: boolean;
+  completeError: CompletionCode | null;
+  onDownload: () => void;
+  onRetry: () => void;
+  onConfirm: () => void;
+}
+
+/** One closed sentence per completion refusal; unknown codes are availability. */
+function completionMessage(code: CompletionCode, t: Translator): string {
+  switch (code) {
+    case 'completion_blocked': return t('ui.setup.finish.error.completion_blocked');
+    case 'session_expired': return t('ui.setup.finish.error.session_expired');
+    case 'state_refused': return t('ui.setup.finish.error.state_refused');
+    case 'network': return t('ui.setup.finish.error.network');
+    case 'timeout': return t('ui.setup.finish.error.timeout');
+    case 'invalid-response': return t('ui.setup.finish.error.invalid_response');
+    case 'setup_complete': return t('ui.setup.complete.title');
+    default: return t('ui.setup.finish.error.unavailable');
+  }
+}
+
+function shown(value: string | boolean | null | undefined): string {
+  if (typeof value === 'boolean') return value ? '✓' : '—';
+  return value && String(value).trim() ? String(value) : '—';
+}
+
+/**
+ * The last screen: the sanitized preview the service will export, an explicit
+ * JSON download, and one confirmation. Nothing here reads a field the client's
+ * allowlist did not keep, so an echoing service cannot put a credential on the
+ * page.
+ */
+export function FinishPanel(props: FinishPanelProps) {
+  const { t, report } = props;
+  const passed = report ? report.checklist.filter((item) => item.status === 'passed').length : 0;
+  const total = report ? report.checklist.length : 0;
+  return (
+    <section className="setup__ai" aria-labelledby="setup-finish-title" data-setup-finish data-setup-state={report?.state ?? ''}>
+      <h2 id="setup-finish-title" tabIndex={-1} ref={props.headingRef}>{t('ui.setup.finish.title')}</h2>
+      <p className="setup__lead">{t('ui.setup.finish.lead')}</p>
+      <div className="setup__messages" aria-live="polite" aria-atomic="true" data-setup-finish-status>
+        {props.loading ? <p className="form-note" role="status">{t('ui.setup.finish.report_loading')}</p> : null}
+        {props.error ? (
+          <p className="form-alert" role="alert" tabIndex={-1} ref={props.errorRef}>{completionMessage(props.error, t)}</p>
+        ) : null}
+        {props.completeError ? (
+          <p className="form-alert" role="alert" tabIndex={-1} ref={props.errorRef} data-setup-finish-error>{completionMessage(props.completeError, t)}</p>
+        ) : null}
+      </div>
+      {report ? (
+        <section aria-labelledby="setup-finish-report-title" data-setup-finish-report>
+          <h3 id="setup-finish-report-title">{t('ui.setup.finish.report_title')}</h3>
+          <dl className="setup__receipt">
+            <div>
+              <dt>{t('ui.setup.finish.mode')}</dt>
+              <dd data-setup-finish-field="mode">{shown(report.mode)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.owner')}</dt>
+              <dd data-setup-finish-field="owner">{shown(report.owner.username)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.ai_status')}</dt>
+              <dd data-setup-finish-field="ai-status">{shown(report.ai.status)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.ai_provider')}</dt>
+              <dd data-setup-finish-field="ai-provider">{shown(report.ai.provider)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.ai_model')}</dt>
+              <dd data-setup-finish-field="ai-model">{shown(report.ai.model)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.storage_engine')}</dt>
+              <dd data-setup-finish-field="storage-engine">{shown(report.storage.engine)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.storage_status')}</dt>
+              <dd data-setup-finish-field="storage-status">{shown(report.storage.status)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.checks')}</dt>
+              <dd data-setup-finish-field="checks">{t('ui.setup.finish.checks_value', { passed, total })}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.verified_at')}</dt>
+              <dd data-setup-finish-field="verified-at">{shown(report.verifiedAt)}</dd>
+            </div>
+            <div>
+              <dt>{t('ui.setup.finish.instance')}</dt>
+              <dd data-setup-finish-field="instance">{shown(report.instanceId)}</dd>
+            </div>
+            {report.reportDigest ? (
+              <div>
+                <dt>{t('ui.setup.finish.digest')}</dt>
+                <dd data-setup-finish-field="digest"><code>{report.reportDigest}</code></dd>
+              </div>
+            ) : null}
+          </dl>
+        </section>
+      ) : null}
+      <div className="setup__ai-actions">
+        <button className="btn btn--secondary" type="button" id="setup-finish-download" onClick={props.onDownload} disabled={!report}>
+          {t('ui.setup.finish.download')}
+        </button>
+        <button className="btn btn--secondary" type="button" id="setup-finish-report-retry" onClick={props.onRetry} disabled={props.loading}>
+          {props.loading ? t('ui.setup.finish.report_loading') : t('ui.setup.finish.report_retry')}
+        </button>
+        <button
+          className="btn btn--primary"
+          type="button"
+          id="setup-finish-confirm"
+          onClick={props.onConfirm}
+          disabled={props.completing || report === null}
+        >
+          {props.completing ? t('ui.setup.finish.confirming') : t('ui.setup.finish.confirm')}
+        </button>
+      </div>
+      <p className="field__hint">{t('ui.setup.finish.confirm_hint')}</p>
     </section>
   );
 }

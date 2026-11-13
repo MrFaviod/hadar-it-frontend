@@ -7,6 +7,7 @@ import {
   type Checklist,
   type ChecklistItem,
   type ClaimResult,
+  type CompletionCode,
   type ConfigurationDiagnosticCode,
   type OwnerFailureCode,
   type SectionDecision,
@@ -15,6 +16,7 @@ import {
   type SectionInput,
   type SectionPreview,
   type SetupClient,
+  type SetupReport,
   type SetupSession,
   type StorageDiagnosticCode,
   type StorageProbe,
@@ -28,7 +30,7 @@ import {
   type OwnerFormCode,
   type OwnerFormState,
 } from './owner-form';
-import { ConfigurationPanel, VerifyPanel } from './sections';
+import { ConfigurationPanel, FinishPanel, VerifyPanel } from './sections';
 import { loadTranslator, type Translator } from './strings';
 
 // The first-start wizard. It is a sibling of the legacy host, never a Vue view:
@@ -44,14 +46,15 @@ const STEPS = [
   { key: 'owner', label: 'ui.setup.steps.owner' },
   { key: 'configuration', label: 'ui.setup.steps.configuration' },
   { key: 'verify', label: 'ui.setup.steps.verify' },
+  { key: 'finish', label: 'ui.setup.steps.finish' },
 ] as const;
 
 type StepKey = typeof STEPS[number]['key'];
 type StepStatus = 'done' | 'active' | 'pending';
 type Step = 'claim' | 'claimed';
-type Panel = 'ai' | 'storage' | 'owner' | 'configure' | 'verify';
+type Panel = 'ai' | 'storage' | 'owner' | 'configure' | 'verify' | 'finish';
 type FormCode = AiDiagnosticCode | 'form-incomplete';
-type FocusTarget = 'receipt' | 'pending' | 'error' | 'assistant' | 'panel' | 'storage-error' | 'owner-error';
+type FocusTarget = 'receipt' | 'pending' | 'error' | 'assistant' | 'panel' | 'storage-error' | 'owner-error' | 'finish-error';
 
 interface SetupAppProps {
   initialSession?: SetupSession | null;
@@ -168,9 +171,12 @@ function stepStatuses(state: string, panel: Panel, aiDeferred: boolean): Record<
   const configuration: StepStatus = current >= 5
     ? 'done'
     : current === 4 ? (panel === 'configure' ? 'active' : 'pending') : 'pending';
-  const verify: StepStatus = state === 'complete'
+  const verify: StepStatus = state === 'complete' || panel === 'finish'
     ? 'done'
     : current >= 4 ? (panel === 'verify' ? 'active' : 'pending') : 'pending';
+  const finish: StepStatus = state === 'complete'
+    ? 'done'
+    : panel === 'finish' ? 'active' : 'pending';
   return {
     claim: 'done',
     ai,
@@ -178,6 +184,7 @@ function stepStatuses(state: string, panel: Panel, aiDeferred: boolean): Record<
     owner,
     configuration,
     verify,
+    finish,
   };
 }
 
@@ -237,6 +244,16 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   const [verifyBlocked, setVerifyBlocked] = useState<ChecklistItem[] | null>(null);
   const [verifyError, setVerifyError] = useState<ConfigurationDiagnosticCode | null>(null);
 
+  const [report, setReport] = useState<SetupReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<CompletionCode | null>(null);
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<CompletionCode | null>(null);
+  const [completed, setCompleted] = useState<{ digest: string | null; at: string | null } | null>(null);
+  // Once the service has declared the installation complete, nothing in this
+  // page may start another setup request.
+  const finished = useRef(false);
+
   const input = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const panelHeading = useRef<HTMLHeadingElement>(null);
@@ -248,6 +265,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   const ownerErrorRef = useRef<HTMLDivElement>(null);
   const ownerReceiptRef = useRef<HTMLHeadingElement>(null);
   const claimMessageRef = useRef<HTMLDivElement>(null);
+  const finishErrorRef = useRef<HTMLParagraphElement>(null);
+  const completeHeading = useRef<HTMLHeadingElement>(null);
   const configurationLoaded = useRef(false);
 
   useEffect(() => {
@@ -260,7 +279,16 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     // A claimed installation reloads with only its cookie. getSession() returns
     // the session CSRF token, so refreshing here is what lets a resumed wizard
     // mutate; a denied session sends the operator back to the claim form.
-    if (!initialSession) return;
+    // A completed installation has no setup session to refresh: the service
+    // invalidated it and every mutation answers 409. The page stays on the
+    // completed screen instead of asking for a credential it cannot use.
+    if (!initialSession || initialSession.state === 'complete') {
+      if (initialSession?.state === 'complete') {
+        finished.current = true;
+        setCompleted({ digest: null, at: null });
+      }
+      return;
+    }
     let active = true;
     void client.getSession().then((result) => {
       if (!active) return;
@@ -316,8 +344,15 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (focusRequest.target === 'panel') panelHeading.current?.focus();
     if (focusRequest.target === 'storage-error') storageErrorRef.current?.focus();
     if (focusRequest.target === 'owner-error') ownerErrorRef.current?.focus();
+    if (focusRequest.target === 'finish-error') finishErrorRef.current?.focus();
     setFocusRequest(null);
   }, [focusRequest]);
+
+  useEffect(() => {
+    // The completed screen replaces every control the person was on; move the
+    // caret to its heading so the outcome is read, not just repainted.
+    if (completed || state === 'complete') completeHeading.current?.focus();
+  }, [completed, state]);
 
   if (!t) {
     return <main className="login setup" aria-busy="true" data-setup-wizard="loading" />;
@@ -618,7 +653,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   }
 
   async function verifyInstallation() {
-    if (verifyingInstallation) return;
+    if (verifyingInstallation || finished.current) return;
     setVerifyingInstallation(true);
     setConfigurationError(null);
     setVerifyError(null);
@@ -639,12 +674,87 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     }
     setState(result.state);
     setChecklist(result.checklist);
-    if (result.state === 'verifying' || result.state === 'complete') {
+    if (result.state === 'complete') {
+      finishCompleted(null);
+      return;
+    }
+    if (result.state === 'verifying') {
       setVerifyBlocked(null);
-      setPanel('verify');
+      setPanel('finish');
+      void loadReport();
       return;
     }
     setVerifyBlocked(result.checklist.items.filter((item) => item.blocking));
+  }
+
+  /** The installation is closed: freeze every setup request behind one flag. */
+  function finishCompleted(summary: { digest: string | null; at: string | null } | null) {
+    finished.current = true;
+    setCompleted(summary ?? { digest: null, at: null });
+    setState('complete');
+    setPanel('finish');
+    setCompleting(false);
+    setReportLoading(false);
+    setCompleteError(null);
+    setReportError(null);
+  }
+
+  // The preview is read once when the finish step opens, and again only when
+  // the operator asks. A 409 means somebody already completed this
+  // installation: that is the same completed screen, not a retry.
+  async function loadReport() {
+    if (finished.current) return;
+    setReportLoading(true);
+    setReportError(null);
+    const result = await client.getReport();
+    if (finished.current) return;
+    setReportLoading(false);
+    if (!result.ok) {
+      if (result.code === 'setup_complete') {
+        finishCompleted(null);
+        return;
+      }
+      setReportError(result.code);
+      setFocusRequest({ target: 'finish-error' });
+      return;
+    }
+    setReport(result.report);
+  }
+
+  async function completeInstallation() {
+    if (completing || finished.current || report === null) return;
+    setCompleting(true);
+    setCompleteError(null);
+    const result = await client.complete();
+    if (finished.current) return;
+    if (!result.ok) {
+      setCompleting(false);
+      if (result.code === 'setup_complete') {
+        finishCompleted(null);
+        return;
+      }
+      setCompleteError(result.code);
+      setFocusRequest({ target: 'finish-error' });
+      return;
+    }
+    finishCompleted({ digest: result.reportDigest, at: result.completedAt });
+  }
+
+  // The report is already sanitized in the client; the file is only that
+  // object. The object URL is revoked once the browser has taken the click.
+  function downloadReport() {
+    if (!report) return;
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const name = (report.instanceId ?? 'installation').replace(/[^A-Za-z0-9_-]/g, '') || 'installation';
+    link.href = url;
+    link.download = `setup-report-${name}.json`;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   async function ask(event: FormEvent<HTMLFormElement>) {
@@ -701,6 +811,37 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       : status === 'active' ? 'ui.setup.steps.active'
         : 'ui.setup.steps.pending',
   );
+
+  if (completed || state === 'complete') {
+    return (
+      <main className="login setup" aria-labelledby="setup-complete-title" data-setup-complete>
+        <div className="login__panel">
+          <div className="login__form-wrap">
+            <h1
+              id="setup-complete-title"
+              tabIndex={-1}
+              ref={completeHeading}
+              data-setup-complete-heading
+            >
+              {t('ui.setup.complete.title')}
+            </h1>
+            <p className="setup__lead">{t('ui.setup.complete.lead')}</p>
+            <div className="setup__messages" aria-live="polite" aria-atomic="true" role="status" data-setup-complete-status>
+              <p className="field__hint">{t('ui.setup.complete.report')}</p>
+              {completed?.digest ? (
+                <p className="field__hint" data-setup-complete-digest>
+                  {t('ui.setup.complete.digest')} <code>{completed.digest}</code>
+                </p>
+              ) : null}
+            </div>
+            <a className="btn btn--primary login-submit" href="/" data-setup-complete-link>
+              {t('ui.setup.complete.link')}
+            </a>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   if (step === 'claimed') {
     const configured = state === 'ai_configured';
@@ -1363,6 +1504,22 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                 appUsable={state === 'complete'}
                 onVerify={() => { void verifyInstallation(); }}
                 onBack={() => setPanel('configure')}
+              />
+            ) : null}
+
+            {panel === 'finish' ? (
+              <FinishPanel
+                t={t}
+                headingRef={panelHeading}
+                errorRef={finishErrorRef}
+                report={report}
+                loading={reportLoading}
+                error={reportError}
+                completing={completing}
+                completeError={completeError}
+                onDownload={downloadReport}
+                onRetry={() => { void loadReport(); }}
+                onConfirm={() => { void completeInstallation(); }}
               />
             ) : null}
           </div>

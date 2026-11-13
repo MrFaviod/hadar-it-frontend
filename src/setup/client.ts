@@ -273,6 +273,50 @@ export type VerifyResult =
   | { ok: true; state: string; checklist: Checklist }
   | { ok: false; code: ConfigurationDiagnosticCode; checklist?: Checklist };
 
+/**
+ * The finish step's sanitized preview. Every field is allowlisted here and
+ * parsed one by one: a service that echoes a credential or a connection string
+ * adds nothing to this object, and the page can only render what it carries.
+ */
+export interface SetupReport {
+  contract: string | null;
+  setupContractVersion: string | null;
+  mode: string | null;
+  releaseMode: string | null;
+  state: string | null;
+  instanceId: string | null;
+  owner: { username: string | null };
+  ai: { status: string | null; provider: string | null; model: string | null; pending: boolean | null };
+  storage: Record<string, string | boolean | null>;
+  checklist: ChecklistItem[];
+  blocking: string[];
+  acceptedRisk: string[];
+  verifiedAt: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
+  reportDigest: string | null;
+}
+
+/** Completion knows the setup refusals plus the two the finish step adds. */
+export type CompletionCode = ConfigurationDiagnosticCode | 'setup_complete' | 'completion_blocked';
+
+export type ReportResult =
+  | { ok: true; report: SetupReport }
+  | { ok: false; code: CompletionCode };
+
+export type CompleteResult =
+  | {
+    ok: true;
+    state: 'complete';
+    completedAt: string | null;
+    instanceId: string | null;
+    reportDigest: string | null;
+  }
+  | { ok: false; code: CompletionCode };
+
+/** The normal API's authoritative installation marker, as a closed answer. */
+export type InstallationProbe = 'complete' | 'incomplete' | 'unknown';
+
 
 /** Closed diagnostics the AI step knows how to explain; never server text. */
 export type AiDiagnosticCode =
@@ -364,6 +408,12 @@ export interface SetupClient {
   ): Promise<RiskResult>;
   /** Runs the checklist; a refusal carries the observed blocking items. */
   verify(options?: RequestOptions): Promise<VerifyResult>;
+  /** The sanitized report preview; GET only, and never after completion. */
+  getReport(options?: RequestOptions): Promise<ReportResult>;
+  /** The explicit last step; the service re-verifies and closes the surface. */
+  complete(options?: RequestOptions): Promise<CompleteResult>;
+  /** Asks the normal API whether this installation is already complete. */
+  getInstallation(options?: RequestOptions): Promise<InstallationProbe>;
   /** One verification turn. The key lives in this call, never in the client. */
   configureAi(input: AiProviderInput, options?: RequestOptions): Promise<AiResult>;
   deferAi(options?: RequestOptions): Promise<AiResult>;
@@ -389,7 +439,12 @@ export async function resolveEntry(
   options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<EntryDecision> {
   const status = await client.getStatus(options);
-  if (status.kind === 'setup-available') return { view: 'wizard', status: status.status, session: null };
+  if (status.kind === 'setup-available') {
+    // Defensive: a gate that still says "claimable" while its own state is
+    // complete must not reopen a wizard on a finished installation.
+    if (status.status.state === 'complete') return { view: 'legacy', reason: 'installed' };
+    return { view: 'wizard', status: status.status, session: null };
+  }
   if (status.kind === 'unavailable') return { view: 'legacy', reason: 'unavailable' };
   // A 404 means no setup service at all: there is no session to ask about.
   // Any other existing-instance answer may still carry a live setup session in
@@ -402,6 +457,20 @@ export async function resolveEntry(
     if (session.ok) return { view: 'wizard', status: status.status, session: session.session };
   }
   return { view: 'legacy', reason: 'installed' };
+}
+
+// Boot decision with the app's own marker first. After completion the setup
+// service may already refuse every call or be switched off entirely, so the
+// normal API is asked before any setup probe: a completed installation always
+// reaches the app login, never a claim form. An unreachable app status is not
+// an answer, and the setup probe decides from there.
+export async function resolveBoot(
+  client: SetupClient,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+): Promise<EntryDecision> {
+  const installation = await client.getInstallation(options);
+  if (installation === 'complete') return { view: 'legacy', reason: 'installed' };
+  return resolveEntry(client, options);
 }
 
 type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
@@ -421,7 +490,13 @@ const DEFAULT_CONFIGURATION_TIMEOUT_MS = 20000;
 // Verify probes the queue, the database and a temp file, so it gets the
 // storage budget rather than the short status one.
 const DEFAULT_VERIFY_TIMEOUT_MS = 30000;
-// The assistant is bounded server-side at 30s; the client waits it out.
+// The normal API's readiness payload carries the authoritative marker
+// (itsm/main.py): a completed installation never offers setup again, even if
+// the setup service is unreachable or still answers from a stale gate.
+const APP_STATUS_PATH = '/api/v1/health/ready';
+// Completion re-verifies the whole checklist server-side before writing.
+const DEFAULT_COMPLETION_TIMEOUT_MS = 30000;
+// One assistant answer can wait on a provider round trip.
 const DEFAULT_ASK_TIMEOUT_MS = 45000;
 
 function text(value: unknown): string | null {
@@ -709,6 +784,65 @@ function parseChecklist(body: unknown): Checklist | null {
   };
 }
 
+// The report is an allowlist, both in shape and in the storage row. A field
+// the service invents is dropped here, not hidden later in the page.
+const REPORT_STORAGE_FIELDS: readonly (readonly [string, string])[] = [
+  ['version', 'version'],
+  ['engine', 'engine'],
+  ['status', 'status'],
+  ['identity', 'identity'],
+  ['config_source', 'configSource'],
+  ['migrated', 'migrated'],
+  ['identity_claimed', 'identityClaimed'],
+];
+
+function parseReport(value: unknown): SetupReport | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const state = text(raw.state);
+  if (!state) return null;
+  const owner = object(raw.owner);
+  const ai = object(raw.ai);
+  const storage = object(raw.storage);
+  const fields: Record<string, string | boolean | null> = {};
+  if (storage) {
+    for (const [source, target] of REPORT_STORAGE_FIELDS) {
+      const entry = storage[source];
+      if (typeof entry === 'string' || typeof entry === 'boolean' || entry === null) fields[target] = entry;
+    }
+  }
+  const checklist = Array.isArray(raw.checklist)
+    ? raw.checklist.map(parseChecklistItem).filter((item): item is ChecklistItem => item !== null)
+    : [];
+  return {
+    contract: text(raw.contract),
+    setupContractVersion: text(raw.setup_contract_version),
+    mode: text(raw.mode),
+    releaseMode: text(raw.release_mode),
+    state,
+    instanceId: text(raw.instance_id),
+    owner: { username: text(owner?.username) },
+    ai: {
+      status: text(ai?.status),
+      provider: text(ai?.provider),
+      model: text(ai?.model),
+      pending: typeof ai?.pending === 'boolean' ? ai.pending : null,
+    },
+    storage: fields,
+    checklist,
+    blocking: parseIdList(raw.blocking),
+    acceptedRisk: parseIdList(raw.acceptedRisk),
+    verifiedAt: text(raw.verified_at),
+    completedAt: text(raw.completed_at),
+    completedBy: text(raw.completed_by),
+    reportDigest: text(raw.report_digest),
+  };
+}
+
+function isSetupComplete(body: unknown): boolean {
+  return text(object(body)?.error) === 'setup_complete';
+}
+
 function parseOverview(body: unknown): ConfigurationOverview | null {
   const raw = object(body);
   if (!raw) return null;
@@ -881,7 +1015,7 @@ function tokenOf(value: unknown): string | null {
 export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: number } = {}): SetupClient {
   let csrfToken: string | null = null;
 
-  async function transport(path: string, init: RequestInit, timeoutMs: number): Promise<Transport> {
+  async function transport(path: string, init: RequestInit, timeoutMs: number, absolute = false): Promise<Transport> {
     const fetchImpl = defaults.fetch ?? (globalThis.fetch as FetchLike | undefined);
     if (typeof fetchImpl !== 'function') return { ok: false, reason: 'network' };
     const controller = new AbortController();
@@ -901,7 +1035,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
       else external.addEventListener('abort', forward, { once: true });
     }
     try {
-      const response = await fetchImpl(SETUP_BASE + path, { ...init, signal: controller.signal });
+      const response = await fetchImpl(absolute ? path : SETUP_BASE + path, { ...init, signal: controller.signal });
       return { ok: true, response };
     } catch {
       return { ok: false, reason: timedOut ? 'timeout' : externallyAborted ? 'aborted' : 'network' };
@@ -1259,6 +1393,80 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     return { ok: true, state, checklist };
   }
 
+  // The preview is a GET: it reads the same report the operator will export and
+  // changes nothing. After completion the service refuses it with 409, which is
+  // the finished installation rather than an error to retry.
+  async function getReport(options: RequestOptions = {}): Promise<ReportResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const result = await transport('/report', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) {
+      if (isSetupComplete(body)) return { ok: false, code: 'setup_complete' };
+      return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
+    }
+    const report = parseReport(body);
+    if (!report) return { ok: false, code: 'invalid-response' };
+    return { ok: true, report };
+  }
+
+  // The one explicit confirmation. The server re-runs the checklist; a refusal
+  // keeps its own code so the page can send the operator back to verification
+  // instead of claiming a completion it never observed.
+  async function complete(options: RequestOptions = {}): Promise<CompleteResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_COMPLETION_TIMEOUT_MS;
+    const outcome = await configWrite('/complete', undefined, timeoutMs, options);
+    if (!outcome.ok) {
+      if (isSetupComplete(outcome.body)) return { ok: false, code: 'setup_complete' };
+      if (text(object(outcome.body)?.error) === 'completion_blocked') {
+        return { ok: false, code: 'completion_blocked' };
+      }
+      return { ok: false, code: outcome.code };
+    }
+    const raw = object(outcome.body);
+    const state = text(raw?.state);
+    if (state !== 'complete') return { ok: false, code: 'invalid-response' };
+    // The service invalidates the setup session with this answer; holding the
+    // token would offer a mutation the server is guaranteed to refuse.
+    csrfToken = null;
+    return {
+      ok: true,
+      state: 'complete',
+      completedAt: text(raw?.completed_at),
+      instanceId: text(raw?.instance_id),
+      reportDigest: text(raw?.report_digest),
+    };
+  }
+
+  // Boot only: a boolean marker, never a payload the page would render. A
+  // 404, an HTML fallback or a timeout is ``unknown`` so the setup probe still
+  // decides; ``complete`` is final.
+  async function getInstallation(options: RequestOptions = {}): Promise<InstallationProbe> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_STATUS_TIMEOUT_MS;
+    const result = await transport(APP_STATUS_PATH, {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: { Accept: 'application/json' },
+      signal: options.signal,
+    }, timeoutMs, true);
+    if (!result.ok) return 'unknown';
+    const response = result.response;
+    const raw = object(await readJson(response));
+    const flag = raw?.installation_complete;
+    if (typeof flag === 'boolean') return flag ? 'complete' : 'incomplete';
+    return 'unknown';
+  }
+
   // Session writes for the AI step. The provider key is a parameter of this
   // call and never a field of the client: it cannot be read back, replayed by
   // a later request, or picked up by a component re-render.
@@ -1348,6 +1556,9 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     postponeSection,
     acceptRisk,
     verify,
+    getReport,
+    complete,
+    getInstallation,
     configureAi,
     deferAi,
     askAssistant,

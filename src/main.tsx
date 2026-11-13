@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mountLegacy } from './legacy';
-import { resolveEntry, setupClient, type EntryDecision } from './setup/client';
+import { resolveBoot, setupClient, type EntryDecision } from './setup/client';
 import { SetupApp } from './setup/SetupApp';
 
 type View =
@@ -83,12 +83,14 @@ export function AssetApp() {
 
   // One short probe before the legacy host: an installation that still needs a
   // claim must not start Vue, and an unreachable setup service must not offer
-  // one. The request is aborted on unmount, so a slow answer cannot mount a
-  // second shell after teardown.
+  // one. The app's own status is asked first, so a finished installation goes
+  // to its login even when the setup service is already gone. The request is
+  // aborted on unmount, so a slow answer cannot mount a second shell after
+  // teardown.
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    void resolveEntry(setupClient, { signal: controller.signal }).then((decision) => {
+    void resolveBoot(setupClient, { signal: controller.signal }).then((decision) => {
       if (!active) return;
       setView(decision.view === 'wizard' ? { kind: 'setup', decision } : { kind: 'legacy' });
     }).catch(() => { if (active) setView({ kind: 'legacy' }); });
