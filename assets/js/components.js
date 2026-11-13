@@ -32,11 +32,14 @@
       return {
         titleId: 'modal-title-' + modalSequence,
         lastFocused: null,
-        previousOverflow: ''
+        previousOverflow: '',
+        scrollLocked: false,
+        active: false
       };
     },
     watch: {
       open(value) {
+        if (value === this.active) return;
         if (value) {
           this.activate();
         } else {
@@ -45,74 +48,128 @@
       }
     },
     mounted() {
-      document.addEventListener('keydown', this.onKeydown);
+      if (this.open) this.activate();
     },
     beforeUnmount() {
-      document.removeEventListener('keydown', this.onKeydown);
-      if (this.open) this.deactivate();
+      if (this.active) this.deactivate();
     },
     methods: {
       activate() {
+        if (this.active) return;
+        const dialog = this.$refs.dialog;
+        if (!dialog) return;
+        this.active = true;
         this.lastFocused = document.activeElement;
-        this.previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        this.$nextTick(() => {
-          if (this.$refs.dialog) this.$refs.dialog.focus();
-        });
+        if (window.AssetDialogFocus) window.AssetDialogFocus.activate(this);
+        // Shared with SearchPalette: the first open dialog saves the body
+        // overflow and the last close restores it, in any teardown order.
+        this.scrollLocked = true;
+        if (window.AssetScrollLock) window.AssetScrollLock.acquire();
+        else {
+          this.previousOverflow = document.body.style.overflow;
+          document.body.style.overflow = 'hidden';
+        }
+        if (!dialog.open) {
+          if (typeof dialog.showModal === 'function') {
+            try {
+              dialog.showModal();
+            } catch (error) {
+              dialog.setAttribute('open', '');
+            }
+          } else {
+            dialog.setAttribute('open', '');
+          }
+        }
+        this.$nextTick(() => this.focusInitial());
       },
       deactivate() {
-        document.body.style.overflow = this.previousOverflow;
-        if (this.lastFocused && typeof this.lastFocused.focus === 'function') {
-          this.lastFocused.focus();
+        if (!this.active) return;
+        this.active = false;
+        const dialog = this.$refs.dialog;
+        if (dialog && dialog.open) {
+          if (typeof dialog.close === 'function') {
+            try {
+              dialog.close();
+            } catch (error) {
+              dialog.removeAttribute('open');
+            }
+          } else {
+            dialog.removeAttribute('open');
+          }
         }
+        if (this.scrollLocked) {
+          if (window.AssetScrollLock) window.AssetScrollLock.release();
+          else document.body.style.overflow = this.previousOverflow;
+        }
+        this.scrollLocked = false;
+        this.previousOverflow = '';
+        const shared = window.AssetDialogFocus;
+        if (shared) {
+          // The shared lineage focuses the invoker for the top dialog and does
+          // nothing when a lower dialog closes under an open one.
+          const restore = shared.deactivate(this);
+          this.lastFocused = null;
+          if (!restore) this.blurClosedFocus(dialog);
+          return;
+        }
+        const target = this.lastFocused;
         this.lastFocused = null;
+        if (target && target !== document.body && document.contains(target) && typeof target.focus === 'function') {
+          target.focus();
+        }
       },
-      onKeydown(event) {
-        if (!this.open) return;
-        if (event.key === 'Escape') {
-          event.preventDefault();
+      blurClosedFocus(dialog) {
+        // Documented fallback when no remembered invoker survives: drop focus
+        // from the control inside the dialog that just closed instead of
+        // leaving it on a hidden surface or calling focus() on <body>.
+        const active = document.activeElement;
+        if (active && dialog && typeof dialog.contains === 'function' && dialog.contains(active) && typeof active.blur === 'function') active.blur();
+      },
+      focusInitial() {
+        const dialog = this.$refs.dialog;
+        if (!dialog) return;
+        const selector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const body = dialog.querySelector('.modal__body');
+        const first = (body && body.querySelector(selector)) || dialog.querySelector(selector);
+        if (first && typeof first.focus === 'function') first.focus();
+        else dialog.focus();
+      },
+      onCancel(event) {
+        event.preventDefault();
+        this.$emit('close');
+      },
+      onEscape(event) {
+        // Handle Escape on keydown and cancel the browser close request, so a
+        // nested dialog underneath is not closed by the same key press.
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) this.$emit('close');
+      },
+      onBackdrop(event) {
+        const dialog = this.$refs.dialog;
+        if (!dialog || event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) {
+          if (typeof event.preventDefault === 'function') event.preventDefault();
           this.$emit('close');
-          return;
-        }
-        if (event.key !== 'Tab' || !this.$refs.dialog) return;
-        const focusables = Array.from(this.$refs.dialog.querySelectorAll(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )).filter((element) => element.offsetParent !== null);
-        if (!focusables.length) {
-          event.preventDefault();
-          this.$refs.dialog.focus();
-          return;
-        }
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === this.$refs.dialog)) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
         }
       }
     },
     template: `
       <teleport to="body">
-        <transition name="modal">
-          <div v-if="open" class="modal-layer" @mousedown.self="$emit('close')">
-            <div ref="dialog" class="modal" :class="{ 'modal--wide': size === 'wide', 'modal--xl': size === 'xl' }" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1">
-              <header class="modal__head">
-                <div>
-                  <p v-if="eyebrow" class="eyebrow"><span class="eyebrow__line"></span> {{ eyebrow }}</p>
-                  <h2 :id="titleId">{{ title }}</h2>
-                </div>
-                <button type="button" class="icon-button modal__close" :aria-label="$t('ui.shell.close_dialog')" @click="$emit('close')">
-                  <app-icon name="close"></app-icon>
-                </button>
-              </header>
-              <div class="modal__body"><slot></slot></div>
-              <footer v-if="$slots.footer" class="modal__foot"><slot name="footer"></slot></footer>
+        <dialog ref="dialog" class="modal" :class="{ 'modal--wide': size === 'wide', 'modal--xl': size === 'xl' }" role="dialog" aria-modal="true" :aria-labelledby="titleId" tabindex="-1" @cancel="onCancel" @keydown.esc="onEscape" @mousedown="onBackdrop">
+          <header class="modal__head">
+            <div>
+              <p v-if="eyebrow" class="eyebrow"><span class="eyebrow__line"></span> {{ eyebrow }}</p>
+              <h2 :id="titleId">{{ title }}</h2>
             </div>
-          </div>
-        </transition>
+            <button type="button" class="icon-button modal__close" :aria-label="$t('ui.shell.close_dialog')" @click="$emit('close')">
+              <app-icon name="close"></app-icon>
+            </button>
+          </header>
+          <div class="modal__body"><slot></slot></div>
+          <footer v-if="$slots.footer" class="modal__foot"><slot name="footer"></slot></footer>
+        </dialog>
       </teleport>
     `
   };

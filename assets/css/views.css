@@ -1243,6 +1243,16 @@
 .modal--wide {
   width: min(100%, 690px);
 }
+dialog.modal:not([open]) {
+  display: none;
+}
+dialog.modal {
+  margin: auto;
+  padding: 0;
+}
+.modal::backdrop {
+  background: rgba(7, 25, 35, 0.62);
+}
 .modal__head {
   display: flex;
   align-items: flex-start;
