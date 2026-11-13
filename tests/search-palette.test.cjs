@@ -121,3 +121,40 @@ function methods_toggle(instance, events, locale) {
  instance.toggleFavorite();
  assert.equal(events.length,before,`${locale}: an action row emits no favorite event`);
 }
+
+// ---------------------------------------------------------------- IME guard
+test('S6 Enter right after compositionend never selects a candidate (Safari sends keyCode 229 with isComposing=false)',()=>{
+ const s=setup(),{instance:p,events}=palette(s);
+ p.scope='views';p.active=0;p.remote=[{key:'asset:ime',type:'Activos',label:'Equipo IME',subtitle:'IME',icon:'box',target:{kind:'asset',id:'ime'}}];
+ const enter=timeStamp=>({key:'Enter',target:{tagName:'INPUT'},preventDefault(){},isComposing:false,timeStamp});
+ const selects=()=>events.filter(event=>event[0]==='select').length;
+ p.compositionEnd({timeStamp:1000});
+ methods_onKey(p,enter(1050));
+ assert.equal(selects(),0,'an Enter 50ms after compositionend is part of the IME confirmation, not a palette selection');
+ p.compositionEnd({timeStamp:2000});
+ methods_onKey(p,enter(2200));
+ assert.equal(selects(),1,'a later Enter selects normally after the 100ms guard interval');
+ p.compositionEnd({timeStamp:3000});
+ p.compositionStart();
+ methods_onKey(p,enter(3005));
+ assert.equal(selects(),2,'a new composition clears the stale marker, so its own Enter can select');
+ const composing={...enter(4000),isComposing:true};
+ p.compositionEnd({timeStamp:3900});
+ methods_onKey(p,composing);
+ assert.equal(selects(),2,'isComposing still suppresses selection');
+});
+function methods_onKey(instance,event){instance.onKey(event);}
+
+// ---------------------------------------------------------------- clear query
+test('S6 clearQuery resets the query and refocuses the template input',()=>{
+ const s=setup(),methods=s.c.AssetSearchViews.SearchPalette.methods;
+ const {instance:p}=palette(s);
+ let focused=0;
+ p.$refs.input={focus(){focused+=1;}};
+ p.query='equipo';
+ methods.clearQuery.call(p);
+ assert.equal(p.query,'','the query is cleared');
+ assert.equal(focused,1,'focus returns to the palette input through its ref');
+ delete p.$refs.input;
+ assert.doesNotThrow(()=>methods.clearQuery.call(p),'a missing ref cannot throw during teardown');
+});
