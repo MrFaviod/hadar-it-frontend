@@ -9,10 +9,11 @@ import {
   type ClaimResult,
   type ConfigurationDiagnosticCode,
   type OwnerFailureCode,
-  type SectionApplyReceipt,
+  type SectionDecision,
+  type SectionDetail,
   type SectionId,
+  type SectionInput,
   type SectionPreview,
-  type SectionView,
   type SetupClient,
   type SetupSession,
   type StorageDiagnosticCode,
@@ -28,7 +29,6 @@ import {
   type OwnerFormState,
 } from './owner-form';
 import { ConfigurationPanel, VerifyPanel } from './sections';
-import { verifyOutcome } from './section-status';
 import { loadTranslator, type Translator } from './strings';
 
 // The first-start wizard. It is a sibling of the legacy host, never a Vue view:
@@ -225,12 +225,13 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
   const [ownerAi, setOwnerAi] = useState<'transferred' | 'pending' | null>(null);
 
   const [aiDeferred, setAiDeferred] = useState(initialSession?.state === 'ai_deferred');
-  const [sections, setSections] = useState<SectionView[]>([]);
+  const [sections, setSections] = useState<SectionDetail[]>([]);
+  const [mode, setMode] = useState<string | null>(null);
   const [configurationLoading, setConfigurationLoading] = useState(false);
   const [configurationError, setConfigurationError] = useState<ConfigurationDiagnosticCode | null>(null);
   const [configBusy, setConfigBusy] = useState<SectionId | null>(null);
   const [previews, setPreviews] = useState<Partial<Record<SectionId, SectionPreview>>>({});
-  const [receipts, setReceipts] = useState<Partial<Record<SectionId, SectionApplyReceipt>>>({});
+  const [receipts, setReceipts] = useState<Partial<Record<SectionId, SectionDecision>>>({});
   const [verifyingInstallation, setVerifyingInstallation] = useState(false);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [verifyBlocked, setVerifyBlocked] = useState<ChecklistItem[] | null>(null);
@@ -483,9 +484,9 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
 
   /**
    * Enter configuration once per panel visit: the service moves an owner-ready
-   * installation to ``configuring``, then each section is read for its
-   * effective value and source. A failed read is reported as a code; no
-   * section keeps a stale value it could not confirm.
+   * installation to ``configuring``, then the overview names every section and
+   * the checklist, and each section is read for its live value. A failed read
+   * is reported as a code; no section keeps a value it could not confirm.
    */
   async function loadConfiguration() {
     setConfigurationLoading(true);
@@ -498,7 +499,17 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
         return;
       }
       setState(started.state);
+      setMode(started.mode);
     }
+    const overview = await client.getOverview();
+    if (!overview.ok) {
+      setConfigurationLoading(false);
+      setConfigurationError(overview.code);
+      return;
+    }
+    setState(overview.overview.state);
+    setMode(overview.overview.mode);
+    setChecklist(overview.overview.checklist);
     const results = await Promise.all(SECTION_IDS.map((id) => client.getSection(id)));
     setConfigurationLoading(false);
     const failure = results.find((result) => !result.ok);
@@ -509,11 +520,11 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     setSections(results.flatMap((result) => (result.ok ? [result.section] : [])));
   }
 
-  async function previewConfiguration(section: SectionId, value: string) {
+  async function previewConfiguration(section: SectionId, values: SectionInput) {
     if (configBusy) return;
     setConfigBusy(section);
     setConfigurationError(null);
-    const result = await client.previewSection(section, value);
+    const result = await client.previewSection(section, values);
     setConfigBusy(null);
     if (!result.ok) {
       setConfigurationError(result.code);
@@ -522,20 +533,20 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     setPreviews((current) => ({ ...current, [section]: result.preview }));
   }
 
-  async function applyConfiguration(section: SectionId, value: string) {
+  async function applyConfiguration(section: SectionId, values: SectionInput) {
     if (configBusy) return;
     setConfigBusy(section);
     setConfigurationError(null);
-    const result = await client.applySection(section, value, true);
+    const result = await client.applySection(section, values, true);
     setConfigBusy(null);
     if (!result.ok) {
       setConfigurationError(result.code);
       return;
     }
     // The receipt is the service's read-back: the section takes its status
-    // and the applied value from it, never from the request that was sent.
-    setSections((current) => current.map((entry) => (entry.id === section
-      ? { ...entry, status: result.receipt.status, source: 'installation', value }
+    // from it, never from the request that was sent.
+    setSections((current) => current.map((entry) => (entry.section === section
+      ? { ...entry, status: result.receipt.status, required: result.receipt.required, postponable: result.receipt.postponable }
       : entry)));
     setPreviews((current) => {
       const next = { ...current };
@@ -545,7 +556,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     setReceipts((current) => ({ ...current, [section]: result.receipt }));
     const refreshed = await client.getSection(section);
     if (refreshed.ok) {
-      setSections((current) => current.map((entry) => (entry.id === section ? refreshed.section : entry)));
+      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
     }
   }
 
@@ -553,7 +564,8 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (configBusy) return;
     setConfigBusy(section);
     setConfigurationError(null);
-    const result = await client.postponeSection(section);
+    // Postponing is the operator's click on this button and nothing else.
+    const result = await client.postponeSection(section, true);
     setConfigBusy(null);
     if (!result.ok) {
       setConfigurationError(result.code);
@@ -561,7 +573,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     }
     // A postponement is recorded as itself: the chip says so and verification
     // reports it apart from the passes.
-    setSections((current) => current.map((entry) => (entry.id === section
+    setSections((current) => current.map((entry) => (entry.section === section
       ? { ...entry, status: 'postponed' }
       : entry)));
     setPreviews((current) => {
@@ -576,6 +588,35 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     });
   }
 
+  /**
+   * The production backup is the only requirement that may be accepted as a
+   * risk. The service records it as ``risk``; the panel shows that word, never
+   * a pass, and the checklist keeps reporting it.
+   */
+  async function acceptRiskConfiguration(section: SectionId, item: string, reason: string) {
+    if (configBusy) return;
+    setConfigBusy(section);
+    setConfigurationError(null);
+    const result = await client.acceptRisk(section, item, reason, true);
+    setConfigBusy(null);
+    if (!result.ok) {
+      setConfigurationError(result.code);
+      return;
+    }
+    setReceipts((current) => ({ ...current, [section]: result.receipt }));
+    const refreshed = await client.getSection(section);
+    if (refreshed.ok) {
+      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
+    }
+    const overview = await client.getOverview();
+    if (overview.ok) {
+      setChecklist(overview.overview.checklist);
+      setVerifyBlocked((current) => (current === null
+        ? null
+        : overview.overview.checklist.items.filter((entry) => entry.blocking)));
+    }
+  }
+
   async function verifyInstallation() {
     if (verifyingInstallation) return;
     setVerifyingInstallation(true);
@@ -585,19 +626,25 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     const result = await client.verify();
     setVerifyingInstallation(false);
     if (!result.ok) {
+      // A refused verification carries the observed checklist: the operator
+      // stays where the fix is, with the blocking items named.
+      if (result.code === 'verification_blocked' && result.checklist) {
+        setChecklist(result.checklist);
+        setVerifyError(null);
+        setVerifyBlocked(result.checklist.items.filter((item) => item.blocking));
+        return;
+      }
       setVerifyError(result.code);
       return;
     }
     setState(result.state);
     setChecklist(result.checklist);
-    const outcome = verifyOutcome(result.checklist);
     if (result.state === 'verifying' || result.state === 'complete') {
+      setVerifyBlocked(null);
       setPanel('verify');
       return;
     }
-    // Verification did not pass: the operator stays where the fix is, with the
-    // blocking items named and their observed status shown.
-    setVerifyBlocked(outcome.blocked);
+    setVerifyBlocked(result.checklist.items.filter((item) => item.blocking));
   }
 
   async function ask(event: FormEvent<HTMLFormElement>) {
@@ -645,6 +692,10 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     && checkedUrl === databaseUrl.trim()
     && !checking
     && !applying;
+  // The production backup is the only requirement a person may accept as a
+  // risk; it stays on offer until the checklist records that acceptance.
+  const riskItem = checklist?.items.find((item) => item.id === 'backup_policy_declared'
+    && item.required && !item.acceptedRisk && item.status !== 'passed') ?? null;
   const badge = (status: StepStatus) => t!(
     status === 'done' ? 'ui.setup.steps.done'
       : status === 'active' ? 'ui.setup.steps.active'
@@ -1271,19 +1322,21 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                   t={t}
                   headingRef={panelHeading}
                   sections={sections}
+                  mode={mode}
                   loading={configurationLoading}
                   error={configurationError}
                   busy={configBusy}
                   previews={previews}
                   receipts={receipts}
                   blocked={verifyBlocked}
+                  riskItem={riskItem}
                   aiDeferred={aiDeferred}
                   appUsable={state === 'complete'}
                   verifying={verifyingInstallation}
                   verifyError={verifyError}
                   assistant={{ answer, tools: answerTools, latency: answerLatency, asking, error: assistantError }}
-                  onPreview={(section, value) => { void previewConfiguration(section, value); }}
-                  onApply={(section, value) => { void applyConfiguration(section, value); }}
+                  onPreview={(section, values) => { void previewConfiguration(section, values); }}
+                  onApply={(section, values) => { void applyConfiguration(section, values); }}
                   onDiscard={(section) => {
                     setPreviews((current) => {
                       const next = { ...current };
@@ -1292,6 +1345,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                     });
                   }}
                   onPostpone={(section) => { void postponeConfiguration(section); }}
+                  onAcceptRisk={(section, item, reason) => { void acceptRiskConfiguration(section, item, reason); }}
                   onVerify={() => { void verifyInstallation(); }}
                   onReload={() => { void loadConfiguration(); }}
                   onAsk={(value) => { void askQuestion(value); }}

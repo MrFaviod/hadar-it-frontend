@@ -136,19 +136,23 @@ def main():
         if len(sections) != 5:
             fail('expected five configuration sections, found %s' % len(sections))
 
-        # Every section states its current value, where it comes from and its
-        # honest chip. No chip may claim "verified" before verify ran.
+        # Every section states its current value (or why it could not be read)
+        # and the service's own chip. A chip never says "verified": that word
+        # does not exist in the configuration API.
         for section in sections:
             section_id = section.get_attribute('data-setup-section')
             chip = section.query_selector('[data-setup-config-chip]')
             if chip is None:
                 fail('section %s has no status chip' % section_id)
-            if section.query_selector('[data-setup-config-value]') is None:
-                fail('section %s does not show its effective value' % section_id)
-            if section.query_selector('[data-setup-config-source]') is None:
-                fail('section %s does not state where its value comes from' % section_id)
-            if chip.get_attribute('data-setup-config-chip') == 'verified':
-                fail('section %s claims verification before verify ran' % section_id)
+            if section.query_selector('[data-setup-config-current]') is None \
+                    and section.query_selector('[data-setup-config-unavailable]') is None:
+                fail('section %s does not state its current value' % section_id)
+            chip_word = chip.get_attribute('data-setup-config-chip') if chip is not None else None
+            if chip_word not in ('pending', 'passed', 'postponed', 'risk'):
+                fail('section %s reports an unknown configuration status: ' % section_id
+                     + repr(chip_word))
+            if chip_word != section.get_attribute('data-setup-section-status'):
+                fail('section %s chip and status disagree' % section_id)
 
         # Appearance: choose another option, preview the diff, apply, read back.
         select = page.locator('#setup-config-input-appearance')
@@ -177,7 +181,7 @@ def main():
             fail('the apply receipt is empty')
         card = page.locator('[data-setup-section="appearance"]')
         chip_after = card.locator('[data-setup-config-chip]').get_attribute('data-setup-config-chip')
-        if chip_after not in ('applied', 'verified'):
+        if chip_after != 'passed':
             fail('appearance did not report the applied state: ' + repr(chip_after))
         if target not in text_of(page, '[data-setup-config-value="appearance"]') and target not in receipt:
             fail('the read-back does not contain the applied value: ' + repr(receipt))
@@ -196,6 +200,16 @@ def main():
                                   'data-setup-config-chip')
         if chip != 'postponed':
             fail('postponed notifications do not report themselves as postponed: ' + repr(chip))
+
+        # A production install with no backup record offers the risk only as an
+        # explicit decision: the button stays disabled until the box is checked.
+        risk = page.query_selector('[data-setup-config-risk="operational"]')
+        if risk is not None:
+            if risk.query_selector('[data-setup-config-risk-accept]') is None \
+                    or risk.query_selector('#setup-config-risk-confirm-operational') is None:
+                fail('the risk offer has no explicit confirmation control')
+            if page.get_attribute('[data-setup-config-risk-accept]', 'disabled') is None:
+                fail('the risk can be accepted without an explicit confirmation')
 
         # 390px: no horizontal overflow, controls stay usable.
         page.set_viewport_size({'width': 390, 'height': 844})

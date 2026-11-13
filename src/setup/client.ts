@@ -120,25 +120,40 @@ export const SECTION_IDS: readonly SectionId[] = [
   'operational',
 ];
 
-/** A conscious postponement stays postponed: it is never a pass. */
-export type SectionStatus = 'pending' | 'postponed' | 'applied' | 'verified' | 'risk';
+/**
+ * A stored section decision. The service's green word is ``passed``: it is the
+ * only status that counts as a pass, and a postponement or an accepted risk is
+ * never painted as one.
+ */
+export type SectionStatus = 'pending' | 'passed' | 'postponed' | 'risk';
 
-/** Where the effective value came from, including values the wizard cannot edit. */
-export type ValueSource = 'default' | 'installation' | 'environment' | 'domain_service' | 'unknown';
+/** What the service is willing to record for a section. */
+export type SectionAction = 'apply' | 'postpone';
 
-export interface SectionView {
-  id: SectionId;
-  status: SectionStatus;
-  source: ValueSource;
+/** Values are data: one scalar per field, or a closed list of ids. */
+export type SectionData = Record<string, string | number | boolean | null | string[]>;
+
+/** What a section proposal sends as ``values``. */
+export type SectionInput = Record<string, string | number | boolean | null>;
+
+/** A section as ``GET /configuration`` lists it. */
+export interface SectionSummary {
+  section: SectionId;
   required: boolean;
   postponable: boolean;
-  /** An environment or domain-service value; the wizard explains, it cannot edit. */
-  locked: boolean;
-  /** The effective value as data, never a sentence the service authored. */
-  value: string | null;
-  /** Closed option ids this section accepts; empty when the value is not editable. */
-  options: string[];
-  updatedAt: string | null;
+  status: SectionStatus;
+  actions: SectionAction[];
+}
+
+/** A section read on its own: its decision plus, when readable, its live value. */
+export interface SectionDetail extends SectionSummary {
+  /** The effective value the owning service answered, as data. */
+  current: SectionData | null;
+  proposed: SectionData | null;
+  /** The sanitized read-back recorded when the section was decided. */
+  receipt: SectionData | null;
+  /** The live value could not be read; the stored decision still stands. */
+  currentUnavailable: boolean;
 }
 
 export interface SectionField {
@@ -152,26 +167,43 @@ export interface SectionChange {
   to: string | null;
 }
 
+/** ``POST /configuration/{section}``: a diff only, never a write. */
 export interface SectionPreview {
   section: SectionId;
-  value: string | null;
+  status: 'preview';
+  required: boolean;
+  postponable: boolean;
+  current: SectionData | null;
+  proposed: SectionData | null;
   changes: SectionChange[];
+  previewOnly: boolean;
 }
 
-/** What apply read back after writing; the proof the UI can show. */
-export interface SectionApplyReceipt {
+/** ``POST /configuration/{section}/apply``: the decision the service recorded. */
+export interface SectionDecision {
   section: SectionId;
-  state: string | null;
+  required: boolean;
+  postponable: boolean;
   status: SectionStatus;
-  readback: SectionField[];
+  receipt: SectionData | null;
+}
+
+/** ``GET /configuration``: every section plus the checklist built from receipts. */
+export interface ConfigurationOverview {
+  state: string;
+  mode: string;
+  sections: SectionSummary[];
+  checklist: Checklist;
+  blocking: string[];
+  acceptedRisk: string[];
 }
 
 export type ConfigurationDiagnosticCode =
   | 'confirm_required'
   | 'state_refused'
-  | 'item_required'
-  | 'not_postponable'
   | 'invalid_request'
+  | 'permission_denied'
+  | 'verification_blocked'
   | 'session_expired'
   | 'unavailable'
   | 'network'
@@ -179,11 +211,15 @@ export type ConfigurationDiagnosticCode =
   | 'invalid-response';
 
 export type ConfigurationResult =
-  | { ok: true; state: string; sections: SectionView[] }
+  | { ok: true; state: string; mode: string }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+export type OverviewResult =
+  | { ok: true; overview: ConfigurationOverview }
   | { ok: false; code: ConfigurationDiagnosticCode };
 
 export type SectionResult =
-  | { ok: true; section: SectionView }
+  | { ok: true; section: SectionDetail }
   | { ok: false; code: ConfigurationDiagnosticCode };
 
 export type PreviewResult =
@@ -191,34 +227,51 @@ export type PreviewResult =
   | { ok: false; code: ConfigurationDiagnosticCode };
 
 export type ApplyResult =
-  | { ok: true; receipt: SectionApplyReceipt }
+  | { ok: true; receipt: SectionDecision }
   | { ok: false; code: ConfigurationDiagnosticCode };
 
 export type PostponeResult =
-  | { ok: true; status: 'postponed' }
+  | { ok: true; receipt: SectionDecision }
   | { ok: false; code: ConfigurationDiagnosticCode };
 
-/** Closed checklist states; ``risk`` is a declared exclusion, not a pass. */
-export type ChecklistStatus = 'passed' | 'failed' | 'pending' | 'postponed' | 'risk';
+export type RiskResult =
+  | { ok: true; receipt: SectionDecision }
+  | { ok: false; code: ConfigurationDiagnosticCode };
+
+/** Closed checklist states; ``risk`` and ``unavailable`` are never a pass. */
+export type ChecklistStatus =
+  | 'passed'
+  | 'failed'
+  | 'pending'
+  | 'postponed'
+  | 'risk'
+  | 'unavailable'
+  | 'not_required';
 
 export interface ChecklistItem {
   id: string;
+  /** The section that decides this item; empty for contract-wide items. */
+  section: SectionId | null;
   status: ChecklistStatus;
   required: boolean;
   postponable: boolean;
-  /** Observed evidence as field/value data; empty when nothing was observed. */
-  evidence: SectionField[];
-  observedAt: string | null;
+  /** The observation that decided the status, in one operator line. */
+  evidence: string;
+  /** The service's own verdict: a required item that is not satisfied yet. */
+  blocking: boolean;
+  acceptedRisk: boolean;
 }
 
 export interface Checklist {
   mode: string | null;
   items: ChecklistItem[];
+  blocking: string[];
+  acceptedRisk: string[];
 }
 
 export type VerifyResult =
   | { ok: true; state: string; checklist: Checklist }
-  | { ok: false; code: ConfigurationDiagnosticCode };
+  | { ok: false; code: ConfigurationDiagnosticCode; checklist?: Checklist };
 
 
 /** Closed diagnostics the AI step knows how to explain; never server text. */
@@ -284,17 +337,32 @@ export interface SetupClient {
   applyStorage(databaseUrl: string, options?: RequestOptions): Promise<StorageApplyResult>;
   /** Creates the first owner. The password is an argument of this call only. */
   createOwner(input: OwnerInput, options?: RequestOptions): Promise<OwnerResult>;
-  /** owner_ready -> configuring. Idempotent; the response lists the sections. */
+  /** owner_ready -> configuring. Idempotent; the answer names the state and mode. */
   startConfiguration(options?: RequestOptions): Promise<ConfigurationResult>;
-  /** One section's effective value and where it comes from. */
+  /** Every section plus the checklist built from stored receipts. */
+  getOverview(options?: RequestOptions): Promise<OverviewResult>;
+  /** One section: its decision and, when readable, the live value it holds. */
   getSection(section: SectionId, options?: RequestOptions): Promise<SectionResult>;
   /** Writes nothing: the service answers the diff the operator would apply. */
-  previewSection(section: SectionId, value: string, options?: RequestOptions): Promise<PreviewResult>;
+  previewSection(section: SectionId, values: SectionInput, options?: RequestOptions): Promise<PreviewResult>;
   /** Refused before any request unless ``confirm`` is exactly true. */
-  applySection(section: SectionId, value: string, confirm: boolean, options?: RequestOptions): Promise<ApplyResult>;
+  applySection(
+    section: SectionId,
+    values: SectionInput,
+    confirm: boolean,
+    options?: RequestOptions,
+  ): Promise<ApplyResult>;
   /** Only for a section the service marked postponable. */
-  postponeSection(section: SectionId, options?: RequestOptions): Promise<PostponeResult>;
-  /** Runs the checklist; failures come back with the observed evidence. */
+  postponeSection(section: SectionId, confirm: boolean, options?: RequestOptions): Promise<PostponeResult>;
+  /** The production backup only: an explicit, recorded risk acceptance. */
+  acceptRisk(
+    section: SectionId,
+    item: string,
+    reason: string,
+    confirm: boolean,
+    options?: RequestOptions,
+  ): Promise<RiskResult>;
+  /** Runs the checklist; a refusal carries the observed blocking items. */
   verify(options?: RequestOptions): Promise<VerifyResult>;
   /** One verification turn. The key lives in this call, never in the client. */
   configureAi(input: AiProviderInput, options?: RequestOptions): Promise<AiResult>;
@@ -460,7 +528,7 @@ function sectionIdOf(value: unknown): SectionId | null {
     : null;
 }
 
-const SECTION_STATUSES: readonly SectionStatus[] = ['pending', 'postponed', 'applied', 'verified', 'risk'];
+const SECTION_STATUSES: readonly SectionStatus[] = ['pending', 'passed', 'postponed', 'risk'];
 
 function sectionStatusOf(value: unknown): SectionStatus | null {
   return typeof value === 'string' && (SECTION_STATUSES as readonly string[]).includes(value)
@@ -468,110 +536,134 @@ function sectionStatusOf(value: unknown): SectionStatus | null {
     : null;
 }
 
-const VALUE_SOURCES: readonly ValueSource[] = ['default', 'installation', 'environment', 'domain_service', 'unknown'];
+const SECTION_ACTIONS: readonly SectionAction[] = ['apply', 'postpone'];
 
-function valueSourceOf(value: unknown): ValueSource | null {
-  return typeof value === 'string' && (VALUE_SOURCES as readonly string[]).includes(value)
-    ? value as ValueSource
+function sectionActionOf(value: unknown): SectionAction | null {
+  return typeof value === 'string' && (SECTION_ACTIONS as readonly string[]).includes(value)
+    ? value as SectionAction
     : null;
 }
 
-// A section is a closed record: the effective value is data (one string), and
-// an unknown source degrades to ``unknown`` rather than a guessed origin. The
-// service's own prose is never a field of this type.
-function parseSection(value: unknown): SectionView | null {
+function parseActions(value: unknown): SectionAction[] | null {
+  if (!Array.isArray(value)) return null;
+  const actions = value.map(sectionActionOf);
+  return actions.every((entry): entry is SectionAction => entry !== null) ? actions : null;
+}
+
+// Section values arrive as data. A scalar or a list of ids is kept; a nested
+// object is dropped rather than rendered, because the wizard has no field for
+// it and the service's own keys are not prose it may print.
+function parseData(value: unknown): SectionData | null {
   const raw = object(value);
   if (!raw) return null;
-  const id = sectionIdOf(raw.id ?? raw.section);
-  if (!id) return null;
+  const data: SectionData = {};
+  for (const [key, entry] of Object.entries(raw)) {
+    if (typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean' || entry === null) {
+      data[key] = entry;
+    } else if (Array.isArray(entry) && entry.every((item) => typeof item === 'string')) {
+      data[key] = entry as string[];
+    }
+  }
+  return data;
+}
+
+function dataText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.join(', ');
+  return null;
+}
+
+function parseSectionSummary(value: unknown): SectionSummary | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const section = sectionIdOf(raw.section);
   const status = sectionStatusOf(raw.status);
-  if (!status) return null;
-  const effective = typeof raw.effective === 'string' ? raw.effective : null;
+  const actions = parseActions(raw.actions);
+  if (!section || !status || actions === null) return null;
   return {
-    id,
-    status,
-    source: valueSourceOf(raw.source ?? raw.config_source) ?? 'unknown',
+    section,
     required: raw.required === true,
     postponable: raw.postponable === true,
-    locked: raw.locked === true,
-    value: text(raw.value) ?? text(raw.effective_value) ?? effective,
-    options: strings(raw.options),
-    updatedAt: text(raw.updated_at ?? raw.updatedAt),
+    status,
+    actions,
   };
 }
 
-function parseSectionBody(body: unknown): SectionView | null {
-  const raw = object(body);
-  if (!raw) return null;
-  return parseSection(raw.section !== undefined ? raw.section : raw);
-}
-
-function parseSectionList(value: unknown): SectionView[] | null {
-  if (value === undefined) return [];
+function parseSectionList(value: unknown): SectionSummary[] | null {
   if (!Array.isArray(value)) return null;
-  const parsed = value.map(parseSection);
-  return parsed.every((entry): entry is SectionView => entry !== null) ? parsed : null;
+  const parsed = value.map(parseSectionSummary);
+  return parsed.every((entry): entry is SectionSummary => entry !== null) ? parsed : null;
 }
 
-function parseSectionFields(value: unknown): SectionField[] | null {
-  if (value === undefined) return [];
-  if (!Array.isArray(value)) return null;
-  const fields: SectionField[] = [];
-  for (const entry of value) {
-    const raw = object(entry);
-    const field = text(raw?.field);
-    const fieldValue = text(raw?.value);
-    if (!field || fieldValue === null) return null;
-    fields.push({ field, value: fieldValue });
-  }
-  return fields;
-}
-
-function parsePreview(body: unknown, section: SectionId): SectionPreview | null {
+// ``GET /configuration/{section}`` answers with the section id as a string,
+// its decision and, when the owning service could be read, its live value.
+function parseSectionDetail(body: unknown): SectionDetail | null {
+  const summary = parseSectionSummary(body);
   const raw = object(body);
-  if (!raw || !Array.isArray(raw.changes)) return null;
+  if (!summary || !raw) return null;
+  return {
+    ...summary,
+    current: raw.current === null || raw.current === undefined ? null : parseData(raw.current),
+    proposed: raw.proposed === null || raw.proposed === undefined ? null : parseData(raw.proposed),
+    receipt: raw.receipt === null || raw.receipt === undefined ? null : parseData(raw.receipt),
+    currentUnavailable: raw.currentUnavailable === true,
+  };
+}
+
+function parsePreview(body: unknown): SectionPreview | null {
+  const raw = object(body);
+  if (!raw || raw.status !== 'preview' || raw.preview_only !== true) return null;
+  const section = sectionIdOf(raw.section);
+  if (!section || !Array.isArray(raw.changes)) return null;
+  const proposed = parseData(raw.proposed);
+  if (proposed === null) return null;
   const changes: SectionChange[] = [];
   for (const entry of raw.changes) {
     const change = object(entry);
     const field = text(change?.field);
     if (!field) return null;
-    changes.push({
-      field,
-      from: text(change?.from),
-      to: text(change?.to),
-    });
+    changes.push({ field, from: dataText(change?.from), to: dataText(change?.to) });
   }
-  return { section: sectionIdOf(raw.section) ?? section, value: text(raw.value), changes };
-}
-
-function parseApply(body: unknown, section: SectionId): SectionApplyReceipt | null {
-  const raw = object(body);
-  if (!raw) return null;
-  const readback = parseSectionFields(raw.receipt);
-  // A write without a read-back is not an applied change the wizard can show.
-  if (!readback || readback.length === 0) return null;
-  const parsed = raw.section !== undefined ? parseSection(raw.section) : null;
-  const status = parsed?.status ?? sectionStatusOf(raw.status);
-  if (!status) return null;
   return {
-    section: parsed?.id ?? section,
-    state: text(raw.state),
-    status,
-    readback,
+    section,
+    status: 'preview',
+    required: raw.required === true,
+    postponable: raw.postponable === true,
+    current: raw.current === null || raw.current === undefined ? null : parseData(raw.current),
+    proposed,
+    changes,
+    previewOnly: true,
   };
 }
 
-function parsePostpone(body: unknown): 'postponed' | null {
+// Apply, postpone and accept_risk all answer with the same decision envelope:
+// the section, its shape and the status the service actually recorded. The
+// decision carries no ``actions`` list; only a read does.
+function parseDecision(body: unknown): SectionDecision | null {
   const raw = object(body);
   if (!raw) return null;
-  const nested = object(raw.section);
-  const status = sectionStatusOf(nested?.status ?? raw.status);
-  // Anything other than an explicit postponement is not one: a service answer
-  // that says ``applied`` did not postpone and the UI must not paint it so.
-  return status === 'postponed' ? 'postponed' : null;
+  const section = sectionIdOf(raw.section);
+  const status = sectionStatusOf(raw.status);
+  if (!section || !status) return null;
+  return {
+    section,
+    required: raw.required === true,
+    postponable: raw.postponable === true,
+    status,
+    receipt: raw.receipt === null || raw.receipt === undefined ? null : parseData(raw.receipt),
+  };
 }
 
-const CHECKLIST_STATUSES: readonly ChecklistStatus[] = ['passed', 'failed', 'pending', 'postponed', 'risk'];
+const CHECKLIST_STATUSES: readonly ChecklistStatus[] = [
+  'passed',
+  'failed',
+  'pending',
+  'postponed',
+  'risk',
+  'unavailable',
+  'not_required',
+];
 
 function checklistStatusOf(value: unknown): ChecklistStatus | null {
   return typeof value === 'string' && (CHECKLIST_STATUSES as readonly string[]).includes(value)
@@ -584,43 +676,75 @@ function parseChecklistItem(value: unknown): ChecklistItem | null {
   if (!raw) return null;
   const id = text(raw.id);
   const status = checklistStatusOf(raw.status);
-  const evidence = parseSectionFields(raw.evidence);
+  const evidence = typeof raw.evidence === 'string' ? raw.evidence : null;
   if (!id || !status || evidence === null) return null;
   return {
     id,
+    section: sectionIdOf(raw.section),
     status,
     required: raw.required === true,
     postponable: raw.postponable === true,
     evidence,
-    observedAt: text(raw.observed_at ?? raw.observedAt),
+    blocking: raw.blocking === true,
+    acceptedRisk: raw.acceptedRisk === true,
   };
 }
 
-function parseChecklist(body: unknown): Checklist | null {
-  const raw = object(body);
-  if (!raw) return null;
-  const source = raw.checklist !== undefined ? object(raw.checklist) : raw;
-  if (!source || !Array.isArray(source.items) || source.items.length === 0) return null;
-  const items = source.items.map(parseChecklistItem);
-  if (!items.every((entry): entry is ChecklistItem => entry !== null)) return null;
-  return { mode: text(source.mode), items };
+function parseIdList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 }
 
-const CONFIGURATION_DIAGNOSTICS: readonly ConfigurationDiagnosticCode[] = [
-  'state_refused',
-  'item_required',
-  'not_postponable',
-  'invalid_request',
-];
+// The checklist is the service's own array of items (not an object holding an
+// ``items`` key); ``mode``, ``blocking`` and ``acceptedRisk`` sit beside it.
+function parseChecklist(body: unknown): Checklist | null {
+  const raw = object(body);
+  if (!raw || !Array.isArray(raw.checklist) || raw.checklist.length === 0) return null;
+  const items = raw.checklist.map(parseChecklistItem);
+  if (!items.every((entry): entry is ChecklistItem => entry !== null)) return null;
+  return {
+    mode: text(raw.mode),
+    items,
+    blocking: parseIdList(raw.blocking),
+    acceptedRisk: parseIdList(raw.acceptedRisk),
+  };
+}
+
+function parseOverview(body: unknown): ConfigurationOverview | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const state = text(raw.state);
+  const mode = text(raw.mode);
+  const sections = parseSectionList(raw.sections);
+  const checklist = parseChecklist(raw);
+  if (!state || !mode || sections === null || checklist === null) return null;
+  return {
+    state,
+    mode,
+    sections,
+    checklist,
+    blocking: parseIdList(raw.blocking),
+    acceptedRisk: parseIdList(raw.acceptedRisk),
+  };
+}
+
+// The service answers with one closed code in ``error`` and never echoes
+// upstream prose. ``configuration_invalid`` is one refusal to the operator
+// (the values were rejected); ``configuration_unavailable`` is availability.
+const CONFIGURATION_DIAGNOSTICS: Record<string, ConfigurationDiagnosticCode> = {
+  state_refused: 'state_refused',
+  permission_denied: 'permission_denied',
+  confirmation_required: 'confirm_required',
+  configuration_invalid: 'invalid_request',
+  configuration_unavailable: 'unavailable',
+  verification_blocked: 'verification_blocked',
+};
 
 function diagnosticOfConfiguration(body: unknown, httpStatus: number): ConfigurationDiagnosticCode {
   const raw = object(body);
   const code = text(raw?.error) ?? text(raw?.detail);
-  if (code && (CONFIGURATION_DIAGNOSTICS as readonly string[]).includes(code)) {
-    return code as ConfigurationDiagnosticCode;
-  }
+  if (code && code in CONFIGURATION_DIAGNOSTICS) return CONFIGURATION_DIAGNOSTICS[code];
   if (code && SESSION_ERROR_CODES.has(code)) return 'session_expired';
-  if (httpStatus === 401 || httpStatus === 403) return 'session_expired';
+  if (httpStatus === 401) return 'session_expired';
   return 'unavailable';
 }
 
@@ -961,7 +1085,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     payload: unknown,
     timeoutMs: number,
     options: RequestOptions,
-  ): Promise<{ ok: true; body: unknown } | { ok: false; code: ConfigurationDiagnosticCode }> {
+  ): Promise<{ ok: true; body: unknown } | { ok: false; code: ConfigurationDiagnosticCode; body: unknown }> {
     const hasBody = payload !== undefined;
     const result = await transport(path, {
       method: 'POST',
@@ -972,22 +1096,41 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
       body: hasBody ? JSON.stringify(payload) : undefined,
       signal: options.signal,
     }, timeoutMs);
-    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network', body: null };
     const response = result.response;
     const body = await readJson(response);
-    if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
+    if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status), body };
     return { ok: true, body };
   }
 
   async function startConfiguration(options: RequestOptions = {}): Promise<ConfigurationResult> {
     const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
     const outcome = await configWrite('/configuration', undefined, timeoutMs, options);
-    if (!outcome.ok) return outcome;
+    if (!outcome.ok) return { ok: false, code: outcome.code };
     const raw = object(outcome.body);
     const state = text(raw?.state);
-    const sections = parseSectionList(raw?.sections);
-    if (!state || sections === null) return { ok: false, code: 'invalid-response' };
-    return { ok: true, state, sections };
+    const mode = text(raw?.mode);
+    if (!state || !mode) return { ok: false, code: 'invalid-response' };
+    return { ok: true, state, mode };
+  }
+
+  async function getOverview(options: RequestOptions = {}): Promise<OverviewResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const result = await transport('/configuration', {
+      method: 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
+    const overview = parseOverview(body);
+    if (!overview) return { ok: false, code: 'invalid-response' };
+    return { ok: true, overview };
   }
 
   async function getSection(section: SectionId, options: RequestOptions = {}): Promise<SectionResult> {
@@ -1004,27 +1147,27 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     const response = result.response;
     const body = await readJson(response);
     if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
-    const parsed = parseSectionBody(body);
-    if (!parsed) return { ok: false, code: 'invalid-response' };
+    const parsed = parseSectionDetail(body);
+    if (!parsed || parsed.section !== section) return { ok: false, code: 'invalid-response' };
     return { ok: true, section: parsed };
   }
 
   async function previewSection(
     section: SectionId,
-    value: string,
+    values: SectionInput,
     options: RequestOptions = {},
   ): Promise<PreviewResult> {
     const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
-    const outcome = await configWrite(`/configuration/${section}/preview`, { value }, timeoutMs, options);
-    if (!outcome.ok) return outcome;
-    const preview = parsePreview(outcome.body, section);
-    if (!preview) return { ok: false, code: 'invalid-response' };
+    const outcome = await configWrite(`/configuration/${section}`, { values }, timeoutMs, options);
+    if (!outcome.ok) return { ok: false, code: outcome.code };
+    const preview = parsePreview(outcome.body);
+    if (!preview || preview.section !== section) return { ok: false, code: 'invalid-response' };
     return { ok: true, preview };
   }
 
   async function applySection(
     section: SectionId,
-    value: string,
+    values: SectionInput,
     confirm: boolean,
     options: RequestOptions = {},
   ): Promise<ApplyResult> {
@@ -1032,26 +1175,83 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     // control cannot become a write, and a retried render cannot replay one.
     if (confirm !== true) return { ok: false, code: 'confirm_required' };
     const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
-    const outcome = await configWrite(`/configuration/${section}/apply`, { value, confirm: true }, timeoutMs, options);
-    if (!outcome.ok) return outcome;
-    const receipt = parseApply(outcome.body, section);
-    if (!receipt) return { ok: false, code: 'invalid-response' };
+    const outcome = await configWrite(
+      `/configuration/${section}/apply`,
+      { values, action: 'apply', confirm: true },
+      timeoutMs,
+      options,
+    );
+    if (!outcome.ok) return { ok: false, code: outcome.code };
+    const receipt = parseDecision(outcome.body);
+    if (!receipt || receipt.section !== section) return { ok: false, code: 'invalid-response' };
     return { ok: true, receipt };
   }
 
-  async function postponeSection(section: SectionId, options: RequestOptions = {}): Promise<PostponeResult> {
+  async function postponeSection(
+    section: SectionId,
+    confirm: boolean,
+    options: RequestOptions = {},
+  ): Promise<PostponeResult> {
+    if (confirm !== true) return { ok: false, code: 'confirm_required' };
     const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
-    const outcome = await configWrite(`/configuration/${section}/postpone`, {}, timeoutMs, options);
-    if (!outcome.ok) return outcome;
-    const status = parsePostpone(outcome.body);
-    if (!status) return { ok: false, code: 'invalid-response' };
-    return { ok: true, status };
+    const outcome = await configWrite(
+      `/configuration/${section}/apply`,
+      { values: {}, action: 'postpone', confirm: true },
+      timeoutMs,
+      options,
+    );
+    if (!outcome.ok) return { ok: false, code: outcome.code };
+    const receipt = parseDecision(outcome.body);
+    // Anything other than an explicit postponement is not one: a service
+    // answer that says ``passed`` did not postpone and the UI must not paint
+    // it so.
+    if (!receipt || receipt.section !== section || receipt.status !== 'postponed') {
+      return { ok: false, code: 'invalid-response' };
+    }
+    return { ok: true, receipt };
+  }
+
+  // The production backup is the one requirement a person may accept as a
+  // risk. It is still an explicit decision: the caller passes confirm true only
+  // after the operator checked it, and the recorded status is ``risk``.
+  async function acceptRisk(
+    section: SectionId,
+    item: string,
+    reason: string,
+    confirm: boolean,
+    options: RequestOptions = {},
+  ): Promise<RiskResult> {
+    if (confirm !== true) return { ok: false, code: 'confirm_required' };
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const values: SectionInput = { item };
+    const cleaned = reason.trim();
+    if (cleaned) values.reason = cleaned;
+    const outcome = await configWrite(
+      `/configuration/${section}/apply`,
+      { values, action: 'accept_risk', confirm: true },
+      timeoutMs,
+      options,
+    );
+    if (!outcome.ok) return { ok: false, code: outcome.code };
+    const receipt = parseDecision(outcome.body);
+    if (!receipt || receipt.section !== section || receipt.status !== 'risk') {
+      return { ok: false, code: 'invalid-response' };
+    }
+    return { ok: true, receipt };
   }
 
   async function verify(options: RequestOptions = {}): Promise<VerifyResult> {
     const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
     const outcome = await configWrite('/verify', undefined, timeoutMs, options);
-    if (!outcome.ok) return outcome;
+    if (!outcome.ok) {
+      // A refused verification answers 409 with the observed checklist: the
+      // operator stays in configuration and can see which requirements block.
+      if (outcome.code === 'verification_blocked') {
+        const checklist = parseChecklist(outcome.body);
+        if (checklist) return { ok: false, code: outcome.code, checklist };
+      }
+      return { ok: false, code: outcome.code };
+    }
     const raw = object(outcome.body);
     const state = text(raw?.state);
     const checklist = parseChecklist(outcome.body);
@@ -1141,10 +1341,12 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     applyStorage,
     createOwner,
     startConfiguration,
+    getOverview,
     getSection,
     previewSection,
     applySection,
     postponeSection,
+    acceptRisk,
     verify,
     configureAi,
     deferAi,

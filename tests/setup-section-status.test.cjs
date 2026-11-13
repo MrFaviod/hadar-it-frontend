@@ -1,7 +1,9 @@
 'use strict';
 // Where a configured section stands, and whether verification may move on.
-// The wizard must never paint a postponed item green, and a deferred AI step
-// keeps its section pending even if a later read-back claims otherwise.
+// The wizard must never paint a postponement or an accepted risk green, and a
+// deferred AI step keeps its section pending even if a later read-back claims
+// otherwise. The evidence is the service's own checklist: blocking is read
+// from the item, never re-derived from a status this file invented.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -15,47 +17,51 @@ function load() {
 
 function section(overrides = {}) {
   return {
-    id: 'appearance',
+    section: 'appearance',
     status: 'pending',
-    source: 'default',
     required: true,
     postponable: false,
-    locked: false,
-    value: 'claro',
-    options: ['claro', 'nocturno'],
-    updatedAt: null,
+    actions: ['apply'],
+    current: null,
     ...overrides,
   };
 }
 
-test('postponed is never shown as applied or verified', () => {
+function item(id, overrides = {}) {
+  return {
+    id,
+    section: 'appearance',
+    required: true,
+    postponable: false,
+    status: 'pending',
+    evidence: 'observed',
+    blocking: false,
+    acceptedRisk: false,
+    ...overrides,
+  };
+}
+
+test('postponed and risk are never shown as a pass', () => {
   const { chipFor } = load();
-  assert.equal(chipFor(section({ status: 'postponed', postponable: true }), { aiDeferred: false }), 'postponed');
-  assert.equal(chipFor(section({ id: 'notifications', status: 'postponed', postponable: true }), { aiDeferred: false }), 'postponed');
+  const options = { aiDeferred: false };
+  assert.equal(chipFor(section({ status: 'postponed', postponable: true }), options), 'postponed');
+  assert.equal(chipFor(section({ section: 'notifications', status: 'postponed', postponable: true }), options), 'postponed');
+  assert.equal(chipFor(section({ section: 'operational', status: 'risk' }), options), 'risk');
+  assert.notEqual(chipFor(section({ section: 'operational', status: 'risk' }), options), 'passed');
 });
 
 test('a deferred AI step keeps the agent section pending', () => {
   const { chipFor } = load();
-  const agent = section({ id: 'agent', status: 'applied', source: 'installation' });
+  const agent = section({ section: 'agent', status: 'passed' });
   assert.equal(chipFor(agent, { aiDeferred: true }), 'pending');
-  assert.equal(chipFor(agent, { aiDeferred: false }), 'applied');
+  assert.equal(chipFor(agent, { aiDeferred: false }), 'passed');
 });
 
-test('verified, applied, risk and pending keep their own words', () => {
+test('passed and pending keep the service words', () => {
   const { chipFor } = load();
   const options = { aiDeferred: false };
-  assert.equal(chipFor(section({ status: 'verified' }), options), 'verified');
-  assert.equal(chipFor(section({ status: 'applied' }), options), 'applied');
-  assert.equal(chipFor(section({ status: 'risk' }), options), 'risk');
+  assert.equal(chipFor(section({ status: 'passed' }), options), 'passed');
   assert.equal(chipFor(section({ status: 'pending' }), options), 'pending');
-});
-
-test('an environment or domain value is locked for the wizard', () => {
-  const { isLocked } = load();
-  assert.equal(isLocked(section({ source: 'environment' })), true);
-  assert.equal(isLocked(section({ source: 'domain_service' })), true);
-  assert.equal(isLocked(section({ locked: true })), true);
-  assert.equal(isLocked(section({ source: 'installation' })), false);
 });
 
 test('every section links to the settings route that owns it', () => {
@@ -69,54 +75,93 @@ test('every section links to the settings route that owns it', () => {
   });
 });
 
-test('verification blocks on required failures and keeps postponements out of it', () => {
+test('the live value is flattened for display and arrays print their ids', () => {
+  const { currentRows } = load();
+  assert.deepEqual(
+    currentRows(section({
+      section: 'appearance',
+      current: { preset: 'blue', previous: null, builtinIds: ['generic', 'forest'] },
+    })),
+    [
+      { field: 'preset', value: 'blue' },
+      { field: 'builtinIds', value: 'generic, forest' },
+    ],
+  );
+  assert.deepEqual(currentRows(section({ current: null })), []);
+});
+
+test('only the appearance section publishes closed choices', () => {
+  const { choicesFor } = load();
+  assert.deepEqual(
+    choicesFor(section({ section: 'appearance', current: { preset: 'blue', builtinIds: ['generic', 'forest'] } })),
+    ['generic', 'forest'],
+  );
+  assert.deepEqual(choicesFor(section({ section: 'notifications', current: { kind: 'smtp' } })), []);
+  assert.deepEqual(choicesFor(section({ section: 'appearance', current: null })), []);
+});
+
+test('verification blocks on the service verdict and keeps postponements out of it', () => {
   const { verifyOutcome } = load();
   const outcome = verifyOutcome({
     mode: 'dev',
     items: [
-      { id: 'database_ready', status: 'passed', required: true, postponable: false, evidence: [], observedAt: null },
-      { id: 'worker_ready', status: 'failed', required: true, postponable: false, evidence: [], observedAt: null },
-      { id: 'appearance_decided', status: 'pending', required: true, postponable: false, evidence: [], observedAt: null },
-      { id: 'smtp', status: 'postponed', required: false, postponable: true, evidence: [], observedAt: null },
-      { id: 'monitoring', status: 'postponed', required: false, postponable: true, evidence: [], observedAt: null },
+      item('database_ready', { status: 'passed' }),
+      item('worker_ready', { status: 'failed', blocking: true }),
+      item('appearance_decided', { status: 'pending', blocking: true }),
+      item('smtp', { section: 'notifications', required: false, postponable: true, status: 'postponed' }),
+      item('monitoring', { section: 'monitoring', required: false, postponable: true, status: 'postponed' }),
+      item('external_search', { section: 'operational', required: false, status: 'unavailable' }),
     ],
+    blocking: ['worker_ready', 'appearance_decided'],
+    acceptedRisk: [],
   });
   assert.equal(outcome.passed, 1);
-  assert.deepEqual(outcome.blocked.map((item) => item.id), ['worker_ready', 'appearance_decided']);
-  assert.deepEqual(outcome.postponed.map((item) => item.id), ['smtp', 'monitoring']);
+  assert.deepEqual(outcome.blocked.map((entry) => entry.id), ['worker_ready', 'appearance_decided']);
+  assert.deepEqual(outcome.postponed.map((entry) => entry.id), ['smtp', 'monitoring']);
+  assert.deepEqual(outcome.failed.map((entry) => entry.id), ['worker_ready']);
 });
 
-test('a required risk is reported as not verified', () => {
+test('an accepted risk is recorded, reported as a risk and does not block', () => {
   const { verifyOutcome } = load();
   const outcome = verifyOutcome({
     mode: 'prod',
     items: [
-      { id: 'backup_policy_declared', status: 'risk', required: true, postponable: false, evidence: [], observedAt: null },
+      item('backup_policy_declared', {
+        section: 'operational',
+        required: true,
+        status: 'risk',
+        evidence: 'accepted risk: single host demo',
+        blocking: false,
+        acceptedRisk: true,
+      }),
     ],
+    blocking: [],
+    acceptedRisk: ['backup_policy_declared'],
   });
-  assert.deepEqual(outcome.blocked.map((item) => item.id), ['backup_policy_declared']);
-  assert.deepEqual(outcome.risk.map((item) => item.id), ['backup_policy_declared']);
+  assert.deepEqual(outcome.risk.map((entry) => entry.id), ['backup_policy_declared']);
+  assert.deepEqual(outcome.blocked, []);
+  assert.deepEqual(outcome.missing, []);
 });
 
-test('only options of an unlocked section become assistant suggestions', () => {
+test('only appearance presets become assistant suggestions, never the current one', () => {
   const { suggestionsFor } = load();
   const sections = [
-    section({ id: 'appearance', options: ['claro', 'nocturno'] }),
-    section({ id: 'operational', source: 'environment', value: 'dev', options: ['dev', 'prod'] }),
-    section({ id: 'monitoring', status: 'pending', postponable: true, value: null, options: ['basico', 'completo'] }),
+    section({ section: 'appearance', current: { preset: 'generic', builtinIds: ['generic', 'forest', 'blue'] } }),
+    section({ section: 'notifications', current: { kind: 'smtp' } }),
+    section({ section: 'operational', current: { origin: 'https://itsm.example' } }),
   ];
-  const suggestions = suggestionsFor('Para una sala oscura conviene nocturno; no uses prod.', sections);
-  assert.deepEqual(suggestions, [{ section: 'appearance', value: 'nocturno' }]);
+  const suggestions = suggestionsFor('Para una sala oscura conviene forest; no uses prod.', sections);
+  assert.deepEqual(suggestions, [{ section: 'appearance', value: 'forest' }]);
 
   assert.deepEqual(suggestionsFor(null, sections), []);
   assert.deepEqual(suggestionsFor('habla de otra cosa', sections), []);
 });
 
-test('a suggestion never repeats the current value or the same section', () => {
+test('a suggestion never repeats the current preset', () => {
   const { suggestionsFor } = load();
   const sections = [
-    section({ id: 'appearance', value: 'claro', options: ['claro', 'nocturno', 'alto-contraste'] }),
+    section({ section: 'appearance', current: { preset: 'generic', builtinIds: ['generic', 'forest', 'blue'] } }),
   ];
-  const suggestions = suggestionsFor('claro frente a nocturno y alto-contraste', sections);
-  assert.deepEqual(suggestions, [{ section: 'appearance', value: 'nocturno' }]);
+  assert.deepEqual(suggestionsFor('generic frente a forest', sections), [{ section: 'appearance', value: 'forest' }]);
+  assert.deepEqual(suggestionsFor('sólo generic', sections), []);
 });

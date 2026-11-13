@@ -1,10 +1,11 @@
 // Configuration and verification panels for the first-start wizard.
 //
-// The wizard shows what each section holds right now, where that value comes
-// from, and what a change would do before it does it. A value set by the
-// deployment environment is read-only here: the panel explains where it lives
-// instead of pretending the wizard owns it. Applying always takes a second,
-// explicit confirm; the receipt is the service's read-back, not the request.
+// Each panel shows what the service says the section holds right now, what it
+// recorded for it, and — for the sections the service exposes an editor for —
+// the values a change would apply. A preview never writes; applying is a
+// second, explicit click. The production backup is the one item that can be
+// accepted as a risk, and it is shown as exactly that: an amber "risk accepted"
+// record, never a green pass.
 
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import type {
@@ -12,29 +13,21 @@ import type {
   Checklist,
   ChecklistItem,
   ConfigurationDiagnosticCode,
-  SectionApplyReceipt,
+  SectionDecision,
+  SectionDetail,
   SectionId,
+  SectionInput,
   SectionPreview,
-  SectionView,
 } from './client';
-import { SECTION_ROUTES, chipFor, isLocked, suggestionsFor, type SectionChip } from './section-status';
+import { SECTION_ROUTES, chipFor, choicesFor, currentRows, suggestionsFor, type SectionChip } from './section-status';
 import type { Translator } from './strings';
 import '../../assets/css/setup.css';
 
 const CHIP_LABEL: Record<SectionChip, string> = {
   pending: 'ui.setup.config.chip.pending',
+  passed: 'ui.setup.config.chip.applied',
   postponed: 'ui.setup.config.chip.postponed',
-  applied: 'ui.setup.config.chip.applied',
-  verified: 'ui.setup.config.chip.verified',
   risk: 'ui.setup.config.chip.risk',
-};
-
-const SOURCE_LABEL: Record<string, string> = {
-  default: 'ui.setup.config.source.default',
-  installation: 'ui.setup.config.source.installation',
-  environment: 'ui.setup.config.source.environment',
-  domain_service: 'ui.setup.config.source.domain_service',
-  unknown: 'ui.setup.config.source.unknown',
 };
 
 const CHECK_LABEL: Record<string, string> = {
@@ -43,27 +36,68 @@ const CHECK_LABEL: Record<string, string> = {
   pending: 'ui.setup.verify.status.pending',
   postponed: 'ui.setup.verify.status.postponed',
   risk: 'ui.setup.verify.status.risk',
+  unavailable: 'ui.setup.verify.status.unavailable',
+  not_required: 'ui.setup.verify.status.not_required',
 };
 
 /** Checklist ids the contract defines; anything else is shown as data. */
 const KNOWN_ITEMS = new Set([
-  'database_ready', 'migrated', 'worker_ready', 'storage_ready', 'origin_valid',
-  'session_valid', 'ai_explicit', 'appearance_decided', 'backup_policy_declared',
-  'smtp', 'monitoring', 'external_search', 'external_engines', 'integrations',
+  'setup_enabled', 'claim_completed', 'ai_explicit', 'database_ready', 'migrated',
+  'owner_present', 'origin_valid', 'session_valid', 'worker_ready', 'storage_ready',
+  'appearance_decided', 'backup_policy_declared', 'smtp', 'monitoring',
+  'external_search', 'external_engines', 'integrations',
 ]);
 
 const CONFIG_ERROR: Record<ConfigurationDiagnosticCode, string> = {
   confirm_required: 'ui.setup.config.error.confirm_required',
   state_refused: 'ui.setup.config.error.state_refused',
-  item_required: 'ui.setup.config.error.item_required',
-  not_postponable: 'ui.setup.config.error.not_postponable',
   invalid_request: 'ui.setup.config.error.invalid_request',
+  permission_denied: 'ui.setup.config.error.permission_denied',
+  verification_blocked: 'ui.setup.config.error.verification_blocked',
   session_expired: 'ui.setup.config.error.session_expired',
   unavailable: 'ui.setup.config.error.unavailable',
   network: 'ui.setup.config.error.network',
   timeout: 'ui.setup.config.error.timeout',
   'invalid-response': 'ui.setup.config.error.invalid_response',
 };
+
+type FieldKind = 'text' | 'select' | 'toggle';
+
+interface FieldSpec {
+  name: string;
+  kind: FieldKind;
+}
+
+// The values each editable section accepts. Operational items are observed by
+// verify, not configured here, so that section has no editor at all.
+const SECTION_FIELDS: Partial<Record<SectionId, FieldSpec[]>> = {
+  appearance: [{ name: 'preset', kind: 'select' }],
+  agent: [{ name: 'provider', kind: 'text' }, { name: 'model', kind: 'text' }],
+  notifications: [{ name: 'kind', kind: 'text' }, { name: 'name', kind: 'text' }, { name: 'enabled', kind: 'toggle' }],
+  monitoring: [{ name: 'category', kind: 'text' }, { name: 'checkType', kind: 'text' }, { name: 'enabled', kind: 'toggle' }],
+};
+
+function seedDraft(section: SectionDetail, fields: FieldSpec[]): Record<string, string> {
+  const draft: Record<string, string> = {};
+  for (const field of fields) {
+    const raw = section.current?.[field.name];
+    draft[field.name] = typeof raw === 'boolean' ? String(raw) : typeof raw === 'string' ? raw : '';
+  }
+  return draft;
+}
+
+function valuesOf(fields: FieldSpec[], draft: Record<string, string>): SectionInput {
+  const values: SectionInput = {};
+  for (const field of fields) {
+    if (field.kind === 'toggle') {
+      values[field.name] = draft[field.name] !== 'false';
+      continue;
+    }
+    const value = (draft[field.name] ?? '').trim();
+    if (value) values[field.name] = value;
+  }
+  return values;
+}
 
 export function configurationMessage(code: ConfigurationDiagnosticCode, t: Translator): string {
   return t(CONFIG_ERROR[code]);
@@ -89,22 +123,25 @@ export interface AssistantView {
 export interface ConfigurationPanelProps {
   t: Translator;
   headingRef?: RefObject<HTMLHeadingElement | null>;
-  sections: SectionView[];
+  sections: SectionDetail[];
+  mode: string | null;
   loading: boolean;
   error: ConfigurationDiagnosticCode | null;
   busy: SectionId | null;
   previews: Partial<Record<SectionId, SectionPreview>>;
-  receipts: Partial<Record<SectionId, SectionApplyReceipt>>;
+  receipts: Partial<Record<SectionId, SectionDecision>>;
   blocked: ChecklistItem[] | null;
+  riskItem: ChecklistItem | null;
   aiDeferred: boolean;
   appUsable: boolean;
   verifying: boolean;
   verifyError: ConfigurationDiagnosticCode | null;
   assistant: AssistantView;
-  onPreview: (section: SectionId, value: string) => void;
-  onApply: (section: SectionId, value: string) => void;
+  onPreview: (section: SectionId, values: SectionInput) => void;
+  onApply: (section: SectionId, values: SectionInput) => void;
   onDiscard: (section: SectionId) => void;
   onPostpone: (section: SectionId) => void;
+  onAcceptRisk: (section: SectionId, item: string, reason: string) => void;
   onVerify: () => void;
   onReload: () => void;
   onAsk: (question: string) => void;
@@ -182,18 +219,21 @@ export function ConfigurationPanel(props: ConfigurationPanelProps) {
 
       {sections.map((section) => (
         <SectionCard
-          key={section.id}
+          key={section.section}
           t={t}
           section={section}
+          mode={props.mode}
           chip={chipFor(section, { aiDeferred: props.aiDeferred })}
-          preview={props.previews[section.id] ?? null}
-          receipt={props.receipts[section.id] ?? null}
-          busy={props.busy === section.id}
+          preview={props.previews[section.section] ?? null}
+          receipt={props.receipts[section.section] ?? null}
+          riskItem={props.riskItem}
+          busy={props.busy === section.section}
           appUsable={appUsable}
           onPreview={props.onPreview}
           onApply={props.onApply}
           onDiscard={props.onDiscard}
           onPostpone={props.onPostpone}
+          onAcceptRisk={props.onAcceptRisk}
         />
       ))}
 
@@ -252,7 +292,7 @@ export function ConfigurationPanel(props: ConfigurationPanelProps) {
                     className="btn btn--secondary"
                     type="button"
                     data-setup-config-suggestion={`${suggestion.section}:${suggestion.value}`}
-                    onClick={() => props.onPreview(suggestion.section, suggestion.value)}
+                    onClick={() => props.onPreview(suggestion.section, { preset: suggestion.value })}
                   >
                     {t('ui.setup.config.suggestion', {
                       value: suggestion.value,
@@ -272,83 +312,159 @@ export function ConfigurationPanel(props: ConfigurationPanelProps) {
 
 interface SectionCardProps {
   t: Translator;
-  section: SectionView;
+  section: SectionDetail;
+  mode: string | null;
   chip: SectionChip;
   preview: SectionPreview | null;
-  receipt: SectionApplyReceipt | null;
+  receipt: SectionDecision | null;
+  riskItem: ChecklistItem | null;
   busy: boolean;
   appUsable: boolean;
-  onPreview: (section: SectionId, value: string) => void;
-  onApply: (section: SectionId, value: string) => void;
+  onPreview: (section: SectionId, values: SectionInput) => void;
+  onApply: (section: SectionId, values: SectionInput) => void;
   onDiscard: (section: SectionId) => void;
   onPostpone: (section: SectionId) => void;
+  onAcceptRisk: (section: SectionId, item: string, reason: string) => void;
+}
+
+function receiptRows(receipt: SectionDecision | null) {
+  if (!receipt?.receipt) return [];
+  return Object.entries(receipt.receipt).flatMap(([field, value]) => {
+    if (typeof value === 'string') return [{ field, value }];
+    if (typeof value === 'number' || typeof value === 'boolean') return [{ field, value: String(value) }];
+    return [];
+  });
 }
 
 function SectionCard(props: SectionCardProps) {
   const { t, section, chip, preview, receipt, busy } = props;
-  const [draft, setDraft] = useState('');
+  const fields = SECTION_FIELDS[section.section] ?? [];
+  const [draft, setDraft] = useState<Record<string, string>>(() => seedDraft(section, fields));
+  const [riskReason, setRiskReason] = useState('');
+  const [riskConfirmed, setRiskConfirmed] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLDivElement>(null);
   const lastPreview = useRef<string | null>(null);
   const lastReceipt = useRef<string | null>(null);
-  const locked = isLocked(section);
-  const label = t(`ui.setup.config.section.${section.id}`);
-  const route = SECTION_ROUTES[section.id];
+
+  const label = t(`ui.setup.config.section.${section.section}`);
+  const route = SECTION_ROUTES[section.section];
+  const choices = choicesFor(section);
+  const current = currentRows(section);
+  const readback = receiptRows(receipt);
+  const values = valuesOf(fields, draft);
+  const dirty = fields.some((field) => {
+    const before = section.current?.[field.name];
+    const seeded = typeof before === 'boolean' ? String(before) : typeof before === 'string' ? before : '';
+    return (draft[field.name] ?? '') !== seeded;
+  });
+  const canPreview = fields.length > 0 && Object.keys(values).length > 0 && dirty && !busy;
+
+  // The service is the authority on the stored values: a refresh replaces the
+  // draft so the form never keeps a value the read-back no longer reports.
+  const currentSignature = JSON.stringify(section.current ?? null);
+  useEffect(() => {
+    setDraft(seedDraft(section, fields));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSignature, section.section]);
 
   // Focus follows the result, not the click: a preview and an apply receipt
   // arrive from the service asynchronously, and each is the next thing to read.
   useEffect(() => {
-    const signature = preview ? `${preview.section}:${preview.value ?? ''}` : null;
+    const signature = preview ? `${preview.section}:${JSON.stringify(preview.proposed)}` : null;
     if (signature && signature !== lastPreview.current) previewRef.current?.focus();
     lastPreview.current = signature;
   }, [preview]);
 
   useEffect(() => {
-    const signature = receipt ? `${receipt.section}:${receipt.readback.map((field) => `${field.field}=${field.value}`).join('|')}` : null;
+    const signature = receipt ? `${receipt.section}:${JSON.stringify(receipt.receipt)}` : null;
     if (signature && signature !== lastReceipt.current) receiptRef.current?.focus();
     lastReceipt.current = signature;
   }, [receipt]);
 
-  const changes = preview?.changes ?? [];
-  const canApply = preview !== null && preview.changes.length > 0 && !busy;
+  const showRisk = section.section === 'operational' && props.riskItem !== null && props.mode === 'prod';
 
   return (
-    <article className="setup-config" data-setup-section={section.id} data-setup-section-status={chip}>
+    <article className="setup-config" data-setup-section={section.section} data-setup-section-status={chip}>
       <div className="setup-config__head">
         <h3>{label}</h3>
         <span className="setup-step__badge" role="status" data-setup-chip={chip} data-setup-config-chip={chip}>{t(CHIP_LABEL[chip])}</span>
       </div>
       <p className="setup-config__meta">
         <span>{t('ui.setup.config.effective')}</span>
-        <code data-setup-config-value={section.id}>{section.value ?? t('ui.setup.config.no_value')}</code>
-        <span data-setup-config-source={section.source}>{t(SOURCE_LABEL[section.source] ?? SOURCE_LABEL.unknown)}</span>
+        {section.currentUnavailable
+          ? <span className="field__hint" data-setup-config-unavailable={section.section}>{t('ui.setup.config.current_unavailable')}</span>
+          : null}
       </p>
-      {locked ? <p className="field__hint" data-setup-config-locked>{t('ui.setup.config.locked')}</p> : null}
+      {current.length > 0 ? (
+        <dl className="setup__receipt" data-setup-config-current={section.section} data-setup-config-value={section.section}>
+          {current.map((row) => (
+            <div key={row.field}>
+              <dt>{row.field}</dt>
+              <dd>{row.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : section.currentUnavailable ? null : (
+        <p className="field__hint" data-setup-config-value={section.section}>{t('ui.setup.config.no_value')}</p>
+      )}
 
-      {!locked && section.options.length > 0 ? (
+      {fields.length > 0 ? (
         <div className="setup-config__row">
-          <div className="field">
-            <label htmlFor={`setup-config-input-${section.id}`}>{t('ui.setup.config.change')}</label>
-            <select
-              id={`setup-config-input-${section.id}`}
-              className="setup-config__select"
-              value={draft}
-              disabled={busy}
-              onChange={(event) => {
-                setDraft(event.target.value);
-                if (preview) props.onDiscard(section.id);
-              }}
-            >
-              <option value="">{t('ui.setup.config.choose')}</option>
-              {section.options.map((option) => <option key={option} value={option}>{option}</option>)}
-            </select>
-          </div>
+          {fields.map((field) => (
+            <div className="field" key={field.name}>
+              <label htmlFor={fields.length === 1
+                ? `setup-config-input-${section.section}`
+                : `setup-config-input-${section.section}-${field.name}`}
+              >
+                {t(`ui.setup.config.field.${field.name}`)}
+              </label>
+              {field.kind === 'select' ? (
+                <select
+                  id={`setup-config-input-${section.section}`}
+                  className="setup-config__select"
+                  value={draft[field.name] ?? ''}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setDraft((value) => ({ ...value, [field.name]: event.target.value }));
+                    if (preview) props.onDiscard(section.section);
+                  }}
+                >
+                  <option value="">{t('ui.setup.config.choose')}</option>
+                  {choices.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              ) : field.kind === 'toggle' ? (
+                <input
+                  id={`setup-config-input-${section.section}-${field.name}`}
+                  type="checkbox"
+                  checked={(draft[field.name] ?? 'true') !== 'false'}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setDraft((value) => ({ ...value, [field.name]: String(event.target.checked) }));
+                    if (preview) props.onDiscard(section.section);
+                  }}
+                />
+              ) : (
+                <input
+                  id={`setup-config-input-${section.section}-${field.name}`}
+                  type="text"
+                  value={draft[field.name] ?? ''}
+                  maxLength={200}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setDraft((value) => ({ ...value, [field.name]: event.target.value }));
+                    if (preview) props.onDiscard(section.section);
+                  }}
+                />
+              )}
+            </div>
+          ))}
           <button
             className="btn btn--secondary"
             type="button"
-            data-setup-config-preview-submit={section.id}
-            disabled={!draft || busy}
-            onClick={() => props.onPreview(section.id, draft)}
+            data-setup-config-preview-submit={section.section}
+            disabled={!canPreview}
+            onClick={() => props.onPreview(section.section, values)}
           >
             {t('ui.setup.config.preview')}
           </button>
@@ -356,11 +472,11 @@ function SectionCard(props: SectionCardProps) {
       ) : null}
 
       {preview ? (
-        <div className="setup-config__diff" ref={previewRef} tabIndex={-1} aria-live="polite" data-setup-config-preview={section.id}>
+        <div className="setup-config__diff" ref={previewRef} tabIndex={-1} aria-live="polite" data-setup-config-preview={section.section}>
           <h4>{t('ui.setup.config.preview_title')}</h4>
-          {changes.length > 0 ? (
+          {preview.changes.length > 0 ? (
             <dl className="setup__receipt">
-              {changes.map((change) => (
+              {preview.changes.map((change) => (
                 <div key={change.field}>
                   <dt>{change.field}</dt>
                   <dd>{change.from ?? t('ui.setup.config.no_value')} → {change.to ?? t('ui.setup.config.no_value')}</dd>
@@ -372,13 +488,13 @@ function SectionCard(props: SectionCardProps) {
             <button
               className="btn btn--primary"
               type="button"
-              data-setup-config-apply={section.id}
-              disabled={!canApply}
-              onClick={() => props.onApply(section.id, preview.value ?? draft)}
+              data-setup-config-apply={section.section}
+              disabled={preview.changes.length === 0 || busy}
+              onClick={() => props.onApply(section.section, values)}
             >
               {t('ui.setup.config.apply')}
             </button>
-            <button className="btn btn--secondary" type="button" onClick={() => props.onDiscard(section.id)}>
+            <button className="btn btn--secondary" type="button" onClick={() => props.onDiscard(section.section)}>
               {t('ui.setup.config.discard')}
             </button>
           </div>
@@ -386,17 +502,65 @@ function SectionCard(props: SectionCardProps) {
       ) : null}
 
       {receipt ? (
-        <div className="form-note" ref={receiptRef} tabIndex={-1} data-setup-config-receipt={section.id}>
+        <div className="form-note" ref={receiptRef} tabIndex={-1} data-setup-config-receipt={section.section}>
           <div>
             <h4>{t('ui.setup.config.receipt_title')}</h4>
-            <dl className="setup__receipt">
-              {receipt.readback.map((field) => (
-                <div key={field.field}>
-                  <dt>{field.field}</dt>
-                  <dd>{field.value}</dd>
-                </div>
-              ))}
-            </dl>
+            <p className="field__hint" data-setup-config-receipt-status={receipt.status}>{checkLabel(receipt.status, t)}</p>
+            {readback.length > 0 ? (
+              <dl className="setup__receipt">
+                {readback.map((field) => (
+                  <div key={field.field}>
+                    <dt>{field.field}</dt>
+                    <dd>{field.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {showRisk && props.riskItem ? (
+        <div className="form-note" data-setup-config-risk={section.section}>
+          <div>
+            <h4>{t('ui.setup.config.risk_title')}</h4>
+            <p className="field__hint">{t('ui.setup.config.risk_lead')}</p>
+            <p className="field__hint" data-setup-config-risk-evidence={props.riskItem.id}>{props.riskItem.evidence}</p>
+            <div className="field">
+              <label htmlFor={`setup-config-risk-reason-${section.section}`}>{t('ui.setup.config.risk_reason')}</label>
+              <input
+                id={`setup-config-risk-reason-${section.section}`}
+                type="text"
+                value={riskReason}
+                maxLength={200}
+                disabled={busy}
+                onChange={(event) => setRiskReason(event.target.value)}
+              />
+            </div>
+            <div className="setup-config__row">
+              <label htmlFor={`setup-config-risk-confirm-${section.section}`}>
+                <input
+                  id={`setup-config-risk-confirm-${section.section}`}
+                  type="checkbox"
+                  checked={riskConfirmed}
+                  disabled={busy}
+                  onChange={(event) => setRiskConfirmed(event.target.checked)}
+                />{' '}
+                {t('ui.setup.config.risk_confirm')}
+              </label>
+              <button
+                className="btn btn--secondary"
+                type="button"
+                data-setup-config-risk-accept={section.section}
+                disabled={!riskConfirmed || busy}
+                onClick={() => {
+                  setRiskConfirmed(false);
+                  props.onAcceptRisk(section.section, props.riskItem!.id, riskReason);
+                }}
+              >
+                {t('ui.setup.config.risk_accept')}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -406,9 +570,9 @@ function SectionCard(props: SectionCardProps) {
           <button
             className="btn btn--secondary"
             type="button"
-            data-setup-config-postpone={section.id}
+            data-setup-config-postpone={section.section}
             disabled={busy}
-            onClick={() => props.onPostpone(section.id)}
+            onClick={() => props.onPostpone(section.section)}
           >
             {t('ui.setup.config.postpone')}
           </button>
@@ -416,7 +580,7 @@ function SectionCard(props: SectionCardProps) {
       ) : null}
 
       {props.appUsable ? (
-        <a className="setup-config__link" href={route} data-setup-config-link={section.id}>
+        <a className="setup-config__link" href={route} data-setup-config-link={section.section}>
           {t('ui.setup.config.open_settings')}
         </a>
       ) : <p className="field__hint">{t('ui.setup.config.settings_later')}</p>}
@@ -453,15 +617,8 @@ export function VerifyPanel(props: VerifyPanelProps) {
                   <h3>{checklistLabel(item.id, t)}</h3>
                   <span className="setup-step__badge" role="status" data-setup-chip={item.status}>{checkLabel(item.status, t)}</span>
                 </div>
-                {item.evidence.length > 0 ? (
-                  <dl className="setup__receipt" data-setup-verify-evidence={item.id}>
-                    {item.evidence.map((field) => (
-                      <div key={field.field}>
-                        <dt>{field.field}</dt>
-                        <dd>{field.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
+                {item.evidence ? (
+                  <p className="field__hint" data-setup-verify-evidence={item.id}>{item.evidence}</p>
                 ) : <p className="field__hint" data-setup-verify="no-evidence">{t('ui.setup.verify.no_evidence')}</p>}
               </li>
             ))}
