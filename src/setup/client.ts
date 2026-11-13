@@ -49,6 +49,54 @@ export type SessionResult =
   | { ok: true; session: SetupSession }
   | { ok: false; reason: 'denied' | 'unavailable' | 'network' | 'timeout' };
 
+/** Closed diagnostics the AI step knows how to explain; never server text. */
+export type AiDiagnosticCode =
+  | 'provider_unreachable'
+  | 'model_without_tools'
+  | 'endpoint_forbidden'
+  | 'credential_missing'
+  | 'credential_key_missing'
+  | 'auth_failed'
+  | 'tool_not_called'
+  | 'session_expired'
+  | 'state_refused'
+  | 'ai_not_configured'
+  | 'unavailable'
+  | 'network'
+  | 'timeout'
+  | 'invalid-response';
+
+/** The sanitized receipt: an allowlist, so an echoing server adds nothing. */
+export interface AiReceipt {
+  status: 'configured' | 'pending';
+  provider: string | null;
+  model: string | null;
+  tool: string | null;
+  latencyMs: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  pending: boolean;
+  reason: string | null;
+  checkedAt: string | null;
+  deferredAt: string | null;
+}
+
+export type AiResult =
+  | { ok: true; state: string; receipt: AiReceipt }
+  | { ok: false; code: AiDiagnosticCode };
+
+export type AssistantResult =
+  | { ok: true; answer: string; tools: string[]; latencyMs: number }
+  | { ok: false; code: AiDiagnosticCode };
+
+export type LogoutResult = { ok: true } | { ok: false; code: AiDiagnosticCode };
+
+export interface AiProviderInput {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
 export interface RequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
@@ -58,6 +106,12 @@ export interface SetupClient {
   getStatus(options?: RequestOptions): Promise<StatusResult>;
   claim(credential: string, options?: RequestOptions): Promise<ClaimResult>;
   getSession(options?: RequestOptions): Promise<SessionResult>;
+  /** One verification turn. The key lives in this call, never in the client. */
+  configureAi(input: AiProviderInput, options?: RequestOptions): Promise<AiResult>;
+  deferAi(options?: RequestOptions): Promise<AiResult>;
+  askAssistant(question: string, options?: RequestOptions): Promise<AssistantResult>;
+  /** Ends this browser's setup session; the token is dropped with it. */
+  logout(options?: RequestOptions): Promise<LogoutResult>;
   /** In memory only: the setup session token never reaches any storage. */
   csrfToken(): string | null;
 }
@@ -100,6 +154,10 @@ type Transport =
 
 const DEFAULT_STATUS_TIMEOUT_MS = 1500;
 const DEFAULT_WRITE_TIMEOUT_MS = 20000;
+// Provider verification does a discovery round trip and one tool call.
+const DEFAULT_AI_TIMEOUT_MS = 30000;
+// The assistant is bounded server-side at 30s; the client waits it out.
+const DEFAULT_ASK_TIMEOUT_MS = 45000;
 
 function text(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
@@ -143,6 +201,87 @@ function parseSession(value: unknown): SetupSession | null {
     mode: text(raw.mode),
     release_mode: text(raw.release_mode),
     checks: object(raw.checks) ?? {},
+  };
+}
+
+// The agent API answers with one closed code in ``error`` (its routes never
+// echo upstream text). Anything outside these sets is availability, not a
+// diagnosis: unknown strings are dropped so nothing server-authored is ever
+// rendered.
+const AI_DIAGNOSTICS: readonly AiDiagnosticCode[] = [
+  'provider_unreachable',
+  'model_without_tools',
+  'endpoint_forbidden',
+  'credential_missing',
+  'credential_key_missing',
+  'auth_failed',
+  'tool_not_called',
+  'state_refused',
+  'ai_not_configured',
+];
+
+const SESSION_ERROR_CODES = new Set([
+  'authentication_required',
+  'csrf_invalid',
+  'origin_not_allowed',
+  'setup_session_expired',
+]);
+
+function diagnosticOf(body: unknown, httpStatus: number): AiDiagnosticCode {
+  const raw = object(body);
+  const code = text(raw?.error) ?? text(raw?.detail);
+  if (code && (AI_DIAGNOSTICS as readonly string[]).includes(code)) return code as AiDiagnosticCode;
+  if (code && SESSION_ERROR_CODES.has(code)) return 'session_expired';
+  if (httpStatus === 401 || httpStatus === 403) return 'session_expired';
+  return 'unavailable';
+}
+
+function parseReceipt(value: unknown): AiReceipt | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const status = raw.status === 'configured' || raw.status === 'pending' ? raw.status : null;
+  if (!status) return null;
+  // A configured receipt without the host and model it claims proves nothing:
+  // the wizard would render an empty success. Treat it as a broken response.
+  if (status === 'configured' && (!text(raw.provider) || !text(raw.model))) return null;
+  return {
+    status,
+    provider: text(raw.provider),
+    model: text(raw.model),
+    tool: text(raw.tool),
+    latencyMs: integer(raw.latency_ms),
+    inputTokens: integer(raw.input_tokens),
+    outputTokens: integer(raw.output_tokens),
+    pending: raw.pending === true || status === 'pending',
+    reason: text(raw.reason),
+    checkedAt: text(raw.checked_at),
+    deferredAt: text(raw.deferred_at),
+  };
+}
+
+function parseAiResult(body: unknown): AiResult | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const state = text(raw.state);
+  const receipt = parseReceipt(raw.ai);
+  if (!state || !receipt) return null;
+  return { ok: true, state, receipt };
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function parseAnswer(body: unknown): AssistantResult | null {
+  const raw = object(body);
+  if (!raw) return null;
+  const answer = text(raw.answer);
+  if (!answer) return null;
+  return {
+    ok: true,
+    answer,
+    tools: strings(raw.tools),
+    latencyMs: integer(raw.latency_ms) ?? 0,
   };
 }
 
@@ -290,7 +429,90 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     return { ok: true, session };
   }
 
-  return { getStatus, claim, getSession, csrfToken: () => csrfToken };
+  // Session writes for the AI step. The provider key is a parameter of this
+  // call and never a field of the client: it cannot be read back, replayed by
+  // a later request, or picked up by a component re-render.
+  async function aiWrite(path: string, payload: unknown, timeoutMs: number, options: RequestOptions): Promise<AiResult> {
+    const hasBody = payload !== undefined;
+    const result = await transport(path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      body: hasBody ? JSON.stringify(payload) : undefined,
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOf(body, response.status) };
+    const parsed = parseAiResult(body);
+    if (!parsed) return { ok: false, code: 'invalid-response' };
+    return parsed;
+  }
+
+  async function configureAi(input: AiProviderInput, options: RequestOptions = {}): Promise<AiResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_AI_TIMEOUT_MS;
+    return aiWrite('/ai', {
+      base_url: input.baseUrl.trim(),
+      model: input.model.trim(),
+      api_key: input.apiKey,
+    }, timeoutMs, options);
+  }
+
+  async function deferAi(options: RequestOptions = {}): Promise<AiResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
+    return aiWrite('/ai/defer', undefined, timeoutMs, options);
+  }
+
+  async function askAssistant(question: string, options: RequestOptions = {}): Promise<AssistantResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_ASK_TIMEOUT_MS;
+    const result = await transport('/assistant/ask', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ question }),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    const body = await readJson(response);
+    if (!response.ok) return { ok: false, code: diagnosticOf(body, response.status) };
+    const answer = parseAnswer(body);
+    if (!answer) return { ok: false, code: 'invalid-response' };
+    return answer;
+  }
+
+  async function logout(options: RequestOptions = {}): Promise<LogoutResult> {
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_WRITE_TIMEOUT_MS;
+    const result = await transport('/session/logout', {
+      method: 'POST',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+      headers: headers(),
+      signal: options.signal,
+    }, timeoutMs);
+    if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
+    const response = result.response;
+    if (!response.ok) return { ok: false, code: diagnosticOf(await readJson(response), response.status) };
+    csrfToken = null;
+    return { ok: true };
+  }
+
+  return {
+    getStatus,
+    claim,
+    getSession,
+    configureAi,
+    deferAi,
+    askAssistant,
+    logout,
+    csrfToken: () => csrfToken,
+  };
 }
 
 export const setupClient = createSetupClient();

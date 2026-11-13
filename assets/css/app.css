@@ -1519,3 +1519,92 @@ button.text-button {
   font-weight: 600;
   white-space: nowrap;
 }
+/* The AI step reuses the same primitives; these only lay out the receipt and
+   the pending notice, which have no earlier counterpart in the wizard. */
+.setup__ai {
+  display: grid;
+  gap: 14px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+.setup__ai > h2,
+.setup__pending h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.setup__pending {
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+.setup__pending p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+.setup__operator h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.setup__operator p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.setup__receipt {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.setup__receipt > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.setup__receipt dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+.setup__receipt dd {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.setup__ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.setup__assistant-answer {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+}
+.setup__assistant-answer h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.setup__assistant-answer .setup__lead {
+  margin: 0;
+}
+.setup__assistant-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
