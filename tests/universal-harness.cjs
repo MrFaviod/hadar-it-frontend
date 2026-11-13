@@ -7,7 +7,7 @@ function setup(entry='index.html'){
  // loop survives a test, and the layout settles synchronously.
  matchMedia:q=>({matches:true,media:String(q||''),addEventListener(){},removeEventListener(){},addListener(){},removeListener(){}}),
  requestAnimationFrame:fn=>setTimeout(()=>fn(Date.now()),0),cancelAnimationFrame:id=>clearTimeout(id),
- ResizeObserver:class{observe(){}unobserve(){}disconnect(){}}});c.window=c;
+ ResizeObserver:class{observe(){}unobserve(){}disconnect(){}},Document:class Document{}});c.window=c;
  vm.runInContext(fs.readFileSync('assets/vendor/vue.global.prod.js','utf8'),c);
  // The i18n runtime is part of the shipped script chain: the harness loads the
  // same vendored vue-i18n build and hands the runtime its authored catalogs so
@@ -16,7 +16,7 @@ function setup(entry='index.html'){
  const readCatalog=name=>{try{return JSON.parse(fs.readFileSync('assets/i18n/'+name+'.json','utf8'));}catch(_){return null;}};
  c.__ITSM_I18N_CATALOGS__={catalogs:{es:readCatalog('es'),en:readCatalog('en')},context:readCatalog('context')||{}};
  const decode=s=>s.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi,(_,e)=>({amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:'\u00a0'}[e]||String.fromCodePoint(e[1].toLowerCase()==='x'?parseInt(e.slice(2),16):Number(e.slice(1)))));
- c.document={createElement(){return {children:[],set innerHTML(v){this.textContent=decode(v);this.children=[{getAttribute:()=>decode((v.match(/foo="([\s\S]*)"/)||[])[1]||'')}];}};},title:'',documentElement:{attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name];}}};
+ c.document=Object.setPrototypeOf({contains(){return true;},createElement(){return {children:[],set innerHTML(v){this.textContent=decode(v);this.children=[{getAttribute:()=>decode((v.match(/foo="([\s\S]*)"/)||[])[1]||'')}];}};},title:'',documentElement:{attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name];}}},c.Document.prototype);
  const html=fs.readFileSync(entry,'utf8');
  for(const [,src] of html.matchAll(/<script src="([^"]+)"/g)){
   if((src.includes('/vendor/')&&!/report-qrcode|vue-i18n/.test(src))||/theme|sidebar|app\.js/.test(src))continue;
@@ -75,7 +75,7 @@ function setup(entry='index.html'){
  };
  const settle=async()=>{await new Promise(resolve=>setTimeout(resolve,0));await Vue.nextTick();await new Promise(resolve=>setTimeout(resolve,0));await Vue.nextTick();};
  const errors=[];
- const host={createElement:tag=>({tag,tagName:tag.toUpperCase(),props:{},children:[],parent:null,style:{},// Native listeners (including the v-model directives) are kept so a mounted
+ const host={createElement:tag=>({tag,tagName:tag.toUpperCase(),props:{},children:[],parent:null,style:{},getRootNode(){return c.document;},// Native listeners (including the v-model directives) are kept so a mounted
  // template can be driven through the same input/change events a browser sends.
  addEventListener(type,handler){(this.listeners||(this.listeners={}))[type]=handler;},removeEventListener(type){if(this.listeners)delete this.listeners[type];},get options(){return this.children;},get value(){return this.props.value;},set value(v){this.props.value=v;},selected:false,multiple:false,
  getBoundingClientRect:()=>({x:0,y:0,left:0,top:0,right:960,bottom:560,width:960,height:560}),

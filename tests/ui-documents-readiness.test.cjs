@@ -18,7 +18,8 @@ function setup() {
     console, Date, URL, Blob, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer,
     DataView, atob, btoa, setTimeout, clearTimeout,
     localStorage: storage, sessionStorage: storage,
-    location: { hash: '#/panel' }, history: { replaceState() {} }, navigator: {}
+    location: { hash: '#/panel' }, history: { replaceState() {} }, navigator: {},
+    Document: class Document {}
   });
   c.window = c;
   vm.runInContext(fs.readFileSync('assets/vendor/vue.global.prod.js', 'utf8'), c);
@@ -33,7 +34,7 @@ function setup() {
   const decode = (text) => text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_, entity) => ({
     amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0'
   }[entity] || String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)))));
-  c.document = {
+  c.document = Object.setPrototypeOf({
     createElement() {
       return {
         children: [],
@@ -43,8 +44,9 @@ function setup() {
         }
       };
     },
-    title: ''
-  };
+    title: '',
+    contains() { return true; }
+  }, c.Document.prototype);
   const html = fs.readFileSync('index.html', 'utf8');
   for (const [, src] of html.matchAll(/<script src="([^"]+)"/g)) {
     if ((src.includes('/vendor/') && !src.includes('report-qrcode')) || /theme|sidebar|app\.js/.test(src)) continue;
@@ -74,7 +76,7 @@ function setup() {
   const errors = [];
   const host = {
     createElement: (tag) => ({
-      tag, tagName: String(tag).toUpperCase(), props: {}, children: [], parent: null,
+      tag, tagName: String(tag).toUpperCase(), props: {}, children: [], parent: null, getRootNode() { return c.document; },
       addEventListener() {}, removeEventListener() {},
       get options() { return this.children; },
       get value() { return this.props.value; }, set value(value) { this.props.value = value; },

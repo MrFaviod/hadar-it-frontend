@@ -58,10 +58,10 @@ function canonicalServer(c) {
 }
 async function setup() {
   const storage = { getItem: () => null, setItem() {}, removeItem() {} };
-  const c = vm.createContext({ console, Date, URL, URLSearchParams, Blob, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, atob, btoa, setTimeout, clearTimeout, AbortController, AbortSignal, localStorage: storage, sessionStorage: storage, location: { hash: '#/panel' }, history: { replaceState() {} }, navigator: {} }); c.window = c;
+  const c = vm.createContext({ console, Date, URL, URLSearchParams, Blob, TextEncoder, TextDecoder, Uint8Array, ArrayBuffer, DataView, atob, btoa, setTimeout, clearTimeout, AbortController, AbortSignal, localStorage: storage, sessionStorage: storage, location: { hash: '#/panel' }, history: { replaceState() {} }, navigator: {}, Document: class Document {} }); c.window = c;
   vm.runInContext(fs.readFileSync(path.join(root, 'assets/vendor/vue.global.prod.js'), 'utf8'), c);
   const decode = text => text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_, entity) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' }[entity] || String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)))));
-  c.document = { createElement() { return { children: [], set innerHTML(v) { this.textContent = decode(v); this.children = [{ getAttribute: () => decode((v.match(/foo="([\s\S]*)"/) || [])[1] || '') }]; } }; }, title: '' };
+  c.document = Object.setPrototypeOf({ contains() { return true; }, createElement() { return { children: [], set innerHTML(v) { this.textContent = decode(v); this.children = [{ getAttribute: () => decode((v.match(/foo="([\s\S]*)"/) || [])[1] || '') }]; } }; }, title: '' }, c.Document.prototype);
   vm.runInContext(fs.readFileSync(path.join(root, 'assets/vendor/vue-i18n.global.prod.js'), 'utf8'), c);
   const catalog = tag => JSON.parse(fs.readFileSync(path.join(root, 'assets/i18n/' + tag + '.json'), 'utf8'));
   // The runtime boots from the shipped catalogs; the server bundle stays absent here.
@@ -86,7 +86,7 @@ async function setup() {
   for (const [name, fn] of Object.entries(computed)) Object.defineProperty(app, name, { get: () => fn.call(app), configurable: true });
   // Access state is owned by its existing mixin; no auth logic is replaced in production.
   const host = {
-    createElement: tag => ({ tag, tagName: tag.toUpperCase(), props: {}, children: [], parent: null, addEventListener() {}, removeEventListener() {}, get options() { return this.children; }, get value() { return this.props.value; }, set value(v) { this.props.value = v; }, selected: false, multiple: false }), createText: text => ({ tag: '#text', text, children: [] }), createComment: text => ({ tag: '#comment', text, children: [] }),
+    createElement: tag => ({ tag, tagName: tag.toUpperCase(), props: {}, children: [], parent: null, getRootNode() { return c.document; }, addEventListener() {}, removeEventListener() {}, get options() { return this.children; }, get value() { return this.props.value; }, set value(v) { this.props.value = v; }, selected: false, multiple: false }), createText: text => ({ tag: '#text', text, children: [] }), createComment: text => ({ tag: '#comment', text, children: [] }),
     setText: (n, t) => { n.text = t; }, setElementText: (n, t) => { n.text = t; n.children = []; }, patchProp: (n, k, o, v) => { n.props[k] = v; },
     insert(n, p, anchor) { if (n.parent) { const i = n.parent.children.indexOf(n); if (i >= 0) n.parent.children.splice(i, 1); } const i = anchor ? p.children.indexOf(anchor) : -1; if (i >= 0) p.children.splice(i, 0, n); else p.children.push(n); n.parent = p; },
     remove(n) { if (n.parent) { const i = n.parent.children.indexOf(n); if (i >= 0) n.parent.children.splice(i, 1); } }, parentNode: n => n.parent, nextSibling(n) { if (!n.parent) return null; return n.parent.children[n.parent.children.indexOf(n) + 1] || null; }
