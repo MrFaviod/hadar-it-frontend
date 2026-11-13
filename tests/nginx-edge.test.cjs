@@ -48,6 +48,11 @@ test('edge hides the nginx version', ()=>{
  assert.match(conf,/server_tokens\s+off\s*;/);
 });
 
+test('edge keeps the public authority on the setup proxy', ()=>{
+ const setup=location('/api/setup/v1/');
+ assert.match(setup,/proxy_set_header\s+Host\s+\$http_host\s*;/,'$host drops the port; the wizard then rejects its own same-origin claim');
+});
+
 test('edge reports the app CSP without enforcing it', ()=>{
  const m=conf.match(/add_header\s+Content-Security-Policy-Report-Only\s+"([^"]+)"\s+always\s*;/);
  assert.ok(m,'report-only CSP missing');
