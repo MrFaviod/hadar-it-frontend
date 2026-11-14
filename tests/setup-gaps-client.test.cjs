@@ -238,7 +238,7 @@ test('an appearance preview carries the normalized organization name', async () 
 
 test('a declared checklist item is kept apart from a pass', async () => {
   const { client } = claimedClient({
-    'POST /api/setup/v1/configuration/verify': {
+    'POST /api/setup/v1/verify': {
       status: 200,
       body: {
         state: 'verifying',
