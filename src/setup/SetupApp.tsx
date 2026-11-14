@@ -305,6 +305,12 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The service closes the installation once. Any setup answer that says the
+  // installation is already finished lands here, so a tab left open on an
+  // earlier step shows the completed screen instead of the failure its own
+  // step would otherwise report.
+  useEffect(() => client.onSetupComplete(() => finishCompleted(null)), [client]);
+
   useEffect(() => {
     if (step === 'claimed') heading.current?.focus();
   }, [step]);
@@ -710,10 +716,6 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (finished.current) return;
     setReportLoading(false);
     if (!result.ok) {
-      if (result.code === 'setup_complete') {
-        finishCompleted(null);
-        return;
-      }
       setReportError(result.code);
       setFocusRequest({ target: 'finish-error' });
       return;
@@ -729,10 +731,6 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     if (finished.current) return;
     if (!result.ok) {
       setCompleting(false);
-      if (result.code === 'setup_complete') {
-        finishCompleted(null);
-        return;
-      }
       setCompleteError(result.code);
       setFocusRequest({ target: 'finish-error' });
       return;

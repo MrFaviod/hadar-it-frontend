@@ -371,6 +371,9 @@ export interface RequestOptions {
   timeoutMs?: number;
 }
 
+/** Runs when any setup answer says the installation is already finished. */
+export type SetupCompleteListener = () => void;
+
 export interface SetupClient {
   getStatus(options?: RequestOptions): Promise<StatusResult>;
   claim(credential: string, options?: RequestOptions): Promise<ClaimResult>;
@@ -420,6 +423,12 @@ export interface SetupClient {
   askAssistant(question: string, options?: RequestOptions): Promise<AssistantResult>;
   /** Ends this browser's setup session; the token is dropped with it. */
   logout(options?: RequestOptions): Promise<LogoutResult>;
+  /**
+   * Registers the one reaction to a finished installation. Any setup answer
+   * the service refuses with 409 ``setup_complete`` runs it; nothing else does.
+   * Returns the unregister.
+   */
+  onSetupComplete(listener: SetupCompleteListener): () => void;
   /** In memory only: the setup session token never reaches any storage. */
   csrfToken(): string | null;
 }
@@ -1014,6 +1023,9 @@ function tokenOf(value: unknown): string | null {
 
 export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: number } = {}): SetupClient {
   let csrfToken: string | null = null;
+  // The installation closes exactly once, and a tab left open on any step must
+  // hear about it. One registry, one signal, and no page step maps it itself.
+  const setupCompleteListeners = new Set<SetupCompleteListener>();
 
   async function transport(path: string, init: RequestInit, timeoutMs: number, absolute = false): Promise<Transport> {
     const fetchImpl = defaults.fetch ?? (globalThis.fetch as FetchLike | undefined);
@@ -1045,6 +1057,31 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }
   }
 
+  // Every setup answer is read through here, so this is the one place that
+  // notices the installation was finished elsewhere. Only 409 with the closed
+  // ``setup_complete`` code counts; the body is inspected and dropped, never
+  // handed to the page as a diagnosis.
+  async function responseBody(response: Response): Promise<unknown> {
+    const body = await readJson(response);
+    if (response.status === 409 && isSetupComplete(body)) {
+      for (const listener of [...setupCompleteListeners]) {
+        try {
+          listener();
+        } catch {
+          // One listener must not hide the transition from the others.
+        }
+      }
+    }
+    return body;
+  }
+
+  function onSetupComplete(listener: SetupCompleteListener): () => void {
+    setupCompleteListeners.add(listener);
+    return () => {
+      setupCompleteListeners.delete(listener);
+    };
+  }
+
   function headers(extra: Record<string, string> = {}): Record<string, string> {
     const base: Record<string, string> = { Accept: 'application/json', ...extra };
     if (csrfToken) base['X-CSRF-Token'] = csrfToken;
@@ -1067,7 +1104,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     // from the API itself: that installation already exists, it is not fresh.
     if (response.status === 404) return { kind: 'existing-instance', reason: 'absent', status: null };
     if (!response.ok) return { kind: 'unavailable', reason: 'server', httpStatus: response.status };
-    const status = parseStatus(await readJson(response));
+    const status = parseStatus(await responseBody(response));
     if (!status) return { kind: 'unavailable', reason: 'invalid', httpStatus: response.status };
     if (!status.setup_enabled) return { kind: 'existing-instance', reason: 'disabled', status };
     if (status.state !== 'unclaimed' || !status.claim_available) {
@@ -1092,7 +1129,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
       return { ok: false, code, attemptsRemaining: null, detail: null };
     }
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (response.ok) {
       const token = tokenOf(body);
       const state = text(object(body)?.state);
@@ -1128,7 +1165,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     // 404 keeps the reload path on the claim step instead of a dead end.
     if (response.status === 401 || response.status === 403 || response.status === 404) return { ok: false, reason: 'denied' };
     if (!response.ok) return { ok: false, reason: 'unavailable' };
-    const body = await readJson(response);
+    const body = await responseBody(response);
     const session = parseSession(body);
     if (!session) return { ok: false, reason: 'unavailable' };
     // A reloaded wizard has no claim response left. GET /session returns the
@@ -1158,7 +1195,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOfStorage(body, response.status) };
     return { ok: true, body };
   }
@@ -1203,7 +1240,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOfOwner(body, response.status) };
     const parsed = parseOwnerResult(body);
     const state = text(object(body)?.state);
@@ -1232,7 +1269,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network', body: null };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status), body };
     return { ok: true, body };
   }
@@ -1260,7 +1297,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
     const overview = parseOverview(body);
     if (!overview) return { ok: false, code: 'invalid-response' };
@@ -1279,7 +1316,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
     const parsed = parseSectionDetail(body);
     if (!parsed || parsed.section !== section) return { ok: false, code: 'invalid-response' };
@@ -1408,7 +1445,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) {
       if (isSetupComplete(body)) return { ok: false, code: 'setup_complete' };
       return { ok: false, code: diagnosticOfConfiguration(body, response.status) };
@@ -1461,7 +1498,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs, true);
     if (!result.ok) return 'unknown';
     const response = result.response;
-    const raw = object(await readJson(response));
+    const raw = object(await responseBody(response));
     const flag = raw?.installation_complete;
     if (typeof flag === 'boolean') return flag ? 'complete' : 'incomplete';
     return 'unknown';
@@ -1483,7 +1520,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOf(body, response.status) };
     const parsed = parseAiResult(body);
     if (!parsed) return { ok: false, code: 'invalid-response' };
@@ -1517,7 +1554,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    const body = await readJson(response);
+    const body = await responseBody(response);
     if (!response.ok) return { ok: false, code: diagnosticOf(body, response.status) };
     const answer = parseAnswer(body);
     if (!answer) return { ok: false, code: 'invalid-response' };
@@ -1536,7 +1573,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     }, timeoutMs);
     if (!result.ok) return { ok: false, code: result.reason === 'timeout' ? 'timeout' : 'network' };
     const response = result.response;
-    if (!response.ok) return { ok: false, code: diagnosticOf(await readJson(response), response.status) };
+    if (!response.ok) return { ok: false, code: diagnosticOf(await responseBody(response), response.status) };
     csrfToken = null;
     return { ok: true };
   }
@@ -1563,6 +1600,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     deferAi,
     askAssistant,
     logout,
+    onSetupComplete,
     csrfToken: () => csrfToken,
   };
 }
