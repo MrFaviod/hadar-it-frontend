@@ -817,7 +817,13 @@
         this.historyNarrow = typeof window.innerWidth === 'number' && window.innerWidth <= HISTORY_NARROW_PX;
       },
       historyGroupLabel(key) {
-        return tr('ui.chat.history_' + key);
+        var labels = {
+          today: tr('ui.chat.history_today'),
+          yesterday: tr('ui.chat.history_yesterday'),
+          week: tr('ui.chat.history_week'),
+          older: tr('ui.chat.history_older')
+        };
+        return labels[key] || '';
       },
       historyName(session) {
         return session.model || session.engine || tr('ui.chat.title');
