@@ -478,6 +478,9 @@
     patchSession(vm, id, body, options) {
       return window.AssetAccess.request(vm, '/agent/sessions/' + encodeURIComponent(id), Object.assign({ method: 'PATCH', body }, options || {}));
     },
+    deleteSession(vm, id, options) {
+      return window.AssetAccess.request(vm, '/agent/sessions/' + encodeURIComponent(id), Object.assign({ method: 'DELETE' }, options || {}));
+    },
     cancelSession(vm, id, options) {
       return window.AssetAccess.request(vm, '/agent/sessions/' + encodeURIComponent(id) + '/cancel', Object.assign({ method: 'POST' }, options || {}));
     },
