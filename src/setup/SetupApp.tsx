@@ -21,6 +21,7 @@ import {
   type StorageDiagnosticCode,
   type StorageProbe,
   type StorageSummary,
+  isSectionStatus,
 } from './client';
 import {
   clearOwnerSecrets,
@@ -585,9 +586,48 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       return;
     }
     // The receipt is the service's read-back: the section takes its status
-    // from it, never from the request that was sent.
+    // from it, never from the request that was sent. The origin/session apply
+    // answers ``applied`` — the call's own word, not a section status — so only
+    // a stored section status is written back.
     setSections((current) => current.map((entry) => (entry.section === section
-      ? { ...entry, status: result.receipt.status, required: result.receipt.required, postponable: result.receipt.postponable }
+      ? {
+        ...entry,
+        status: isSectionStatus(result.receipt.status) ? result.receipt.status : entry.status,
+        required: result.receipt.required,
+        postponable: result.receipt.postponable,
+      }
+      : entry)));
+    setPreviews((current) => {
+      const next = { ...current };
+      delete next[section];
+      return next;
+    });
+    setReceipts((current) => ({ ...current, [section]: result.receipt }));
+    const refreshed = await client.getSection(section);
+    if (refreshed.ok) {
+      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
+    }
+  }
+
+  // A declaration is recorded as ``declared``: the page shows the word the
+  // service answered and refreshes the section, never paints it as a pass.
+  async function declareConfiguration(section: SectionId, values: SectionInput) {
+    if (configBusy) return;
+    setConfigBusy(section);
+    setConfigurationError(null);
+    const result = await client.declareSection(section, values, true);
+    setConfigBusy(null);
+    if (!result.ok) {
+      setConfigurationError(result.code);
+      return;
+    }
+    setSections((current) => current.map((entry) => (entry.section === section
+      ? {
+        ...entry,
+        status: isSectionStatus(result.receipt.status) ? result.receipt.status : entry.status,
+        required: result.receipt.required,
+        postponable: result.receipt.postponable,
+      }
       : entry)));
     setPreviews((current) => {
       const next = { ...current };
@@ -801,9 +841,11 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
     && !checking
     && !applying;
   // The production backup is the only requirement a person may accept as a
-  // risk; it stays on offer until the checklist records that acceptance.
+  // risk; it stays on offer until the checklist records that acceptance. A
+  // policy the service recorded as ``declared`` already answered the item, so
+  // accepting a risk is no longer on offer for it.
   const riskItem = checklist?.items.find((item) => item.id === 'backup_policy_declared'
-    && item.required && !item.acceptedRisk && item.status !== 'passed') ?? null;
+    && item.required && !item.acceptedRisk && item.status !== 'passed' && item.status !== 'declared') ?? null;
   const badge = (status: StepStatus) => t!(
     status === 'done' ? 'ui.setup.steps.done'
       : status === 'active' ? 'ui.setup.steps.active'
@@ -1476,6 +1518,7 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
                   assistant={{ answer, tools: answerTools, latency: answerLatency, asking, error: assistantError }}
                   onPreview={(section, values) => { void previewConfiguration(section, values); }}
                   onApply={(section, values) => { void applyConfiguration(section, values); }}
+                  onDeclare={(section, values) => { void declareConfiguration(section, values); }}
                   onDiscard={(section) => {
                     setPreviews((current) => {
                       const next = { ...current };

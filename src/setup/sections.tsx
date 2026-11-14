@@ -21,7 +21,9 @@ import type {
   SectionPreview,
   SetupReport,
 } from './client';
-import { SECTION_ROUTES, chipFor, choicesFor, currentRows, suggestionsFor, type SectionChip } from './section-status';
+import { SECTION_ROUTES, chipFor, choicesFor, currentRows, providerRecord, suggestionsFor, type SectionChip } from './section-status';
+import { AgentProviderRecord, OperationalForms } from './gap-panels';
+import { organizationNameError } from './gap-forms';
 import type { Translator } from './strings';
 import '../../assets/css/setup.css';
 
@@ -30,6 +32,7 @@ const CHIP_LABEL: Record<SectionChip, string> = {
   passed: 'ui.setup.config.chip.applied',
   postponed: 'ui.setup.config.chip.postponed',
   risk: 'ui.setup.config.chip.risk',
+  declared: 'ui.setup.config.chip.declared',
 };
 
 const CHECK_LABEL: Record<string, string> = {
@@ -38,8 +41,17 @@ const CHECK_LABEL: Record<string, string> = {
   pending: 'ui.setup.verify.status.pending',
   postponed: 'ui.setup.verify.status.postponed',
   risk: 'ui.setup.verify.status.risk',
+  declared: 'ui.setup.verify.status.declared',
+  applied: 'ui.setup.config.chip.applied',
   unavailable: 'ui.setup.verify.status.unavailable',
   not_required: 'ui.setup.verify.status.not_required',
+};
+
+/** Why the organization name the operator typed cannot be sent. */
+const ORG_ERROR: Record<string, string> = {
+  control: 'ui.setup.config.error.field_control',
+  too_long: 'ui.setup.config.error.field_too_long',
+  charset: 'ui.setup.config.error.field_charset',
 };
 
 /** Checklist ids the contract defines; anything else is shown as data. */
@@ -70,10 +82,11 @@ interface FieldSpec {
   kind: FieldKind;
 }
 
-// The values each editable section accepts. Operational items are observed by
-// verify, not configured here, so that section has no editor at all.
+// The values each editable section accepts through the generic editor.
+// Operational is not here: its declaration and origin/session editors own
+// their own forms and preview/apply actions.
 const SECTION_FIELDS: Partial<Record<SectionId, FieldSpec[]>> = {
-  appearance: [{ name: 'preset', kind: 'select' }],
+  appearance: [{ name: 'preset', kind: 'select' }, { name: 'organizationName', kind: 'text' }],
   agent: [{ name: 'provider', kind: 'text' }, { name: 'model', kind: 'text' }],
   notifications: [{ name: 'kind', kind: 'text' }, { name: 'name', kind: 'text' }, { name: 'enabled', kind: 'toggle' }],
   monitoring: [{ name: 'category', kind: 'text' }, { name: 'checkType', kind: 'text' }, { name: 'enabled', kind: 'toggle' }],
@@ -141,6 +154,8 @@ export interface ConfigurationPanelProps {
   assistant: AssistantView;
   onPreview: (section: SectionId, values: SectionInput) => void;
   onApply: (section: SectionId, values: SectionInput) => void;
+  /** The operational declaration: action ``declare``, never an apply. */
+  onDeclare: (section: SectionId, values: SectionInput) => void;
   onDiscard: (section: SectionId) => void;
   onPostpone: (section: SectionId) => void;
   onAcceptRisk: (section: SectionId, item: string, reason: string) => void;
@@ -233,6 +248,7 @@ export function ConfigurationPanel(props: ConfigurationPanelProps) {
           appUsable={appUsable}
           onPreview={props.onPreview}
           onApply={props.onApply}
+          onDeclare={props.onDeclare}
           onDiscard={props.onDiscard}
           onPostpone={props.onPostpone}
           onAcceptRisk={props.onAcceptRisk}
@@ -324,6 +340,7 @@ interface SectionCardProps {
   appUsable: boolean;
   onPreview: (section: SectionId, values: SectionInput) => void;
   onApply: (section: SectionId, values: SectionInput) => void;
+  onDeclare: (section: SectionId, values: SectionInput) => void;
   onDiscard: (section: SectionId) => void;
   onPostpone: (section: SectionId) => void;
   onAcceptRisk: (section: SectionId, item: string, reason: string) => void;
@@ -360,7 +377,16 @@ function SectionCard(props: SectionCardProps) {
     const seeded = typeof before === 'boolean' ? String(before) : typeof before === 'string' ? before : '';
     return (draft[field.name] ?? '') !== seeded;
   });
-  const canPreview = fields.length > 0 && Object.keys(values).length > 0 && dirty && !busy;
+  // The organization name is the one value here the page can judge before the
+  // service sees it: bounded, printable, from the allowed set and optional.
+  const orgError = fields.some((field) => field.name === 'organizationName')
+    ? organizationNameError(draft.organizationName ?? '')
+    : null;
+  const canPreview = fields.length > 0 && Object.keys(values).length > 0 && dirty && !busy && orgError === null;
+  const inputId = (name: string, kind: FieldKind) => (fields.length === 1 || kind === 'select'
+    ? `setup-config-input-${section.section}`
+    : `setup-config-input-${section.section}-${name}`);
+  const formErrorId = `setup-config-form-error-${section.section}`;
 
   // The service is the authority on the stored values: a refresh replaces the
   // draft so the form never keeps a value the read-back no longer reports.
@@ -411,19 +437,25 @@ function SectionCard(props: SectionCardProps) {
         <p className="field__hint" data-setup-config-value={section.section}>{t('ui.setup.config.no_value')}</p>
       )}
 
+      {section.section === 'agent' ? (
+        <AgentProviderRecord t={t} linked={providerRecord(section, receipt)} />
+      ) : null}
+
       {fields.length > 0 ? (
-        <div className="setup-config__row">
+        <div className="setup-config__row" data-setup-config-form={section.section}>
+          {orgError ? (
+            <div className="form-alert" role="alert" id={formErrorId} data-setup-config-form-error={section.section}>
+              {t(ORG_ERROR[orgError] ?? 'ui.setup.config.error.field_charset')}
+            </div>
+          ) : null}
           {fields.map((field) => (
             <div className="field" key={field.name}>
-              <label htmlFor={fields.length === 1
-                ? `setup-config-input-${section.section}`
-                : `setup-config-input-${section.section}-${field.name}`}
-              >
+              <label htmlFor={inputId(field.name, field.kind)}>
                 {t(`ui.setup.config.field.${field.name}`)}
               </label>
               {field.kind === 'select' ? (
                 <select
-                  id={`setup-config-input-${section.section}`}
+                  id={inputId(field.name, field.kind)}
                   className="setup-config__select"
                   value={draft[field.name] ?? ''}
                   disabled={busy}
@@ -437,7 +469,7 @@ function SectionCard(props: SectionCardProps) {
                 </select>
               ) : field.kind === 'toggle' ? (
                 <input
-                  id={`setup-config-input-${section.section}-${field.name}`}
+                  id={inputId(field.name, field.kind)}
                   type="checkbox"
                   checked={(draft[field.name] ?? 'true') !== 'false'}
                   disabled={busy}
@@ -448,10 +480,14 @@ function SectionCard(props: SectionCardProps) {
                 />
               ) : (
                 <input
-                  id={`setup-config-input-${section.section}-${field.name}`}
+                  id={inputId(field.name, field.kind)}
                   type="text"
                   value={draft[field.name] ?? ''}
-                  maxLength={200}
+                  maxLength={field.name === 'organizationName' ? 120 : 200}
+                  required={field.name === 'organizationName' ? undefined : true}
+                  aria-invalid={field.name === 'organizationName' && orgError ? true : undefined}
+                  aria-describedby={field.name === 'organizationName' && orgError ? formErrorId : undefined}
+                  placeholder={field.name === 'organizationName' ? t('ui.setup.config.field.organizationName_hint') : undefined}
                   disabled={busy}
                   onChange={(event) => {
                     setDraft((value) => ({ ...value, [field.name]: event.target.value }));
@@ -473,7 +509,7 @@ function SectionCard(props: SectionCardProps) {
         </div>
       ) : null}
 
-      {preview ? (
+      {preview && section.section !== 'operational' ? (
         <div className="setup-config__diff" ref={previewRef} tabIndex={-1} aria-live="polite" data-setup-config-preview={section.section}>
           <h4>{t('ui.setup.config.preview_title')}</h4>
           {preview.changes.length > 0 ? (
@@ -520,6 +556,19 @@ function SectionCard(props: SectionCardProps) {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {section.section === 'operational' ? (
+        <OperationalForms
+          t={t}
+          busy={busy}
+          preview={preview}
+          receipt={receipt}
+          state={section.operational ?? receipt?.operational ?? null}
+          onPreview={props.onPreview}
+          onApply={props.onApply}
+          onDeclare={props.onDeclare}
+        />
       ) : null}
 
       {showRisk && props.riskItem ? (
