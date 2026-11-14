@@ -1144,6 +1144,17 @@
   --od-icon-size: 13px;
 }
 
+/* Declared after the composer block, so the phone 44px target is restated
+ * here or this base rule would win the cascade. */
+@media (max-width: 700px) {
+  .conversation__chip-remove {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .conversation__chip-remove:hover:not(:disabled) {
   color: var(--ink-900);
   background: color-mix(in srgb, var(--teal-600) 14%, transparent);
@@ -1256,7 +1267,8 @@
 
   /* The header pickers sit in the touch lane too: at phone widths they grow to
    * the 44px target instead of keeping the desktop 36px row. */
-  .conversation__select {
+  .conversation__select,
+  .conversation--compact .conversation__select {
     min-height: 44px;
   }
 
