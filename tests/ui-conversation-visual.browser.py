@@ -64,7 +64,7 @@ FULL_MATRIX = (
 
 COPY = {
     'es': {
-        'title': 'Conversación',
+        'title': 'Nueva conversación',
         'provider': 'Proveedor',
         'model': 'Modelo',
         'settings': 'Configuración',
@@ -108,7 +108,7 @@ COPY = {
         'role_agent': 'Agente',
     },
     'en': {
-        'title': 'Conversation',
+        'title': 'New conversation',
         'provider': 'Provider',
         'model': 'Model',
         'settings': 'Settings',
@@ -617,7 +617,12 @@ def assert_compact_open(page, locale: str) -> None:
         "el => el.classList.contains('conversation--compact')")
     assert page.locator('#conversation-opener').is_hidden(), 'the opener must not overlap the panel'
     expect(page.locator('#conversation-provider')).to_be_enabled()
-    expect(page.locator('#conversation-title')).to_have_text(COPY[locale]['title'])
+    # The title follows the first question (OpenWebUI style); before any turn
+    # it reads the "new conversation" label.
+    expect(page.locator('#conversation-title')).to_be_visible()
+    assert page.locator('#conversation-title').inner_text().strip(), 'title is never blank'
+    if page.locator('.conversation__turn').count() == 0:
+        expect(page.locator('#conversation-title')).to_have_text(COPY[locale]['title'])
     expect(page.locator('#conversation-input')).to_be_visible()
     expect(page.locator('#conversation-send')).to_be_visible()
 
