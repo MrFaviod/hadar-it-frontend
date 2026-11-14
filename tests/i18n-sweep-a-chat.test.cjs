@@ -63,7 +63,9 @@ test('T3a chat surface renders from the catalog and switches language in place',
   await s.settle();
   await bothLocales(s, {
     es: (copy) => {
-      assert.match(copy, /Conversación/, 'Spanish title is unchanged');
+      // The header now names the conversation instead of repeating the route
+      // label: an empty transcript starts as "Nueva conversación".
+      assert.match(copy, /Nueva conversación/, 'the empty conversation is named in Spanish');
       assert.match(copy, /Proveedor/, 'the provider selector label is translated');
       assert.match(copy, /Modelo/, 'the model selector label is translated');
       assert.match(copy, /Configuración/, 'the single configuration action is translated');
@@ -74,7 +76,7 @@ test('T3a chat surface renders from the catalog and switches language in place',
       assert.match(input, /Ej\.: Muéstrame los servidores de Matriz/, 'Spanish placeholder is unchanged');
     },
     en: (copy) => {
-      assert.match(copy, /Conversation/, 'the English title is shown');
+      assert.match(copy, /New conversation/, 'the empty conversation is named in English');
       assert.match(copy, /Provider/, 'the English provider label is shown');
       assert.match(copy, /Model/, 'the English model label is shown');
       assert.match(copy, /Settings/, 'the English configuration action is shown');

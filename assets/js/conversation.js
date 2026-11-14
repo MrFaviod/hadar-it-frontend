@@ -366,6 +366,15 @@
       hasMessages() {
         return this.messages.length > 0;
       },
+      /* El primer turno del usuario nombra la conversación; el listado del
+       * servidor no envía títulos, así que aquí no se inventa otro dato. */
+      conversationTitle() {
+        const first = this.messages.find(message => message.role === 'user' &&
+          typeof message.content === 'string' && message.content.trim());
+        if (!first) return tr('ui.chat.session_new');
+        const text = first.content.trim().replace(/\s+/g, ' ');
+        return text.length > 48 ? text.slice(0, 47).trimEnd() + '…' : text;
+      },
       isConversationRoute() {
         return !!(this.app.route && this.app.route.name === 'conversation');
       },
@@ -1518,38 +1527,40 @@
       }
     },
     template: [
-      '<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute, \'conversation-host--open\': panelOpen }">',
-      '  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" :title="$t(\'ui.chat.title\')" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon><span id="conversation-opener-label" class="conversation-opener__label"> {{ $t(\'ui.chat.title\') }}</span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
-      '<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
-      '  <header class="page-head conversation__head">',
-      '    <div>',
-      '      <h1 v-if="isConversationRoute" id="conversation-title">{{ $t(\'ui.chat.title\') }}</h1>',
-      '      <h2 v-else id="conversation-title">{{ $t(\'ui.chat.title\') }}</h2>',
-      '    </div>',
-      '    <div class="conversation__window-actions">',
-      '      <button v-if="!isConversationRoute" id="conversation-expand" type="button" class="btn btn--ghost btn--small" @click="expandConversation">{{ $t(\'ui.chat.expand\') }}</button>',
-      '      <button v-else id="conversation-collapse" type="button" class="btn btn--ghost btn--small" @click="collapseConversation">{{ $t(\'ui.chat.collapse\') }}</button>',
-      '      <button v-if="!isConversationRoute" type="button" class="icon-button" :aria-label="$t(\'ui.chat.close_panel\')" @click="closePanel"><app-icon name="close"></app-icon></button>',
-      '    </div>',
-      '  </header>',
-      '  <div class="conversation__body">',
-      '  <div v-if="!legacyFallback" class="conversation__toolbar" role="group" :aria-label="$t(\'ui.chat.engine_title\')">',
-      '    <div class="conversation__field">',
-      '      <label class="conversation__label" for="conversation-provider">{{ $t(\'ui.chat.provider_label\') }}</label>',
-      '      <select id="conversation-provider" class="conversation__select" :value="chatProviderValue" :disabled="chatProviderDisabled" @change="changeChatProvider($event)">',
-      '        <option v-if="!chatProviderChoices.length" value="">{{ $t(\'ui.system.executor.unconfigured_state\') }}</option>',
-      '        <option v-for="choice in chatProviderChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
-      '      </select>',
-      '    </div>',
-      '    <div class="conversation__field">',
-      '      <label class="conversation__label" for="conversation-model">{{ $t(\'ui.chat.model_label\') }}</label>',
-      '      <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
-      '        <option v-if="!agentModels.length" value="">{{ $t(\'ui.chat.models_none\') }}</option>',
-      '        <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
-      '      </select>',
-      '    </div>',
-      '    <a v-if="canConfigureChat" id="conversation-config" class="btn btn--secondary conversation__config" href="#/configuracion/ia" :aria-label="$t(\'ui.page.settings\')" :title="$t(\'ui.page.settings\')" @click.prevent="openChatConfig"><app-icon name="sliders"></app-icon><span class="conversation__config-label">{{ $t(\'ui.page.settings\') }}</span></a>',
-      '  </div>',
+'<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute, \'conversation-host--open\': panelOpen }">',
+'  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" :title="$t(\'ui.chat.title\')" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon><span id="conversation-opener-label" class="conversation-opener__label"> {{ $t(\'ui.chat.title\') }}</span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
+'<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
+'  <div class="conversation__main">',
+'  <header class="conversation__head">',
+'    <div class="conversation__title-block">',
+'      <h1 v-if="isConversationRoute" id="conversation-title" class="conversation__title">{{ conversationTitle }}</h1>',
+'      <h2 v-else id="conversation-title" class="conversation__title">{{ conversationTitle }}</h2>',
+'      <p v-if="!legacyFallback && agentActiveInstance" class="conversation__subtitle">{{ agentActiveInstance.name }}</p>',
+'    </div>',
+'    <div class="conversation__head-tools">',
+'      <div v-if="!legacyFallback" class="conversation__model-picker" role="group" :aria-label="$t(\'ui.chat.engine_title\')">',
+'        <label class="conversation__picker"><span class="conversation__picker-label">{{ $t(\'ui.chat.provider_label\') }}</span>',
+'          <select id="conversation-provider" class="conversation__select" :value="chatProviderValue" :disabled="chatProviderDisabled" @change="changeChatProvider($event)">',
+'            <option v-if="!chatProviderChoices.length" value="">{{ $t(\'ui.system.executor.unconfigured_state\') }}</option>',
+'            <option v-for="choice in chatProviderChoices" :key="choice.value" :value="choice.value" :disabled="choice.disabled">{{ choice.label }}{{ choice.disabled ? $t(\'ui.chat.disabled_suffix\') : "" }}</option>',
+'          </select>',
+'        </label>',
+'        <label class="conversation__picker"><span class="conversation__picker-label">{{ $t(\'ui.chat.model_label\') }}</span>',
+'          <select id="conversation-model" class="conversation__select" :value="agentPreference.model" :disabled="busy || selecting || resuming || sessionRunning || !agentModels.length || hasPendingAttachments" @change="changeModel($event.target.value)">',
+'            <option v-if="!agentModels.length" value="">{{ $t(\'ui.chat.models_none\') }}</option>',
+'            <option v-for="model in agentModels" :key="model.id" :value="model.id">{{ agentModelLabel(model) }}</option>',
+'          </select>',
+'        </label>',
+'        <a v-if="canConfigureChat" id="conversation-config" class="conversation__config" href="#/configuracion/ia" :aria-label="$t(\'ui.page.settings\')" :title="$t(\'ui.page.settings\')" @click.prevent="openChatConfig"><app-icon name="sliders"></app-icon><span class="conversation__config-label">{{ $t(\'ui.page.settings\') }}</span></a>',
+'      </div>',
+'      <div class="conversation__window-actions">',
+'        <button v-if="!isConversationRoute" id="conversation-expand" type="button" class="btn btn--ghost btn--small" @click="expandConversation">{{ $t(\'ui.chat.expand\') }}</button>',
+'        <button v-else id="conversation-collapse" type="button" class="btn btn--ghost btn--small" @click="collapseConversation">{{ $t(\'ui.chat.collapse\') }}</button>',
+'        <button v-if="!isConversationRoute" type="button" class="icon-button" :aria-label="$t(\'ui.chat.close_panel\')" @click="closePanel"><app-icon name="close"></app-icon></button>',
+'      </div>',
+'    </div>',
+'  </header>',
+'  <div class="conversation__body">',
       '  <p v-if="agentEnginesLoading" class="conversation__meta" role="status">{{ $t(\'ui.chat.engines_loading\') }}</p>',
       '  <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
       '  <p v-if="hasPendingAttachments" id="conversation-attachment-lock" class="conversation__help" role="status">{{ $t(\'ui.chat.attachment_lock\') }}</p>',
@@ -1665,6 +1676,7 @@
       '    </div>',
       '    <p v-if="sessionAttachmentCount" class="conversation__meta">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
       '  </form>',
+'  </div>',
       '</section>',
       '</div>'
     ].join('\n')
