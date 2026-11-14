@@ -1443,6 +1443,18 @@
   height: 24px;
 }
 
+/* The floating entry is fixed over the page, so the page pays for it: the main
+ * scroll container keeps enough bottom padding for a card to scroll clear of
+ * the button. The padding exists only while the button is actually on screen
+ * and the button itself never moves. */
+.main:has(.conversation-fab:not([hidden])) {
+  scroll-padding-bottom: calc(var(--conversation-fab-size) + var(--conversation-fab-bottom) + 16px);
+  padding-bottom: max(
+    calc(var(--conversation-fab-size) + var(--conversation-fab-bottom) + 16px),
+    64px
+  );
+}
+
 /* `hidden` is honoured: the flotante gives way to the panel it just opened. */
 .conversation-fab[hidden] {
   display: none;
