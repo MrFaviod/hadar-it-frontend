@@ -22,6 +22,9 @@
   const MAX_ATTACHMENTS = 4;
   const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
   const MAX_SESSION_ATTACHMENTS = 20;
+  // Canvas routes own their own floating controls; the chat button never
+  // paints over them.
+  const CANVAS_ROUTES = ['graph', 'map'];
   const IMAGE_NAME_RE = /\.(png|jpe?g|webp|gif)$/i;
   const PDF_NAME_RE = /\.pdf$/i;
   const TEXT_NAME_RE = /\.(txt|csv)$/i;
@@ -169,6 +172,7 @@
         reconnecting: false,
         panelOpen: false,
         opener: null,
+        panelAnchor: '',
         lastModuleRoute: { name: 'panel' },
         savedSessions: [],
         sessionsLoading: false,
@@ -392,6 +396,14 @@
       isConversationRoute() {
         return !!(this.app.route && this.app.route.name === 'conversation');
       },
+      /* El mapa y el grafo son lienzos: el botón flotante se retira para no
+       * tapar sus controles. La entrada de la barra sigue disponible. */
+      canvasRoute() {
+        return !!(this.app.route && CANVAS_ROUTES.includes(this.app.route.name));
+      },
+      fabVisible() {
+        return this.canUseConversation && !this.isConversationRoute && !this.canvasRoute;
+      },
       surfaceVisible() {
         return this.authenticated && (this.isConversationRoute || this.panelOpen);
       },
@@ -564,7 +576,10 @@
       },
       async openPanel(event) {
         if (!this.canUseConversation) return false;
-        this.opener = (event && event.currentTarget) || this.$refs.opener || null;
+        const trigger = (event && event.currentTarget) || null;
+        const isFab = !!(trigger && trigger.id === 'conversation-fab');
+        this.opener = trigger || this.$refs.opener || null;
+        this.panelAnchor = isFab ? 'fab' : '';
         this.panelOpen = true;
         if (!this.busy) void this.loadEnginesForChat();
         await this.$nextTick();
@@ -573,6 +588,7 @@
       },
       closePanel() {
         this.panelOpen = false;
+        this.panelAnchor = '';
         const opener = this.opener || this.$refs.opener;
         void this.$nextTick(() => {
           if (this.authenticated && opener && typeof opener.focus === 'function') opener.focus();
@@ -689,6 +705,7 @@
         this.agentPreferenceEpoch += 1;
         this.panelOpen = false;
         this.opener = null;
+        this.panelAnchor = '';
         this.lastModuleRoute = { name: 'panel' };
         this.savedSessions = [];
         this.sessionsLoading = false;
@@ -1621,9 +1638,9 @@
     },
     template: [
 '<div class="conversation-host" :class="{ \'conversation-host--full\': isConversationRoute, \'conversation-host--open\': panelOpen }">',
-'  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" :title="$t(\'ui.chat.title\')" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="send"></app-icon><span id="conversation-opener-label" class="conversation-opener__label"> {{ $t(\'ui.chat.title\') }}</span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
-'<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
-'  <div class="conversation__main">',
+'  <button v-if="canUseConversation && !isConversationRoute" id="conversation-opener" ref="opener" type="button" class="btn btn--secondary conversation-opener" :aria-label="panelOpen ? $t(\'ui.chat.close_panel\') : $t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" :title="$t(\'ui.chat.title\')" @click="panelOpen ? closePanel() : openPanel($event)"><app-icon name="chat"></app-icon><span id="conversation-opener-label" class="conversation-opener__label">{{ $t(\'ui.chat.title\') }}</span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
+'  <button v-if="fabVisible" id="conversation-fab" :hidden="panelOpen" type="button" class="conversation-fab" :class="{ \'conversation-fab--busy\': busy }" :aria-label="$t(\'ui.chat.open_panel\')" aria-controls="conversation-surface" :aria-expanded="panelOpen" :title="$t(\'ui.chat.title\')" @click="openPanel($event)"><app-icon name="chat"></app-icon><span v-if="busy" class="conversation-fab__dot" aria-hidden="true"></span><span v-if="busy" class="sr-only">{{ $t(\'ui.chat.response_in_progress\') }}</span></button>',
+'<section id="conversation-surface" class="conversation" :class="{ \'conversation--compact\': !isConversationRoute, \'conversation--from-fab\': !isConversationRoute && panelAnchor === \'fab\' }" :hidden="!surfaceVisible" aria-labelledby="conversation-title">',
 '  <header class="conversation__head">',
 '    <div class="conversation__title-block">',
 '      <h1 v-if="isConversationRoute" id="conversation-title" class="conversation__title">{{ conversationTitle }}</h1>',
