@@ -129,6 +129,10 @@
 .conversation {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /* The header keeps its own height; the frame takes the rest. Without this
+   * the implicit rows stretch evenly and the one-line header floats in a
+   * band as tall as the transcript. */
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -813,6 +817,8 @@
 
 .conversation__suggestion {
   width: 100%;
+  /* Cards in one row share the tallest card's height. */
+  height: 100%;
   min-height: 44px;
   padding: 10px 14px;
   color: var(--text);
@@ -871,7 +877,8 @@
   gap: 6px;
   width: 100%;
   max-width: var(--conversation-column);
-  margin: 0 auto;
+  /* Breathing room under the pill so it never sits on the panel edge. */
+  margin: 0 auto 12px;
   padding: 9px 10px 9px 14px;
   background: var(--paper);
   border: 1px solid var(--border);
@@ -908,13 +915,17 @@
  * the actions keep their size, both sitting on the same baseline. */
 .conversation__field {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 6px;
   min-width: 0;
 }
 
+/* The textarea keeps a real width: when the actions (context picker on a
+ * phone) don't fit beside it, they drop to their own row instead. */
 .conversation__form textarea {
-  flex: 1 1 auto;
+  flex: 1 1 220px;
+  min-width: 0;
   width: 100%;
   min-height: 36px;
   max-height: 200px;
@@ -935,11 +946,12 @@
 
 .conversation__form-actions {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
   flex-wrap: nowrap;
   align-items: flex-end;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
   margin-left: auto;
 }
 
