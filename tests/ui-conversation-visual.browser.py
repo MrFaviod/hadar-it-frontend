@@ -86,6 +86,7 @@ COPY = {
         'running_server': 'El servidor indica una ejecución en curso.',
         'approval': 'La última operación queda pendiente de aprobación en el servidor.',
         'tools': 'Herramientas',
+        'tools_used': 'herramientas',
         'actions': 'Acciones ejecutadas',
         'results': 'Activos mencionados',
         'reviews': 'Extensiones pendientes de revisión',
@@ -129,6 +130,7 @@ COPY = {
         'running_server': 'The server reports a run in progress.',
         'approval': 'The last operation is waiting for server approval.',
         'tools': 'Tools',
+        'tools_used': 'tools',
         'actions': 'Actions executed',
         'results': 'Assets mentioned',
         'reviews': 'Extensions awaiting review',
@@ -641,9 +643,19 @@ def assert_contained(page, selector: str, label: str) -> None:
     assert worst <= 1, f'{label}: content overflows its container by {worst}px'
 
 
+def open_activity(page) -> None:
+    """The tool/result block is collapsed by default; open it to inspect rows."""
+    details = page.locator('.conversation__details').first
+    if details.count() and not details.evaluate('el => el.open'):
+        details.locator('summary').click()
+        page.wait_for_timeout(40)
+
+
 def assert_compact_reply(page, locale: str) -> None:
     assert_compact_open(page, locale)
     expect(page.locator('.conversation__turn')).to_have_count(2)
+    expect(page.locator('.conversation__details-summary')).to_contain_text(COPY[locale]['tools_used'])
+    open_activity(page)
     expect(page.locator('#conversation-results')).to_be_visible()
     assert_contained(page, '.conversation__body', 'compact panel body')
     body = page.locator('.conversation__body').bounding_box()
@@ -749,6 +761,7 @@ def assert_cancelled(page, locale: str) -> None:
 
 def assert_reply(page, locale: str) -> None:
     expect(page.locator('.conversation__turn')).to_have_count(2)
+    open_activity(page)
     expect(page.locator('#conversation-tools')).to_have_text(COPY[locale]['tools'])
     expect(page.locator('#conversation-actions')).to_have_text(COPY[locale]['actions'])
     expect(page.locator('#conversation-results')).to_have_text(COPY[locale]['results'])
