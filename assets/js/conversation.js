@@ -380,6 +380,44 @@
       hasMessages() {
         return this.messages.length > 0;
       },
+      /* The empty conversation names the model that will answer, but only when
+       * one is really selected: the generic role label is not a model name. */
+      welcomeModelName() {
+        const model = this.sessionModel || (this.agentPreference && this.agentPreference.model) || '';
+        if (typeof model !== 'string' || !model) return '';
+        const entry = this.agentModels.find((candidate) => candidate.id === model);
+        return entry ? this.agentModelLabel(entry) : model;
+      },
+      /* Starter questions are pull, not instruction: each one fills the
+       * composer and sends it through the same path a typed turn takes. */
+      suggestionPrompts() {
+        return [
+          { id: 'servers', label: tr('ui.chat.suggestion_servers'), text: tr('ui.chat.suggestion_servers') },
+          { id: 'warranties', label: tr('ui.chat.suggestion_warranties'), text: tr('ui.chat.suggestion_warranties') },
+          { id: 'inventory', label: tr('ui.chat.suggestion_inventory'), text: tr('ui.chat.suggestion_inventory') }
+        ];
+      },
+      /* Only a loaded catalog that produced no usable engine is a setup
+       * problem; a failed discovery already reports itself above the log. */
+      setupNoticeVisible() {
+        if (this.legacyFallback || this.engineReady) return false;
+        return this.agentEnginesLoaded && !this.agentEnginesError;
+      },
+      /* A disabled send button says why in its own description instead of
+       * leaving the reason to a colour or a tooltip nobody can focus. */
+      sendBlockedReason() {
+        if (this.canSend) return '';
+        const hasContent = this.draft.trim().length > 0 ||
+          (this.useAgentSessions && (this.attachments.length > 0 || this.selectedAssetAttachmentIds.length > 0));
+        if (!hasContent) return '';
+        if (this.busy || this.resuming || this.selecting || this.sessionRunning || this.attachmentBusy) {
+          return tr('ui.chat.reason_wait');
+        }
+        if (!this.engineReady) {
+          return this.agentActiveInstance ? tr('ui.chat.reason_model') : tr('ui.chat.reason_engine');
+        }
+        return '';
+      },
       /* El primer turno del usuario nombra la conversación; el listado del
        * servidor no envía títulos, así que aquí no se inventa otro dato. */
       conversationTitle() {
@@ -867,6 +905,14 @@
         el.style.height = 'auto';
         if (next) el.style.height = Math.min(next, max) + 'px';
         el.style.overflowY = next > max ? 'auto' : 'hidden';
+      },
+      /* One tap on a starter question: it becomes the draft and the normal send
+       * path runs, so validation, bounds and cancellation stay in one place. */
+      applySuggestion(text) {
+        const value = typeof text === 'string' ? text.trim() : '';
+        if (!value || !this.engineReady || this.busy || this.resuming || this.sessionRunning) return false;
+        this.draft = value;
+        return this.send();
       },
       clearContextAsset() {
         this.selectedAssetId = '';
@@ -1697,6 +1743,19 @@
       '  </ul>',
       '  <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
 '  <div class="conversation__log" ref="log" role="log" aria-live="polite" aria-relevant="additions text" @click="handleLogClick">',
+'    <div v-if="!hasMessages && !busy && !streaming" class="conversation__welcome">',
+'      <p class="conversation__welcome-title">{{ $t(\'ui.chat.welcome_greeting\') }}</p>',
+'      <p v-if="welcomeModelName" class="conversation__welcome-model"><span class="sr-only">{{ $t(\'ui.chat.welcome_model_label\') }}: </span>{{ welcomeModelName }}</p>',
+'      <div v-if="setupNoticeVisible" class="conversation__setup" role="status">',
+'        <p class="conversation__setup-text">{{ $t(\'ui.chat.setup_notice\') }}</p>',
+'        <button v-if="canConfigureChat" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="openChatConfig">{{ $t(\'ui.chat.setup_action\') }}</button>',
+'      </div>',
+'      <ul class="conversation__suggestions" :aria-label="$t(\'ui.chat.suggestions_aria\')">',
+'        <li v-for="suggestion in suggestionPrompts" :key="suggestion.id">',
+'          <button type="button" class="conversation__suggestion" :disabled="!engineReady || busy || resuming || sessionRunning" @click="applySuggestion(suggestion.text)">{{ suggestion.label }}</button>',
+'        </li>',
+'      </ul>',
+'    </div>',
 '    <template v-for="(message, index) in messages" :key="index">',
 '      <article v-if="message.role === &quot;user&quot;" class="conversation__turn conversation__turn--user">',
 '        <p class="sr-only conversation__role">{{ $t(\'ui.chat.role_user\') }}</p>',
@@ -1834,7 +1893,8 @@
       '        </span>',
       '        <span class="conversation__form-buttons">',
       '          <button v-if="canCancel" id="conversation-cancel" type="button" class="conversation__round-btn conversation__round-btn--stop" :disabled="cancelPending" :aria-label="cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\')" @click="cancelRun"><app-icon name="stop"></app-icon><span class="sr-only">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</span></button>',
-      '          <button v-else id="conversation-send" type="submit" class="conversation__round-btn conversation__round-btn--send" :disabled="!canSend" :aria-label="busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\')"><app-icon name="send"></app-icon><span class="sr-only">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</span></button>',
+      '          <button v-else id="conversation-send" type="submit" class="conversation__round-btn conversation__round-btn--send" :disabled="!canSend" :title="sendBlockedReason || null" :aria-describedby="sendBlockedReason ? \'conversation-send-reason\' : null" :aria-label="busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\')"><app-icon name="send"></app-icon><span class="sr-only">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</span></button>',
+'          <span v-if="sendBlockedReason" id="conversation-send-reason" class="sr-only">{{ sendBlockedReason }}</span>',
       '        </span>',
       '      </div>',
       '    </div>',

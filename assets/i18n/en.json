@@ -6933,5 +6933,16 @@
   "ui.chat.copied": "Copied",
   "ui.chat.retry_message": "Retry message",
   "ui.chat.copy_code": "Copy",
-  "ui.chat.remove_context": "Remove the asset from context"
+  "ui.chat.remove_context": "Remove the asset from context",
+  "ui.chat.welcome_greeting": "Hi, what can I help you with?",
+  "ui.chat.welcome_model_label": "Active model",
+  "ui.chat.suggestions_aria": "Suggestions to get started",
+  "ui.chat.suggestion_servers": "Show me the servers in Matriz",
+  "ui.chat.suggestion_warranties": "Devices with an expiring warranty",
+  "ui.chat.suggestion_inventory": "Inventory summary",
+  "ui.chat.setup_notice": "Open Settings → AI to pick an engine and a model.",
+  "ui.chat.setup_action": "Open AI settings",
+  "ui.chat.reason_wait": "Wait for the current run to finish.",
+  "ui.chat.reason_engine": "Choose an enabled engine to send.",
+  "ui.chat.reason_model": "Choose a model to send."
 }

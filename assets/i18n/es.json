@@ -6933,5 +6933,16 @@
   "ui.chat.copied": "Copiado",
   "ui.chat.retry_message": "Reintentar mensaje",
   "ui.chat.copy_code": "Copiar",
-  "ui.chat.remove_context": "Quitar el activo del contexto"
+  "ui.chat.remove_context": "Quitar el activo del contexto",
+  "ui.chat.welcome_greeting": "Hola, ¿en qué te ayudo?",
+  "ui.chat.welcome_model_label": "Modelo activo",
+  "ui.chat.suggestions_aria": "Sugerencias para empezar",
+  "ui.chat.suggestion_servers": "Muéstrame los servidores de Matriz",
+  "ui.chat.suggestion_warranties": "Equipos con garantía por vencer",
+  "ui.chat.suggestion_inventory": "Resumen del inventario",
+  "ui.chat.setup_notice": "Revisa Configuración → IA para elegir un motor y un modelo.",
+  "ui.chat.setup_action": "Abrir configuración de IA",
+  "ui.chat.reason_wait": "Espera a que termine la ejecución en curso.",
+  "ui.chat.reason_engine": "Elige un motor habilitado para enviar.",
+  "ui.chat.reason_model": "Elige un modelo para enviar."
 }

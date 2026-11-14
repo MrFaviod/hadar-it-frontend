@@ -6933,5 +6933,16 @@
   "ui.chat.copied": "Feedback shown after copying a message or a code block.",
   "ui.chat.retry_message": "Accessible label of the retry action on the last agent message.",
   "ui.chat.copy_code": "Label of the code block copy button inside rendered markdown.",
-  "ui.chat.remove_context": "Accessible label of the chip action that clears the chosen context asset."
+  "ui.chat.remove_context": "Accessible label of the chip action that clears the chosen context asset.",
+  "ui.chat.welcome_greeting": "Greeting shown at the top of an empty conversation, before the first turn.",
+  "ui.chat.welcome_model_label": "Accessible label of the model name that answers in the empty conversation.",
+  "ui.chat.suggestions_aria": "Accessible name of the list of starter questions on the empty conversation.",
+  "ui.chat.suggestion_servers": "Starter question that fills the composer with a server lookup for the Matriz site.",
+  "ui.chat.suggestion_warranties": "Starter question that fills the composer with a warranty expiry lookup.",
+  "ui.chat.suggestion_inventory": "Starter question that fills the composer with an inventory summary request.",
+  "ui.chat.setup_notice": "Inline notice shown when the conversation has no engine or model configured.",
+  "ui.chat.setup_action": "Button inside the setup notice that opens the AI settings route.",
+  "ui.chat.reason_wait": "Reason stated by the disabled send button while a run or selection is in progress.",
+  "ui.chat.reason_engine": "Reason stated by the disabled send button when no engine is available.",
+  "ui.chat.reason_model": "Reason stated by the disabled send button when the engine announced no model."
 }

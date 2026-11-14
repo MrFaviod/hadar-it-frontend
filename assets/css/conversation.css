@@ -695,6 +695,115 @@
   }
 }
 
+/* ---- Estado vacío -------------------------------------------------------- */
+
+/* The empty surface is a starting point, not a placeholder: it names the model
+ * that will answer and offers the three turns people actually open the chat
+ * for. Centred, quiet, and never taller than the log it sits in. */
+.conversation__welcome {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  width: 100%;
+  max-width: 560px;
+  margin: clamp(24px, 8vh, 72px) auto 0;
+  padding: 0 4px;
+  text-align: center;
+}
+
+.conversation__welcome-title {
+  margin: 0;
+  color: var(--ink-900);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.conversation__welcome-model {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* A setup problem is the only thing on this surface that is worth a box: the
+ * reason and the way out sit together instead of an error banner up top. */
+.conversation__setup {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  color: var(--amber-800);
+  background: var(--amber-050);
+  border: 1px solid var(--amber-700);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.conversation__setup-text {
+  margin: 0;
+}
+
+.conversation__suggestions {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation__suggestion {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 16px;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.conversation__suggestion:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--teal-050) 60%, var(--paper));
+  border-color: color-mix(in srgb, var(--teal-600) 34%, var(--border-strong));
+}
+
+.conversation__suggestion:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+}
+
+.conversation__suggestion:disabled {
+  color: var(--muted);
+  background: var(--bg);
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  /* On a phone the suggestions sit where a thumb reaches, and the greeting
+   * gives up the vertical centring before it pushes the composer away. */
+  .conversation__welcome {
+    margin-top: 20px;
+  }
+
+  .conversation__welcome-title {
+    font-size: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation__suggestion {
+    transition: none;
+  }
+}
+
 /* ---- Compositor ---------------------------------------------------------- */
 
 .conversation__form {
