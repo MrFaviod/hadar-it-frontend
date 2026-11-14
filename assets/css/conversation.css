@@ -827,13 +827,16 @@
 
 /* ---- Compositor ---------------------------------------------------------- */
 
+/* One line to start: a 56px pill that grows with the draft instead of opening
+ * as a three-row box. The tools and the send button ride on the same row as
+ * the textarea, bottom aligned, so the resting state is a single text line. */
 .conversation__form {
   display: grid;
   gap: 6px;
   width: 100%;
   max-width: 768px;
   margin: 0 auto;
-  padding: 10px 10px 8px 14px;
+  padding: 9px 10px 9px 14px;
   background: var(--paper);
   border: 1px solid var(--border);
   border-radius: 24px;
@@ -850,19 +853,21 @@
   font-weight: 600;
 }
 
-/* The field wraps the textarea and its own action row so the pill keeps a
- * single focus ring while the buttons stay inside the rounded edge. */
+/* The field is the pill's single row: the textarea takes the free width and
+ * the actions keep their size, both sitting on the same baseline. */
 .conversation__field {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
   min-width: 0;
 }
 
 .conversation__form textarea {
+  flex: 1 1 auto;
   width: 100%;
-  min-height: 44px;
+  min-height: 36px;
   max-height: 200px;
-  padding: 6px 2px 2px;
+  padding: 6px 0 4px 2px;
   color: var(--text);
   background: transparent;
   border: 0;
@@ -879,16 +884,17 @@
 
 .conversation__form-actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 4px;
   min-width: 0;
+  margin-left: auto;
 }
 
 .conversation__composer-tools {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
   min-width: 0;
 }
@@ -991,7 +997,11 @@
 
 @media (max-width: 700px) {
   .conversation__form {
-    padding: 8px 8px 6px 12px;
+    padding: 8px 8px 8px 12px;
+  }
+
+  .conversation__form textarea {
+    min-height: 44px;
   }
 
   .conversation__tool-btn,

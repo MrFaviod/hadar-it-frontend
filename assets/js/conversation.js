@@ -1102,7 +1102,7 @@
       autosizeComposer() {
         const el = this.$refs.input;
         if (!el || !el.style) return;
-        const min = 44;
+        const min = 24;
         const max = 200;
         const next = typeof el.scrollHeight === 'number' ? Math.max(el.scrollHeight, min) : 0;
         el.style.height = 'auto';
