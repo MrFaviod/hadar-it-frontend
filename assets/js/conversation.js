@@ -411,6 +411,12 @@
         const route = this.app.route;
         return route && route.name === 'conversation' && isPermanentId(route.assetId) ? route.assetId : '';
       },
+      /* The chip above the composer names the asset that travels with the turn;
+       * it only ever resolves an id the server already returned. */
+      selectedContextAsset() {
+        if (!this.selectedAssetId) return null;
+        return this.assetContextOptions.find((asset) => asset.id === this.selectedAssetId) || null;
+      },
       /* Only assets the server already returned in this session can be attached;
        * typed or demo ids are never accepted as context. */
       assetContextOptions() {
@@ -460,6 +466,11 @@
         // Asset attachments belong to one asset; changing the selection never
         // carries the previous asset's list or checked ids into the new one.
         this.clearAssetAttachments();
+      },
+      draft() {
+        // Any writer (typing, a retry refill, a reset) leaves the field sized to
+        // its content instead of to the previous draft.
+        if (this.$nextTick) this.$nextTick(this.autosizeComposer);
       }
     },
     created() {
@@ -473,6 +484,7 @@
     },
     mounted() {
       this.localizeRenderedCopy();
+      this.autosizeComposer();
     },
     updated() {
       // v-html replaces the code-block DOM on every stream tick, so the copy
@@ -835,6 +847,29 @@
       },
       clearAttachments() {
         this.attachments = [];
+      },
+      /* Enter sends, Shift+Enter keeps the newline, and an IME composition
+       * never submits half a character. */
+      handleComposerKeydown(event) {
+        if (!event || event.key !== 'Enter' || event.shiftKey) return;
+        if (event.isComposing || event.keyCode === 229) return;
+        if (typeof event.preventDefault === 'function') event.preventDefault();
+        void this.send();
+      },
+      /* The composer grows with its content up to the CSS max-height and then
+       * scrolls, so a long draft never pushes the transcript off screen. */
+      autosizeComposer() {
+        const el = this.$refs.input;
+        if (!el || !el.style) return;
+        const min = 44;
+        const max = 200;
+        const next = typeof el.scrollHeight === 'number' ? Math.max(el.scrollHeight, min) : 0;
+        el.style.height = 'auto';
+        if (next) el.style.height = Math.min(next, max) + 'px';
+        el.style.overflowY = next > max ? 'auto' : 'hidden';
+      },
+      clearContextAsset() {
+        this.selectedAssetId = '';
       },
       clearAssetAttachments() {
         this.assetAttachments = [];
@@ -1750,13 +1785,6 @@
       '  <p v-if="approvalPending" class="conversation__approval" role="status">{{ $t(\'ui.chat.approval_pending\') }}</p>',
       '  <button v-if="currentContextAsset" id="conversation-use-asset" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="useCurrentAsset">{{ $t(\'ui.chat.use_asset\', { name: currentContextAsset.name || currentContextAsset.id }) }}</button>',
       '  <p v-if="demoAlertContext" class="conversation__help">{{ $t(\'ui.chat.demo_alert\') }}</p>',
-      '  <div v-if="assetContextOptions.length" class="conversation__context">',
-      '    <label class="conversation__label" for="conversation-asset">{{ $t(\'ui.chat.context_label\') }}</label>',
-      '    <select id="conversation-asset" v-model="selectedAssetId" :disabled="busy" class="conversation__select">',
-      '      <option value="">{{ $t(\'ui.chat.context_none\') }}</option>',
-      '      <option v-for="asset in assetContextOptions" :key="asset.id" :value="asset.id">{{ asset.name }}<template v-if="asset.quickCode"> · {{ asset.quickCode }}</template></option>',
-      '    </select>',
-      '  </div>',
       '  <div v-if="canAttachFiles && contextAssetId()" class="conversation__context conversation__asset-attachments">',
       '    <span class="conversation__label">{{ $t(\'ui.chat.asset_attachments_label\') }}</span>',
       '    <button id="conversation-load-asset-attachments" type="button" class="btn btn--secondary btn--small" :disabled="assetAttachmentsLoading || busy" @click="loadAssetAttachments">{{ assetAttachmentsLoading ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.asset_attachments_load\') }}</button>',
@@ -1774,28 +1802,43 @@
       '  </div>',
       '  <form id="conversation-form" class="conversation__form" @submit.prevent="send">',
       '    <label class="sr-only" for="conversation-input">{{ $t(\'ui.chat.message_label\') }}</label>',
-      '    <textarea id="conversation-input" ref="input" v-model="draft" rows="2" :maxlength="maxMessageLength" :disabled="busy || resuming" :placeholder="$t(\'ui.chat.message_placeholder\')"></textarea>',
       '    <p v-if="attachmentBusy" class="conversation__meta" role="status">{{ $t(\'ui.chat.attaching\') }}</p>',
       '    <p v-if="attachmentError" class="conversation__error" role="alert">{{ attachmentError }}</p>',
-      '    <ul v-if="attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.pending_attachments_aria\')">',
-      '      <li v-for="item in attachments" :key="item.id" class="conversation__attachment">',
-      '        <span class="conversation__attachment-name">{{ item.filename }}</span>',
+      '    <ul v-if="attachments.length || selectedContextAsset" class="conversation__attachment-list conversation__chips" :aria-label="$t(\'ui.chat.pending_attachments_aria\')">',
+      '      <li v-if="selectedContextAsset" class="conversation__attachment conversation__chip">',
+      '        <app-icon name="pin"></app-icon>',
+      '        <span class="conversation__attachment-name conversation__chip-name">{{ selectedContextAsset.name }}</span>',
+      '        <span v-if="selectedContextAsset.quickCode" class="conversation__meta">{{ selectedContextAsset.quickCode }}</span>',
+      '        <button id="conversation-context-remove" type="button" class="conversation__chip-remove" :disabled="busy" :aria-label="$t(\'ui.chat.remove_context\')" @click="clearContextAsset"><app-icon name="close"></app-icon></button>',
+      '      </li>',
+      '      <li v-for="item in attachments" :key="item.id" class="conversation__attachment conversation__chip">',
+      '        <span class="conversation__attachment-name conversation__chip-name">{{ item.filename }}</span>',
       '        <span class="conversation__meta">{{ attachmentKindLabel(item.kind) }} · {{ attachmentSizeText(item) }}</span>',
-      '        <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="btn btn--ghost btn--small" :disabled="attachmentBusy || busy" :aria-label="$t(\'ui.chat.remove_attachment\', { filename: item.filename })" @click="removeAttachment(item.id)">{{ $t(\'ui.chat.remove\') }}</button>',
+      '        <button :id="\'conversation-attachment-remove-\' + item.id" type="button" class="conversation__chip-remove" :disabled="attachmentBusy || busy" :aria-label="$t(\'ui.chat.remove_attachment\', { filename: item.filename })" @click="removeAttachment(item.id)"><app-icon name="close"></app-icon></button>',
       '      </li>',
       '    </ul>',
-      '    <div class="conversation__form-actions">',
-      '      <span v-if="canAttachFiles" class="conversation__composer-tools">',
-      '        <button id="conversation-attach" type="button" class="btn btn--ghost btn--small" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" :title="attachmentHelp" @click="openAttachmentPicker"><app-icon name="upload"></app-icon>{{ $t(\'ui.chat.attachments_label\') }}</button>',
-      '        <input id="conversation-attachment" ref="attachmentInput" class="sr-only" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" tabindex="-1" aria-hidden="true" @change="attachFiles($event)">',
-      '        <span id="conversation-attachment-help" class="conversation__meta">{{ attachmentHelp }}</span>',
-      '      </span>',
-      '      <span class="conversation__form-buttons">',
-      '        <button v-if="canCancel" id="conversation-cancel" type="button" class="btn btn--secondary" :disabled="cancelPending" @click="cancelRun">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</button>',
-      '        <button id="conversation-send" type="submit" class="btn btn--primary" :disabled="!canSend">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</button>',
-      '      </span>',
+      '    <div class="conversation__field">',
+      '      <textarea id="conversation-input" ref="input" v-model="draft" rows="1" :maxlength="maxMessageLength" :disabled="busy || resuming" :placeholder="$t(\'ui.chat.message_placeholder\')" @keydown="handleComposerKeydown"></textarea>',
+      '      <div class="conversation__form-actions">',
+      '        <span v-if="canAttachFiles" class="conversation__composer-tools">',
+      '          <button id="conversation-attach" type="button" class="conversation__tool-btn" :disabled="busy || attachmentBusy || attachmentsFull" aria-describedby="conversation-attachment-help" :title="attachmentHelp" @click="openAttachmentPicker"><app-icon name="plus"></app-icon><span class="sr-only">{{ $t(\'ui.chat.attachments_label\') }}</span></button>',
+      '          <input id="conversation-attachment" ref="attachmentInput" class="sr-only" type="file" :multiple="true" :accept="attachmentAccept" :disabled="busy || attachmentBusy || attachmentsFull" tabindex="-1" aria-hidden="true" @change="attachFiles($event)">',
+      '          <span id="conversation-attachment-help" class="sr-only">{{ attachmentHelp }}</span>',
+      '        </span>',
+      '        <span v-if="assetContextOptions.length" class="conversation__context conversation__context--composer">',
+      '          <label class="sr-only" for="conversation-asset">{{ $t(\'ui.chat.context_label\') }}</label>',
+      '          <select id="conversation-asset" v-model="selectedAssetId" :disabled="busy" class="conversation__select conversation__select--composer">',
+      '            <option value="">{{ $t(\'ui.chat.context_none\') }}</option>',
+      '            <option v-for="asset in assetContextOptions" :key="asset.id" :value="asset.id">{{ asset.name }}<template v-if="asset.quickCode"> · {{ asset.quickCode }}</template></option>',
+      '          </select>',
+      '        </span>',
+      '        <span class="conversation__form-buttons">',
+      '          <button v-if="canCancel" id="conversation-cancel" type="button" class="conversation__round-btn conversation__round-btn--stop" :disabled="cancelPending" :aria-label="cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\')" @click="cancelRun"><app-icon name="stop"></app-icon><span class="sr-only">{{ cancelPending ? $t(\'ui.chat.cancelling\') : $t(\'ui.chat.cancel\') }}</span></button>',
+      '          <button v-else id="conversation-send" type="submit" class="conversation__round-btn conversation__round-btn--send" :disabled="!canSend" :aria-label="busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\')"><app-icon name="send"></app-icon><span class="sr-only">{{ busy ? $t(\'ui.chat.sending\') : $t(\'ui.chat.send\') }}</span></button>',
+      '        </span>',
+      '      </div>',
       '    </div>',
-      '    <p v-if="sessionAttachmentCount" class="conversation__meta">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
+      '    <p v-if="sessionAttachmentCount" class="conversation__meta conversation__composer-note">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
       '  </form>',
 '  </div>',
       '</section>',

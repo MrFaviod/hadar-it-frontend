@@ -6932,5 +6932,6 @@
   "ui.chat.copy_message": "Copy message",
   "ui.chat.copied": "Copied",
   "ui.chat.retry_message": "Retry message",
-  "ui.chat.copy_code": "Copy"
+  "ui.chat.copy_code": "Copy",
+  "ui.chat.remove_context": "Remove the asset from context"
 }

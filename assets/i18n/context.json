@@ -6932,5 +6932,6 @@
   "ui.chat.copy_message": "Accessible label of the per-message copy action.",
   "ui.chat.copied": "Feedback shown after copying a message or a code block.",
   "ui.chat.retry_message": "Accessible label of the retry action on the last agent message.",
-  "ui.chat.copy_code": "Label of the code block copy button inside rendered markdown."
+  "ui.chat.copy_code": "Label of the code block copy button inside rendered markdown.",
+  "ui.chat.remove_context": "Accessible label of the chip action that clears the chosen context asset."
 }

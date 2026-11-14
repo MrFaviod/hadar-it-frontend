@@ -699,14 +699,14 @@
 
 .conversation__form {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
   max-width: 768px;
   margin: 0 auto;
-  padding: 8px 12px 10px;
+  padding: 10px 10px 8px 14px;
   background: var(--paper);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 24px;
   transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
 
@@ -720,26 +720,31 @@
   font-weight: 600;
 }
 
+/* The field wraps the textarea and its own action row so the pill keeps a
+ * single focus ring while the buttons stay inside the rounded edge. */
+.conversation__field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .conversation__form textarea {
   width: 100%;
   min-height: 44px;
-  padding: 8px 2px 4px;
+  max-height: 200px;
+  padding: 6px 2px 2px;
   color: var(--text);
   background: transparent;
   border: 0;
   font: inherit;
   line-height: 1.45;
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
 }
 
 .conversation__form textarea:focus-visible {
   outline: 2px solid var(--teal-600);
   outline-offset: 0;
-}
-
-.conversation__form button:disabled {
-  color: var(--muted);
-  background: var(--bg);
 }
 
 .conversation__form-actions {
@@ -748,21 +753,136 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-width: 0;
 }
 
 .conversation__composer-tools {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 4px;
   min-width: 0;
+}
+
+.conversation__tool-btn,
+.conversation__round-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+
+.conversation__tool-btn:hover:not(:disabled) {
+  color: var(--ink-900);
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.conversation__tool-btn:focus-visible,
+.conversation__round-btn:focus-visible,
+.conversation__chip-remove:focus-visible {
+  outline: 2px solid var(--teal-600);
+  outline-offset: 2px;
+}
+
+.conversation__tool-btn:disabled,
+.conversation__round-btn:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.conversation__round-btn--send {
+  color: var(--white);
+  background: var(--teal-700);
+}
+
+.conversation__round-btn--send:hover:not(:disabled) {
+  background: var(--teal-800);
+}
+
+.conversation__round-btn--send:disabled {
+  color: var(--muted);
+  background: var(--bg);
+  opacity: 1;
+}
+
+.conversation__round-btn--stop {
+  color: var(--danger-700);
+  background: var(--danger-050);
+  border-color: color-mix(in srgb, var(--danger-700) 34%, var(--border));
+}
+
+.conversation__round-btn--stop:hover:not(:disabled) {
+  background: var(--danger-100);
 }
 
 .conversation__form-buttons {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-left: auto;
+}
+
+.conversation__composer-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Pending files and the chosen context asset read as removable chips above the
+ * text, the way the composer states what the next turn carries. */
+.conversation__context--composer {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.conversation__select--composer {
+  width: 100%;
+  min-height: 36px;
+  max-width: 240px;
+  background: transparent;
+  border-color: transparent;
+  font-size: 13px;
+}
+
+.conversation__select--composer:hover {
+  border-color: var(--border);
+}
+
+@media (max-width: 700px) {
+  .conversation__form {
+    padding: 8px 8px 6px 12px;
+  }
+
+  .conversation__tool-btn,
+  .conversation__round-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .conversation__chip-remove {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .conversation__select--composer {
+    min-height: 44px;
+    max-width: none;
+  }
 }
 
 /* ---- Piezas de contenido ------------------------------------------------- */
@@ -837,6 +957,69 @@
 .conversation__attachment .btn {
   margin-left: auto;
 }
+
+/* Compound selectors: the chip list reuses the transcript attachment classes
+ * so the pending rows keep their data hook while reading as a pill. */
+.conversation__attachment-list.conversation__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 2px;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation__attachment.conversation__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 2px 3px 2px 10px;
+  color: var(--ink-900);
+  background: color-mix(in srgb, var(--teal-050) 60%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--teal-600) 20%, var(--border));
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+}
+
+.conversation__chip > .od-icon {
+  --od-icon-size: 14px;
+  color: var(--teal-700);
+  flex: none;
+}
+
+.conversation__chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.conversation__chip-remove > .od-icon {
+  --od-icon-size: 13px;
+}
+
+.conversation__chip-remove:hover:not(:disabled) {
+  color: var(--ink-900);
+  background: color-mix(in srgb, var(--teal-600) 14%, transparent);
+}
+
 
 /* ---- Panel compacto ------------------------------------------------------ */
 
@@ -939,6 +1122,16 @@
 
 @media (max-width: 700px) {
   .conversation .btn--small {
+    min-height: 44px;
+  }
+
+  /* The header pickers sit in the touch lane too: at phone widths they grow to
+   * the 44px target instead of keeping the desktop 36px row. */
+  .conversation__select {
+    min-height: 44px;
+  }
+
+  .conversation__config {
     min-height: 44px;
   }
 }

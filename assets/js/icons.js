@@ -64,7 +64,8 @@
     thermometer: '<path d="M14 14.5V5a2 2 0 1 0-4 0v9.5a4 4 0 1 0 4 0Z"/><path d="M12 9v7"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     slash: '<circle cx="12" cy="12" r="8.5"/><path d="m6.5 17.5 11-11"/>',
-    send: '<path d="M21 3 10.5 13.5"/><path d="M21 3l-6.5 18-4-8-8-4z"/>'
+    send: '<path d="M21 3 10.5 13.5"/><path d="M21 3l-6.5 18-4-8-8-4z"/>',
+    stop: '<rect x="7" y="7" width="10" height="10" rx="2"/>'
   };
 
   // The graph view draws icons inside SVG, where a nested component is not
