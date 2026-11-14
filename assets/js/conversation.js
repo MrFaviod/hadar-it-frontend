@@ -1104,8 +1104,11 @@
         if (!el || !el.style) return;
         const min = 24;
         const max = 200;
-        const next = typeof el.scrollHeight === 'number' ? Math.max(el.scrollHeight, min) : 0;
+        // Reset first: a textarea's scrollHeight never drops below its current
+        // height, so measuring before the reset kept the composer tall after
+        // a long draft was sent.
         el.style.height = 'auto';
+        const next = typeof el.scrollHeight === 'number' ? Math.max(el.scrollHeight, min) : 0;
         if (next) el.style.height = Math.min(next, max) + 'px';
         el.style.overflowY = next > max ? 'auto' : 'hidden';
       },
