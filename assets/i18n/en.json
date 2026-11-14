@@ -6927,5 +6927,10 @@
   "ui.setup.complete.lead": "Hadar IT is installed. Setup is no longer available and every onboarding session was closed.",
   "ui.setup.complete.report": "The installation report was recorded by the service.",
   "ui.setup.complete.link": "Open the application",
-  "ui.setup.complete.digest": "Report digest"
+  "ui.setup.complete.digest": "Report digest",
+  "ui.chat.tools_used": "Used {count} tools",
+  "ui.chat.copy_message": "Copy message",
+  "ui.chat.copied": "Copied",
+  "ui.chat.retry_message": "Retry message",
+  "ui.chat.copy_code": "Copy"
 }

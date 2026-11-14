@@ -10,7 +10,12 @@ const { setup } = require('./universal-harness.cjs');
 function text(node) {
   if (!node) return '';
   if (node.tag === '#text') return node.text || '';
-  return (node.text || '') + (node.children || []).map(text).join(' ');
+  // Agent turns bind ChatMarkdown's HTML to v-html; the test tree keeps that
+  // HTML as a prop instead of child nodes, so it is flattened to text here.
+  const bound = node.props && typeof node.props.innerHTML === 'string'
+    ? node.props.innerHTML.replace(/<[^>]*>/g, ' ')
+    : '';
+  return (node.text || '') + ' ' + bound + ' ' + (node.children || []).map(text).join(' ');
 }
 
 // Attribute copy is not part of the text dump, so collect the strings Vue

@@ -6927,5 +6927,10 @@
   "ui.setup.complete.lead": "Explains that setup is closed and the app is now the way in.",
   "ui.setup.complete.report": "Confirms the installation report was recorded by the service.",
   "ui.setup.complete.link": "Link that opens the normal application after completion.",
-  "ui.setup.complete.digest": "Label before the report digest on the completed screen."
+  "ui.setup.complete.digest": "Label before the report digest on the completed screen.",
+  "ui.chat.tools_used": "Summary of the collapsible tool activity block; {count} is the number of tool calls.",
+  "ui.chat.copy_message": "Accessible label of the per-message copy action.",
+  "ui.chat.copied": "Feedback shown after copying a message or a code block.",
+  "ui.chat.retry_message": "Accessible label of the retry action on the last agent message.",
+  "ui.chat.copy_code": "Label of the code block copy button inside rendered markdown."
 }

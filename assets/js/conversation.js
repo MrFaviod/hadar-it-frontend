@@ -3,7 +3,12 @@
  * The browser only transports the message, the previous turns (bounded), the
  * chosen engine/model and an explicitly selected permanent asset id. Provider
  * URLs and credentials stay on the server; streaming frames are parsed but no
- * business operation is inferred here and nothing is rendered as raw HTML.
+ * business operation is inferred here.
+ *
+ * Agent copy is the one exception to plain-text rendering: it goes through
+ * window.ChatMarkdown, an escape-first renderer owned by chat-markdown.js, and
+ * only its output binds to v-html. User messages stay plain text, and when the
+ * renderer is absent every message falls back to escaped text with no markup.
  */
 (function () {
   'use strict';
@@ -28,6 +33,14 @@
   function tr(key, params) {
     const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
     return runtime ? runtime.t(key, params) : '';
+  }
+
+  // Escape-first fallback for agent copy: used only when the markdown renderer
+  // is not on the page, so no message text can ever become markup on its own.
+  const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  function escapeMarkup(value) {
+    return String(value === null || value === undefined ? '' : value)
+      .replace(/[&<>"']/g, character => HTML_ENTITIES[character]);
   }
 
   // Stable status ids map to literal catalog keys; a key is never built from
@@ -125,6 +138,7 @@
       return {
         messages: [],
         draft: '',
+        copiedIndex: -1,
         busy: false,
         error: '',
         actions: [],
@@ -457,6 +471,14 @@
       if (this.isConversationRoute) void this.loadEnginesForChat();
       if (document.addEventListener) document.addEventListener('keydown', this.handleChatKeydown);
     },
+    mounted() {
+      this.localizeRenderedCopy();
+    },
+    updated() {
+      // v-html replaces the code-block DOM on every stream tick, so the copy
+      // label is re-applied after each render instead of once on mount.
+      this.localizeRenderedCopy();
+    },
     beforeUnmount() {
       this.disposed = true;
       this.resetSurface();
@@ -468,6 +490,77 @@
         // saved preference still supplies the default for a new conversation.
         const active = this.sessionId ? { instanceId: this.sessionInstanceId, model: this.sessionModel } : null;
         window.AssetAgentEngineMixin.methods.applyAgentEngines.call(this, payload, { preserveSelection: active });
+      },
+      agentMessageName() {
+        const model = this.sessionModel || this.agentPreference.model;
+        return model ? this.agentModelLabel(model) : tr('ui.chat.role_agent');
+      },
+      messageHtml(message) {
+        const text = message && typeof message.content === 'string' ? message.content : '';
+        const renderer = typeof window !== 'undefined' ? window.ChatMarkdown : null;
+        if (renderer && typeof renderer.render === 'function') {
+          try {
+            return renderer.render(text);
+          } catch (error) {
+            // A renderer bug must degrade to text, never to an empty turn.
+          }
+        }
+        return '<p class="conversation__plain">' + escapeMarkup(text) + '</p>';
+      },
+      copyText(text) {
+        const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : null;
+        if (!clipboard || typeof clipboard.writeText !== 'function') return Promise.resolve(false);
+        return clipboard.writeText(String(text === null || text === undefined ? '' : text))
+          .then(() => true, () => false);
+      },
+      copyMessage(index, event) {
+        const message = this.messages[index];
+        if (!message) return;
+        const button = event && event.currentTarget ? event.currentTarget : null;
+        const result = this.copyText(message.content);
+        void result.then(ok => {
+          if (!ok) return;
+          this.copiedIndex = index;
+          if (button) button.classList.add('is-copied');
+        });
+      },
+      retryLastMessage() {
+        if (this.busy || this.resuming || this.sessionRunning) return;
+        const lastUser = this.messages.slice().reverse().find(message => message.role === 'user');
+        if (!lastUser || typeof lastUser.content !== 'string' || !lastUser.content.trim()) return;
+        this.draft = lastUser.content;
+        this.error = '';
+        this.streamStatus = '';
+        this.retryable = false;
+        void this.send();
+      },
+      handleLogClick(event) {
+        const target = event && event.target;
+        if (!target || typeof target.closest !== 'function') return;
+        const button = target.closest('[data-md-copy]');
+        if (!button) return;
+        event.preventDefault();
+        const block = typeof button.closest === 'function' ? button.closest('pre') : null;
+        const code = block && typeof block.querySelector === 'function' ? block.querySelector('code') : null;
+        const text = code ? code.textContent : (block ? block.textContent : '');
+        const original = button.textContent;
+        const result = this.copyText(text);
+        void result.then(ok => {
+          if (!ok) return;
+          button.textContent = tr('ui.chat.copied');
+          if (typeof window !== 'undefined' && window.setTimeout) {
+            window.setTimeout(() => { button.textContent = original; }, 1200);
+          }
+        });
+      },
+      localizeRenderedCopy() {
+        const root = this.$refs.log;
+        if (!root || typeof root.querySelectorAll !== 'function') return;
+        const label = tr('ui.chat.copy_code');
+        Array.prototype.forEach.call(root.querySelectorAll('[data-md-copy]'), button => {
+          if (button.textContent !== label) button.textContent = label;
+          if (button.getAttribute('aria-label') !== label) button.setAttribute('aria-label', label);
+        });
       },
       async openPanel(event) {
         if (!this.canUseConversation) return false;
@@ -1568,27 +1661,43 @@
       '    <li v-for="failure in agentDiscoveryErrors" :key="failure.id" class="conversation__error">{{ failure.label }}: {{ failure.error }}</li>',
       '  </ul>',
       '  <p v-if="agentSelectionNotice" class="conversation__help" role="status">{{ agentSelectionNotice }}</p>',
-      '  <div class="conversation__log" role="log" aria-live="polite" aria-relevant="additions text">',
-      '    <article v-for="(message, index) in messages" :key="index" class="conversation__turn" :class="\'conversation__turn--\' + message.role">',
-      '      <p class="conversation__role">{{ message.role === "user" ? $t(\'ui.chat.role_user\') : $t(\'ui.chat.role_agent\') }}</p>',
-      '      <p class="conversation__text">{{ message.content }}<span v-if="message.streaming" class="conversation__streaming" aria-hidden="true">…</span></p>',
-      '      <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.message_attachments_aria\')">',
-      '        <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
-      '          <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
-      '          <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment) }}</span>',
-      '        </li>',
-      '      </ul>',
-      '    </article>',
-      '    <p v-if="busy && !streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.preparing\') }}</p>',
-      '    <p v-if="streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.receiving\') }}</p>',
-      '  </div>',
-      '  <div v-if="error" id="conversation-error" class="conversation__error-box">',
-      '    <p class="conversation__error" role="alert">{{ error }}</p>',
-      '    <p v-if="retryable && !busy" class="conversation__help">{{ $t(\'ui.chat.retry_help\') }}</p>',
-      '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.reconnect\') }}</button>',
-      '  </div>',
-      '  <p v-if="streamStatus" class="conversation__help" role="status">{{ streamStatus }}</p>',
-      '  <p v-if="approvalPending" class="conversation__approval" role="status">{{ $t(\'ui.chat.approval_pending\') }}</p>',
+'  <div class="conversation__log" ref="log" role="log" aria-live="polite" aria-relevant="additions text" @click="handleLogClick">',
+'    <template v-for="(message, index) in messages" :key="index">',
+'      <article v-if="message.role === &quot;user&quot;" class="conversation__turn conversation__turn--user">',
+'        <p class="sr-only conversation__role">{{ $t(\'ui.chat.role_user\') }}</p>',
+'        <div class="conversation__bubble">',
+'          <p class="conversation__text">{{ message.content }}</p>',
+'        <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.message_attachments_aria\')">',
+'          <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
+'            <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
+'            <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment) }}</span>',
+'          </li>',
+'        </ul>',
+'        </div>',
+'      </article>',
+'      <article v-else class="conversation__turn conversation__turn--assistant">',
+'        <span class="conversation__avatar" aria-hidden="true"><app-icon name="activity"></app-icon></span>',
+'        <div class="conversation__agent">',
+'          <p class="conversation__agent-name">{{ agentMessageName() }}<span class="sr-only conversation__role"> · {{ $t(\'ui.chat.role_agent\') }}</span></p>',
+'          <p v-if="message.streaming && !message.content" class="conversation__typing" role="status" :aria-label="$t(\'ui.chat.receiving\')"><span class="conversation__dot"></span><span class="conversation__dot"></span><span class="conversation__dot"></span></p>',
+'          <div v-else class="conversation__markdown" v-html="messageHtml(message)"></div>',
+  '        <ul v-if="message.attachments && message.attachments.length" class="conversation__attachment-list" :aria-label="$t(\'ui.chat.message_attachments_aria\')">',
+  '          <li v-for="attachment in message.attachments" :key="attachment.id" class="conversation__attachment">',
+  '            <span class="conversation__attachment-name">{{ attachment.filename }}</span>',
+  '            <span class="conversation__meta">{{ attachmentKindLabel(attachment.kind) }} · {{ attachmentSizeText(attachment) }}</span>',
+  '          </li>',
+  '        </ul>',
+'          <div class="conversation__message-actions">',
+'            <button type="button" class="conversation__action-btn" :aria-label="$t(\'ui.chat.copy_message\')" :title="$t(\'ui.chat.copy_message\')" @click="copyMessage(index, $event)"><app-icon name="copy"></app-icon></button>',
+'            <button v-if="retryable && !busy && index === messages.length - 1" type="button" class="conversation__action-btn" :aria-label="$t(\'ui.chat.retry_message\')" :title="$t(\'ui.chat.retry_message\')" @click="retryLastMessage"><app-icon name="refresh"></app-icon></button>',
+'          </div>',
+'        </div>',
+'      </article>',
+'    </template>',
+'    <div v-if="tools.length || actions.length || results.length || extensionReviews.length" class="conversation__activity">',
+'      <span class="conversation__avatar conversation__avatar--spacer" aria-hidden="true"></span>',
+'      <details class="conversation__details">',
+'      <summary class="conversation__details-summary">{{ $t(\'ui.chat.tools_used\', { count: tools.length + actions.length }) }}</summary>',
       '  <section v-if="extensionReviews.length" id="conversation-extension-reviews" class="conversation__section" aria-labelledby="conversation-extension-reviews-title">',
       '    <h2 id="conversation-extension-reviews-title" class="conversation__heading">{{ $t(\'ui.chat.reviews_title\') }}</h2>',
       '    <ul class="conversation__actions">',
@@ -1627,6 +1736,18 @@
       '      </li>',
       '    </ul>',
       '  </section>',
+'      </details>',
+'    </div>',
+'    <p v-if="busy && !streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.preparing\') }}</p>',
+'    <p v-if="streaming" class="conversation__pending" role="status">{{ $t(\'ui.chat.receiving\') }}</p>',
+'  </div>',
+      '  <div v-if="error" id="conversation-error" class="conversation__error-box">',
+      '    <p class="conversation__error" role="alert">{{ error }}</p>',
+      '    <p v-if="retryable && !busy" class="conversation__help">{{ $t(\'ui.chat.retry_help\') }}</p>',
+      '    <button v-if="canReconnect" type="button" class="btn btn--secondary btn--small" :disabled="reconnecting" @click="reconnectSession">{{ reconnecting ? $t(\'ui.chat.consulting\') : $t(\'ui.chat.reconnect\') }}</button>',
+      '  </div>',
+      '  <p v-if="streamStatus" class="conversation__help" role="status">{{ streamStatus }}</p>',
+      '  <p v-if="approvalPending" class="conversation__approval" role="status">{{ $t(\'ui.chat.approval_pending\') }}</p>',
       '  <button v-if="currentContextAsset" id="conversation-use-asset" type="button" class="btn btn--secondary btn--small" :disabled="busy" @click="useCurrentAsset">{{ $t(\'ui.chat.use_asset\', { name: currentContextAsset.name || currentContextAsset.id }) }}</button>',
       '  <p v-if="demoAlertContext" class="conversation__help">{{ $t(\'ui.chat.demo_alert\') }}</p>',
       '  <div v-if="assetContextOptions.length" class="conversation__context">',

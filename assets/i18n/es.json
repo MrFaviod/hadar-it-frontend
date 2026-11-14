@@ -6927,5 +6927,10 @@
   "ui.setup.complete.lead": "Hadar IT quedó instalado. La configuración ya no está disponible y todas las sesiones de puesta en marcha se cerraron.",
   "ui.setup.complete.report": "El informe de instalación quedó registrado en el servicio.",
   "ui.setup.complete.link": "Abrir la aplicación",
-  "ui.setup.complete.digest": "Huella del informe"
+  "ui.setup.complete.digest": "Huella del informe",
+  "ui.chat.tools_used": "Usó {count} herramientas",
+  "ui.chat.copy_message": "Copiar mensaje",
+  "ui.chat.copied": "Copiado",
+  "ui.chat.retry_message": "Reintentar mensaje",
+  "ui.chat.copy_code": "Copiar"
 }
