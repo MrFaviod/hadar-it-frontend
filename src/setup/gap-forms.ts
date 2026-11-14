@@ -6,7 +6,7 @@
 // value the service has already said it refuses, and flatten an apply receipt
 // into rows a person can read. Nothing here writes.
 
-import type { EffectiveSetting, OperationalState, SectionInput } from './client';
+import type { EffectiveSetting, OperationalState, SectionInput, SectionPreview } from './client';
 
 /** The closed location kinds the declaration accepts. */
 export const BACKUP_LOCATION_KINDS = [
@@ -67,6 +67,38 @@ export function backupDeclarationValues(state: BackupDeclarationState): SectionI
     retention: state.retention.trim(),
     responsible: state.responsible.trim(),
   };
+}
+
+/**
+ * The policy fields the service's declaration preview answers with
+ * (itsm/setup/backup_policy.py:31 ``FIELDS`` and :94-102 ``normalize``): the
+ * preview body is the normalized policy and carries no ``item``, so the page
+ * tells the two operational previews apart by the keys they name, never by the
+ * request it sent (itsm/setup/configuration.py:1045-1053).
+ */
+export const BACKUP_POLICY_FIELDS = ['target', 'location_kind', 'schedule', 'retention', 'responsible'] as const;
+
+/** The settings keys an origin/session preview answers with (configuration.py:1068-1078). */
+export const ORIGIN_SETTING_KEYS = [
+  'auth_origin',
+  'auth_cookie_secure',
+  'auth_cookie_name',
+  'auth_session_minutes_default',
+] as const;
+
+function proposedKeys(preview: Pick<SectionPreview, 'proposed'> | null): string[] {
+  return preview?.proposed ? Object.keys(preview.proposed) : [];
+}
+
+/** True only when every proposed key is a policy field and there is one. */
+export function isBackupDeclarationPreview(preview: Pick<SectionPreview, 'proposed'> | null): boolean {
+  const keys = proposedKeys(preview);
+  return keys.length > 0 && keys.every((key) => (BACKUP_POLICY_FIELDS as readonly string[]).includes(key));
+}
+
+/** True only when the proposed keys include an origin/session setting. */
+export function isOriginSettingsPreview(preview: Pick<SectionPreview, 'proposed'> | null): boolean {
+  return proposedKeys(preview).some((key) => (ORIGIN_SETTING_KEYS as readonly string[]).includes(key));
 }
 
 export interface OriginSettingsState {

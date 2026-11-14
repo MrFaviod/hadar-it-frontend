@@ -10,12 +10,13 @@
 import { useRef, useState, type FormEvent } from 'react';
 import type { OperationalState, SectionDecision, SectionInput, SectionPreview } from './client';
 import {
-  BACKUP_ITEM,
   BACKUP_LOCATION_KINDS,
   backupDeclarationValues,
   emptyBackupDeclaration,
   emptyOriginSettings,
   effectiveRows,
+  isBackupDeclarationPreview,
+  isOriginSettingsPreview,
   originSettingsValues,
   restartScopeKeys,
   validateBackupDeclaration,
@@ -73,7 +74,7 @@ function BackupDeclarationForm(props: FormProps) {
   const [draft, setDraft] = useState<BackupDeclarationState>(emptyBackupDeclaration);
   const [error, setError] = useState<BackupField | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const declaring = preview?.proposed?.item === BACKUP_ITEM;
+  const declaring = isBackupDeclarationPreview(preview);
   const readback = props.state?.backupPolicy ?? null;
 
   const set = (field: keyof BackupDeclarationState, value: string) => {
@@ -233,7 +234,7 @@ function OriginSettingsForm(props: FormProps) {
   const [draft, setDraft] = useState<OriginSettingsState>(emptyOriginSettings);
   const [error, setError] = useState<OriginField | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const applying = preview !== null && preview.proposed?.item !== BACKUP_ITEM;
+  const applying = isOriginSettingsPreview(preview);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

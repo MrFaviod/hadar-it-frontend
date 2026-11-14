@@ -21,6 +21,15 @@ import type {
  */
 export type SectionChip = 'pending' | 'passed' | 'postponed' | 'risk' | 'declared';
 
+// The stored statuses, mirrored from ``client.ts`` (``SECTION_STATUSES``) so
+// this module keeps no runtime import: the tests load it without a bundler.
+const STORED_STATUSES: readonly SectionChip[] = ['pending', 'passed', 'postponed', 'risk', 'declared'];
+
+function storedStatus(value: string): SectionChip | null {
+  return (STORED_STATUSES as readonly string[]).includes(value) ? value as SectionChip : null;
+}
+
+
 /** The settings route that owns each section, in the installed app. */
 export const SECTION_ROUTES: Record<SectionId, string> = {
   agent: '#/configuracion/ia',
@@ -96,17 +105,46 @@ export function verifyOutcome(checklist: Checklist): VerifyOutcome {
 
 /**
  * Whether the installation's agent selection is linked to a global provider
- * record: the live value first, the recorded receipt second, and ``null`` when
- * the service answered neither. The page says "unknown", never "yes".
+ * record. The recorded receipt answers first: it is the write the page just
+ * made, while the live value can have been read before that write and the
+ * read-back replaces it only once it lands. The live value answers when no
+ * receipt carries the key, and the page says "unknown" when neither does —
+ * never "yes" (itsm/setup/configuration.py:265 live, :349 on the receipt).
  */
 export function providerRecord(
   section: { current: SectionData | null },
   receipt: { receipt: SectionData | null } | null,
 ): boolean | null {
-  const live = section.current?.provider_record;
-  if (typeof live === 'boolean') return live;
   const recorded = receipt?.receipt?.provider_record;
-  return typeof recorded === 'boolean' ? recorded : null;
+  if (typeof recorded === 'boolean') return recorded;
+  const live = section.current?.provider_record;
+  return typeof live === 'boolean' ? live : null;
+}
+
+/**
+ * A section after an apply was answered. The read-back, when it arrived, is
+ * the only current value the page may show; a read-back that failed clears the
+ * live value rather than leaving the pre-apply one on screen. The decision's
+ * own status is written only when the service stored a section status —
+ * ``applied`` is the origin/session call's word, never a stored status.
+ */
+export function appliedSection(
+  entry: SectionDetail,
+  decision: { status: string; required: boolean; postponable: boolean },
+  refreshed: SectionDetail | null,
+): SectionDetail {
+  const base: SectionDetail = refreshed ?? {
+    ...entry,
+    current: null,
+    proposed: null,
+    currentUnavailable: true,
+  };
+  return {
+    ...base,
+    status: storedStatus(decision.status) ?? base.status,
+    required: decision.required,
+    postponable: decision.postponable,
+  };
 }
 
 export interface SectionSuggestion {

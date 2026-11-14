@@ -21,8 +21,8 @@ import {
   type StorageDiagnosticCode,
   type StorageProbe,
   type StorageSummary,
-  isSectionStatus,
 } from './client';
+import { appliedSection } from './section-status';
 import {
   clearOwnerSecrets,
   emptyOwnerForm,
@@ -585,17 +585,13 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       setConfigurationError(result.code);
       return;
     }
-    // The receipt is the service's read-back: the section takes its status
-    // from it, never from the request that was sent. The origin/session apply
-    // answers ``applied`` — the call's own word, not a section status — so only
-    // a stored section status is written back.
+    // The read-back is read before anything is painted: the live value shown is
+    // only ever the one the service answered after the write, and a read-back
+    // that fails clears it instead of leaving a pre-apply value on screen. The
+    // receipt keeps answering for the provider record until it lands.
+    const refreshed = await client.getSection(section);
     setSections((current) => current.map((entry) => (entry.section === section
-      ? {
-        ...entry,
-        status: isSectionStatus(result.receipt.status) ? result.receipt.status : entry.status,
-        required: result.receipt.required,
-        postponable: result.receipt.postponable,
-      }
+      ? appliedSection(entry, result.receipt, refreshed.ok ? refreshed.section : null)
       : entry)));
     setPreviews((current) => {
       const next = { ...current };
@@ -603,10 +599,6 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       return next;
     });
     setReceipts((current) => ({ ...current, [section]: result.receipt }));
-    const refreshed = await client.getSection(section);
-    if (refreshed.ok) {
-      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
-    }
   }
 
   // A declaration is recorded as ``declared``: the page shows the word the
@@ -621,13 +613,11 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       setConfigurationError(result.code);
       return;
     }
+    // Same order as an apply: read the section back first, then paint the word
+    // the service recorded, so a pre-apply current is never shown as the value.
+    const refreshed = await client.getSection(section);
     setSections((current) => current.map((entry) => (entry.section === section
-      ? {
-        ...entry,
-        status: isSectionStatus(result.receipt.status) ? result.receipt.status : entry.status,
-        required: result.receipt.required,
-        postponable: result.receipt.postponable,
-      }
+      ? appliedSection(entry, result.receipt, refreshed.ok ? refreshed.section : null)
       : entry)));
     setPreviews((current) => {
       const next = { ...current };
@@ -635,10 +625,6 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       return next;
     });
     setReceipts((current) => ({ ...current, [section]: result.receipt }));
-    const refreshed = await client.getSection(section);
-    if (refreshed.ok) {
-      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
-    }
   }
 
   async function postponeConfiguration(section: SectionId) {
@@ -684,11 +670,11 @@ export function SetupApp({ initialSession = null, client = setupClient }: SetupA
       setConfigurationError(result.code);
       return;
     }
-    setReceipts((current) => ({ ...current, [section]: result.receipt }));
     const refreshed = await client.getSection(section);
-    if (refreshed.ok) {
-      setSections((current) => current.map((entry) => (entry.section === section ? refreshed.section : entry)));
-    }
+    setSections((current) => current.map((entry) => (entry.section === section
+      ? appliedSection(entry, result.receipt, refreshed.ok ? refreshed.section : null)
+      : entry)));
+    setReceipts((current) => ({ ...current, [section]: result.receipt }));
     const overview = await client.getOverview();
     if (overview.ok) {
       setChecklist(overview.overview.checklist);

@@ -6,6 +6,7 @@
 // be refused by the service never reaches it.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const FORMS = require.resolve(path.join(__dirname, '..', 'src', 'setup', 'gap-forms.ts'));
@@ -148,7 +149,73 @@ test('a declared section is its own chip, never a pass', () => {
   assert.deepEqual(outcome.blocked, []);
 });
 
-test('the provider record is read live, then from the receipt, and never invented', () => {
+// The operational preview the service really answers for a declaration:
+// ``proposed`` is the normalized policy and carries no ``item``
+// (itsm/setup/configuration.py:1045-1053, itsm/setup/backup_policy.py:94-102).
+const DECLARATION_PREVIEW = {
+  section: 'operational',
+  status: 'preview',
+  required: true,
+  postponable: false,
+  current: {
+    target: 's3://hadar-backups/old',
+    location_kind: 'local',
+    schedule: 'weekly 01:00 UTC',
+    retention: '7 days',
+    responsible: 'ops',
+    declared_by: 'owner',
+    declared_at: '2026-11-13T22:10:00+00:00',
+    source: 'declaration',
+  },
+  proposed: {
+    target: 's3://hadar-backups/prod',
+    location_kind: 'object_storage',
+    schedule: 'daily 02:00 UTC',
+    retention: '30 days',
+    responsible: 'platform team',
+  },
+  changes: [
+    { field: 'target', from: 's3://hadar-backups/old', to: 's3://hadar-backups/prod' },
+  ],
+  preview_only: true,
+};
+
+// The origin/session preview the same route answers for an apply
+// (itsm/setup/configuration.py:1068-1078): ``proposed`` names settings keys.
+const ORIGIN_PREVIEW = {
+  section: 'operational',
+  status: 'preview',
+  required: true,
+  postponable: false,
+  current: { auth_origin: '', auth_cookie_secure: true, auth_cookie_name: 'itms_session', auth_session_minutes_default: 480 },
+  proposed: { auth_origin: 'https://itsm.example.test', auth_cookie_secure: true },
+  changes: [{ field: 'auth_origin', from: '', to: 'https://itsm.example.test' }],
+  env_override: [],
+  preview_only: true,
+};
+
+test('a declaration preview is told apart from an origin preview by its fields', () => {
+  const { isBackupDeclarationPreview, isOriginSettingsPreview } = load(FORMS);
+  assert.equal(isBackupDeclarationPreview(DECLARATION_PREVIEW), true);
+  assert.equal(isOriginSettingsPreview(DECLARATION_PREVIEW), false);
+  assert.equal(isOriginSettingsPreview(ORIGIN_PREVIEW), true);
+  assert.equal(isBackupDeclarationPreview(ORIGIN_PREVIEW), false);
+  assert.equal(isBackupDeclarationPreview(null), false);
+  assert.equal(isOriginSettingsPreview(null), false);
+  // A body that names neither is neither: the page shows no diff rather than
+  // guessing which of the two editors the operator asked about.
+  assert.equal(isBackupDeclarationPreview({ proposed: { something_else: 'x' } }), false);
+  assert.equal(isOriginSettingsPreview({ proposed: { something_else: 'x' } }), false);
+
+  // The panel must ask these predicates, never a ``proposed.item`` the
+  // operational preview body does not carry (itsm/setup/configuration.py:1045-1053).
+  const panel = fs.readFileSync(path.join(__dirname, '..', 'src', 'setup', 'gap-panels.tsx'), 'utf8');
+  assert.match(panel, /const declaring = isBackupDeclarationPreview\(preview\);/);
+  assert.match(panel, /const applying = isOriginSettingsPreview\(preview\);/);
+  assert.equal(panel.includes('proposed?.item'), false);
+});
+
+test('the provider record is read from the receipt, then live, and never invented', () => {
   const { providerRecord } = load(STATUS);
   const live = { current: { provider: 'openai', provider_record: true } };
   const recorded = { current: null };
@@ -159,4 +226,54 @@ test('the provider record is read live, then from the receipt, and never invente
   assert.equal(providerRecord(recorded, { receipt: { provider_record: true } }), true);
   assert.equal(providerRecord(recorded, null), null);
   assert.equal(providerRecord({ current: { provider: 'openai' } }, null), null);
+  // The receipt is the write the page just made; a live value read before it
+  // (the section as loaded when the panel opened) must not win
+  // (itsm/setup/configuration.py:345-356 records provider_record on the receipt).
+  assert.equal(
+    providerRecord({ current: { provider: 'openai', provider_record: false } }, { receipt: { provider_record: true } }),
+    true,
+  );
+});
+
+test('an apply takes the read-back as current and never keeps a pre-apply value', () => {
+  const { appliedSection } = load(STATUS);
+  const before = {
+    section: 'appearance',
+    status: 'pending',
+    required: true,
+    postponable: false,
+    actions: ['apply'],
+    current: { preset: 'default' },
+    proposed: null,
+    receipt: null,
+    currentUnavailable: false,
+  };
+  const decision = {
+    section: 'appearance',
+    required: true,
+    postponable: false,
+    status: 'passed',
+    receipt: { organizationName: 'Hadar IT' },
+  };
+  const refreshed = { ...before, status: 'passed', current: { preset: 'blue', organizationName: 'Hadar IT' } };
+
+  const merged = appliedSection(before, decision, refreshed);
+  assert.deepEqual(merged.current, { preset: 'blue', organizationName: 'Hadar IT' });
+  assert.equal(merged.status, 'passed');
+
+  // A read-back that failed after the apply clears the live value: a value
+  // read before the write is never shown as the current one.
+  const failed = appliedSection(before, decision, null);
+  assert.equal(failed.current, null);
+  assert.equal(failed.currentUnavailable, true);
+  assert.equal(failed.status, 'passed');
+
+  // ``applied`` is the call's own word, never a stored status: the section
+  // keeps the status of the read-back.
+  const origin = appliedSection(
+    { ...before, section: 'operational' },
+    { section: 'operational', required: true, postponable: false, status: 'applied', receipt: null },
+    { ...before, section: 'operational', status: 'pending' },
+  );
+  assert.equal(origin.status, 'pending');
 });
