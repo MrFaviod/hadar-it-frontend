@@ -387,9 +387,15 @@ const DEFAULT_FRAMES = [
 
 function sessionSurface(config) {
   const { c, app, mount, settle } = setup();
-  app.route = { name: 'conversation', assetId: null, personId: null, section: null };
+  app.route = (config && config.route) || { name: 'conversation', assetId: null, personId: null, section: null };
   app.csrfToken = 'csrf-session';
   const calls = [];
+  // The surface listens on document for Escape; the harness document is a
+  // stub, so the registered handlers are captured here (same idiom as
+  // contextual-chat.test.cjs).
+  const listeners = new Map();
+  c.document.addEventListener = (type, handler) => { listeners.set(type, handler); };
+  c.document.removeEventListener = (type) => { listeners.delete(type); };
   const state = Object.assign(
     {
       engines: enginesPayload(),
@@ -506,7 +512,7 @@ function sessionSurface(config) {
     return jsonResponse({ error: { code: 'not_found', message: '' } }, 404);
   };
   const mounted = mount('AssetConversation', { app });
-  return { c, app, mount: mounted, vm: mounted.instance, calls, state, settle };
+  return { c, app, mount: mounted, vm: mounted.instance, calls, state, settle, listeners };
 }
 
 test('the chat loads engines dynamically and heals a saved model that disappeared', async () => {
@@ -1776,4 +1782,74 @@ test('a rejected pending attachment deletion keeps the row and reports the serve
   assert.equal(vm.attachments.length, 1, 'the row stays until the server confirms the deletion');
   assert.equal(vm.sessionAttachmentCount, 1);
   assert.match(vm.attachmentError, /en uso/i);
+});
+
+/* --- Entradas: píldora de la barra y botón flotante --- */
+
+test('the floating chat button renders with its own accessible contract', async () => {
+  const surface = sessionSurface({ route: { name: 'panel' } });
+  await surface.settle();
+
+  const fab = findById(surface.mount.root, 'conversation-fab');
+  assert.ok(fab, 'conversation-fab is rendered');
+  assert.equal(fab.tag, 'button');
+  assert.equal(fab.props.type, 'button');
+  assert.equal(fab.props['aria-controls'], 'conversation-surface');
+  assert.equal(fab.props['aria-expanded'], false);
+  assert.equal(typeof fab.props['aria-label'], 'string');
+  assert.ok(fab.props['aria-label'].length > 0, 'the button is labelled');
+  assert.equal(fab.props.hidden, false, 'it starts visible');
+  assert.match(String(fab.props.class), /conversation-fab/);
+
+  const opener = findById(surface.mount.root, 'conversation-opener');
+  assert.ok(opener, 'the top-bar entry stays');
+  assert.equal(opener.props['aria-controls'], 'conversation-surface');
+  surface.mount.unmount();
+});
+
+test('the floating chat button is withdrawn on the full route and over canvases', async () => {
+  const full = sessionSurface();
+  await full.settle();
+  assert.equal(findById(full.mount.root, 'conversation-fab'), null, 'the full surface draws no floating entry');
+  full.mount.unmount();
+
+  const surface = sessionSurface({ route: { name: 'panel' } });
+  await surface.settle();
+  for (const name of ['graph', 'map']) {
+    surface.app.route = { name, assetId: null, personId: null, section: null };
+    await surface.settle();
+    assert.equal(findById(surface.mount.root, 'conversation-fab'), null, name + ' keeps its canvas clear');
+    assert.ok(findById(surface.mount.root, 'conversation-opener'), 'the top-bar entry still works on ' + name);
+  }
+
+  surface.app.route = { name: 'inventory' };
+  await surface.settle();
+  assert.ok(findById(surface.mount.root, 'conversation-fab'), 'any other module keeps the floating entry');
+  surface.mount.unmount();
+});
+
+test('the floating chat button hides while its panel is open and Escape returns focus to it', async () => {
+  const surface = sessionSurface({ route: { name: 'panel' } });
+  await surface.settle();
+
+  const fab = findById(surface.mount.root, 'conversation-fab');
+  let focused = 0;
+  const fabElement = { id: 'conversation-fab', focus() { focused += 1; } };
+  await clickHandler(fab)({ currentTarget: fabElement });
+  await surface.settle();
+
+  assert.equal(surface.vm.panelOpen, true);
+  assert.equal(surface.vm.panelAnchor, 'fab');
+  assert.equal(findById(surface.mount.root, 'conversation-fab').props.hidden, true, 'the button gives way to its panel');
+  const section = findById(surface.mount.root, 'conversation-surface');
+  assert.match(String(section.props.class), /conversation--from-fab/);
+
+  surface.listeners.get('keydown')({ key: 'Escape', preventDefault() {} });
+  await surface.settle();
+
+  assert.equal(surface.vm.panelOpen, false);
+  assert.equal(focused, 1, 'Escape returns focus to the floating button that opened the panel');
+  assert.equal(findById(surface.mount.root, 'conversation-fab').props.hidden, false);
+  assert.doesNotMatch(String(findById(surface.mount.root, 'conversation-surface').props.class), /conversation--from-fab/);
+  surface.mount.unmount();
 });

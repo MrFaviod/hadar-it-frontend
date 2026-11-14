@@ -24,6 +24,11 @@
 
 /* ---- Entrada en la barra superior --------------------------------------- */
 
+/* Dos entradas al chat: la píldora de la barra (chrome, siempre alineada con
+   los demás controles) y un botón flotante abajo a la derecha. El flotante se
+   retira en la ruta completa y en el mapa/grafo, que son lienzos con sus
+   propios controles; la píldora sigue disponible allí. */
+
 :root {
   --conversation-lane-inset: clamp(20px, 3vw, 36px);
   --conversation-lane-top: 12px;
@@ -71,31 +76,46 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  gap: 7px;
+  width: auto;
+  min-width: 44px;
   height: 44px;
   min-height: 44px;
-  padding-inline: 0;
+  padding: 0 13px;
   color: var(--teal-700);
   background: var(--paper);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.conversation-opener .od-icon {
+  --od-icon-size: 18px;
 }
 
 .conversation-opener:hover {
-  background: color-mix(in srgb, var(--teal-600) 10%, var(--paper));
+  color: var(--teal-800);
+  background: var(--teal-050);
+  border-color: var(--teal-600);
 }
 
+/* La etiqueta corta sólo cabe en la barra ancha; por debajo el control vuelve
+   a ser el icono de 44 px con su nombre accesible. */
 .conversation-opener__label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
+  display: none;
+}
+
+@media (min-width: 900px) {
+  :root {
+    /* El ancho del control con etiqueta, más la costura de la barra. */
+    --conversation-lane-reserve: 148px;
+  }
+
+  .conversation-opener__label {
+    display: inline;
+  }
 }
 
 .conversation-host--open .conversation-opener {
@@ -1285,4 +1305,139 @@
 
 .inventory-pagination .btn {
   min-height: 44px;
+}
+
+/* Entry: top-bar pill and floating button
+   ---------------------------------------------------------------------------
+   The pill keeps the chat in the top bar's own lane, so the control stays
+   aligned with the other header controls on every route. The floating button
+   is the second entry: a 56 px target in the bottom-right corner that opens
+   the compact panel anchored above it. It is hidden on the full conversation
+   route and on the map and graph canvases, which own their floating controls,
+   so nothing is ever painted over a canvas. */
+
+:root {
+  --conversation-fab-size: 56px;
+  --conversation-fab-gap: 12px;
+  --conversation-fab-inset: max(16px, env(safe-area-inset-right));
+  --conversation-fab-bottom: max(20px, calc(env(safe-area-inset-bottom) + 16px));
+}
+
+.conversation-fab {
+  position: fixed;
+  right: var(--conversation-fab-inset);
+  bottom: var(--conversation-fab-bottom);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--conversation-fab-size);
+  height: var(--conversation-fab-size);
+  min-width: var(--conversation-fab-size);
+  min-height: var(--conversation-fab-size);
+  padding: 0;
+  color: var(--paper);
+  background: var(--teal-700);
+  border: 1px solid var(--teal-800);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+.conversation-fab .od-icon {
+  --od-icon-size: 24px;
+  width: 24px;
+  height: 24px;
+}
+
+/* `hidden` is honoured: the flotante gives way to the panel it just opened. */
+.conversation-fab[hidden] {
+  display: none;
+}
+
+.conversation-fab:hover {
+  background: var(--teal-800);
+}
+
+.conversation-fab:focus-visible {
+  outline: 3px solid var(--teal-600);
+  outline-offset: 3px;
+}
+
+/* Marca de respuesta en curso: sólo aparece mientras el agente trabaja. */
+.conversation-fab__dot {
+  position: absolute;
+  top: 11px;
+  right: 13px;
+  width: 9px;
+  height: 9px;
+  background: var(--amber-200);
+  border: 1px solid var(--teal-800);
+  border-radius: var(--radius-pill);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .conversation-fab {
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
+  }
+
+  .conversation-fab--busy .conversation-fab__dot {
+    animation: conversation-fab-dot 1.4s var(--ease-out) infinite;
+  }
+}
+
+@keyframes conversation-fab-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* El panel abierto desde el flotante se ancla encima de él: mismo borde
+   derecho, mismo lado, sin saltar al otro extremo de la pantalla. */
+.conversation--compact.conversation--from-fab {
+  bottom: calc(var(--conversation-fab-bottom) + var(--conversation-fab-size) + var(--conversation-fab-gap));
+  right: var(--conversation-fab-inset);
+  transform-origin: bottom right;
+  max-height: min(720px, calc(100dvh - 132px));
+  height: min(720px, calc(100dvh - 132px));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .conversation--compact.conversation--from-fab {
+    animation: conversation-fab-panel var(--dur-fast) var(--ease-out);
+  }
+}
+
+@keyframes conversation-fab-panel {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Pantallas estrechas: el botón se separa del borde y de la franja inferior
+   para no rozar el contenido ni las ayudas que viven abajo. */
+@media (max-width: 640px) {
+  :root {
+    --conversation-fab-inset: max(14px, env(safe-area-inset-right));
+    --conversation-fab-bottom: max(24px, calc(env(safe-area-inset-bottom) + 20px));
+  }
+
+  .conversation--compact.conversation--from-fab {
+    max-height: min(720px, calc(100dvh - 148px));
+    height: min(720px, calc(100dvh - 148px));
+  }
+}
+
+@media (max-width: 480px) {
+  .conversation--compact.conversation--from-fab {
+    right: max(8px, env(safe-area-inset-right));
+    left: max(8px, env(safe-area-inset-left));
+    width: auto;
+  }
 }
