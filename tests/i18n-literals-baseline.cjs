@@ -49,6 +49,9 @@ const EXEMPTIONS = {
   'assets/js/conversation.js': {
     'SHA-256:': 'Digest algorithm label of the review fingerprint shown to the user.'
   },
+  'assets/js/chat-markdown.js': {
+    Copy: 'Placeholder label of the code-block copy button; the chat view replaces it with a localized string.'
+  },
   'assets/js/label-views.js': {
     '·   ·   ×   mm': 'Page-size separators and the millimetre unit symbol; the measurements come from the server format.'
   }
