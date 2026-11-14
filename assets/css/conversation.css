@@ -146,107 +146,108 @@
 
 /* ---- Cabecera ------------------------------------------------------------ */
 
+/* One compact row, OpenWebUI style: history, the conversation title, the model
+ * picker, configuration and the window actions. The pickers keep their labels
+ * for assistive tech only; the visible row stays quiet and borderless until it
+ * is hovered or focused. */
 .conversation__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
+  gap: 4px 8px;
   min-width: 0;
-  padding: 2px 0 12px;
+  padding: 2px 0 8px;
   border-bottom: 1px solid var(--border);
 }
 
 .conversation__title-block {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex: 1 1 96px;
+  align-items: center;
   min-width: 0;
 }
 
 .conversation__title {
   margin: 0;
-  font-size: 19px;
-  font-weight: 600;
-  line-height: 1.25;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation__subtitle {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation__head-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
   min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .conversation__model-picker {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-
-.conversation__picker {
-  display: grid;
+  flex: 0 1 auto;
+  align-items: center;
   gap: 2px;
   min-width: 0;
 }
 
-.conversation__picker-label {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
+.conversation__picker {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .conversation__select {
   width: 100%;
+  min-width: 0;
   min-height: 36px;
-  max-width: 220px;
-  padding: 0 28px 0 10px;
+  max-width: 168px;
+  padding: 0 26px 0 8px;
   color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border-strong);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font: inherit;
   font-size: 13px;
+  text-overflow: ellipsis;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+
+.conversation__select:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.conversation__select:focus-visible {
+  border-color: var(--teal-600);
+  outline: 2px solid var(--teal-600);
+  outline-offset: 1px;
+}
+
+.conversation__select:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .conversation__config {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 10px;
-  color: var(--text);
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--muted);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
   text-decoration: none;
-  white-space: nowrap;
 }
 
 .conversation__config:hover {
+  color: var(--ink-900);
   background: var(--bg);
   border-color: var(--border);
 }
 
 .conversation__window-actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 2px;
 }
@@ -1180,42 +1181,18 @@
 }
 
 .conversation--compact .conversation__head {
-  padding: 10px 12px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border);
 }
 
 .conversation--compact .conversation__title {
-  font-size: 16px;
-}
-
-.conversation--compact .conversation__subtitle,
-.conversation--compact .conversation__picker-label {
-  display: none;
+  font-size: 15px;
 }
 
 .conversation--compact .conversation__select {
   min-height: 36px;
-  max-width: 132px;
+  max-width: 124px;
   font-size: 12px;
-}
-
-.conversation--compact .conversation__config {
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  justify-content: center;
-}
-
-.conversation--compact .conversation__config-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 .conversation--compact .conversation__body {
@@ -1278,24 +1255,46 @@
 }
 
 @media (max-width: 640px) {
-  .conversation__head {
-    align-items: flex-start;
-  }
-
-  .conversation__head-tools {
-    width: 100%;
+  /* One row where it fits: the title yields width first, the pickers keep a
+   * usable share and never wrap under a full-width tools row. */
+  .conversation__title {
+    font-size: 15px;
   }
 
   .conversation__model-picker {
-    width: 100%;
+    flex: 1 1 auto;
+    justify-content: flex-end;
+  }
+
+  .conversation__select {
+    max-width: 120px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* A phone gets two short rows instead of a squeezed one: history, title and
+   * the two icon actions on top, the pickers on their own row underneath. */
+  .conversation__head {
+    gap: 2px 4px;
+  }
+
+  .conversation__model-picker {
+    order: 2;
+    flex: 1 0 100%;
+    gap: 4px;
   }
 
   .conversation__picker {
-    flex: 1 1 120px;
+    flex: 1 1 0;
   }
 
   .conversation__select {
     max-width: none;
+    font-size: 12px;
+  }
+
+  .conversation__window-actions {
+    gap: 0;
   }
 }
 
