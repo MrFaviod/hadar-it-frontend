@@ -14,8 +14,12 @@ import type {
   SectionSummary,
 } from './client';
 
-/** The service's stored statuses: ``passed`` is the only green one. */
-export type SectionChip = 'pending' | 'passed' | 'postponed' | 'risk';
+/**
+ * The service's stored statuses: ``passed`` is the only green one. ``declared``
+ * is a stated policy the service records as itself — never a pass, never a
+ * risk.
+ */
+export type SectionChip = 'pending' | 'passed' | 'postponed' | 'risk' | 'declared';
 
 /** The settings route that owns each section, in the installed app. */
 export const SECTION_ROUTES: Record<SectionId, string> = {
@@ -69,6 +73,8 @@ export interface VerifyOutcome {
   missing: ChecklistItem[];
   postponed: ChecklistItem[];
   risk: ChecklistItem[];
+  /** A stated policy the service recorded as ``declared``; not a pass. */
+  declared: ChecklistItem[];
   /** Required items the service flags as blocking: verification waits. */
   blocked: ChecklistItem[];
 }
@@ -81,10 +87,26 @@ export function verifyOutcome(checklist: Checklist): VerifyOutcome {
   );
   const postponed = checklist.items.filter((item) => item.status === 'postponed');
   const risk = checklist.items.filter((item) => item.status === 'risk');
+  const declared = checklist.items.filter((item) => item.status === 'declared');
   // ``blocking`` is the service's verdict, not a re-derivation here: a
   // required item that is not satisfied blocks, an accepted risk does not.
   const blocked = checklist.items.filter((item) => item.blocking);
-  return { passed, failed, missing, postponed, risk, blocked };
+  return { passed, failed, missing, postponed, risk, declared, blocked };
+}
+
+/**
+ * Whether the installation's agent selection is linked to a global provider
+ * record: the live value first, the recorded receipt second, and ``null`` when
+ * the service answered neither. The page says "unknown", never "yes".
+ */
+export function providerRecord(
+  section: { current: SectionData | null },
+  receipt: { receipt: SectionData | null } | null,
+): boolean | null {
+  const live = section.current?.provider_record;
+  if (typeof live === 'boolean') return live;
+  const recorded = receipt?.receipt?.provider_record;
+  return typeof recorded === 'boolean' ? recorded : null;
 }
 
 export interface SectionSuggestion {

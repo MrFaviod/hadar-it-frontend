@@ -125,16 +125,51 @@ export const SECTION_IDS: readonly SectionId[] = [
  * only status that counts as a pass, and a postponement or an accepted risk is
  * never painted as one.
  */
-export type SectionStatus = 'pending' | 'passed' | 'postponed' | 'risk';
+export type SectionStatus = 'pending' | 'passed' | 'postponed' | 'risk' | 'declared';
 
 /** What the service is willing to record for a section. */
-export type SectionAction = 'apply' | 'postpone';
+export type SectionAction = 'apply' | 'postpone' | 'declare';
 
 /** Values are data: one scalar per field, or a closed list of ids. */
 export type SectionData = Record<string, string | number | boolean | null | string[]>;
 
 /** What a section proposal sends as ``values``. */
 export type SectionInput = Record<string, string | number | boolean | null>;
+
+/** One settings key as the service says it stands, with its provenance. */
+export interface EffectiveSetting {
+  key: string;
+  value: string | null;
+  source: string | null;
+  overriddenBy: string | null;
+}
+
+/** The stored backup declaration, read back from the installation row. */
+export interface BackupPolicy {
+  target: string | null;
+  locationKind: string | null;
+  schedule: string | null;
+  retention: string | null;
+  responsible: string | null;
+  declaredBy: string | null;
+  declaredAt: string | null;
+  source: string | null;
+}
+
+/**
+ * The operational section's own read-back: which effective values the
+ * environment overrides, what a restart would pick up, and the declared
+ * backup policy. Present only when the service answered any of it, so a
+ * section that carries none of these keys keeps the shape it had.
+ */
+export interface OperationalState {
+  effective: EffectiveSetting[];
+  overriddenBy: string[];
+  restartRequired: boolean;
+  restartScope: string[];
+  note: string | null;
+  backupPolicy: BackupPolicy | null;
+}
 
 /** A section as ``GET /configuration`` lists it. */
 export interface SectionSummary {
@@ -154,6 +189,8 @@ export interface SectionDetail extends SectionSummary {
   receipt: SectionData | null;
   /** The live value could not be read; the stored decision still stands. */
   currentUnavailable: boolean;
+  /** The operational read-back when the service answered one; absent otherwise. */
+  operational?: OperationalState;
 }
 
 export interface SectionField {
@@ -184,8 +221,15 @@ export interface SectionDecision {
   section: SectionId;
   required: boolean;
   postponable: boolean;
-  status: SectionStatus;
+  /**
+   * The word the service answered for this call. ``declared`` is a stored
+   * section status; ``applied`` is the origin/session apply's own word and is
+   * never written back as a section status.
+   */
+  status: SectionStatus | 'applied';
   receipt: SectionData | null;
+  /** The operational receipt's provenance, restart and declaration, if any. */
+  operational?: OperationalState;
 }
 
 /** ``GET /configuration``: every section plus the checklist built from receipts. */
@@ -245,6 +289,7 @@ export type ChecklistStatus =
   | 'pending'
   | 'postponed'
   | 'risk'
+  | 'declared'
   | 'unavailable'
   | 'not_required';
 
@@ -394,6 +439,13 @@ export interface SetupClient {
   previewSection(section: SectionId, values: SectionInput, options?: RequestOptions): Promise<PreviewResult>;
   /** Refused before any request unless ``confirm`` is exactly true. */
   applySection(
+    section: SectionId,
+    values: SectionInput,
+    confirm: boolean,
+    options?: RequestOptions,
+  ): Promise<ApplyResult>;
+  /** A stated backup policy: action ``declare``, recorded as ``declared``. */
+  declareSection(
     section: SectionId,
     values: SectionInput,
     confirm: boolean,
@@ -612,7 +664,12 @@ function sectionIdOf(value: unknown): SectionId | null {
     : null;
 }
 
-const SECTION_STATUSES: readonly SectionStatus[] = ['pending', 'passed', 'postponed', 'risk'];
+const SECTION_STATUSES: readonly SectionStatus[] = ['pending', 'passed', 'postponed', 'risk', 'declared'];
+
+/** The stored section words, so a caller can tell one from ``applied``. */
+export function isSectionStatus(value: unknown): value is SectionStatus {
+  return typeof value === 'string' && (SECTION_STATUSES as readonly string[]).includes(value);
+}
 
 function sectionStatusOf(value: unknown): SectionStatus | null {
   return typeof value === 'string' && (SECTION_STATUSES as readonly string[]).includes(value)
@@ -651,6 +708,78 @@ function parseData(value: unknown): SectionData | null {
   return data;
 }
 
+function scalarText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return null;
+}
+
+// ``effective`` (apply receipt) and ``settings`` (read-back) are both a map of
+// key to {value, source, overridden_by}: provenance, not a value the page can
+// print as a row, so it is read into its own shape here.
+function parseEffective(value: unknown): EffectiveSetting[] {
+  const raw = object(value);
+  if (!raw) return [];
+  const settings: EffectiveSetting[] = [];
+  for (const [key, entry] of Object.entries(raw)) {
+    const setting = object(entry);
+    if (!setting) continue;
+    settings.push({
+      key,
+      value: scalarText(setting.value),
+      source: text(setting.source),
+      overriddenBy: text(setting.overridden_by),
+    });
+  }
+  return settings;
+}
+
+const BACKUP_FIELDS: readonly (readonly [string, keyof BackupPolicy])[] = [
+  ['target', 'target'],
+  ['location_kind', 'locationKind'],
+  ['schedule', 'schedule'],
+  ['retention', 'retention'],
+  ['responsible', 'responsible'],
+  ['declared_by', 'declaredBy'],
+  ['declared_at', 'declaredAt'],
+  ['source', 'source'],
+];
+
+function parseBackupPolicy(value: unknown): BackupPolicy | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const policy = {} as BackupPolicy;
+  let found = false;
+  for (const [source, target] of BACKUP_FIELDS) {
+    const entry = text(raw[source]);
+    policy[target] = entry;
+    if (entry !== null) found = true;
+  }
+  return found ? policy : null;
+}
+
+/**
+ * The operational section's own keys, in either envelope: a read-back names
+ * the provenance ``settings``, an apply receipt names it ``effective``, and
+ * the restart and declaration keys are shared. Null when neither carries any,
+ * so every other section keeps exactly the shape it had.
+ */
+function parseOperationalState(value: unknown): OperationalState | null {
+  const raw = object(value);
+  if (!raw) return null;
+  const effective = parseEffective(raw.effective ?? raw.settings);
+  const overriddenBy = parseIdList(raw.overridden_by);
+  const restartScope = parseIdList(raw.restart_scope);
+  const restartRequired = raw.restart_required === true;
+  const note = text(raw.note);
+  const backupPolicy = parseBackupPolicy(raw.backup_policy);
+  if (effective.length === 0 && overriddenBy.length === 0 && restartScope.length === 0
+    && !restartRequired && note === null && backupPolicy === null) {
+    return null;
+  }
+  return { effective, overriddenBy, restartRequired, restartScope, note, backupPolicy };
+}
+
 function dataText(value: unknown): string | null {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -686,13 +815,16 @@ function parseSectionDetail(body: unknown): SectionDetail | null {
   const summary = parseSectionSummary(body);
   const raw = object(body);
   if (!summary || !raw) return null;
-  return {
+  const detail: SectionDetail = {
     ...summary,
     current: raw.current === null || raw.current === undefined ? null : parseData(raw.current),
     proposed: raw.proposed === null || raw.proposed === undefined ? null : parseData(raw.proposed),
     receipt: raw.receipt === null || raw.receipt === undefined ? null : parseData(raw.receipt),
     currentUnavailable: raw.currentUnavailable === true,
   };
+  const operational = parseOperationalState(raw.current);
+  if (operational) detail.operational = operational;
+  return detail;
 }
 
 function parsePreview(body: unknown): SectionPreview | null {
@@ -728,15 +860,20 @@ function parseDecision(body: unknown): SectionDecision | null {
   const raw = object(body);
   if (!raw) return null;
   const section = sectionIdOf(raw.section);
-  const status = sectionStatusOf(raw.status);
+  // ``applied`` is the origin/session apply's own word; every other status is
+  // the stored section word and must be one the section statuses know.
+  const status = raw.status === 'applied' ? 'applied' : sectionStatusOf(raw.status);
   if (!section || !status) return null;
-  return {
+  const decision: SectionDecision = {
     section,
     required: raw.required === true,
     postponable: raw.postponable === true,
     status,
     receipt: raw.receipt === null || raw.receipt === undefined ? null : parseData(raw.receipt),
   };
+  const operational = parseOperationalState(raw.receipt);
+  if (operational) decision.operational = operational;
+  return decision;
 }
 
 const CHECKLIST_STATUSES: readonly ChecklistStatus[] = [
@@ -745,6 +882,7 @@ const CHECKLIST_STATUSES: readonly ChecklistStatus[] = [
   'pending',
   'postponed',
   'risk',
+  'declared',
   'unavailable',
   'not_required',
 ];
@@ -1358,6 +1496,31 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     return { ok: true, receipt };
   }
 
+  // A declaration is not an apply: it records a stated policy as ``declared``
+  // and never as a pass, so the answer is checked for that word before the
+  // page paints anything green.
+  async function declareSection(
+    section: SectionId,
+    values: SectionInput,
+    confirm: boolean,
+    options: RequestOptions = {},
+  ): Promise<ApplyResult> {
+    if (confirm !== true) return { ok: false, code: 'confirm_required' };
+    const timeoutMs = options.timeoutMs ?? defaults.timeoutMs ?? DEFAULT_CONFIGURATION_TIMEOUT_MS;
+    const outcome = await configWrite(
+      `/configuration/${section}/apply`,
+      { values, action: 'declare', confirm: true },
+      timeoutMs,
+      options,
+    );
+    if (!outcome.ok) return { ok: false, code: outcome.code };
+    const receipt = parseDecision(outcome.body);
+    if (!receipt || receipt.section !== section || receipt.status !== 'declared') {
+      return { ok: false, code: 'invalid-response' };
+    }
+    return { ok: true, receipt };
+  }
+
   async function postponeSection(
     section: SectionId,
     confirm: boolean,
@@ -1590,6 +1753,7 @@ export function createSetupClient(defaults: { fetch?: FetchLike; timeoutMs?: num
     getSection,
     previewSection,
     applySection,
+    declareSection,
     postponeSection,
     acceptRisk,
     verify,
