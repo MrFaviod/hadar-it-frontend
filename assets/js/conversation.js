@@ -38,6 +38,12 @@
     return runtime ? runtime.t(key, params) : '';
   }
 
+  // Pipe-form plurals: vue-i18n picks the form from the numeric choice.
+  function trPlural(key, count) {
+    const runtime = typeof window !== 'undefined' ? window.ItsmI18n : null;
+    return runtime ? runtime.t(key, { count: count }, { plural: count }) : '';
+  }
+
   // Escape-first fallback for agent copy: used only when the markdown renderer
   // is not on the page, so no message text can ever become markup on its own.
   const HTML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
@@ -130,6 +136,53 @@
     return TOOL_TONES[status] || 'hold';
   }
 
+  const HISTORY_KEY = 'asset-manager.chat-history';
+  const HISTORY_NARROW_PX = 900;
+  const DAY_MS = 86400000;
+
+  function historyStamp(session) {
+    return Date.parse((session && (session.updatedAt || session.createdAt)) || '');
+  }
+
+  // Calendar buckets in local time. Same-day and future stamps count as today;
+  // an unreadable stamp lands in the oldest bucket instead of disappearing.
+  function historyBucket(value, now) {
+    const stamp = typeof value === 'number' ? value : Date.parse(value || '');
+    if (!Number.isFinite(stamp)) return 'older';
+    const reference = new Date(now === undefined ? Date.now() : now);
+    const startToday = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate()).getTime();
+    const day = new Date(stamp);
+    const startDay = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+    const days = Math.round((startToday - startDay) / DAY_MS);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days <= 7) return 'week';
+    return 'older';
+  }
+
+  function groupHistory(sessions, now) {
+    const order = ['today', 'yesterday', 'week', 'older'];
+    const buckets = { today: [], yesterday: [], week: [], older: [] };
+    (Array.isArray(sessions) ? sessions : []).forEach(function (session) {
+      if (session && typeof session.id === 'string') buckets[historyBucket(historyStamp(session), now)].push(session);
+    });
+    order.forEach(function (key) {
+      buckets[key].sort(function (a, b) { return (historyStamp(b) || 0) - (historyStamp(a) || 0); });
+    });
+    return order.filter(function (key) { return buckets[key].length > 0; })
+      .map(function (key) { return { key: key, sessions: buckets[key] }; });
+  }
+
+  function readHistoryCollapsed() {
+    try { return window.localStorage.getItem(HISTORY_KEY) === 'collapsed'; } catch (error) { return false; }
+  }
+
+  function writeHistoryCollapsed(collapsed) {
+    try { window.localStorage.setItem(HISTORY_KEY, collapsed ? 'collapsed' : 'expanded'); } catch (error) { /* Preference stays in memory. */ }
+  }
+
+  window.AssetConversationHistory = { bucket: historyBucket, group: groupHistory };
+
   window.AssetConversation = {
     name: 'AssetConversation',
     components: { AppIcon: window.AppIcon },
@@ -177,6 +230,11 @@
         savedSessions: [],
         sessionsLoading: false,
         sessionsError: '',
+        historyCollapsed: readHistoryCollapsed(),
+        historyOverlayOpen: false,
+        historyNarrow: false,
+        deleteCandidate: '',
+        deletingSessionId: '',
         resuming: false,
         selecting: false,
         sessionRunning: false,
@@ -434,6 +492,23 @@
       isConversationRoute() {
         return !!(this.app.route && this.app.route.name === 'conversation');
       },
+      // The full route docks the list beside the log; the compact panel and
+      // narrow screens show it as an overlay that the user opens and closes.
+      historyOverlay() {
+        return !this.isConversationRoute || this.historyNarrow;
+      },
+      historyVisible() {
+        return this.historyOverlay ? this.historyOverlayOpen : !this.historyCollapsed;
+      },
+      historyDocked() {
+        return !this.legacyFallback && !this.historyOverlay && this.historyVisible;
+      },
+      historyBusy() {
+        return this.busy || this.resuming || this.selecting || this.sessionRunning;
+      },
+      historyGroups() {
+        return window.AssetConversationHistory.group(this.savedSessions, Date.now());
+      },
       /* El mapa y el grafo son lienzos: el botón flotante se retira para no
        * tapar sus controles. La entrada de la barra sigue disponible. */
       canvasRoute() {
@@ -535,6 +610,8 @@
     mounted() {
       this.localizeRenderedCopy();
       this.autosizeComposer();
+      this.syncHistoryViewport();
+      if (window.addEventListener) window.addEventListener('resize', this.syncHistoryViewport);
     },
     updated() {
       // v-html replaces the code-block DOM on every stream tick, so the copy
@@ -545,6 +622,7 @@
       this.disposed = true;
       this.resetSurface();
       if (document.removeEventListener) document.removeEventListener('keydown', this.handleChatKeydown);
+      if (window.removeEventListener) window.removeEventListener('resize', this.syncHistoryViewport);
     },
     methods: {
       applyAgentEngines(payload) {
@@ -639,13 +717,21 @@
       closePanel() {
         this.panelOpen = false;
         this.panelAnchor = '';
+        this.historyOverlayOpen = false;
+        this.deleteCandidate = '';
         const opener = this.opener || this.$refs.opener;
         void this.$nextTick(() => {
           if (this.authenticated && opener && typeof opener.focus === 'function') opener.focus();
         });
       },
       handleChatKeydown(event) {
-        if (event.key !== 'Escape' || !this.panelOpen || this.isConversationRoute) return;
+        if (event.key !== 'Escape') return;
+        if (this.historyOverlay && this.historyOverlayOpen) {
+          event.preventDefault();
+          this.closeHistory();
+          return;
+        }
+        if (!this.panelOpen || this.isConversationRoute) return;
         event.preventDefault();
         this.closePanel();
       },
@@ -727,6 +813,97 @@
           if (this.isCurrent(epoch)) { this.resuming = false; this.request = null; }
         }
       },
+      syncHistoryViewport() {
+        this.historyNarrow = typeof window.innerWidth === 'number' && window.innerWidth <= HISTORY_NARROW_PX;
+      },
+      historyGroupLabel(key) {
+        return tr('ui.chat.history_' + key);
+      },
+      historyName(session) {
+        return session.model || session.engine || tr('ui.chat.title');
+      },
+      historyCountText(session) {
+        const count = Number(session.messageCount) || 0;
+        return trPlural('ui.chat.history_messages', count);
+      },
+      historyDateText(session) {
+        const stamp = historyStamp(session);
+        if (!Number.isFinite(stamp)) return '';
+        const date = new Date(stamp);
+        return window.ItsmI18n && window.ItsmI18n.formatDate
+          ? window.ItsmI18n.formatDate(date, { day: 'numeric', month: 'short' })
+          : new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(date);
+      },
+      toggleHistory() {
+        if (this.historyOverlay) {
+          this.historyOverlayOpen = !this.historyOverlayOpen;
+          if (this.historyOverlayOpen) void this.$nextTick(() => { if (this.$refs.historyNew && this.$refs.historyNew.focus) this.$refs.historyNew.focus(); });
+          else this.deleteCandidate = '';
+          return this.historyOverlayOpen;
+        }
+        this.historyCollapsed = !this.historyCollapsed;
+        writeHistoryCollapsed(this.historyCollapsed);
+        return !this.historyCollapsed;
+      },
+      closeHistory() {
+        if (!this.historyOverlayOpen) return false;
+        this.historyOverlayOpen = false;
+        this.deleteCandidate = '';
+        void this.$nextTick(() => { if (this.$refs.historyToggle && this.$refs.historyToggle.focus) this.$refs.historyToggle.focus(); });
+        return true;
+      },
+      async openSavedSession(id) {
+        const opened = await this.resumeSession(id);
+        if (opened) this.closeHistory();
+        return opened;
+      },
+      async newConversationFromHistory() {
+        const started = await this.resumeSession('');
+        if (started) this.closeHistory();
+        return started;
+      },
+      focusHistoryControl(selector) {
+        void this.$nextTick(() => {
+          const root = this.$el;
+          const target = root && typeof root.querySelector === 'function' ? root.querySelector(selector) : null;
+          if (target && typeof target.focus === 'function') target.focus();
+        });
+      },
+      requestDeleteSession(id) {
+        if (this.historyBusy || this.deletingSessionId) return false;
+        this.deleteCandidate = id;
+        this.focusHistoryControl('#conversation-history-confirm-' + id);
+        return true;
+      },
+      cancelDeleteSession() {
+        const id = this.deleteCandidate;
+        this.deleteCandidate = '';
+        if (id) this.focusHistoryControl('#conversation-history-delete-' + id);
+      },
+      async confirmDeleteSession(id) {
+        if (this.deletingSessionId || this.historyBusy || this.deleteCandidate !== id) return false;
+        const epoch = this.epoch;
+        const removed = this.savedSessions.find(session => session.id === id);
+        const wasActive = this.sessionId === id;
+        this.deletingSessionId = id;
+        let deleted = false;
+        try {
+          await window.AssetAgentApi.deleteSession(this.app, id);
+          deleted = true;
+        } catch (error) {
+          if (this.isCurrent(epoch)) this.sessionsError = error.serverMessage || error.message || tr('ui.chat.session_delete_failed');
+        } finally {
+          this.deletingSessionId = '';
+          this.deleteCandidate = '';
+        }
+        if (!deleted || !this.isCurrent(epoch)) return false;
+        this.savedSessions = this.savedSessions.filter(session => session.id !== id);
+        // The transcript belongs to the deleted session, so it is cleared too.
+        if (wasActive) await this.resumeSession('');
+        await this.loadSavedSessions();
+        if (removed && this.savedSessions.some(session => session.id === id)) this.sessionsError = tr('ui.chat.session_delete_failed');
+        return true;
+      },
       savedSessionLabel(session) {
         return session.title || session.preview || tr('ui.chat.session_fallback_title', { date: session.updatedAt || session.createdAt || session.id });
       },
@@ -760,6 +937,9 @@
         this.savedSessions = [];
         this.sessionsLoading = false;
         this.sessionsError = '';
+        this.historyOverlayOpen = false;
+        this.deleteCandidate = '';
+        this.deletingSessionId = '';
         this.resuming = false;
         this.selecting = false;
         this.sessionRunning = false;
@@ -1309,6 +1489,7 @@
             this.busy = false;
             this.streaming = false;
             this.request = null;
+            void this.loadSavedSessions();
           }
         }
       },
@@ -1729,6 +1910,7 @@
 '      <p v-if="!legacyFallback && agentActiveInstance" class="conversation__subtitle">{{ agentActiveInstance.name }}</p>',
 '    </div>',
 '    <div class="conversation__head-tools">',
+'      <button ref="historyToggle" id="conversation-history-toggle" type="button" class="icon-button conversation__history-toggle" :aria-expanded="historyVisible ? \'true\' : \'false\'" aria-controls="conversation-history" :aria-label="historyVisible ? $t(\'ui.chat.history_hide\') : $t(\'ui.chat.history_show\')" :title="historyVisible ? $t(\'ui.chat.history_hide\') : $t(\'ui.chat.history_show\')" @click="toggleHistory"><app-icon name="history"></app-icon></button>',
 '      <div v-if="!legacyFallback" class="conversation__model-picker" role="group" :aria-label="$t(\'ui.chat.engine_title\')">',
 '        <label class="conversation__picker"><span class="conversation__picker-label">{{ $t(\'ui.chat.provider_label\') }}</span>',
 '          <select id="conversation-provider" class="conversation__select" :value="chatProviderValue" :disabled="chatProviderDisabled" @change="changeChatProvider($event)">',
@@ -1751,6 +1933,44 @@
 '      </div>',
 '    </div>',
 '  </header>',
+'  <div class="conversation__frame">',
+'  <aside id="conversation-history" class="conversation__history" :class="{ \'conversation__history--docked\': historyDocked, \'conversation__history--overlay\': historyOverlay, \'conversation__history--open\': historyVisible }" :hidden="!historyVisible" :aria-label="$t(\'ui.chat.history_title\')">',
+'    <div class="conversation__history-head">',
+'      <button ref="historyNew" id="conversation-history-new" type="button" class="btn btn--secondary conversation__history-new" :disabled="historyBusy" @click="newConversationFromHistory"><app-icon name="plus"></app-icon><span>{{ $t(\'ui.chat.session_new\') }}</span></button>',
+'      <button v-if="historyOverlay" id="conversation-history-close" type="button" class="icon-button" :aria-label="$t(\'ui.chat.history_hide\')" @click="closeHistory"><app-icon name="close"></app-icon></button>',
+'    </div>',
+'    <p v-if="savedSessions.length === 0 && sessionsLoading" class="conversation__meta conversation__history-status" role="status">{{ $t(\'ui.chat.sessions_loading\') }}</p>',
+'    <div v-if="sessionsError" class="conversation__history-status">',
+'      <p class="conversation__error" role="alert">{{ sessionsError }}</p>',
+'      <button id="conversation-history-retry" type="button" class="btn btn--ghost btn--small" :disabled="sessionsLoading" @click="loadSavedSessions">{{ $t(\'ui.chat.sessions_retry\') }}</button>',
+'    </div>',
+'    <p v-else-if="!sessionsLoading && savedSessions.length === 0" class="conversation__meta conversation__history-status">{{ $t(\'ui.chat.history_empty\') }}</p>',
+'    <nav v-if="savedSessions.length" class="conversation__history-list" :aria-label="$t(\'ui.chat.history_title\')">',
+'      <section v-for="group in historyGroups" :key="group.key" class="conversation__history-group" :aria-labelledby="\'conversation-history-group-\' + group.key">',
+'        <h2 :id="\'conversation-history-group-\' + group.key" class="conversation__history-heading">{{ historyGroupLabel(group.key) }}</h2>',
+'        <ul class="conversation__history-items">',
+'          <li v-for="session in group.sessions" :key="session.id" class="conversation__history-item" :class="{ \'conversation__history-item--active\': session.id === sessionId }">',
+'            <template v-if="deleteCandidate !== session.id">',
+'              <button :id="\'conversation-history-open-\' + session.id" type="button" class="conversation__history-open" :aria-current="session.id === sessionId ? \'true\' : null" :disabled="historyBusy || deletingSessionId === session.id" @click="openSavedSession(session.id)">',
+'                <span class="conversation__history-name">{{ historyName(session) }}</span>',
+'                <span class="conversation__meta">{{ historyCountText(session) }} · {{ historyDateText(session) }}</span>',
+'              </button>',
+'              <button :id="\'conversation-history-delete-\' + session.id" type="button" class="icon-button conversation__history-delete" :disabled="historyBusy || !!deletingSessionId" :aria-label="$t(\'ui.chat.history_delete\', { name: historyName(session) })" :title="$t(\'ui.chat.history_delete\', { name: historyName(session) })" @click="requestDeleteSession(session.id)"><app-icon name="trash"></app-icon></button>',
+'            </template>',
+'            <div v-else class="conversation__history-confirm" role="group" :aria-label="$t(\'ui.chat.history_confirm_question\', { name: historyName(session) })">',
+'              <p class="conversation__history-confirm-text">{{ $t(\'ui.chat.history_confirm_question\') }}</p>',
+'              <div class="conversation__history-confirm-actions">',
+'                <button :id="\'conversation-history-confirm-\' + session.id" type="button" class="btn btn--danger btn--small" :disabled="deletingSessionId === session.id" @click="confirmDeleteSession(session.id)">{{ deletingSessionId === session.id ? $t(\'ui.chat.history_deleting\') : $t(\'ui.chat.history_delete_confirm\') }}</button>',
+'                <button type="button" class="btn btn--ghost btn--small" :disabled="deletingSessionId === session.id" @click="cancelDeleteSession">{{ $t(\'ui.chat.history_delete_cancel\') }}</button>',
+'              </div>',
+'            </div>',
+'          </li>',
+'        </ul>',
+'      </section>',
+'    </nav>',
+'  </aside>',
+'  <button v-if="historyOverlay && historyVisible" id="conversation-history-backdrop" type="button" class="conversation__history-backdrop" :aria-label="$t(\'ui.chat.history_hide\')" tabindex="-1" @click="closeHistory"></button>',
+'  <div class="conversation__main">',
 '  <div class="conversation__body">',
       '  <p v-if="agentEnginesLoading" class="conversation__meta" role="status">{{ $t(\'ui.chat.engines_loading\') }}</p>',
       '  <p v-if="agentEnginesError" class="conversation__error" role="alert">{{ agentEnginesError }}</p>',
@@ -1917,6 +2137,8 @@
       '    </div>',
       '    <p v-if="sessionAttachmentCount" class="conversation__meta conversation__composer-note">{{ $t(\'ui.chat.session_attachments\', { count: sessionAttachmentCount, max: maxSessionAttachments }) }}</p>',
       '  </form>',
+'  </div>',
+'  </div>',
 '  </div>',
       '</section>',
       '</div>'

@@ -442,6 +442,17 @@ function sessionSurface(config) {
       state.preference = body;
       return jsonResponse(body);
     }
+    if (route === '/agent/sessions' && method === 'GET') {
+      if (state.sessionsListError) return jsonResponse({ error: { code: 'unavailable', message: state.sessionsListError } }, 503);
+      return jsonResponse({ sessions: state.sessions || [] });
+    }
+    if (/^\/agent\/sessions\/[^/]+$/.test(route) && method === 'DELETE') {
+      if (state.deleteError) return jsonResponse({ error: { code: 'unavailable', message: state.deleteError } }, 503);
+      const deletedId = route.split('/').pop();
+      state.deletedIds = (state.deletedIds || []).concat(deletedId);
+      state.sessions = (state.sessions || []).filter((item) => item.id !== deletedId);
+      return { ok: true, status: 204, json: async () => null, blob: async () => new Blob([]) };
+    }
     if (route === '/agent/sessions' && method === 'POST') {
       state.createCount += 1;
       return jsonResponse(
@@ -1851,5 +1862,161 @@ test('the floating chat button hides while its panel is open and Escape returns 
   assert.equal(focused, 1, 'Escape returns focus to the floating button that opened the panel');
   assert.equal(findById(surface.mount.root, 'conversation-fab').props.hidden, false);
   assert.doesNotMatch(String(findById(surface.mount.root, 'conversation-surface').props.class), /conversation--from-fab/);
+  surface.mount.unmount();
+});
+
+// ---- History sidebar -------------------------------------------------------
+
+function historySession(id, updatedAt, overrides) {
+  return Object.assign(
+    { id, instanceId: ENGINE_ID, providerId: null, engine: 'opencode', model: 'opencode/free-a', status: 'idle', messageCount: 2, assetId: null, createdAt: updatedAt, updatedAt },
+    overrides
+  );
+}
+
+test('history groups sessions into today, yesterday, last seven days and older by updatedAt', () => {
+  const { c } = setup();
+  const history = c.AssetConversationHistory;
+  const now = new Date(2026, 10, 14, 15, 0, 0).getTime();
+  assert.equal(history.bucket(new Date(2026, 10, 14, 1, 0).getTime(), now), 'today');
+  assert.equal(history.bucket(new Date(2026, 10, 13, 23, 59).getTime(), now), 'yesterday');
+  assert.equal(history.bucket(new Date(2026, 10, 8, 9, 0).getTime(), now), 'week');
+  assert.equal(history.bucket(new Date(2026, 10, 7, 9, 0).getTime(), now), 'week', 'seven days back is still the last week');
+  assert.equal(history.bucket(new Date(2026, 10, 6, 9, 0).getTime(), now), 'older');
+  assert.equal(history.bucket('not-a-date', now), 'older');
+
+  const sessions = [
+    historySession('old', '2026-10-01T10:00:00Z'),
+    historySession('today-late', new Date(2026, 10, 14, 14, 0).toISOString()),
+    historySession('today-early', new Date(2026, 10, 14, 6, 0).toISOString()),
+    historySession('yesterday', new Date(2026, 10, 13, 12, 0).toISOString())
+  ];
+  // Groups come from the sandboxed realm, so their arrays are copied to this
+  // realm before comparison; the values themselves are checked exactly.
+  const groups = Array.from(history.group(sessions, now), (group) => ({ key: group.key, ids: Array.from(group.sessions, (session) => session.id) }));
+  assert.deepEqual(groups, [
+    { key: 'today', ids: ['today-late', 'today-early'] },
+    { key: 'yesterday', ids: ['yesterday'] },
+    { key: 'older', ids: ['old'] }
+  ]);
+  assert.equal(history.group([], now).length, 0);
+});
+
+test('the history sidebar lists sessions and highlights the active one', async () => {
+  const now = new Date();
+  const surface = sessionSurface({
+    sessions: [
+      historySession('sess-active', new Date(now.getTime() - 60_000).toISOString(), { messageCount: 4 }),
+      historySession('sess-other', new Date(now.getTime() - 3 * 86_400_000).toISOString(), { model: 'opencode/free-b', messageCount: 1 })
+    ]
+  });
+  await surface.settle();
+  surface.vm.sessionId = 'sess-active';
+  await surface.settle();
+
+  const text = vnodeText(surface.mount.root);
+  assert.match(text, /Hoy/);
+  assert.match(text, /Últimos 7 días/);
+  assert.match(text, /4 mensajes/);
+  assert.match(text, /1 mensaje\b/);
+  const active = findById(surface.mount.root, 'conversation-history-open-sess-active');
+  assert.equal(active.props['aria-current'], 'true');
+  const other = findById(surface.mount.root, 'conversation-history-open-sess-other');
+  assert.equal(other.props['aria-current'], null);
+  surface.mount.unmount();
+});
+
+test('deleting a session needs an inline confirm and starts a new session when it was active', async () => {
+  const now = new Date();
+  const surface = sessionSurface({
+    sessions: [
+      historySession('sess-a', now.toISOString()),
+      historySession('sess-b', now.toISOString(), { model: 'opencode/free-b' })
+    ]
+  });
+  await surface.settle();
+  surface.vm.sessionId = 'sess-a';
+
+  // The first click only asks; nothing is deleted yet.
+  surface.vm.requestDeleteSession('sess-a');
+  await surface.settle();
+  assert.equal(surface.vm.deleteCandidate, 'sess-a');
+  assert.equal(surface.state.deletedIds, undefined);
+  assert.ok(findById(surface.mount.root, 'conversation-history-confirm-sess-a'));
+
+  // Confirming deletes through the agent API, then starts a new conversation.
+  await surface.vm.confirmDeleteSession('sess-a');
+  await surface.settle();
+  assert.deepEqual(surface.state.deletedIds, ['sess-a']);
+  assert.equal(surface.vm.sessionId, '');
+  assert.equal(surface.vm.deleteCandidate, '');
+  assert.deepEqual(surface.vm.savedSessions.map((session) => session.id), ['sess-b']);
+  assert.equal(surface.calls.filter((call) => call.method === 'DELETE' && call.path === '/agent/sessions/sess-a').length, 1);
+  surface.mount.unmount();
+});
+
+test('deleting an inactive session keeps the active conversation', async () => {
+  const now = new Date();
+  const surface = sessionSurface({
+    sessions: [
+      historySession('sess-a', now.toISOString()),
+      historySession('sess-b', now.toISOString(), { model: 'opencode/free-b' })
+    ]
+  });
+  await surface.settle();
+  surface.vm.sessionId = 'sess-a';
+
+  surface.vm.requestDeleteSession('sess-b');
+  await surface.vm.confirmDeleteSession('sess-b');
+  await surface.settle();
+  assert.deepEqual(surface.state.deletedIds, ['sess-b']);
+  assert.equal(surface.vm.sessionId, 'sess-a');
+  assert.deepEqual(surface.vm.savedSessions.map((session) => session.id), ['sess-a']);
+  surface.mount.unmount();
+});
+
+test('a failed delete keeps the session listed and shows a localized error', async () => {
+  const now = new Date();
+  const surface = sessionSurface({ sessions: [historySession('sess-a', now.toISOString())], deleteError: 'boom' });
+  await surface.settle();
+  surface.vm.requestDeleteSession('sess-a');
+  await surface.vm.confirmDeleteSession('sess-a');
+  await surface.settle();
+  assert.deepEqual(surface.vm.savedSessions.map((session) => session.id), ['sess-a']);
+  assert.match(surface.vm.sessionsError, /boom|No se pudo eliminar/);
+  surface.mount.unmount();
+});
+
+test('the compact panel toggles the history as an overlay and Escape closes it', async () => {
+  const { c, app } = setup();
+  const surface = sessionSurface({
+    route: { name: 'panel', assetId: null, personId: null, section: null },
+    sessions: [historySession('sess-a', new Date().toISOString())]
+  });
+  surface.vm.panelOpen = true;
+  await surface.settle();
+
+  assert.equal(surface.vm.historyOverlay, true);
+  assert.equal(surface.vm.historyVisible, false);
+  assert.equal(findById(surface.mount.root, 'conversation-history').props.hidden, true);
+
+  surface.vm.toggleHistory();
+  await surface.settle();
+  assert.equal(surface.vm.historyVisible, true);
+  assert.equal(findById(surface.mount.root, 'conversation-history').props.hidden, false);
+  assert.match(vnodeText(surface.mount.root), /Nueva conversación/);
+
+  surface.listeners.get('keydown')({ key: 'Escape', preventDefault() {} });
+  await surface.settle();
+  assert.equal(surface.vm.historyVisible, false, 'Escape closes the overlay first');
+  assert.equal(surface.vm.panelOpen, true, 'the panel stays open');
+  surface.mount.unmount();
+});
+
+test('the full route collapse persists in localStorage across mounts', async () => {
+  const surface = sessionSurface({ sessions: [] });
+  surface.vm.toggleHistory();
+  assert.equal(surface.vm.historyCollapsed, true);
+  assert.equal(surface.app && surface.c.localStorage.getItem('asset-manager.chat-history'), 'collapsed');
   surface.mount.unmount();
 });

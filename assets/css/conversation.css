@@ -1441,3 +1441,241 @@
     width: auto;
   }
 }
+
+/* History sidebar */
+
+/* Columna del contenido: la lista se acopla a su izquierda en la ruta
+   completa y el log conserva el ancho restante. */
+.conversation__frame {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+}
+
+.conversation__main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.conversation__main > .conversation__body {
+  flex: 1 1 auto;
+}
+
+.conversation__history-toggle[aria-expanded="true"] {
+  background: var(--teal-050);
+}
+
+.conversation__history {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  background: var(--paper);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.conversation__history[hidden] {
+  display: none;
+}
+
+.conversation__history--docked {
+  flex: 0 0 var(--sidebar-w);
+  width: var(--sidebar-w);
+}
+
+/* Superposición: la lista cubre el panel o la pantalla angosta y un fondo
+   semitransparente la cierra al pulsarlo. */
+.conversation__history--overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  width: min(300px, 86%);
+  box-shadow: var(--shadow-lg);
+}
+
+.conversation__history--overlay[hidden] {
+  display: none;
+}
+
+.conversation__history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.conversation__history-new {
+  flex: 1 1 auto;
+  min-height: 44px;
+  justify-content: flex-start;
+}
+
+.conversation__history-status {
+  display: grid;
+  gap: 8px;
+  padding: 4px 4px 0;
+}
+
+.conversation__history-list {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.conversation__history-heading {
+  margin: 0 0 4px;
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.conversation__history-items {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conversation__history-item {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-radius: var(--radius-md);
+}
+
+.conversation__history-open {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: inherit;
+}
+
+.conversation__history-open:hover:not(:disabled) {
+  background: var(--slate-050);
+}
+
+.conversation__history-open:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.conversation__history-open:focus-visible,
+.conversation__history-new:focus-visible,
+.conversation__history-delete:focus-visible,
+.conversation__history-toggle:focus-visible {
+  outline: 3px solid var(--teal-600);
+  outline-offset: 3px;
+}
+
+.conversation__history-item--active .conversation__history-open {
+  background: var(--teal-050);
+  border-color: var(--teal-200);
+  color: var(--teal-800);
+}
+
+.conversation__history-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.conversation__history-delete {
+  flex: 0 0 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.conversation__history-confirm {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  background: var(--danger-050);
+  border: 1px solid var(--danger-100);
+  border-radius: var(--radius-md);
+}
+
+.conversation__history-confirm-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger-700);
+}
+
+.conversation__history-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation__history-confirm-actions .btn {
+  min-height: 44px;
+}
+
+.conversation__history-confirm .btn:focus-visible,
+.conversation__history-status .btn:focus-visible {
+  outline: 3px solid var(--teal-600);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .conversation__history {
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation__history {
+    transition: none;
+  }
+}
+
+/* En la ruta completa la lista plegada no ocupa columna. */
+.conversation__history[hidden] + .conversation__main {
+  flex-basis: 100%;
+}
+
+/* Fondo que cierra la lista superpuesta: toca el contenido detrás. */
+.conversation__history-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.conversation__history-backdrop[hidden] {
+  display: none;
+}
