@@ -227,6 +227,13 @@
     const promise = (async function () {
       if (typeof window.fetch !== 'function') return null;
       try {
+        // The overlay is merged over the built-in catalog, so the catalog has
+        // to be on disk first: a caller that requests a bundle for a locale it
+        // never fetched (a language switcher, a saved preference) would
+        // otherwise cache an overlay with no built-in UI copy behind it, and
+        // every key would silently fall back to Spanish.
+        const base = BUILTIN_LOCALES.indexOf(target) !== -1 ? target : parentOf(target);
+        if (base && !hasCatalog(base)) await fetchBuiltinCatalog(base);
         const response = await window.fetch('/api/v1/i18n/bundle?locale=' + encodeURIComponent(target), {
           credentials: 'same-origin',
           headers: headers
